@@ -94,18 +94,19 @@ async def receive_message(request: Request) -> Dict[str, str]:
         logger.info(f"💬 Message: {message_text}")
         
         # Initialize services
-        db = request.app.state.db
         config_loader = request.app.state.config_loader
+        db = request.app.state.db
         
-        motor_finanzas = MotorFinanciero(db, config_loader)
-        motor_ventas = MotorVentas(db, config_loader)
+        # Initialize service modules with Firestore client
+        motor_financiero = MotorFinanciero(config_loader)
+        motor_ventas = MotorVentas(db=db, config_loader=config_loader)  # Pass Firestore client
         cerebro_ia = CerebroIA(config_loader)
         
         # Route message based on keywords
         response_text = await _route_message(
             message_text,
             config_loader,
-            motor_finanzas,
+            motor_financiero,
             motor_ventas,
             cerebro_ia
         )

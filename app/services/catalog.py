@@ -1,6 +1,7 @@
 """
-Motor de Ventas - Catalog and Sales Service
-Handles motorcycle catalog queries and sales recommendations.
+Catalog Service - MotorVentas
+Handles motorcycle catalog queries and recommendations.
+Fetches data directly from Firestore catalog_items collection.
 """
 
 import logging
@@ -14,49 +15,78 @@ class MotorVentas:
     """
     Sales engine for motorcycle catalog queries.
     
-    Provides information about available motorcycles, specifications,
-    and helps customers find their ideal bike based on their needs.
+    Fetches motorcycle data directly from Firestore catalog_items collection.
+    Provides search, filtering, and recommendation functionality.
     """
     
-    def __init__(self, db: firestore.Client, config_loader=None):
+    def __init__(self, db: Optional[firestore.Client] = None, config_loader=None):
         """
-        Initialize the sales motor.
+        Initialize MotorVentas service.
         
         Args:
-            db: Firestore client instance
-            config_loader: Optional ConfigLoader instance for dynamic catalog
+            db: Firestore client for direct catalog queries
+            config_loader: Optional ConfigLoader (deprecated, kept for compatibility)
         """
         self._db = db
         self._config_loader = config_loader
         self._catalog = self._load_catalog()
-        logger.info("🏍️  MotorVentas initialized")
+        logger.info(f"✅ MotorVentas initialized with {len(self._catalog)} motorcycles")
     
     def _load_catalog(self) -> List[Dict[str, Any]]:
         """
-        Load motorcycle catalog from config or use defaults.
+        Load motorcycle catalog from Firestore catalog_items collection.
+        
+        This method queries Firestore directly to get the latest catalog data.
+        Falls back to default catalog if Firestore query fails.
         
         Returns:
             List of motorcycle dictionaries
         """
-        if self._config_loader:
-            try:
-                # Safe config loading: try direct attribute access first
-                catalog_config = getattr(self._config_loader, "catalog_config", None)
+        try:
+            # Query catalog_items collection from Firestore
+            if self._db:
+                logger.info("📚 Loading catalog from Firestore catalog_items collection...")
                 
-                # Fallback to method call if attribute doesn't exist
-                if catalog_config is None and hasattr(self._config_loader, "get_catalog_config"):
-                    catalog_config = self._config_loader.get_catalog_config()
+                catalog_ref = self._db.collection("catalog_items")
+                docs = catalog_ref.stream()
                 
-                # Extract items safely
-                if catalog_config and isinstance(catalog_config, dict):
-                    return catalog_config.get("items", self._default_catalog())
+                catalog = []
+                for doc in docs:
+                    data = doc.to_dict()
                     
-            except AttributeError as e:
-                logger.error(f"❌ ConfigLoader missing expected attribute: {str(e)}")
-            except Exception as e:
-                logger.error(f"❌ Error loading catalog: {str(e)}")
-        
-        return self._default_catalog()
+                    # Only include active motorcycles
+                    if data.get("active", True):
+                        # Map Firestore document to catalog format
+                        moto = {
+                            "id": data.get("id", doc.id),
+                            "name": data.get("name", "Moto"),
+                            "category": data.get("category", "general"),
+                            "description": data.get("description", "Sin descripción disponible"),
+                            "highlights": data.get("highlights", []),
+                            "price": data.get("price", 0),
+                            "engine": data.get("engine", "N/A"),
+                            "fuel_efficiency": data.get("fuel_efficiency", "N/A"),
+                            "active": data.get("active", True)
+                        }
+                        catalog.append(moto)
+                        logger.info(f"  ✅ Loaded: {moto['name']} ({moto['category']})")
+                
+                if catalog:
+                    logger.info(f"✅ Catalog loaded successfully: {len(catalog)} motorcycles")
+                    return catalog
+                else:
+                    logger.warning("⚠️  No motorcycles found in catalog_items collection")
+                    logger.info("📋 Using default catalog as fallback")
+                    return self._default_catalog()
+            else:
+                logger.warning("⚠️  Firestore client not available")
+                logger.info("📋 Using default catalog as fallback")
+                return self._default_catalog()
+                
+        except Exception as e:
+            logger.error(f"❌ Error loading catalog from Firestore: {str(e)}")
+            logger.info("📋 Using default catalog as fallback")
+            return self._default_catalog()
     
     def _default_catalog(self) -> List[Dict[str, Any]]:
         """Get default motorcycle catalog."""
