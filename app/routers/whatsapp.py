@@ -229,13 +229,26 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
         message_text: Message text to send
     """
     try:
+        # CRITICAL: Validate token before making request
+        if not settings.whatsapp_token or settings.whatsapp_token.strip() == "":
+            logger.critical("❌ CRITICAL: WHATSAPP_TOKEN IS MISSING OR EMPTY!")
+            logger.critical(f"Token value: '{settings.whatsapp_token}'")
+            logger.critical("Please set WHATSAPP_TOKEN environment variable in Cloud Run")
+            raise ValueError("WhatsApp token is not configured")
+        
+        if not settings.phone_number_id or settings.phone_number_id.strip() == "":
+            logger.critical("❌ CRITICAL: PHONE_NUMBER_ID IS MISSING OR EMPTY!")
+            logger.critical(f"Phone Number ID value: '{settings.phone_number_id}'")
+            logger.critical("Please set PHONE_NUMBER_ID environment variable in Cloud Run")
+            raise ValueError("Phone Number ID is not configured")
+        
         # WhatsApp Cloud API endpoint
-        phone_number_id = settings.whatsapp_phone_number_id
+        phone_number_id = settings.phone_number_id
         url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
         
         # Request headers
         headers = {
-            "Authorization": f"Bearer {settings.whatsapp_access_token}",
+            "Authorization": f"Bearer {settings.whatsapp_token}",
             "Content-Type": "application/json"
         }
         
@@ -249,6 +262,9 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
             }
         }
         
+        logger.info(f"📤 Sending message to {to_phone} via WhatsApp API")
+        logger.debug(f"API URL: {url}")
+        
         # Send request
         async with httpx.AsyncClient() as client:
             response = await client.post(url, json=payload, headers=headers)
@@ -256,6 +272,9 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
             
         logger.info(f"✅ Message sent successfully to {to_phone}")
         
+    except ValueError as e:
+        logger.error(f"❌ Configuration error: {str(e)}")
+        raise
     except httpx.HTTPStatusError as e:
         logger.error(f"❌ WhatsApp API error: {e.response.status_code} - {e.response.text}")
         raise
