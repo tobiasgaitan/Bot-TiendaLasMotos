@@ -203,7 +203,8 @@ async def _route_message(
         # Check for financial keywords
         if any(keyword in message_lower for keyword in financial_keywords):
             logger.info("💰 Routing to MotorFinanciero")
-            return motor_finanzas.simular_credito(message_text)
+            # PASSING MOTOR_VENTAS TO SIMULATION
+            return motor_finanzas.simular_credito(message_text, motor_ventas)
         
         # Check for sales keywords
         elif any(keyword in message_lower for keyword in sales_keywords):
