@@ -43,8 +43,8 @@ class CerebroIA:
         if VERTEX_AI_AVAILABLE:
             try:
                 vertexai.init(project="tiendalasmotos", location="us-central1")
-                self._model = GenerativeModel("gemini-2.0-flash-exp")
-                logger.info("🧠 CerebroIA initialized with Gemini 2.0 Flash")
+                self._model = GenerativeModel("gemini-2.5-flash")
+                logger.info("🧠 CerebroIA initialized with Gemini 2.5 Flash")
             except Exception as e:
                 logger.error(f"❌ Error initializing Vertex AI: {str(e)}")
                 self._model = None
@@ -107,70 +107,52 @@ NO HACER:
     
     def pensar_respuesta(self, texto: str, context: str = "") -> str:
         """
-        Generate an intelligent response using Gemini AI.
-        
-        Args:
-            texto: User message text
-            context: Previous conversation summary/context (Memory)
-        
-        Returns:
-            AI-generated response string
+        Generate an intelligent response using Gemini AI with Retry Logic.
         """
-        try:
-            # If Vertex AI is available, use it
-            if self._model:
-                logger.info(f"🤔 Generating AI response for: {texto[:50]}...")
+        # Decorator-style logic implementation inside method for simplicity unless specific util needed
+        return self._generate_with_retry(texto, context)
+
+    def _generate_with_retry(self, texto: str, context: str) -> str:
+        """Internal generation with exponential backoff."""
+        if not self._model: return self._fallback_response(texto)
+        
+        max_retries = 3
+        base_delay = 2 # Increased base delay for 429 safety
+        
+        import time
+        from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
+
+        for attempt in range(max_retries):
+            try:
+                chat = self._model.start_chat()
                 
-                # Retry Logic for 429 (Resource Exhausted)
-                max_retries = 3
-                base_delay = 1
+                full_prompt = f"{self._system_instruction}\n\n"
+                if context:
+                        full_prompt += f"RESUMEN CONVERSACIÓN ANTERIOR:\n{context}\n\n"
                 
-                import time
-                from google.api_core.exceptions import ResourceExhausted
+                full_prompt += f"Usuario: {texto}\n\nSebas:"
                 
-                for attempt in range(max_retries):
-                    try:
-                        # Create chat with system instruction
-                        chat = self._model.start_chat()
-                        
-                        # Build Prompt with Context
-                        full_prompt = f"{self._system_instruction}\n\n"
-                        if context:
-                             full_prompt += f"RESUMEN CONVERSACIÓN ANTERIOR:\n{context}\n\n"
-                        
-                        full_prompt += f"Usuario: {texto}\n\nSebas:"
-                        
-                        # Generate response
-                        response = chat.send_message(full_prompt)
-                        
-                        ai_response = response.text.strip()
-                        if not ai_response:
-                             logger.warning("⚠️ Empty AI response")
-                             return self._fallback_response(texto)
-                             
-                        logger.info(f"✅ AI response generated ({len(ai_response)} chars)")
-                        return ai_response
-                        
-                    except ResourceExhausted as e:
-                        wait_time = base_delay * (2 ** attempt)
-                        logger.warning(f"⏳ Quota limit hit (429). Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
-                        time.sleep(wait_time)
-                        
-                    except Exception as e:
-                        logger.error(f"❌ Error in AI attempt {attempt+1}: {e}")
-                        break # Don't retry other errors
+                response = chat.send_message(full_prompt)
+                ai_response = response.text.strip()
                 
-                # If loop finishes without success
-                logger.error("❌ Failed to generate AI response after retries")
-                return self._fallback_response(texto)
-            
-            # Fallback response if AI not available
-            else:
-                return self._fallback_response(texto)
+                if not ai_response:
+                        logger.warning("⚠️ Empty AI response")
+                        return self._fallback_response(texto)
+                        
+                logger.info(f"✅ AI response generated ({len(ai_response)} chars)")
+                return ai_response
                 
-        except Exception as e:
-            logger.error(f"❌ Error generating AI response: {str(e)}")
-            return self._fallback_response(texto)
+            except (ResourceExhausted, ServiceUnavailable) as e:
+                wait_time = base_delay * (2 ** attempt)
+                logger.warning(f"⏳ API Limit (429/503). Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
+                time.sleep(wait_time)
+                
+            except Exception as e:
+                logger.error(f"❌ Error in AI attempt {attempt+1}: {e}")
+                break
+        
+        logger.error("❌ Failed to generate AI response after retries")
+        return self._fallback_response(texto)
 
     def detect_sentiment(self, text: str) -> str:
         """

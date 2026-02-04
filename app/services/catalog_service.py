@@ -73,7 +73,8 @@ class CatalogService:
                     self._items_by_category[category] = []
                 self._items_by_category[category].append(item_data)
             
-            logger.info(f"✅ Catalog loaded: {len(self._items)} items")
+            # Silencing legacy log to avoid confusion with V6.0 dynamic config
+            # logger.info(f"✅ Catalog loaded: {len(self._items)} items")
             logger.info(f"📂 Categories: {list(self._items_by_category.keys())}")
             
         except Exception as e:

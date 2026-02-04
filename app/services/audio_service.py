@@ -34,9 +34,9 @@ class AudioService:
         
         if VERTEX_AI_AVAILABLE:
             try:
-                # Gemini 1.5 Flash is effective for audio
-                self._model = GenerativeModel("gemini-1.5-flash-001") 
-                logger.info("🎤 AudioService initialized with Gemini Flash")
+                # Gemini 2.5 Flash is effective for audio
+                self._model = GenerativeModel("gemini-2.5-flash") 
+                logger.info("🎤 AudioService initialized with Gemini 2.5 Flash")
             except Exception as e:
                 logger.error(f"❌ AudioService init error: {e}")
 
@@ -47,8 +47,8 @@ class AudioService:
         if not self._model:
             return "Lo siento, no puedo escuchar audios en este momento. 🙉"
 
-        # 1. Transcode OGG to MP3 (Gemini prefers standard formats)
-        mp3_path = self._transcode_to_mp3(audio_bytes)
+        # 1. Transcode OGG to WAV (16kHz Mono) for Gemini
+        mp3_path = self._transcode_to_wav(audio_bytes)
         if not mp3_path:
             return "Tuve un problema con el formato de audio. ¿Me lo escribes? ✍️"
 
@@ -57,7 +57,7 @@ class AudioService:
             with open(mp3_path, "rb") as f:
                 audio_data = f.read()
             
-            audio_part = Part.from_data(data=audio_data, mime_type="audio/mp3")
+            audio_part = Part.from_data(data=audio_data, mime_type="audio/wav")
             
             # 3. Generate Response
             system_prompt = self._get_system_prompt()
@@ -86,9 +86,9 @@ class AudioService:
                 except:
                     pass
 
-    def _transcode_to_mp3(self, input_bytes: bytes) -> Optional[str]:
+    def _transcode_to_wav(self, input_bytes: bytes) -> Optional[str]:
         """
-        Transcode input bytes (likely OGG) to MP3 temp file.
+        Transcode input bytes (likely OGG) to WAV (16kHz Mono) for Gemini.
         Using ffmpeg-python.
         """
         try:
@@ -98,13 +98,11 @@ class AudioService:
                 temp_in_path = temp_in.name
 
             # Create temp file for output
-            temp_out_path = temp_in_path.replace(".ogg", ".mp3")
+            temp_out_path = temp_in_path.replace(".ogg", ".wav")
 
-            # Run ffmpeg
-            # ffmpeg -i input.ogg -acodec libmp3lame -y output.mp3
-            # Or just default conversion
+            # Run ffmpeg with 16kHz mono (ar=16000, ac=1)
             stream = ffmpeg.input(temp_in_path)
-            stream = ffmpeg.output(stream, temp_out_path)
+            stream = ffmpeg.output(stream, temp_out_path, ar=16000, ac=1)
             ffmpeg.run(stream, overwrite_output=True, quiet=True)
             
             # Cleanup input

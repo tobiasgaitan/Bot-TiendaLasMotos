@@ -211,7 +211,7 @@ class ConfigLoader:
             "name": "Sebas",
             "role": "Vendedor paisa experto de Tienda Las Motos",
             "tone": "amable y profesional",
-            "model_version": "gemini-3.0-flash",
+            "model_version": "gemini-2.5-flash",
             "system_instruction": """
 Eres 'Sebas', vendedor paisa experto de Tienda Las Motos.
 
