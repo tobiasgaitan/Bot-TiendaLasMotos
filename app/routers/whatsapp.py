@@ -229,6 +229,17 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
         message_text: Message text to send
     """
     try:
+        # CRITICAL: Early check - prevent crash if token is missing
+        if not settings.whatsapp_token:
+            logger.error("🔥 CRITICAL: Attempting to send message but WHATSAPP_TOKEN is empty!")
+            logger.error("Message NOT sent. Please configure WHATSAPP_TOKEN in Cloud Run.")
+            return
+        
+        if not settings.phone_number_id:
+            logger.error("🔥 CRITICAL: Attempting to send message but PHONE_NUMBER_ID is empty!")
+            logger.error("Message NOT sent. Please configure PHONE_NUMBER_ID in Cloud Run.")
+            return
+        
         # CRITICAL: Validate token before making request
         if not settings.whatsapp_token or settings.whatsapp_token.strip() == "":
             logger.critical("❌ CRITICAL: WHATSAPP_TOKEN IS MISSING OR EMPTY!")
