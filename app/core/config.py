@@ -1,6 +1,6 @@
 """
 Application configuration using direct os.getenv for Cloud Run compatibility.
-Simplified to ensure environment variables are reliably loaded.
+Includes both WhatsApp and Google Cloud Platform configuration.
 """
 
 import os
@@ -12,14 +12,15 @@ class Settings:
     Application settings loaded directly from environment variables using os.getenv.
     
     This approach ensures maximum compatibility with Cloud Run and other deployment environments.
+    Includes both WhatsApp API configuration and Google Cloud Platform settings.
     """
     
     def __init__(self):
         """Initialize settings by reading environment variables."""
         
-        # Google Cloud Platform
-        self.gcp_project_id: str = os.getenv("GCP_PROJECT_ID", "tiendalasmotos")
-        self.secret_name: str = os.getenv("SECRET_NAME", "FIREBASE_CREDENTIALS")
+        # Google Cloud Platform Configuration
+        self.gcp_project_id: str = os.getenv("GOOGLE_CLOUD_PROJECT", "tiendalasmotos")
+        self.secret_name: str = os.getenv("FIREBASE_SECRET_NAME", "FIREBASE_CREDENTIALS")
         self.storage_bucket: str = os.getenv("STORAGE_BUCKET", "tiendalasmotos-documents")
         
         # WhatsApp Configuration - CRITICAL for message sending
@@ -38,16 +39,22 @@ class Settings:
         print("=" * 60)
         print("🔧 CONFIGURATION LOADED")
         print("=" * 60)
+        
+        # Google Cloud Platform
         print(f"GCP Project ID: {self.gcp_project_id}")
         print(f"Secret Name: {self.secret_name}")
         print(f"Storage Bucket: {self.storage_bucket}")
+        
+        # WhatsApp Configuration
         print(f"Webhook Verify Token: {'✅ SET' if self.webhook_verify_token else '❌ MISSING'}")
         print(f"WhatsApp Token: {'✅ FOUND' if self.whatsapp_token else '❌ MISSING'}")
         print(f"Phone Number ID: {'✅ FOUND' if self.phone_number_id else '❌ MISSING'}")
+        
+        # Server
         print(f"Port: {self.port}")
         print("=" * 60)
         
-        # Critical warnings
+        # Critical warnings for WhatsApp
         if not self.whatsapp_token:
             print("⚠️  WARNING: WHATSAPP_TOKEN is not set!")
             print("   Set it with: gcloud run services update ... --set-env-vars='WHATSAPP_TOKEN=xxx'")
