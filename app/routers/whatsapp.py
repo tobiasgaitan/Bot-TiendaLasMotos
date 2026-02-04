@@ -198,20 +198,27 @@ async def _route_message(
         financial_keywords = routing_rules.get("financial_keywords", [])
         sales_keywords = routing_rules.get("sales_keywords", [])
         
-        message_lower = message_text.lower()
+        # Add hardcoded financial keywords for robustness
+        extended_finance_keywords = financial_keywords + [
+            "deuda", "pagar", "financiar", "financiación", "financiacion", 
+            "millones", "palos", "k", "cuota", "interés", "interes", 
+            "crédito", "credito", "incial", "inicial"
+        ]
         
-        # Check for financial keywords
-        if any(keyword in message_lower for keyword in financial_keywords):
-            logger.info("💰 Routing to MotorFinanciero")
-            # PASSING MOTOR_VENTAS TO SIMULATION
+        # Step 1: Check for financial intent (Priority #1)
+        # We check this FIRST to capture "How much down payment for NKD?" as finance, not sales
+        if _has_financial_intent(message_text, extended_finance_keywords):
+            logger.info("💰 Routing to MotorFinanciero (Financial Intent Detected)")
+            # Pass the full message so entity extraction can find the bike name
             return motor_finanzas.simular_credito(message_text, motor_ventas)
         
-        # Check for sales keywords
-        elif any(keyword in message_lower for keyword in sales_keywords):
+        # Step 2: Check for sales/catalog keywords
+        message_lower = message_text.lower()
+        if any(keyword in message_lower for keyword in sales_keywords):
             logger.info("🏍️  Routing to MotorVentas")
             return motor_ventas.buscar_moto(message_text)
         
-        # Default to AI brain
+        # Step 3: Default to AI brain
         else:
             logger.info("🧠 Routing to CerebroIA")
             return cerebro_ia.pensar_respuesta(message_text)
@@ -220,6 +227,51 @@ async def _route_message(
         logger.error(f"❌ Error routing message: {str(e)}")
         # Fallback to AI brain
         return cerebro_ia.pensar_respuesta(message_text)
+
+
+def _has_financial_intent(text: str, keywords: list) -> bool:
+    """
+    Check if message has financial intent based on keywords or numeric values.
+    
+    Args:
+        text: Message text
+        keywords: List of financial keywords
+        
+    Returns:
+        True if financial intent detected
+    """
+    text_lower = text.lower()
+    
+    # 1. Check Keywords
+    if any(keyword in text_lower for keyword in keywords):
+        return True
+        
+    # 2. Check for large numbers or specific formats
+    import re
+    
+    # Pattern for "k" notation (e.g., 500k, 500K) -> indicates money
+    if re.search(r'\d+\s*k\b', text_lower):
+        return True
+        
+    # Pattern for "millones" or "m" (explicitly handled in keywords, but good to double check context)
+    
+    # Pattern for large numbers (> 100,000)
+    # Removing dots/commas to parse "1.000.000" or "1000000"
+    try:
+        # Extract potential number sequences
+        numbers = re.findall(r'\b\d[\d\.,]*\d\b|\b\d\b', text)
+        for num_str in numbers:
+            # Clean strings like "1.000.000" -> "1000000"
+            clean_num = num_str.replace('.', '').replace(',', '')
+            if clean_num.isdigit():
+                value = int(clean_num)
+                # If user mentions > 100,000, they are likely talking about money/down payment
+                if value > 100000: 
+                    return True
+    except:
+        pass # Ignore parsing errors
+        
+    return False
 
 
 async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
