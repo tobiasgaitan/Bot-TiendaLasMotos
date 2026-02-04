@@ -1,14 +1,18 @@
 """
 WhatsApp Webhook Router
-Handles Meta WhatsApp webhook verification and message reception.
+Handles Meta WhatsApp webhook verification and message reception with intelligent routing.
 """
 
 import logging
+import httpx
 from typing import Dict, Any
 
 from fastapi import APIRouter, Request, Query, HTTPException
 
 from app.core.config import settings
+from app.services.finance import MotorFinanciero
+from app.services.catalog import MotorVentas
+from app.services.ai_brain import CerebroIA
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +57,10 @@ async def verify_webhook(
 @router.post("")
 async def receive_message(request: Request) -> Dict[str, str]:
     """
-    WhatsApp message reception endpoint.
+    WhatsApp message reception endpoint with intelligent routing.
     
     Meta sends POST requests with message data to this endpoint.
-    Phase 1: We just log the payload and return 200 OK.
+    Routes messages to appropriate service based on content and configuration.
     
     Args:
         request: FastAPI request object containing the webhook payload
@@ -69,14 +73,192 @@ async def receive_message(request: Request) -> Dict[str, str]:
         payload = await request.json()
         
         logger.info("📨 WhatsApp message received")
-        logger.info(f"Payload: {payload}")
+        logger.debug(f"Payload: {payload}")
         
-        # Phase 1: Just log and acknowledge
-        # Future phases will process the message and trigger bot logic
+        # Extract message data
+        if not _is_valid_message(payload):
+            logger.info("⏭️  Skipping non-message event")
+            return {"status": "ignored"}
         
-        return {"status": "received"}
+        # Get message details
+        message_data = _extract_message_data(payload)
+        if not message_data:
+            logger.warning("⚠️  Could not extract message data")
+            return {"status": "error", "message": "Invalid message format"}
+        
+        user_phone = message_data["from"]
+        message_text = message_data["text"]
+        message_id = message_data["id"]
+        
+        logger.info(f"👤 From: {user_phone}")
+        logger.info(f"💬 Message: {message_text}")
+        
+        # Initialize services
+        db = request.app.state.db
+        config_loader = request.app.state.config_loader
+        
+        motor_finanzas = MotorFinanciero(db, config_loader)
+        motor_ventas = MotorVentas(db, config_loader)
+        cerebro_ia = CerebroIA(config_loader)
+        
+        # Route message based on keywords
+        response_text = await _route_message(
+            message_text,
+            config_loader,
+            motor_finanzas,
+            motor_ventas,
+            cerebro_ia
+        )
+        
+        # Send response via WhatsApp API
+        await _send_whatsapp_message(user_phone, response_text)
+        
+        logger.info(f"✅ Response sent to {user_phone}")
+        
+        return {"status": "success", "message_id": message_id}
         
     except Exception as e:
-        logger.error(f"❌ Error processing webhook: {str(e)}")
+        logger.error(f"❌ Error processing webhook: {str(e)}", exc_info=True)
         # Return 200 anyway to prevent Meta from retrying
         return {"status": "error", "message": str(e)}
+
+
+def _is_valid_message(payload: Dict[str, Any]) -> bool:
+    """
+    Check if payload contains a valid message.
+    
+    Args:
+        payload: WhatsApp webhook payload
+    
+    Returns:
+        True if payload contains a message, False otherwise
+    """
+    try:
+        entry = payload.get("entry", [{}])[0]
+        changes = entry.get("changes", [{}])[0]
+        value = changes.get("value", {})
+        messages = value.get("messages", [])
+        
+        return len(messages) > 0
+    except (IndexError, KeyError):
+        return False
+
+
+def _extract_message_data(payload: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Extract message data from WhatsApp payload.
+    
+    Args:
+        payload: WhatsApp webhook payload
+    
+    Returns:
+        Dictionary with message data or None if extraction fails
+    """
+    try:
+        entry = payload["entry"][0]
+        changes = entry["changes"][0]
+        value = changes["value"]
+        message = value["messages"][0]
+        
+        return {
+            "from": message["from"],
+            "id": message["id"],
+            "text": message.get("text", {}).get("body", ""),
+            "timestamp": message["timestamp"]
+        }
+    except (IndexError, KeyError) as e:
+        logger.error(f"Error extracting message data: {str(e)}")
+        return None
+
+
+async def _route_message(
+    message_text: str,
+    config_loader,
+    motor_finanzas: MotorFinanciero,
+    motor_ventas: MotorVentas,
+    cerebro_ia: CerebroIA
+) -> str:
+    """
+    Route message to appropriate service based on keywords.
+    
+    Args:
+        message_text: User message text
+        config_loader: ConfigLoader instance
+        motor_finanzas: Financial motor instance
+        motor_ventas: Sales motor instance
+        cerebro_ia: AI brain instance
+    
+    Returns:
+        Response text from appropriate service
+    """
+    try:
+        # Get routing rules from configuration
+        routing_rules = config_loader.get_routing_rules()
+        financial_keywords = routing_rules.get("financial_keywords", [])
+        sales_keywords = routing_rules.get("sales_keywords", [])
+        
+        message_lower = message_text.lower()
+        
+        # Check for financial keywords
+        if any(keyword in message_lower for keyword in financial_keywords):
+            logger.info("💰 Routing to MotorFinanciero")
+            return motor_finanzas.simular_credito(message_text)
+        
+        # Check for sales keywords
+        elif any(keyword in message_lower for keyword in sales_keywords):
+            logger.info("🏍️  Routing to MotorVentas")
+            return motor_ventas.buscar_moto(message_text)
+        
+        # Default to AI brain
+        else:
+            logger.info("🧠 Routing to CerebroIA")
+            return cerebro_ia.pensar_respuesta(message_text)
+            
+    except Exception as e:
+        logger.error(f"❌ Error routing message: {str(e)}")
+        # Fallback to AI brain
+        return cerebro_ia.pensar_respuesta(message_text)
+
+
+async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
+    """
+    Send message via WhatsApp Cloud API.
+    
+    Args:
+        to_phone: Recipient phone number
+        message_text: Message text to send
+    """
+    try:
+        # WhatsApp Cloud API endpoint
+        phone_number_id = settings.whatsapp_phone_number_id
+        url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
+        
+        # Request headers
+        headers = {
+            "Authorization": f"Bearer {settings.whatsapp_access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Request payload
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_phone,
+            "type": "text",
+            "text": {
+                "body": message_text
+            }
+        }
+        
+        # Send request
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            
+        logger.info(f"✅ Message sent successfully to {to_phone}")
+        
+    except httpx.HTTPStatusError as e:
+        logger.error(f"❌ WhatsApp API error: {e.response.status_code} - {e.response.text}")
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error sending WhatsApp message: {str(e)}")
+        raise

@@ -6,7 +6,11 @@ uvicorn[standard]==0.32.1
 google-cloud-secret-manager==2.21.1
 google-cloud-firestore==2.19.0
 google-cloud-storage==2.18.2
+google-cloud-aiplatform==1.71.1
 google-auth==2.36.0
+
+# HTTP Client
+httpx==0.28.1
 
 # Data Validation and Settings
 pydantic==2.10.3

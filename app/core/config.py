@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     secret_name: str = "FIREBASE_CREDENTIALS"
     storage_bucket: str = "tiendalasmotos-documents"
     webhook_verify_token: str = "motos2026"
+    whatsapp_phone_number_id: str = ""  # Set via environment variable
+    whatsapp_access_token: str = ""  # Set via environment variable
     port: int = 8080
     
     class Config:
