@@ -40,8 +40,19 @@ class MotorVentas:
         """
         if self._config_loader:
             try:
-                catalog_config = self._config_loader.get_catalog_config()
-                return catalog_config.get("items", self._default_catalog())
+                # Safe config loading: try direct attribute access first
+                catalog_config = getattr(self._config_loader, "catalog_config", None)
+                
+                # Fallback to method call if attribute doesn't exist
+                if catalog_config is None and hasattr(self._config_loader, "get_catalog_config"):
+                    catalog_config = self._config_loader.get_catalog_config()
+                
+                # Extract items safely
+                if catalog_config and isinstance(catalog_config, dict):
+                    return catalog_config.get("items", self._default_catalog())
+                    
+            except AttributeError as e:
+                logger.error(f"❌ ConfigLoader missing expected attribute: {str(e)}")
             except Exception as e:
                 logger.error(f"❌ Error loading catalog: {str(e)}")
         
@@ -97,31 +108,34 @@ class MotorVentas:
         try:
             texto_lower = texto.lower()
             
-            # Check for specific motorcycle mentions
+            # Check for specific motorcycle mentions (safe access)
             motos_mencionadas = []
             for moto in self._catalog:
-                if moto["name"].lower() in texto_lower or moto["id"] in texto_lower:
+                moto_name = moto.get("name", "").lower()
+                moto_id = moto.get("id", "")
+                
+                if moto_name in texto_lower or moto_id in texto_lower:
                     motos_mencionadas.append(moto)
             
             # If specific bikes mentioned, show those
             if motos_mencionadas:
                 return self._format_motos_response(motos_mencionadas, "encontradas")
             
-            # Category-based search
+            # Category-based search (safe access)
             if any(word in texto_lower for word in ["ciudad", "urbana", "trabajo", "económica"]):
-                motos_filtradas = [m for m in self._catalog if m["category"] == "urbana"]
+                motos_filtradas = [m for m in self._catalog if m.get("category") == "urbana"]
                 return self._format_motos_response(motos_filtradas, "para ciudad")
             
             elif any(word in texto_lower for word in ["deportiva", "joven", "rápida", "sport"]):
-                motos_filtradas = [m for m in self._catalog if m["category"] == "deportiva"]
+                motos_filtradas = [m for m in self._catalog if m.get("category") == "deportiva"]
                 return self._format_motos_response(motos_filtradas, "deportivas")
             
             elif any(word in texto_lower for word in ["ejecutiva", "elegante", "profesional"]):
-                motos_filtradas = [m for m in self._catalog if m["category"] == "ejecutiva"]
+                motos_filtradas = [m for m in self._catalog if m.get("category") == "ejecutiva"]
                 return self._format_motos_response(motos_filtradas, "ejecutivas")
             
             elif any(word in texto_lower for word in ["aventura", "terreno", "campo", "montaña"]):
-                motos_filtradas = [m for m in self._catalog if m["category"] == "todo-terreno"]
+                motos_filtradas = [m for m in self._catalog if m.get("category") == "todo-terreno"]
                 return self._format_motos_response(motos_filtradas, "todo terreno")
             
             # Default: show all catalog
@@ -149,9 +163,31 @@ class MotorVentas:
         response = f"🏍️ **Motos {categoria}**\n\n"
         
         for moto in motos:
-            response += f"**{moto['name']}**\n"
-            response += f"📝 {moto['description']}\n"
-            response += f"✨ {', '.join(moto['highlights'])}\n\n"
+            try:
+                # Safe data access with defaults
+                name = moto.get('name', 'Moto')
+                description = moto.get('description', 'Sin descripción disponible')
+                highlights = moto.get('highlights', [])
+                
+                # Handle None highlights
+                if highlights is None:
+                    highlights = []
+                
+                response += f"**{name}**\n"
+                response += f"📝 {description}\n"
+                
+                # Only add highlights if they exist
+                if highlights and isinstance(highlights, list):
+                    response += f"✨ {', '.join(highlights)}\n\n"
+                else:
+                    response += "\n"
+                    
+            except Exception as e:
+                # Enhanced logging with moto object details
+                logger.error(f"❌ Error formatting moto response: {str(e)}")
+                logger.error(f"   Problematic moto object: {moto}")
+                # Continue processing other motos
+                continue
         
         response += "💳 ¿Te gustaría una simulación de crédito para alguna de estas motos?\n"
         response += "📱 También puedo darte más información sobre cualquiera de ellas."
@@ -170,7 +206,9 @@ class MotorVentas:
         
         for moto in self._catalog:
             if moto.get("active", True):
-                response += f"**{moto['name']}** - {moto['description']}\n"
+                name = moto.get('name', 'Moto')
+                description = moto.get('description', 'Sin descripción disponible')
+                response += f"**{name}** - {description}\n"
         
         response += "\n💡 Dime qué tipo de moto buscas o pregúntame por alguna específica.\n"
         response += "💳 También puedo hacer una simulación de crédito personalizada."
@@ -189,6 +227,9 @@ class MotorVentas:
         """
         nombre_lower = nombre.lower()
         for moto in self._catalog:
-            if moto["name"].lower() == nombre_lower or moto["id"] == nombre_lower:
+            moto_name = moto.get("name", "").lower()
+            moto_id = moto.get("id", "")
+            
+            if moto_name == nombre_lower or moto_id == nombre_lower:
                 return moto
         return None
