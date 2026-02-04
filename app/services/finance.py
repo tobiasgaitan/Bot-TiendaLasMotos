@@ -25,8 +25,9 @@ class MotorFinanciero:
         Initialize the financial motor.
         
         Args:
+        Args:
             db: Firestore client instance
-            config_loader: Optional ConfigLoader instance for dynamic rates
+            config_loader: ConfigLoader instance for dynamic rates (Services Layer)
         """
         self._db = db
         self._config_loader = config_loader
@@ -98,11 +99,15 @@ Por ejemplo: "Doy 1 millón" o "Tengo 500mil".
         """Return generic response when no entities are detected."""
         if self._config_loader:
             financial_config = self._config_loader.get_financial_config()
-            tasa_banco = financial_config.get("tasas", {}).get("banco", {}).get("tasa_mensual", 1.87)
-            tasa_fintech = financial_config.get("tasas", {}).get("fintech", {}).get("tasa_mensual", 2.20)
+            tasa_banco = financial_config.get("tasa_nmv_banco", 1.87)
+            tasa_fintech = financial_config.get("tasa_nmv_fintech", 2.22)
+            # Aliados links
+            partners_config = self._config_loader.get_partners_config()
+            link_brilla = partners_config.get("link_brilla", "#")
         else:
             tasa_banco = 1.87
-            tasa_fintech = 2.20
+            tasa_fintech = 2.22
+            link_brilla = "#"
             
         return f"""
 🏍️ **Simulación de Crédito - Tienda Las Motos**
@@ -116,7 +121,7 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
 💳 **Nuestras Tasas**:
 - Banco de Bogotá: {tasa_banco}% mensual (perfil bancario)
 - CrediOrbe: {tasa_fintech}% mensual (perfil flexible)
-- Crédito Brilla: 1.95% mensual (con servicio de gas)
+- Crédito Brilla: 1.95% mensual (con servicio de gas) [Más info]({link_brilla})
 
 📱 **Ejemplo**: "Quiero la NKD 125 y tengo 1 millón de inicial"
         """.strip()
@@ -242,8 +247,14 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
         if loan_amount <= 0:
             return f"¡Genial! Con esa inicial de ${inicial:,.0f} cubres el valor total de la {nombre_moto} (${precio_moto:,.0f}). ¡Sería una venta de contado!"
             
-        # Default parameters
-        tasa_mensual = 2.2 # Fixed as per instructions
+        # Dynamic parameters from ConfigLoader
+        tasa_mensual = 2.22 # Fallback
+        porcentaje_aval = 5.0 # Fallback
+        
+        if self._config_loader:
+             fin_config = self._config_loader.get_financial_config()
+             tasa_mensual = fin_config.get("tasa_nmv_fintech", 2.22)
+             porcentaje_aval = fin_config.get("porcentaje_aval", 5.0)
         
         # Calculate options
         plan_24 = self.calcular_cuota(precio_moto, inicial, 24, tasa_mensual)
@@ -277,7 +288,7 @@ _*Cálculo estimado con tasa del {tasa_mensual}% MV. Sujeto a estudio de crédit
         precio: float, 
         inicial: float, 
         plazo_meses: int, 
-        tasa_mensual: float = 2.2
+        tasa_mensual: float = 2.22
     ) -> Dict[str, Any]:
         """
         Calculate monthly payment for a motorcycle loan.

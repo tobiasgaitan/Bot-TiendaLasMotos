@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.config_loader import ConfigLoader
 from app.core.security import get_firebase_credentials_object
 from app.services.config_service import config_service
+from app.services.config_loader import ConfigLoader as FinanceConfigLoader
 from app.services.catalog_service import catalog_service
 from app.services.storage_service import storage_service
 from app.routers import whatsapp
@@ -59,8 +60,13 @@ async def lifespan(app: FastAPI):
         config_loader = ConfigLoader(db)
         config_loader.load_all()
         
+        # 4.6 Load Financial Config (Fase 1)
+        logger.info("💰 Loading Financial Configuration...")
+        finance_config_loader = FinanceConfigLoader(db)
+        
         # Store in app state for access in routes
         app.state.config_loader = config_loader
+        app.state.finance_config_loader = finance_config_loader
         app.state.db = db
         
         # 5. Initialize Cloud Storage
