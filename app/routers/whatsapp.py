@@ -16,6 +16,7 @@ from app.services.catalog import MotorVentas
 from app.services.ai_brain import CerebroIA
 from app.services.vision_service import VisionService
 from app.services.audio_service import AudioService
+from app.services.audit_service import audit_service
 
 logger = logging.getLogger(__name__)
 
@@ -100,19 +101,38 @@ async def receive_message(request: Request) -> Dict[str, str]:
         response_text = "Lo siento, no entendí ese mensaje."
         
         # ROUTING LOGIC
+        # Phase 4: Sentiment Check (Before routing)
+        sentiment = "NEUTRAL"
+        if msg_type in ["text", "audio"]: # Only check text/audio
+            # checking text content (audio converted to text inside service but we don't have it yet here)
+            # Actually for audio checking sentiment happens after processing.
+            # let's check text first
+            if msg_type == "text":
+                sentiment = cerebro_ia.detect_sentiment(msg_data["text"])
+                if sentiment == "ANGRY":
+                    logger.warning(f"😡 User {user_phone} is ANGRY. Pausing session.")
+                    await _update_session(db, user_phone, {"status": "PAUSED", "paused_reason": "sentiment_angry"})
+                    # Alert Admin logic here (omitted for brevity)
+                    return {"status": "paused"}
+
+        # Check if PAUSED
+        session = await _get_session(db, user_phone)
+        if session.get("status") == "PAUSED":
+             logger.info(f"⏸️ Session paused for {user_phone}. Ignoring message.")
+             return {"status": "ignored_paused"}
+
         if msg_type == "text":
             text = msg_data["text"]
-            logger.info(f"💬 Text: {text}")
+            # ... (routing)
             response_text = await _route_message(
                 text, config_loader, motor_financiero, motor_ventas, cerebro_ia, db, user_phone
             )
             
         elif msg_type == "image":
+            # ... (image logic)
             logger.info("📷 Image received")
             media_id = msg_data["media_id"]
             mime_type = msg_data["mime_type"]
-            
-            # Download Image
             image_bytes = await _download_media(media_id)
             if image_bytes:
                 response_text = await vision_service.analyze_image(image_bytes, mime_type, user_phone)
@@ -120,11 +140,10 @@ async def receive_message(request: Request) -> Dict[str, str]:
                 response_text = "No pude descargar la imagen. 😢"
                 
         elif msg_type == "audio":
+            # ... (audio logic)
             logger.info("🎤 Audio received")
             media_id = msg_data["media_id"]
             mime_type = msg_data["mime_type"]
-            
-            # Download Audio
             audio_bytes = await _download_media(media_id)
             if audio_bytes:
                 response_text = await audio_service.process_audio(audio_bytes, mime_type)
@@ -132,22 +151,19 @@ async def receive_message(request: Request) -> Dict[str, str]:
                 response_text = "No pude descargar el audio. 😢"
         
         else:
-            response_text = "Aún no soporto este tipo de mensaje (Stickers, Location, etc). 😅"
+            response_text = "Aún no soporto este tipo de mensaje. 😅"
 
         # Calculate Artificial Latency
-        # Formula: 0.04s per character
         delay = len(response_text) * 0.04
-        
-        # Send "typing" indicator
         await _send_whatsapp_status(user_phone, "typing")
-        
-        # Artificial Wait (Simulating human typing)
-        # We use asyncio.sleep to not block the server, but the user experience is the same
-        logger.info(f"⏳ Artificial Latency: Waiting {delay:.2f}s for {len(response_text)} chars")
+        logger.info(f"⏳ Artificial Latency: {delay:.2f}s")
         await asyncio.sleep(delay)
         
-        # Send response via WhatsApp API
         await _send_whatsapp_message(user_phone, response_text)
+        
+        # Phase 4: Audit Log
+        user_input = msg_data.get("text", "[Media]")
+        await audit_service.log_interaction(user_phone, user_input, response_text, sentiment)
         
         logger.info(f"✅ Response sent to {user_phone}")
         
@@ -357,8 +373,9 @@ async def _route_message(
         if any(keyword in message_lower for keyword in sales_keywords):
              return motor_ventas.buscar_moto(message_text)
 
-        # AI Brain
-        return cerebro_ia.pensar_respuesta(message_text)
+    # AI Brain with Context (Memory)
+    context = session.get("summary", "")
+    return cerebro_ia.pensar_respuesta(message_text, context=context)
         
 def _has_financial_intent(text: str, keywords: list) -> bool:
     """Check for financial intent."""

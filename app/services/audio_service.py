@@ -68,7 +68,12 @@ class AudioService:
                 audio_part
             ])
             
-            return response.text.strip()
+            text_out = response.text.strip()
+            if not text_out:
+                logger.warning("⚠️  Gemini returned empty text for audio.")
+                return "Escuché el audio, pero no supe qué decir. ¿Podrías escribirlo? 😅"
+                
+            return text_out
             
         except Exception as e:
             logger.error(f"❌ Error processing audio AI: {e}")
@@ -76,7 +81,10 @@ class AudioService:
         finally:
             # Cleanup
             if mp3_path and os.path.exists(mp3_path):
-                os.remove(mp3_path)
+                try:
+                    os.remove(mp3_path)
+                except:
+                    pass
 
     def _transcode_to_mp3(self, input_bytes: bytes) -> Optional[str]:
         """

@@ -105,12 +105,13 @@ NO HACER:
 - No ser insistente si el cliente no está interesado
         """.strip()
     
-    def pensar_respuesta(self, texto: str) -> str:
+    def pensar_respuesta(self, texto: str, context: str = "") -> str:
         """
         Generate an intelligent response using Gemini AI.
         
         Args:
             texto: User message text
+            context: Previous conversation summary/context (Memory)
         
         Returns:
             AI-generated response string
@@ -120,17 +121,48 @@ NO HACER:
             if self._model:
                 logger.info(f"🤔 Generating AI response for: {texto[:50]}...")
                 
-                # Create chat with system instruction
-                chat = self._model.start_chat()
+                # Retry Logic for 429 (Resource Exhausted)
+                max_retries = 3
+                base_delay = 1
                 
-                # Generate response
-                response = chat.send_message(
-                    f"{self._system_instruction}\n\nUsuario: {texto}\n\nSebas:"
-                )
+                import time
+                from google.api_core.exceptions import ResourceExhausted
                 
-                ai_response = response.text.strip()
-                logger.info(f"✅ AI response generated ({len(ai_response)} chars)")
-                return ai_response
+                for attempt in range(max_retries):
+                    try:
+                        # Create chat with system instruction
+                        chat = self._model.start_chat()
+                        
+                        # Build Prompt with Context
+                        full_prompt = f"{self._system_instruction}\n\n"
+                        if context:
+                             full_prompt += f"RESUMEN CONVERSACIÓN ANTERIOR:\n{context}\n\n"
+                        
+                        full_prompt += f"Usuario: {texto}\n\nSebas:"
+                        
+                        # Generate response
+                        response = chat.send_message(full_prompt)
+                        
+                        ai_response = response.text.strip()
+                        if not ai_response:
+                             logger.warning("⚠️ Empty AI response")
+                             return self._fallback_response(texto)
+                             
+                        logger.info(f"✅ AI response generated ({len(ai_response)} chars)")
+                        return ai_response
+                        
+                    except ResourceExhausted as e:
+                        wait_time = base_delay * (2 ** attempt)
+                        logger.warning(f"⏳ Quota limit hit (429). Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
+                        time.sleep(wait_time)
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Error in AI attempt {attempt+1}: {e}")
+                        break # Don't retry other errors
+                
+                # If loop finishes without success
+                logger.error("❌ Failed to generate AI response after retries")
+                return self._fallback_response(texto)
             
             # Fallback response if AI not available
             else:
@@ -139,10 +171,41 @@ NO HACER:
         except Exception as e:
             logger.error(f"❌ Error generating AI response: {str(e)}")
             return self._fallback_response(texto)
-    
+
+    def detect_sentiment(self, text: str) -> str:
+        """
+        Analyze sentiment of the user message.
+        Returns: 'POSITIVE', 'NEUTRAL', 'NEGATIVE', 'ANGRY'
+        """
+        if not self._model: return "NEUTRAL"
+        try:
+            chat = self._model.start_chat()
+            response = chat.send_message(
+                f"Analyze the sentiment of this text. Output ONLY one word: POSITIVE, NEUTRAL, NEGATIVE, or ANGRY.\nText: {text}"
+            )
+            return response.text.strip().upper()
+        except:
+            return "NEUTRAL"
+
+    def generate_summary(self, conversation_text: str) -> str:
+        """
+        Summarize the conversation for memory context.
+        """
+        if not self._model: return ""
+        try:
+            chat = self._model.start_chat()
+            response = chat.send_message(
+                f"Summarize this conversation in 1-2 sentences capturing key user intent and data:\n{conversation_text}"
+            )
+            return response.text.strip()
+        except:
+            return ""
+
     def _fallback_response(self, texto: str) -> str:
         """
         Generate a fallback response when AI is not available.
+        # ... (rest of fallback)
+
         
         Args:
             texto: User message text
