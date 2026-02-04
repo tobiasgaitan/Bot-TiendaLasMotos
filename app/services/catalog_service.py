@@ -48,7 +48,7 @@ class CatalogService:
             logger.info("🏍️  Loading catalog from Firestore...")
             
             # Query all items from catalog
-            items_ref = self._db.collection("pagina").document("catalogo").collection("items")
+            items_ref = self._db.collection("catalog_items")
             items_docs = items_ref.stream()
             
             # Reset indexes
