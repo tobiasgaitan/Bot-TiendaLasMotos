@@ -1,5 +1,5 @@
-# Use Python 3.11 slim image for smaller size
-FROM python:3.11-slim
+# Use Python 3.12 slim image for stability and smaller size
+FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app
@@ -11,8 +11,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libmagic-dev \
     gcc \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better layer caching
 COPY requirements.txt .
