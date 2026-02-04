@@ -9,6 +9,8 @@ from typing import Dict, Any, Optional, List, Union
 
 from google.cloud import firestore
 
+from app.services.scoring_service import scoring_service
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,7 +33,43 @@ class MotorFinanciero:
         """
         self._db = db
         self._config_loader = config_loader
+        self._scoring_service = scoring_service
         logger.info("💰 MotorFinanciero initialized")
+
+    @property
+    def link_brilla(self) -> str:
+        """Get Brilla link from configuration."""
+        if self._config_loader:
+            partners = self._config_loader.get_partners_config()
+            return partners.get("link_brilla", "#")
+        return "#"
+
+    def evaluar_perfil(self, contrato: str, habito: str, ingreso: str) -> Dict[str, Any]:
+        """
+        Evaluate financial profile and determine best strategy.
+        
+        Args:
+            contrato: Contract type
+            habito: Payment habit
+            ingreso: Income level
+            
+        Returns:
+            Dictionary with score, strategy, and recommended entity
+        """
+        # Calculate Score
+        score = self._scoring_service.calculate_score(contrato, habito, ingreso)
+        
+        # Determine Strategy
+        strategy_info = self._scoring_service.determine_strategy(score)
+        
+        return {
+            "score": score,
+            "strategy": strategy_info["strategy"],
+            "entity": strategy_info["entity"],
+            "rate_key": strategy_info["rate_key"],
+            "requires_aval": strategy_info["requires_aval"],
+            "is_fallback": strategy_info.get("is_fallback", False)
+        }
     
     def simular_credito(self, texto: str, motor_ventas: Optional[Any] = None) -> str:
         """

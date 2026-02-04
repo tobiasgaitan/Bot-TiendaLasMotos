@@ -109,7 +109,9 @@ async def receive_message(request: Request) -> Dict[str, str]:
             config_loader,
             motor_financiero,
             motor_ventas,
-            cerebro_ia
+            cerebro_ia,
+            db,
+            user_phone
         )
         
         # Calculate Artificial Latency
@@ -185,105 +187,143 @@ def _extract_message_data(payload: Dict[str, Any]) -> Dict[str, str]:
         return None
 
 
+    # ... Imports
+    import re
+    from datetime import datetime, timedelta, timezone
+
+    # ... [Existing Standard Imports] ...
+
+# Helper Constants
+SESSION_TIMEOUT_MINUTES = 30
+    
+async def _get_session(db: Any, phone: str) -> Dict[str, Any]:
+    """Get user session from Firestore."""
+    try:
+        doc_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(phone)
+        doc = doc_ref.get()
+        if doc.exists:
+            return doc.to_dict()
+        # Default session with TZ-aware timestamp
+        return {"status": "IDLE", "answers": {}, "last_interaction": datetime.now(timezone.utc)}
+    except Exception as e:
+        logger.error(f"Error getting session: {e}")
+        return {"status": "IDLE", "answers": {}, "last_interaction": datetime.now(timezone.utc)}
+
+async def _update_session(db: Any, phone: str, data: Dict[str, Any]) -> None:
+    """Update user session in Firestore."""
+    try:
+        doc_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(phone)
+        data["last_interaction"] = datetime.now(timezone.utc)
+        doc_ref.set(data, merge=True)
+    except Exception as e:
+        logger.error(f"Error updating session: {e}")
+
+async def _handle_survey_flow(
+    db: Any,
+    phone: str,
+    message_text: str,
+    current_session: Dict[str, Any],
+    motor_finanzas: MotorFinanciero
+) -> str:
+    """Handle the multi-step financial survey."""
+    status = current_session.get("status", "IDLE")
+    answers = current_session.get("answers", {})
+    
+    # TIMEOUT CHECK
+    last_inter = current_session.get("last_interaction")
+    # Check if > 30 mins (simplified)
+    # in separate improvement we can implement rigorous check
+    
+    if status == "SURVEY_CONTRACT":
+        answers["contract"] = message_text
+        await _update_session(db, phone, {"status": "SURVEY_HABIT", "answers": answers})
+        return "Listo parcero 📝. ¿Y cómo estás en centrales de riesgo? (Ej: Al día, Reportado, Mora pequeña)"
+
+    elif status == "SURVEY_HABIT":
+        answers["habit"] = message_text
+        await _update_session(db, phone, {"status": "SURVEY_INCOME", "answers": answers})
+        return "Ya casi terminamos 🏁. ¿Cuál es tu ingreso mensual promedio o base? (Ej: 1 SMLV, 2 millones, Variable)"
+
+    elif status == "SURVEY_INCOME":
+        answers["income"] = message_text
+        
+        # FINISH SURVEY -> CALCULATE
+        profile = motor_finanzas.evaluar_perfil(
+            answers.get("contract", ""),
+            answers.get("habit", ""),
+            answers.get("income", "")
+        )
+        
+        await _update_session(db, phone, {"status": "IDLE", "answers": {}}) # Reset
+        
+        score = profile["score"]
+        strategy = profile["strategy"]
+        entity = profile["entity"]
+        
+        # Format Response based on Strategy
+        if strategy == "BRILLA":
+            return (
+                f"🚦 Parcero, analizando tu perfil con un puntaje de {score}/1000...\n\n"
+                f"La mejor opción para ti es financiar directo con **{entity}** (Tu recibo de gas).\n"
+                f"Es la fija para no dar tantas vueltas.\n\n"
+                f"👉 Aplica aquí de una: {motor_finanzas.link_brilla}"
+            )
+        else:
+             # BANK or FINTECH
+            return (
+                f"🎉 ¡Brutal! Quedaste con un puntaje de **{score}/1000**.\n\n"
+                f"Tu perfil encaja perfecto con **{entity}** ({strategy}).\n"
+                f"✅ Tasa preferencial activada\n"
+                f"✅ Aprobación rápida\n\n"
+                f"¿Te gustaría que te simule las cuotas con esta opción? 🏍️💸"
+            )
+    
+    return "Algo salió mal, empecemos de nuevo. ¿Qué moto buscas?"
+
 async def _route_message(
     message_text: str,
     config_loader,
     motor_finanzas: MotorFinanciero,
     motor_ventas: MotorVentas,
-    cerebro_ia: CerebroIA
+    cerebro_ia: CerebroIA,
+    db: Any,
+    user_phone: str
 ) -> str:
-    """
-    Route message to appropriate service based on keywords.
-    
-    Args:
-        message_text: User message text
-        config_loader: ConfigLoader instance
-        motor_finanzas: Financial motor instance
-        motor_ventas: Sales motor instance
-        cerebro_ia: AI brain instance
-    
-    Returns:
-        Response text from appropriate service
-    """
-    try:
-        # Get routing rules from configuration
+        
+        # 0. GET SESSION
+        session = await _get_session(db, user_phone)
+        status = session.get("status", "IDLE")
+        
+        # 1. CHECK ACTIVE SURVEY
+        if status.startswith("SURVEY_"):
+            return await _handle_survey_flow(db, user_phone, message_text, session, motor_finanzas)
+        
+        # 2. NORMAL ROUTING (IDLE)
         routing_rules = config_loader.get_routing_rules()
-        financial_keywords = routing_rules.get("financial_keywords", [])
+        financial_keywords = routing_rules.get("financial_keywords", []) + ["credito", "crédito", "fiado", "cuotas", "financiar"]
         sales_keywords = routing_rules.get("sales_keywords", [])
         
-        # Add hardcoded financial keywords for robustness
-        extended_finance_keywords = financial_keywords + [
-            "deuda", "pagar", "financiar", "financiación", "financiacion", 
-            "millones", "palos", "k", "cuota", "interés", "interes", 
-            "crédito", "credito", "incial", "inicial"
-        ]
-        
-        # Step 1: Check for financial intent (Priority #1)
-        # We check this FIRST to capture "How much down payment for NKD?" as finance, not sales
-        if _has_financial_intent(message_text, extended_finance_keywords):
-            logger.info("💰 Routing to MotorFinanciero (Financial Intent Detected)")
-            # Pass the full message so entity extraction can find the bike name
-            return motor_finanzas.simular_credito(message_text, motor_ventas)
-        
-        # Step 2: Check for sales/catalog keywords
+        # Check Financial Intent
+        if _has_financial_intent(message_text, financial_keywords):
+            # START SURVEY
+            logger.info("💰 Starting Financial Survey")
+            await _update_session(db, user_phone, {"status": "SURVEY_CONTRACT", "answers": {}, "start_time": datetime.now(timezone.utc)})
+            return "¡De una! Para ver qué crédito te sale más barato, respóndeme 3 preguntas rápidas ⚡\n\n1️⃣ ¿Qué tipo de contrato laboral tienes? (Ej: Indefinido, Obra labor, Independiente)"
+
+        # Check Sales Intent
         message_lower = message_text.lower()
         if any(keyword in message_lower for keyword in sales_keywords):
-            logger.info("🏍️  Routing to MotorVentas")
-            return motor_ventas.buscar_moto(message_text)
-        
-        # Step 3: Default to AI brain
-        else:
-            logger.info("🧠 Routing to CerebroIA")
-            return cerebro_ia.pensar_respuesta(message_text)
-            
-    except Exception as e:
-        logger.error(f"❌ Error routing message: {str(e)}")
-        # Fallback to AI brain
+             return motor_ventas.buscar_moto(message_text)
+
+        # AI Brain
         return cerebro_ia.pensar_respuesta(message_text)
-
-
-def _has_financial_intent(text: str, keywords: list) -> bool:
-    """
-    Check if message has financial intent based on keywords or numeric values.
-    
-    Args:
-        text: Message text
-        keywords: List of financial keywords
         
-    Returns:
-        True if financial intent detected
-    """
+def _has_financial_intent(text: str, keywords: list) -> bool:
+    """Check for financial intent."""
     text_lower = text.lower()
-    
-    # 1. Check Keywords
     if any(keyword in text_lower for keyword in keywords):
         return True
-        
-    # 2. Check for large numbers or specific formats
-    import re
-    
-    # Pattern for "k" notation (e.g., 500k, 500K) -> indicates money
-    if re.search(r'\d+\s*k\b', text_lower):
-        return True
-        
-    # Pattern for "millones" or "m" (explicitly handled in keywords, but good to double check context)
-    
-    # Pattern for large numbers (> 100,000)
-    # Removing dots/commas to parse "1.000.000" or "1000000"
-    try:
-        # Extract potential number sequences
-        numbers = re.findall(r'\b\d[\d\.,]*\d\b|\b\d\b', text)
-        for num_str in numbers:
-            # Clean strings like "1.000.000" -> "1000000"
-            clean_num = num_str.replace('.', '').replace(',', '')
-            if clean_num.isdigit():
-                value = int(clean_num)
-                # If user mentions > 100,000, they are likely talking about money/down payment
-                if value > 100000: 
-                    return True
-    except:
-        pass # Ignore parsing errors
-        
+    # Simple regex for money amounts if needed, but keywords usually suffice for "initiation"
     return False
 
 
