@@ -373,9 +373,9 @@ async def _route_message(
         if any(keyword in message_lower for keyword in sales_keywords):
              return motor_ventas.buscar_moto(message_text)
 
-    # AI Brain with Context (Memory)
-    context = session.get("summary", "")
-    return cerebro_ia.pensar_respuesta(message_text, context=context)
+        # AI Brain with Context (Memory)
+        context = session.get("summary", "")
+        return cerebro_ia.pensar_respuesta(message_text, context=context)
         
 def _has_financial_intent(text: str, keywords: list) -> bool:
     """Check for financial intent."""
