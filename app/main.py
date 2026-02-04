@@ -74,7 +74,7 @@ async def lifespan(app: FastAPI):
         storage_service.initialize(credentials)
         
         logger.info("✅ Application startup complete!")
-        logger.info(f"📊 Loaded {len(catalog_service.get_all_items())} catalog items")
+        # logger.info(f"📊 Loaded {len(catalog_service.get_all_items())} catalog items")
         logger.info(f"📦 Storage bucket: {storage_service.get_bucket_name()}")
         logger.info(f"🧠 V6.0 Config: Sebas personality loaded (model: {config_loader.get_sebas_personality().get('model_version')})")
         
