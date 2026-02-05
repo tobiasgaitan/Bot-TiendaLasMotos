@@ -6,6 +6,7 @@ Handles Meta WhatsApp webhook verification and message reception with intelligen
 import logging
 import httpx
 import asyncio
+import time
 from typing import Dict, Any
 
 from fastapi import APIRouter, Request, Query, HTTPException, BackgroundTasks
