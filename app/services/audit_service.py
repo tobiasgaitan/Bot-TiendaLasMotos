@@ -71,53 +71,64 @@ class AuditService:
         """
         from google.api_core.exceptions import NotFound
         
+        print(f"DEBUG: Starting BigQuery table setup...", flush=True)
+        
         project_id = self.client.project
         logger.info(f"🔍 Checking BigQuery infrastructure for project: {project_id}")
+        print(f"DEBUG: Project ID: {project_id}", flush=True)
         
         # Force create dataset with exists_ok=True
         dataset_ref = f"{project_id}.{self.dataset_id}"
         
         try:
+            print(f"DEBUG: Checking dataset {self.dataset_id}...", flush=True)
             dataset = self.client.get_dataset(dataset_ref)
             logger.debug(f"✅ Dataset {self.dataset_id} exists")
+            print(f"✅ Dataset {self.dataset_id} exists", flush=True)
         except NotFound:
             logger.info(f"📦 Dataset {self.dataset_id} not found, creating...")
+            print(f"DEBUG: Creating dataset {self.dataset_id}...", flush=True)
             # Create dataset programmatically
             dataset = bigquery.Dataset(dataset_ref)
             dataset.location = "us-central1"  # Match Cloud Run region
             created_dataset = self.client.create_dataset(dataset, exists_ok=True)
             logger.info(f"✅ Created dataset {self.dataset_id} in {created_dataset.location}")
+            print(f"✅ Created dataset {self.dataset_id}", flush=True)
         except Exception as e:
-            logger.error(f"❌ FATAL: Cannot create dataset: {type(e).__name__}: {str(e)}")
-            logger.error(f"   Project: {project_id}, Dataset: {self.dataset_id}")
-            raise  # CRITICAL: Raise to prevent 404 errors later
+            logger.error(f"❌ Failed to check/create dataset: {repr(e)}")
+            print(f"CRITICAL AUDIT ERROR (dataset): {repr(e)}", flush=True)
+            raise
         
-        # Create table if not exists
+        # Create table if it doesn't exist
         table_ref = f"{dataset_ref}.{self.table_id}"
         
         try:
-            table = self.client.get_table(table_ref)
+            print(f"DEBUG: Checking table {self.table_id}...", flush=True)
+            self.client.get_table(table_ref)
             logger.debug(f"✅ Table {self.table_id} exists")
+            print(f"✅ Table {self.table_id} exists", flush=True)
         except NotFound:
             logger.info(f"📋 Table {self.table_id} not found, creating...")
-            # Define schema
+            print(f"DEBUG: Creating table {self.table_id}...", flush=True)
             schema = [
                 bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),
-                bigquery.SchemaField("phone_number", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("input_text", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("output_text", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("user_phone", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("message_type", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("user_message", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("bot_response", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("context", "STRING", mode="NULLABLE"),
                 bigquery.SchemaField("sentiment", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("intent", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("metadata", "STRING", mode="NULLABLE"),
             ]
-            
             table = bigquery.Table(table_ref, schema=schema)
-            created_table = self.client.create_table(table, exists_ok=True)
-            logger.info(f"✅ Created table {self.table_id} with {len(schema)} fields")
+            self.client.create_table(table)
+            logger.info(f"✅ Created table {self.table_id}")
+            print(f"✅ Created table {self.table_id}", flush=True)
         except Exception as e:
-            logger.error(f"❌ FATAL: Cannot create table: {type(e).__name__}: {str(e)}")
-            logger.error(f"   Table ref: {table_ref}")
-            raise  # CRITICAL: Raise to prevent 404 errors later
+            logger.error(f"❌ Failed to check/create table: {repr(e)}")
+            print(f"CRITICAL AUDIT ERROR (table): {repr(e)}", flush=True)
+            import traceback
+            print(traceback.format_exc(), flush=True)
+            raise
 
     async def log_interaction(self, 
                               phone: str, 
