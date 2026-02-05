@@ -47,7 +47,8 @@ gcloud run deploy $SERVICE_NAME \
   --memory 512Mi \
   --cpu 1 \
   --min-instances 0 \
-  --max-instances 10
+  --max-instances 10 \
+  --no-cpu-throttling
 
 echo ""
 echo "✅ Deployment complete!"
