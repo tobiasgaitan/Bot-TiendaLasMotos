@@ -29,16 +29,62 @@ class AuditService:
         if cls._instance is None:
             cls._instance = super(AuditService, cls).__new__(cls)
             cls._instance.client = None
+            cls._instance.dataset_id = "audit_logs"
+            cls._instance.table_id = "interactions"
+            
             if BQ_AVAILABLE:
                 try:
-                    # Assumes GOOGLE_APPLICATION_CREDENTIALS or default auth
+                    # Initialize BigQuery client
                     cls._instance.client = bigquery.Client()
-                    cls._instance.dataset_id = "audit_logs" # Defines dataset
-                    cls._instance.table_id = "interactions" # Defines table
+                    
+                    # Ensure dataset and table exist
+                    cls._instance._ensure_table_exists()
+                    
                     logger.info("📊 AuditService initialized with BigQuery")
                 except Exception as e:
                     logger.error(f"❌ Failed to init BigQuery: {e}")
         return cls._instance
+
+    def _ensure_table_exists(self):
+        """
+        Ensure BigQuery dataset and table exist, create if missing.
+        """
+        try:
+            # Create dataset if not exists
+            dataset_ref = f"{self.client.project}.{self.dataset_id}"
+            try:
+                self.client.get_dataset(dataset_ref)
+                logger.debug(f"✅ Dataset {self.dataset_id} exists")
+            except Exception:
+                # Create dataset
+                dataset = bigquery.Dataset(dataset_ref)
+                dataset.location = "US"
+                self.client.create_dataset(dataset, exists_ok=True)
+                logger.info(f"✅ Created dataset {self.dataset_id}")
+            
+            # Create table if not exists
+            table_ref = f"{dataset_ref}.{self.table_id}"
+            try:
+                self.client.get_table(table_ref)
+                logger.debug(f"✅ Table {self.table_id} exists")
+            except Exception:
+                # Define schema
+                schema = [
+                    bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),
+                    bigquery.SchemaField("phone_number", "STRING", mode="REQUIRED"),
+                    bigquery.SchemaField("input_text", "STRING", mode="NULLABLE"),
+                    bigquery.SchemaField("output_text", "STRING", mode="NULLABLE"),
+                    bigquery.SchemaField("sentiment", "STRING", mode="NULLABLE"),
+                    bigquery.SchemaField("intent", "STRING", mode="NULLABLE"),
+                    bigquery.SchemaField("metadata", "STRING", mode="NULLABLE"),
+                ]
+                
+                table = bigquery.Table(table_ref, schema=schema)
+                self.client.create_table(table, exists_ok=True)
+                logger.info(f"✅ Created table {self.table_id}")
+                
+        except Exception as e:
+            logger.error(f"❌ Error ensuring table exists: {e}")
 
     async def log_interaction(self, 
                               phone: str, 

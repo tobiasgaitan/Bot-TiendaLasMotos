@@ -8,7 +8,7 @@ import httpx
 import asyncio
 from typing import Dict, Any
 
-from fastapi import APIRouter, Request, Query, HTTPException
+from fastapi import APIRouter, Request, Query, HTTPException, BackgroundTasks
 
 from app.core.config import settings
 from app.services.finance import MotorFinanciero
@@ -19,6 +19,9 @@ from app.services.audio_service import AudioService
 from app.services.audit_service import audit_service
 
 logger = logging.getLogger(__name__)
+
+# Idempotency Cache: Track messages being processed
+processing_messages: set = set()
 
 router = APIRouter(prefix="/webhook", tags=["WhatsApp"])
 
@@ -59,9 +62,10 @@ async def verify_webhook(
 
 
 @router.post("")
-async def receive_message(request: Request) -> Dict[str, str]:
+async def receive_message(request: Request, background_tasks: BackgroundTasks) -> Dict[str, str]:
     """
-    WhatsApp message reception endpoint with multimodal routing.
+    WhatsApp message reception endpoint with async background processing.
+    Returns immediately to prevent timeout retries.
     """
     try:
         # Parse the JSON payload
@@ -85,51 +89,85 @@ async def receive_message(request: Request) -> Dict[str, str]:
         msg_type = msg_data["type"]
         message_id = msg_data["id"]
         
-        logger.info(f"👤 From: {user_phone} | Type: {msg_type}")
+        logger.info(f"👤 From: {user_phone} | Type: {msg_type} | ID: {message_id}")
+        
+        # IDEMPOTENCY CHECK: Prevent duplicate processing
+        if message_id in processing_messages:
+            logger.warning(f"⚠️  Duplicate message ignored: {message_id}")
+            return {"status": "duplicate_ignored"}
+        
+        # Mark as processing
+        processing_messages.add(message_id)
+        
+        # Schedule background processing
+        background_tasks.add_task(
+            _handle_message_background,
+            msg_data=msg_data,
+            message_id=message_id,
+            config_loader=request.app.state.config_loader,
+            db=request.app.state.db
+        )
+        
+        # Return immediately to prevent timeout
+        logger.info(f"✅ Message {message_id} queued for background processing")
+        return {"status": "ok"}
+        
+    except Exception as e:
+        logger.error(f"❌ Error processing webhook: {str(e)}", exc_info=True)
+        # Return 200 anyway to prevent Meta from retrying
+        return {"status": "error", "message": str(e)}
+
+
+async def _handle_message_background(
+    msg_data: Dict[str, Any],
+    message_id: str,
+    config_loader: Any,
+    db: Any
+) -> None:
+    """
+    Background task to process WhatsApp messages asynchronously.
+    Handles AI processing, artificial latency, and message sending.
+    """
+    try:
+        user_phone = msg_data["from"]
+        msg_type = msg_data["type"]
+        
+        logger.info(f"🔄 Background processing started for {message_id}")
         
         # Initialize services
-        config_loader = request.app.state.config_loader
-        db = request.app.state.db
-        
-        # Initialize service modules with Firestore client
-        motor_financiero = MotorFinanciero(db, config_loader) # Pass DB for better init
+        motor_financiero = MotorFinanciero(db, config_loader)
         motor_ventas = MotorVentas(db=db, config_loader=config_loader)
         cerebro_ia = CerebroIA(config_loader)
         vision_service = VisionService(db)
         audio_service = AudioService(config_loader)
         
         response_text = "Lo siento, no entendí ese mensaje."
-        
-        # ROUTING LOGIC
-        # Phase 4: Sentiment Check (Before routing)
         sentiment = "NEUTRAL"
-        if msg_type in ["text", "audio"]: # Only check text/audio
-            # checking text content (audio converted to text inside service but we don't have it yet here)
-            # Actually for audio checking sentiment happens after processing.
-            # let's check text first
-            if msg_type == "text":
-                sentiment = cerebro_ia.detect_sentiment(msg_data["text"])
-                if sentiment == "ANGRY":
-                    logger.warning(f"😡 User {user_phone} is ANGRY. Pausing session.")
-                    await _update_session(db, user_phone, {"status": "PAUSED", "paused_reason": "sentiment_angry"})
-                    # Alert Admin logic here (omitted for brevity)
-                    return {"status": "paused"}
+        
+        # Phase 4: Sentiment Check (Before routing)
+        if msg_type == "text":
+            sentiment = cerebro_ia.detect_sentiment(msg_data["text"])
+            if sentiment == "ANGRY":
+                logger.warning(f"😡 User {user_phone} is ANGRY. Pausing session.")
+                await _update_session(db, user_phone, {"status": "PAUSED", "paused_reason": "sentiment_angry"})
+                response_text = "Noto que estás molesto. Un asesor se comunicará contigo pronto. 🙏"
+                await _send_whatsapp_message(user_phone, response_text)
+                return
 
         # Check if PAUSED
         session = await _get_session(db, user_phone)
         if session.get("status") == "PAUSED":
-             logger.info(f"⏸️ Session paused for {user_phone}. Ignoring message.")
-             return {"status": "ignored_paused"}
+            logger.info(f"⏸️ Session paused for {user_phone}. Ignoring message.")
+            return
 
+        # Route based on message type
         if msg_type == "text":
             text = msg_data["text"]
-            # ... (routing)
             response_text = await _route_message(
                 text, config_loader, motor_financiero, motor_ventas, cerebro_ia, db, user_phone
             )
             
         elif msg_type == "image":
-            # ... (image logic)
             logger.info("📷 Image received")
             media_id = msg_data["media_id"]
             mime_type = msg_data["mime_type"]
@@ -140,7 +178,6 @@ async def receive_message(request: Request) -> Dict[str, str]:
                 response_text = "No pude descargar la imagen. 😢"
                 
         elif msg_type == "audio":
-            # ... (audio logic)
             logger.info("🎤 Audio received")
             media_id = msg_data["media_id"]
             mime_type = msg_data["mime_type"]
@@ -159,6 +196,7 @@ async def receive_message(request: Request) -> Dict[str, str]:
         logger.info(f"⏳ Artificial Latency: {delay:.2f}s")
         await asyncio.sleep(delay)
         
+        # Send response
         await _send_whatsapp_message(user_phone, response_text)
         
         # Phase 4: Audit Log
@@ -167,12 +205,13 @@ async def receive_message(request: Request) -> Dict[str, str]:
         
         logger.info(f"✅ Response sent to {user_phone}")
         
-        return {"status": "success", "message_id": message_id}
-        
     except Exception as e:
-        logger.error(f"❌ Error processing webhook: {str(e)}", exc_info=True)
-        # Return 200 anyway to prevent Meta from retrying
-        return {"status": "error", "message": str(e)}
+        logger.error(f"❌ Error in background processing: {str(e)}", exc_info=True)
+    finally:
+        # CRITICAL: Remove from processing cache
+        if message_id in processing_messages:
+            processing_messages.remove(message_id)
+            logger.debug(f"🗑️  Removed {message_id} from processing cache")
 
 
 def _is_valid_message(payload: Dict[str, Any]) -> bool:
