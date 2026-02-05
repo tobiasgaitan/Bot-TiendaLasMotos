@@ -31,11 +31,10 @@ class VisionService:
         
         if VERTEX_AI_AVAILABLE:
             try:
-                # Using Gemini 1.5 Flash as the efficient "Flash" model available
-                # User requested 'Gemini 3.0 Flash', checking available models...
-                # We default to 1.5-flash for stability in Cloud Run enviroments
-                self._model = GenerativeModel("gemini-1.5-flash-001")
-                logger.info("👁️ VisionService initialized with Gemini Flash")
+                # Using Gemini 2.5 Flash (aligned with ai_brain)
+                # Upgraded from 1.5-flash-001 which was deprecated
+                self._model = GenerativeModel("gemini-2.5-flash-002")
+                logger.info("👁️ VisionService initialized with Gemini 2.5 Flash")
             except Exception as e:
                 logger.error(f"❌ VisionService init error: {e}")
 
