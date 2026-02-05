@@ -462,13 +462,14 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
         logger.info(f"📤 Sending message to {to_phone} via WhatsApp API")
         logger.debug(f"API URL: {url}")
 
-        # CRITICAL: Create fresh client to avoid connection pool deadlock
-        # DO NOT use async with - it causes lock contention
+        # CRITICAL: Disable connection pooling to prevent deadlock
+        # Set max_connections=1 and max_keepalive_connections=0 to force fresh connection
         timeout_config = httpx.Timeout(10.0, connect=5.0)
+        limits = httpx.Limits(max_connections=1, max_keepalive_connections=0)
         
         async def _do_request():
-            # Create fresh client for each request to avoid pool exhaustion
-            client = httpx.AsyncClient(timeout=timeout_config)
+            # Create client with NO connection pooling
+            client = httpx.AsyncClient(timeout=timeout_config, limits=limits)
             try:
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
