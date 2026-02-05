@@ -33,7 +33,7 @@ class VisionService:
             try:
                 # Using Gemini 2.5 Flash (aligned with ai_brain)
                 # Upgraded from 1.5-flash-001 which was deprecated
-                self._model = GenerativeModel("gemini-2.5-flash-002")
+                self._model = GenerativeModel("gemini-2.5-flash")
                 logger.info("👁️ VisionService initialized with Gemini 2.5 Flash")
             except Exception as e:
                 logger.error(f"❌ VisionService init error: {e}")
