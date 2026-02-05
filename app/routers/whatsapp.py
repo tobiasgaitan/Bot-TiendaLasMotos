@@ -435,7 +435,7 @@ def _has_financial_intent(text: str, keywords: list) -> bool:
 
 async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
     """
-    Send message via WhatsApp Cloud API.
+    Send message via WhatsApp Cloud API with hard timeout enforcement.
     
     Args:
         to_phone: Recipient phone number
@@ -462,13 +462,21 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
         logger.info(f"📤 Sending message to {to_phone} via WhatsApp API")
         logger.debug(f"API URL: {url}")
 
-        # CRITICAL: Add timeout to prevent 33s hangs
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        # CRITICAL: Hard timeout enforcement
+        # connect=5s: Max time to establish connection
+        # read=10s: Max time to read response
+        # write=10s: Max time to send request
+        timeout = httpx.Timeout(10.0, connect=5.0)
+        
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
             
         logger.info(f"✅ Message sent successfully to {to_phone}")
             
+    except httpx.TimeoutException as e:
+        logger.error(f"⏱️ TIMEOUT: WhatsApp API took >10s to respond: {str(e)}")
+        raise
     except httpx.HTTPStatusError as e:
         logger.error(f"❌ WhatsApp API error: {e.response.status_code} - {e.response.text}")
         raise

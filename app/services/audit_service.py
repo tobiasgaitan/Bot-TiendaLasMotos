@@ -44,6 +44,7 @@ class AuditService:
                 except Exception as e:
                     import traceback
                     logger.error(f"❌ AUDIT INIT FAILED: {type(e).__name__}: {str(e)}")
+                    logger.error(f"   Exception repr: {repr(e)}")
                     logger.error(f"   Full error details:")
                     logger.error(traceback.format_exc())
                     logger.error("   ⚠️ Audit logging will be DISABLED for this session")
