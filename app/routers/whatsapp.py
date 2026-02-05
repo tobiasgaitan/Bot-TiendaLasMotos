@@ -19,6 +19,7 @@ from app.services.vision_service import VisionService
 from app.services.audio_service import AudioService
 from app.services.audit_service import audit_service
 from app.services.message_buffer import MessageBuffer
+from app.services.notification_service import notification_service
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +140,14 @@ async def _handle_message_background(
         
         logger.info(f"🔄 Background processing started for {message_id}")
         
+        # KILL SWITCH: Check if session is paused (MUST BE FIRST CHECK)
+        # If paused, bot will not respond to any messages from this user
+        session = await _get_session(db, user_phone)
+        if session.get("paused") == True:
+            paused_reason = session.get("paused_reason", "unknown")
+            logger.info(f"⏸️ Session paused for {user_phone} | Reason: {paused_reason} | Message ignored")
+            return  # Exit immediately without sending any response
+        
         # Initialize services
         motor_financiero = MotorFinanciero(db, config_loader)
         motor_ventas = MotorVentas(db=db, config_loader=config_loader)
@@ -154,12 +163,14 @@ async def _handle_message_background(
             sentiment = cerebro_ia.detect_sentiment(msg_data["text"])
             if sentiment == "ANGRY":
                 logger.warning(f"😡 User {user_phone} is ANGRY. Pausing session.")
-                await _update_session(db, user_phone, {"status": "PAUSED", "paused_reason": "sentiment_angry"})
+                await _update_session(db, user_phone, {"status": "PAUSED", "paused": True, "paused_reason": "sentiment_angry"})
                 response_text = "Noto que estás molesto. Un asesor se comunicará contigo pronto. 🙏"
                 await _send_whatsapp_message(user_phone, response_text)
+                # Send notification to admin
+                await notification_service.notify_human_handoff(user_phone, "sentiment_angry")
                 return
 
-        # Check if PAUSED
+        # Check if PAUSED (moved after sentiment check for angry users)
         session = await _get_session(db, user_phone)
         if session.get("status") == "PAUSED":
             logger.info(f"⏸️ Session paused for {user_phone}. Ignoring message.")
@@ -208,6 +219,27 @@ async def _handle_message_background(
             response_text = await _route_message(
                 aggregated_text, config_loader, motor_financiero, motor_ventas, cerebro_ia, db, user_phone
             )
+            
+            # Check if AI triggered human handoff
+            if response_text.startswith("HANDOFF_TRIGGERED:"):
+                # Extract reason from response
+                reason = response_text.split(":", 1)[1] if ":" in response_text else "unknown"
+                
+                logger.warning(f"🚨 Human handoff triggered for {user_phone} | Reason: {reason}")
+                
+                # Pause the session
+                await _update_session(db, user_phone, {
+                    "paused": True,
+                    "paused_reason": "human_handoff",
+                    "handoff_reason": reason,
+                    "status": "PAUSED"
+                })
+                
+                # Send notifications to admin
+                await notification_service.notify_human_handoff(user_phone, reason)
+                
+                # Replace response with exact required phrase
+                response_text = "Te pondré en contacto con un compañero con más conocimiento del tema."
             
             # Clear buffer after successful processing
             await message_buffer.clear_buffer(user_phone)

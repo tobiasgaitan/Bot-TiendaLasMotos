@@ -12,7 +12,13 @@ logger = logging.getLogger(__name__)
 # Try to import Vertex AI
 try:
     import vertexai
-    from vertexai.generative_models import GenerativeModel
+    from vertexai.generative_models import (
+        GenerativeModel,
+        Tool,
+        FunctionDeclaration,
+        Content,
+        Part
+    )
     VERTEX_AI_AVAILABLE = True
 except ImportError:
     VERTEX_AI_AVAILABLE = False
@@ -38,13 +44,18 @@ class CerebroIA:
         self._config_loader = config_loader
         self._model = None
         self._system_instruction = self._get_system_instruction()
+        self._tools = self._create_tools()
         
         # Initialize Vertex AI if available
         if VERTEX_AI_AVAILABLE:
             try:
                 vertexai.init(project="tiendalasmotos", location="us-central1")
-                self._model = GenerativeModel("gemini-2.5-flash")
-                logger.info("🧠 CerebroIA initialized with Gemini 2.5 Flash")
+                # Initialize model with tools for function calling
+                self._model = GenerativeModel(
+                    "gemini-2.5-flash",
+                    tools=[self._tools] if self._tools else None
+                )
+                logger.info("🧠 CerebroIA initialized with Gemini 2.5 Flash + Human Handoff Tool")
             except Exception as e:
                 logger.error(f"❌ Error initializing Vertex AI: {str(e)}")
                 self._model = None
@@ -98,6 +109,13 @@ FLUJO DE VENTA:
 3. Ofrecer simulación de crédito
 4. Agendar visita a sede o cerrar venta
 
+ESCALACIÓN A HUMANO (IMPORTANTE):
+- Si el cliente pide hablar con "un humano", "otra persona", "asesor", o "compañero", llama INMEDIATAMENTE a la función trigger_human_handoff
+- Si la consulta es muy compleja, técnica, o fuera de tu conocimiento, llama a trigger_human_handoff
+- Cuando llames a esta función, SIEMPRE responde al usuario con esta frase EXACTA:
+  "Te pondré en contacto con un compañero con más conocimiento del tema."
+- NO inventes respuestas si no estás seguro - es mejor escalar a un humano
+
 NO HACER:
 - No inventar información técnica que no conoces
 - No prometer descuentos sin autorización
@@ -112,8 +130,44 @@ NO HACER:
         # Decorator-style logic implementation inside method for simplicity unless specific util needed
         return self._generate_with_retry(texto, context)
 
+    def _create_tools(self) -> Optional[Tool]:
+        """
+        Create tools for function calling (human handoff).
+        
+        Returns:
+            Tool object with function declarations, or None if not available
+        """
+        if not VERTEX_AI_AVAILABLE:
+            return None
+        
+        try:
+            # Define human handoff function
+            handoff_function = FunctionDeclaration(
+                name="trigger_human_handoff",
+                description="Escalate conversation to a human agent when user requests human assistance or query is too complex",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "reason": {
+                            "type": "string",
+                            "description": "Reason for handoff (e.g., 'user_request', 'complex_query', 'technical_question')"
+                        }
+                    },
+                    "required": ["reason"]
+                }
+            )
+            
+            return Tool(function_declarations=[handoff_function])
+        except Exception as e:
+            logger.error(f"❌ Error creating tools: {str(e)}")
+            return None
+    
     def _generate_with_retry(self, texto: str, context: str) -> str:
-        """Internal generation with exponential backoff."""
+        """
+        Internal generation with exponential backoff.
+        
+        Handles both regular text responses and function calls (human handoff).
+        """
         if not self._model: return self._fallback_response(texto)
         
         max_retries = 3
@@ -133,6 +187,20 @@ NO HACER:
                 full_prompt += f"Usuario: {texto}\n\nSebas:"
                 
                 response = chat.send_message(full_prompt)
+                
+                # Check if model wants to call a function (human handoff)
+                if response.candidates[0].content.parts[0].function_call:
+                    function_call = response.candidates[0].content.parts[0].function_call
+                    
+                    if function_call.name == "trigger_human_handoff":
+                        reason = function_call.args.get("reason", "unknown")
+                        logger.warning(f"🚨 AI triggered human handoff | Reason: {reason}")
+                        
+                        # Return special marker that router will detect
+                        # Format: HANDOFF_TRIGGERED:reason
+                        return f"HANDOFF_TRIGGERED:{reason}"
+                
+                # Normal text response
                 ai_response = response.text.strip()
                 
                 if not ai_response:
