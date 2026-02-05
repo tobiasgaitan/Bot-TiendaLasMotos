@@ -462,16 +462,19 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
         logger.info(f"📤 Sending message to {to_phone} via WhatsApp API")
         logger.debug(f"API URL: {url}")
 
-        # CRITICAL: Double timeout enforcement
-        # Layer 1: httpx timeout (connect=5s, read=10s)
-        # Layer 2: asyncio.wait_for (GUARANTEED 10s max)
+        # CRITICAL: Create fresh client to avoid connection pool deadlock
+        # DO NOT use async with - it causes lock contention
         timeout_config = httpx.Timeout(10.0, connect=5.0)
         
         async def _do_request():
-            async with httpx.AsyncClient(timeout=timeout_config) as client:
+            # Create fresh client for each request to avoid pool exhaustion
+            client = httpx.AsyncClient(timeout=timeout_config)
+            try:
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
                 return response
+            finally:
+                await client.aclose()
         
         # GUARANTEED timeout at 10 seconds
         await asyncio.wait_for(_do_request(), timeout=10.0)
