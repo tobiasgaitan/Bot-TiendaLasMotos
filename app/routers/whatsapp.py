@@ -190,11 +190,18 @@ async def _handle_message_background(
         else:
             response_text = "Aún no soporto este tipo de mensaje. 😅"
 
-        # Calculate Artificial Latency
+        # Keep-Alive Typing Loop: Maintain "Escribiendo..." indicator
         delay = len(response_text) * 0.04
-        await _send_whatsapp_status(user_phone, "typing")
         logger.info(f"⏳ Artificial Latency: {delay:.2f}s")
-        await asyncio.sleep(delay)
+        
+        elapsed = 0.0
+        typing_interval = 5.0  # WhatsApp typing indicator lasts ~5s
+        
+        while elapsed < delay:
+            await _send_whatsapp_status(user_phone, "typing")
+            sleep_time = min(typing_interval, delay - elapsed)
+            await asyncio.sleep(sleep_time)
+            elapsed += sleep_time
         
         # Send response
         await _send_whatsapp_message(user_phone, response_text)

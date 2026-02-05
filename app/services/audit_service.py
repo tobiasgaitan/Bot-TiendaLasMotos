@@ -58,9 +58,9 @@ class AuditService:
             except Exception:
                 # Create dataset
                 dataset = bigquery.Dataset(dataset_ref)
-                dataset.location = "US"
+                dataset.location = "us-central1"  # Match Cloud Run region
                 self.client.create_dataset(dataset, exists_ok=True)
-                logger.info(f"✅ Created dataset {self.dataset_id}")
+                logger.info(f"✅ Created dataset {self.dataset_id} in us-central1")
             
             # Create table if not exists
             table_ref = f"{dataset_ref}.{self.table_id}"
