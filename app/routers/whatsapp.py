@@ -435,7 +435,7 @@ def _has_financial_intent(text: str, keywords: list) -> bool:
 
 async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
     """
-    Send message via WhatsApp Cloud API with GUARANTEED timeout enforcement.
+    Send message via WhatsApp Cloud API with guaranteed timeout enforcement.
     
     Args:
         to_phone: Recipient phone number
@@ -454,45 +454,34 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
         }
         payload = {
             "messaging_product": "whatsapp",
+            "recipient_type": "individual",
             "to": to_phone,
             "type": "text",
             "text": {"body": message_text}
         }
         
         logger.info(f"📤 Sending message to {to_phone} via WhatsApp API")
-        logger.debug(f"API URL: {url}")
 
         # CRITICAL: Disable connection pooling to prevent deadlock
-        # Set max_connections=1 and max_keepalive_connections=0 to force fresh connection
-        timeout_config = httpx.Timeout(10.0, connect=5.0)
+        # max_keepalive_connections=0 forces fresh connection every time
         limits = httpx.Limits(max_connections=1, max_keepalive_connections=0)
+        timeout_config = httpx.Timeout(10.0, connect=5.0)
         
-        async def _do_request():
-            # Create client with NO connection pooling
-            client = httpx.AsyncClient(timeout=timeout_config, limits=limits)
-            try:
-                response = await client.post(url, json=payload, headers=headers)
-                response.raise_for_status()
-                return response
-            finally:
-                await client.aclose()
-        
-        # GUARANTEED timeout at 10 seconds
-        await asyncio.wait_for(_do_request(), timeout=10.0)
+        # Direct HTTP call - NO helper functions to avoid scope capture
+        async with httpx.AsyncClient(timeout=timeout_config, limits=limits) as client:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
             
         logger.info(f"✅ Message sent successfully to {to_phone}")
             
-    except asyncio.TimeoutError:
-        logger.error(f"⏱️ ASYNCIO TIMEOUT: Request exceeded 10s hard limit")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"❌ WhatsApp API error: {e.response.status_code} - {e.response.text}")
         raise
     except httpx.TimeoutException as e:
         logger.error(f"⏱️ HTTPX TIMEOUT: WhatsApp API took >10s to respond: {str(e)}")
         raise
-    except httpx.HTTPStatusError as e:
-        logger.error(f"❌ WhatsApp API error: {e.response.status_code} - {e.response.text}")
-        raise
     except Exception as e:
-        logger.error(f"❌ Error sending WhatsApp message: {str(e)}")
+        logger.error(f"❌ Error sending WhatsApp message: {repr(e)}")
         raise
 
 
