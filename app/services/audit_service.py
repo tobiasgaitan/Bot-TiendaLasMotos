@@ -48,26 +48,32 @@ class AuditService:
     def _ensure_table_exists(self):
         """
         Ensure BigQuery dataset and table exist, create if missing.
+        Self-healing: Creates infrastructure programmatically (no manual CLI).
         """
         try:
+            from google.api_core.exceptions import NotFound
+            
             # Create dataset if not exists
             dataset_ref = f"{self.client.project}.{self.dataset_id}"
             try:
                 self.client.get_dataset(dataset_ref)
                 logger.debug(f"✅ Dataset {self.dataset_id} exists")
-            except Exception:
-                # Create dataset
+            except NotFound:
+                # Create dataset programmatically
                 dataset = bigquery.Dataset(dataset_ref)
                 dataset.location = "us-central1"  # Match Cloud Run region
                 self.client.create_dataset(dataset, exists_ok=True)
                 logger.info(f"✅ Created dataset {self.dataset_id} in us-central1")
+            except Exception as e:
+                logger.error(f"❌ Error checking dataset: {e}")
+                raise
             
             # Create table if not exists
             table_ref = f"{dataset_ref}.{self.table_id}"
             try:
                 self.client.get_table(table_ref)
                 logger.debug(f"✅ Table {self.table_id} exists")
-            except Exception:
+            except NotFound:
                 # Define schema
                 schema = [
                     bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),
@@ -82,6 +88,9 @@ class AuditService:
                 table = bigquery.Table(table_ref, schema=schema)
                 self.client.create_table(table, exists_ok=True)
                 logger.info(f"✅ Created table {self.table_id}")
+            except Exception as e:
+                logger.error(f"❌ Error checking table: {e}")
+                raise
                 
         except Exception as e:
             logger.error(f"❌ Error ensuring table exists: {e}")
