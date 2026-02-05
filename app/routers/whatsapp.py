@@ -435,7 +435,7 @@ def _has_financial_intent(text: str, keywords: list) -> bool:
 
 async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
     """
-    Send message via WhatsApp Cloud API with hard timeout enforcement.
+    Send message via WhatsApp Cloud API with GUARANTEED timeout enforcement.
     
     Args:
         to_phone: Recipient phone number
@@ -462,20 +462,27 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
         logger.info(f"📤 Sending message to {to_phone} via WhatsApp API")
         logger.debug(f"API URL: {url}")
 
-        # CRITICAL: Hard timeout enforcement
-        # connect=5s: Max time to establish connection
-        # read=10s: Max time to read response
-        # write=10s: Max time to send request
-        timeout = httpx.Timeout(10.0, connect=5.0)
+        # CRITICAL: Double timeout enforcement
+        # Layer 1: httpx timeout (connect=5s, read=10s)
+        # Layer 2: asyncio.wait_for (GUARANTEED 10s max)
+        timeout_config = httpx.Timeout(10.0, connect=5.0)
         
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
+        async def _do_request():
+            async with httpx.AsyncClient(timeout=timeout_config) as client:
+                response = await client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                return response
+        
+        # GUARANTEED timeout at 10 seconds
+        await asyncio.wait_for(_do_request(), timeout=10.0)
             
         logger.info(f"✅ Message sent successfully to {to_phone}")
             
+    except asyncio.TimeoutError:
+        logger.error(f"⏱️ ASYNCIO TIMEOUT: Request exceeded 10s hard limit")
+        raise
     except httpx.TimeoutException as e:
-        logger.error(f"⏱️ TIMEOUT: WhatsApp API took >10s to respond: {str(e)}")
+        logger.error(f"⏱️ HTTPX TIMEOUT: WhatsApp API took >10s to respond: {str(e)}")
         raise
     except httpx.HTTPStatusError as e:
         logger.error(f"❌ WhatsApp API error: {e.response.status_code} - {e.response.text}")
