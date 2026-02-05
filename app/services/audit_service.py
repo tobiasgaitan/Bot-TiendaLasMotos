@@ -53,27 +53,35 @@ class AuditService:
         try:
             from google.api_core.exceptions import NotFound
             
-            # Create dataset if not exists
-            dataset_ref = f"{self.client.project}.{self.dataset_id}"
+            project_id = self.client.project
+            logger.info(f"🔍 Checking BigQuery infrastructure for project: {project_id}")
+            
+            # Force create dataset with exists_ok=True
+            dataset_ref = f"{project_id}.{self.dataset_id}"
+            
             try:
-                self.client.get_dataset(dataset_ref)
+                dataset = self.client.get_dataset(dataset_ref)
                 logger.debug(f"✅ Dataset {self.dataset_id} exists")
             except NotFound:
+                logger.info(f"📦 Dataset {self.dataset_id} not found, creating...")
                 # Create dataset programmatically
                 dataset = bigquery.Dataset(dataset_ref)
                 dataset.location = "us-central1"  # Match Cloud Run region
-                self.client.create_dataset(dataset, exists_ok=True)
-                logger.info(f"✅ Created dataset {self.dataset_id} in us-central1")
+                created_dataset = self.client.create_dataset(dataset, exists_ok=True)
+                logger.info(f"✅ Created dataset {self.dataset_id} in {created_dataset.location}")
             except Exception as e:
-                logger.error(f"❌ Error checking dataset: {e}")
-                raise
+                logger.error(f"❌ Error checking/creating dataset: {type(e).__name__}: {str(e)}")
+                logger.error(f"   Project: {project_id}, Dataset: {self.dataset_id}")
+                # Don't raise - try to continue with table creation
             
             # Create table if not exists
             table_ref = f"{dataset_ref}.{self.table_id}"
+            
             try:
-                self.client.get_table(table_ref)
+                table = self.client.get_table(table_ref)
                 logger.debug(f"✅ Table {self.table_id} exists")
             except NotFound:
+                logger.info(f"📋 Table {self.table_id} not found, creating...")
                 # Define schema
                 schema = [
                     bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),
@@ -86,14 +94,16 @@ class AuditService:
                 ]
                 
                 table = bigquery.Table(table_ref, schema=schema)
-                self.client.create_table(table, exists_ok=True)
-                logger.info(f"✅ Created table {self.table_id}")
+                created_table = self.client.create_table(table, exists_ok=True)
+                logger.info(f"✅ Created table {self.table_id} with {len(schema)} fields")
             except Exception as e:
-                logger.error(f"❌ Error checking table: {e}")
-                raise
+                logger.error(f"❌ Error checking/creating table: {type(e).__name__}: {str(e)}")
+                logger.error(f"   Table ref: {table_ref}")
+                # Don't raise - allow service to continue
                 
         except Exception as e:
-            logger.error(f"❌ Error ensuring table exists: {e}")
+            logger.error(f"❌ Fatal error in _ensure_table_exists: {type(e).__name__}: {str(e)}")
+            logger.error(f"   This may cause audit logging to fail silently")
 
     async def log_interaction(self, 
                               phone: str, 

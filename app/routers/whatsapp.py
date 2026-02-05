@@ -478,44 +478,17 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
 async def _send_whatsapp_status(to_phone: str, status: str = "typing") -> None:
     """
     Send status update via WhatsApp Cloud API.
-    Note: WhatsApp Cloud API doesn't support native typing indicators.
-    We use mark-as-read to show activity during processing.
+    
+    Note: WhatsApp Cloud API v18.0 does NOT support native typing indicators.
+    The typing_on sender_action is not available in the Cloud API.
+    We rely on the keep-alive loop timing to simulate responsiveness.
     
     Args:
         to_phone: Recipient phone number
-        status: Status to set (currently ignored, kept for compatibility)
+        status: Status to set (currently not used - WhatsApp limitation)
     """
-    try:
-        phone_number_id = settings.phone_number_id
-        if not phone_number_id or not settings.whatsapp_token:
-            logger.debug("⚠️ Cannot send status: Missing credentials")
-            return
-        
-        # WhatsApp Cloud API endpoint
-        url = f"https://graph.facebook.com/v17.0/{phone_number_id}/messages"
-        
-        headers = {
-            "Authorization": f"Bearer {settings.whatsapp_token}",
-            "Content-Type": "application/json"
-        }
-        
-        # WhatsApp Cloud API doesn't support typing_on like Messenger
-        # Best practice: Use mark-as-read to show bot is active
-        # The keep-alive loop ensures user sees continuous activity
-        payload = {
-            "messaging_product": "whatsapp",
-            "status": "read",
-            "message_id": "wamid.placeholder"  # Will be ignored if invalid
-        }
-        
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            
-            if response.status_code in [200, 201]:
-                logger.debug(f"✅ Status update sent to {to_phone}")
-            else:
-                logger.debug(f"⚠️ Status update response: {response.status_code}")
-        
-    except Exception as e:
-        # Silent fail - don't disrupt message flow
-        logger.debug(f"⚠️ Status update failed: {e}")
+    # WhatsApp Cloud API does not support typing indicators
+    # The keep-alive loop (5s intervals) provides timing simulation
+    # No API call needed here to avoid 400 errors
+    logger.debug(f"⏳ Simulating typing for {to_phone} (via keep-alive loop)")
+    pass
