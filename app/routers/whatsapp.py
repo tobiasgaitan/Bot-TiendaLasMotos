@@ -191,8 +191,9 @@ async def _handle_message_background(
             response_text = "Aún no soporto este tipo de mensaje. 😅"
 
         # Keep-Alive Typing Loop: Maintain "Escribiendo..." indicator
-        delay = len(response_text) * 0.04
-        logger.info(f"⏳ Artificial Latency: {delay:.2f}s")
+        # Cap at 5s max to avoid excessive delays (0.04s per char, ~125 chars = 5s)
+        delay = min(len(response_text) * 0.04, 5.0)
+        logger.info(f"⏳ Artificial Latency: {delay:.2f}s (response: {len(response_text)} chars)")
         
         elapsed = 0.0
         typing_interval = 5.0  # WhatsApp typing indicator lasts ~5s

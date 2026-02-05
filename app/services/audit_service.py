@@ -42,8 +42,12 @@ class AuditService:
                     
                     logger.info("📊 AuditService initialized with BigQuery")
                 except Exception as e:
-                    logger.error(f"❌ Failed to init BigQuery: {type(e).__name__}: {str(e)}")
-                    logger.error("   Audit logging will be DISABLED")
+                    import traceback
+                    logger.error(f"❌ AUDIT INIT FAILED: {type(e).__name__}: {str(e)}")
+                    logger.error(f"   Full error details:")
+                    logger.error(traceback.format_exc())
+                    logger.error("   ⚠️ Audit logging will be DISABLED for this session")
+                    logger.error("   Fix the error above to enable audit logging")
                     # CRITICAL: Set client to None to prevent 404 errors
                     cls._instance.client = None
         return cls._instance
