@@ -17,11 +17,15 @@ from app.services.ai_brain import CerebroIA
 from app.services.vision_service import VisionService
 from app.services.audio_service import AudioService
 from app.services.audit_service import audit_service
+from app.services.message_buffer import MessageBuffer
 
 logger = logging.getLogger(__name__)
 
 # Idempotency Cache: Track messages being processed
 processing_messages: set = set()
+
+# Message Buffer: Debounce logic for message aggregation (Section 3.1)
+message_buffer = MessageBuffer(debounce_seconds=4.0)
 
 router = APIRouter(prefix="/webhook", tags=["WhatsApp"])
 
@@ -163,9 +167,49 @@ async def _handle_message_background(
         # Route based on message type
         if msg_type == "text":
             text = msg_data["text"]
-            response_text = await _route_message(
-                text, config_loader, motor_financiero, motor_ventas, cerebro_ia, db, user_phone
+            
+            # Generate unique task ID for debounce tracking
+            task_id = f"{message_id}_{time.time()}"
+            
+            # Add message to buffer and check if first
+            is_first_message = await message_buffer.add_message(user_phone, text, task_id)
+            
+            # CRITICAL: Send typing indicator immediately if first message
+            # This provides instant feedback while we accumulate messages
+            if is_first_message:
+                logger.info(f"⌨️ Sending typing indicator for first message from {user_phone}")
+                await _send_whatsapp_status(user_phone, "typing")
+            
+            # Debounce period: Wait 4 seconds to accumulate fragmented messages
+            logger.info(f"⏳ Starting {message_buffer.debounce_seconds}s debounce for {user_phone} (task: {task_id})")
+            await asyncio.sleep(message_buffer.debounce_seconds)
+            
+            # Check if this task is still active (not superseded by newer message)
+            if not message_buffer.is_task_active(user_phone, task_id):
+                logger.info(f"⏭️ Task {task_id} superseded for {user_phone}, aborting silently")
+                return
+            
+            # Retrieve aggregated message from buffer
+            aggregated_text = await message_buffer.get_aggregated_message(user_phone)
+            
+            if not aggregated_text:
+                logger.warning(f"⚠️ Empty aggregated message for {user_phone}, aborting")
+                await message_buffer.clear_buffer(user_phone)
+                return
+            
+            logger.info(
+                f"🔀 Processing aggregated message for {user_phone} | "
+                f"Length: {len(aggregated_text)} chars | "
+                f"Task: {task_id}"
             )
+            
+            # Process the aggregated message
+            response_text = await _route_message(
+                aggregated_text, config_loader, motor_financiero, motor_ventas, cerebro_ia, db, user_phone
+            )
+            
+            # Clear buffer after successful processing
+            await message_buffer.clear_buffer(user_phone)
             
         elif msg_type == "image":
             logger.info("📷 Image received")
@@ -208,7 +252,12 @@ async def _handle_message_background(
         await _send_whatsapp_message(user_phone, response_text)
         
         # Phase 4: Audit Log
-        user_input = msg_data.get("text", "[Media]")
+        # For text messages, log the aggregated text (after debounce)
+        # For media messages, log the type indicator
+        if msg_type == "text":
+            user_input = locals().get("aggregated_text", msg_data.get("text", "[Unknown]"))
+        else:
+            user_input = "[Media]"
         await audit_service.log_interaction(user_phone, user_input, response_text, sentiment)
         
         logger.info(f"✅ Response sent to {user_phone}")
