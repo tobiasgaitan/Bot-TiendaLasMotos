@@ -462,14 +462,18 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
         
         logger.info(f"📤 Sending message to {to_phone} via WhatsApp API")
 
-        # CRITICAL: Disable connection pooling to prevent deadlock
-        # max_keepalive_connections=0 forces fresh connection every time
+        # CRITICAL: Disable connection pooling AND pass timeout to post() method
+        # Request-level timeout overrides client-level config
         limits = httpx.Limits(max_connections=1, max_keepalive_connections=0)
-        timeout_config = httpx.Timeout(10.0, connect=5.0)
         
-        # Direct HTTP call - NO helper functions to avoid scope capture
-        async with httpx.AsyncClient(timeout=timeout_config, limits=limits) as client:
-            response = await client.post(url, json=payload, headers=headers)
+        # Direct HTTP call with request-level timeout
+        async with httpx.AsyncClient(limits=limits) as client:
+            response = await client.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=5.0  # HARD TIMEOUT: Request-level enforcement
+            )
             response.raise_for_status()
             
         logger.info(f"✅ Message sent successfully to {to_phone}")
@@ -478,7 +482,7 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
         logger.error(f"❌ WhatsApp API error: {e.response.status_code} - {e.response.text}")
         raise
     except httpx.TimeoutException as e:
-        logger.error(f"⏱️ HTTPX TIMEOUT: WhatsApp API took >10s to respond: {str(e)}")
+        logger.error(f"⏱️ TIMEOUT: Request exceeded 5s limit: {repr(e)}")
         raise
     except Exception as e:
         logger.error(f"❌ Error sending WhatsApp message: {repr(e)}")
