@@ -41,14 +41,24 @@ class AuditService:
                     cls._instance._ensure_table_exists()
                     
                     logger.info("📊 AuditService initialized with BigQuery")
+                    print("📊 AuditService initialized with BigQuery", flush=True)
                 except Exception as e:
                     import traceback
-                    logger.error(f"❌ AUDIT INIT FAILED: {type(e).__name__}: {str(e)}")
+                    error_msg = f"❌ AUDIT INIT FAILED: {type(e).__name__}: {str(e)}"
+                    logger.error(error_msg)
                     logger.error(f"   Exception repr: {repr(e)}")
                     logger.error(f"   Full error details:")
                     logger.error(traceback.format_exc())
                     logger.error("   ⚠️ Audit logging will be DISABLED for this session")
                     logger.error("   Fix the error above to enable audit logging")
+                    
+                    # CRITICAL: Also print to stdout for Cloud Run visibility
+                    print(error_msg, flush=True)
+                    print(f"   Exception repr: {repr(e)}", flush=True)
+                    print(f"   Full traceback:", flush=True)
+                    print(traceback.format_exc(), flush=True)
+                    print("   ⚠️ Audit logging DISABLED", flush=True)
+                    
                     # CRITICAL: Set client to None to prevent 404 errors
                     cls._instance.client = None
         return cls._instance
