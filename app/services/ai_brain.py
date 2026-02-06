@@ -5,7 +5,7 @@ Handles intelligent responses using Google Gemini AI for general inquiries.
 
 import logging
 import os
-from typing import Optional
+from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -137,12 +137,19 @@ NO HACER:
 - No ser insistente si el cliente no está interesado
         """.strip()
     
-    def pensar_respuesta(self, texto: str, context: str = "") -> str:
+    def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None) -> str:
         """
         Generate an intelligent response using Gemini AI with Retry Logic.
+        
+        Args:
+            texto: User message text
+            context: Previous conversation summary
+            prospect_data: Optional prospect data from CRM for personalization
+        
+        Returns:
+            AI-generated response text or HANDOFF_TRIGGERED marker
         """
-        # Decorator-style logic implementation inside method for simplicity unless specific util needed
-        return self._generate_with_retry(texto, context)
+        return self._generate_with_retry(texto, context, prospect_data)
 
     def _create_tools(self) -> Optional[Tool]:
         """
@@ -176,11 +183,20 @@ NO HACER:
             logger.error(f"❌ Error creating tools: {str(e)}")
             return None
     
-    def _generate_with_retry(self, texto: str, context: str) -> str:
+    def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None) -> str:
         """
         Internal generation with exponential backoff.
         
         Handles both regular text responses and function calls (human handoff).
+        Injects prospect data for personalized responses when available.
+        
+        Args:
+            texto: User message text
+            context: Previous conversation summary
+            prospect_data: Optional prospect data from CRM
+        
+        Returns:
+            AI-generated response or HANDOFF_TRIGGERED marker
         """
         if not self._model: return self._fallback_response(texto)
         
@@ -195,8 +211,24 @@ NO HACER:
                 chat = self._model.start_chat()
                 
                 full_prompt = f"{self._system_instruction}\n\n"
+                
+                # Inject prospect data for personalization
+                if prospect_data and prospect_data.get("exists"):
+                    full_prompt += "═══════════════════════════════════════════════════════════════════\n"
+                    full_prompt += "INFORMACIÓN DEL PROSPECTO (CRM):\n"
+                    if prospect_data.get("name"):
+                        full_prompt += f"- Nombre: {prospect_data['name']}\n"
+                    if prospect_data.get("moto_interest"):
+                        full_prompt += f"- Interés en moto: {prospect_data['moto_interest']}\n"
+                    if prospect_data.get("summary"):
+                        full_prompt += f"- Resumen previo: {prospect_data['summary']}\n"
+                    full_prompt += "\n⚠️ INSTRUCCIÓN: Usa esta información para personalizar tu saludo y respuesta.\n"
+                    full_prompt += "Ejemplo: '¡Hola {nombre}! Vi que te interesa la {moto}...'\n"
+                    full_prompt += "Verifica cortésmente si la información sigue vigente.\n"
+                    full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
+                
                 if context:
-                        full_prompt += f"RESUMEN CONVERSACIÓN ANTERIOR:\n{context}\n\n"
+                    full_prompt += f"RESUMEN CONVERSACIÓN ANTERIOR:\n{context}\n\n"
                 
                 full_prompt += f"Usuario: {texto}\n\nSebas:"
                 
@@ -251,19 +283,80 @@ NO HACER:
         except:
             return "NEUTRAL"
 
-    def generate_summary(self, conversation_text: str) -> str:
+    def generate_summary(self, conversation_text: str) -> Dict[str, Any]:
         """
-        Summarize the conversation for memory context.
+        Summarize the conversation and extract structured data.
+        
+        Args:
+            conversation_text: Full conversation text to summarize
+        
+        Returns:
+            Dictionary with:
+            - summary: Concise conversation summary
+            - extracted: Dict with name, moto_interest if detected
+        
+        Example:
+            >>> result = cerebro.generate_summary("User: Hola soy Carlos...")
+            >>> print(result)
+            {"summary": "Cliente preguntó por...", "extracted": {"name": "Carlos"}}
         """
-        if not self._model: return ""
+        if not self._model:
+            return {"summary": "", "extracted": {}}
+        
         try:
             chat = self._model.start_chat()
-            response = chat.send_message(
-                f"Summarize this conversation in 1-2 sentences capturing key user intent and data:\n{conversation_text}"
-            )
-            return response.text.strip()
-        except:
-            return ""
+            
+            # Enhanced prompt for structured extraction
+            prompt = f"""
+Analiza esta conversación y genera:
+1. Un resumen conciso (1-2 oraciones) del tema principal y datos clave
+2. Extrae información estructurada si está presente
+
+Conversación:
+{conversation_text}
+
+Responde en formato JSON:
+{{
+  "summary": "resumen aquí",
+  "extracted": {{
+    "name": "nombre si se mencionó",
+    "moto_interest": "modelo de moto si se mencionó"
+  }}
+}}
+
+Si no detectas un campo, omítelo del objeto extracted.
+"""
+            
+            response = chat.send_message(prompt)
+            response_text = response.text.strip()
+            
+            # Try to parse JSON response
+            import json
+            import re
+            
+            # Extract JSON from markdown code blocks if present
+            json_match = re.search(r'```(?:json)?\s*({.*?})\s*```', response_text, re.DOTALL)
+            if json_match:
+                response_text = json_match.group(1)
+            
+            result = json.loads(response_text)
+            
+            # Validate structure
+            if "summary" not in result:
+                result["summary"] = ""
+            if "extracted" not in result:
+                result["extracted"] = {}
+            
+            logger.info(f"📝 Generated summary with {len(result.get('extracted', {}))} extracted fields")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error generating summary: {str(e)}")
+            # Fallback: return simple summary without extraction
+            return {
+                "summary": conversation_text[:200] + "..." if len(conversation_text) > 200 else conversation_text,
+                "extracted": {}
+            }
 
     def _fallback_response(self, texto: str) -> str:
         """

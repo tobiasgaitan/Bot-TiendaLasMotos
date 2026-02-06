@@ -16,6 +16,7 @@ from app.services.config_service import config_service
 from app.services.config_loader import ConfigLoader as FinanceConfigLoader
 from app.services.catalog_service import catalog_service
 from app.services.storage_service import storage_service
+from app.services.memory_service import init_memory_service
 from app.routers import whatsapp
 
 # Configure logging
@@ -72,6 +73,10 @@ async def lifespan(app: FastAPI):
         # 5. Initialize Cloud Storage
         logger.info("☁️  Initializing Cloud Storage...")
         storage_service.initialize(credentials)
+        
+        # 6. Initialize Memory Service for CRM Integration
+        logger.info("🧠 Initializing Memory Service...")
+        init_memory_service(db)
         
         logger.info("✅ Application startup complete!")
         # logger.info(f"📊 Loaded {len(catalog_service.get_all_items())} catalog items")

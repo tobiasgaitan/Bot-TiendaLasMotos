@@ -20,6 +20,7 @@ from app.services.audio_service import AudioService
 from app.services.audit_service import audit_service
 from app.services.message_buffer import MessageBuffer
 from app.services.notification_service import notification_service
+from app.services.memory_service import memory_service
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,17 @@ async def _handle_message_background(
         vision_service = VisionService(db)
         audio_service = AudioService(config_loader)
         
+        # PRE-PROCESSING: Retrieve prospect data from CRM for context seeding
+        prospect_data = None
+        if memory_service:
+            try:
+                prospect_data = memory_service.get_prospect_data(user_phone)
+                if prospect_data and prospect_data.get("exists"):
+                    logger.info(f"🧠 Prospect data loaded for {user_phone}: {prospect_data.get('name')}")
+            except Exception as e:
+                logger.error(f"⚠️ Failed to load prospect data: {str(e)}")
+                prospect_data = None
+        
         response_text = "Lo siento, no entendí ese mensaje."
         sentiment = "NEUTRAL"
         
@@ -217,7 +229,7 @@ async def _handle_message_background(
             
             # Process the aggregated message
             response_text = await _route_message(
-                aggregated_text, config_loader, motor_financiero, motor_ventas, cerebro_ia, db, user_phone
+                aggregated_text, config_loader, motor_financiero, motor_ventas, cerebro_ia, db, user_phone, prospect_data
             )
             
             # Check if AI triggered human handoff
@@ -283,6 +295,25 @@ async def _handle_message_background(
         
         # Send response
         await _send_whatsapp_message(user_phone, response_text)
+        
+        # POST-PROCESSING: Update prospect summary in CRM (only for successful responses)
+        if msg_type == "text" and not response_text.startswith("HANDOFF_TRIGGERED:"):
+            if memory_service:
+                try:
+                    # Generate conversation summary with structured data extraction
+                    aggregated_text_for_summary = locals().get("aggregated_text", msg_data.get("text", ""))
+                    conversation = f"Usuario: {aggregated_text_for_summary}\nSebas: {response_text}"
+                    summary_data = cerebro_ia.generate_summary(conversation)
+                    
+                    # Update prospect summary in Firestore
+                    await memory_service.update_prospect_summary(
+                        user_phone,
+                        summary_data.get("summary", ""),
+                        summary_data.get("extracted", {})
+                    )
+                    logger.info(f"💾 Prospect summary updated for {user_phone}")
+                except Exception as e:
+                    logger.error(f"⚠️ Failed to update prospect summary: {str(e)}")
         
         # Phase 4: Audit Log
         # For text messages, log the aggregated text (after debounce)
@@ -474,7 +505,8 @@ async def _route_message(
     motor_ventas: MotorVentas,
     cerebro_ia: CerebroIA,
     db: Any,
-    user_phone: str
+    user_phone: str,
+    prospect_data: Optional[Dict[str, Any]] = None
 ) -> str:
         
         # 0. GET SESSION
@@ -502,9 +534,9 @@ async def _route_message(
         if any(keyword in message_lower for keyword in sales_keywords):
              return motor_ventas.buscar_moto(message_text)
 
-        # AI Brain with Context (Memory)
+        # AI Brain with Context (Memory) and Prospect Data
         context = session.get("summary", "")
-        return cerebro_ia.pensar_respuesta(message_text, context=context)
+        return cerebro_ia.pensar_respuesta(message_text, context=context, prospect_data=prospect_data)
         
 def _has_financial_intent(text: str, keywords: list) -> bool:
     """Check for financial intent."""
