@@ -34,11 +34,13 @@ class MemoryService:
         """
         Retrieve prospect data from Firestore by phone number.
         
-        Queries the 'prospectos' collection using the 'celular' field
-        and returns formatted context for AI personalization.
+        Uses multi-attempt strategy to handle different phone formats:
+        1. Try exact match (remove + only)
+        2. Try with country code stripped (remove 57 prefix)
+        3. Query by 'celular' field as fallback
         
         Args:
-            phone_number: Phone number to search for (e.g., "3227303760")
+            phone_number: Phone number to search for (e.g., "573192564288", "+573192564288", "3192564288")
         
         Returns:
             Dictionary with keys:
@@ -48,54 +50,82 @@ class MemoryService:
             - exists: Boolean indicating if prospect was found
         
         Example:
-            >>> data = memory_service.get_prospect_data("3227303760")
+            >>> data = memory_service.get_prospect_data("573192564288")
             >>> print(data)
             {
-                "name": "Carlos",
-                "moto_interest": "Viva R",
-                "summary": "Cliente interesado en financiación...",
+                "name": "Capitán Victoria",
+                "moto_interest": "Victory Black",
+                "summary": "Cliente VIP interesado en Victory Black",
                 "exists": True
             }
         """
         try:
-            # Clean phone number (remove + and country code if present)
-            clean_phone = phone_number.replace("+", "").replace("57", "", 1) if phone_number.startswith("+57") else phone_number.replace("+", "")
+            # Step 1: Clean phone (remove + prefix)
+            clean_phone = phone_number.replace("+", "")
             
-            logger.info(f"🔍 Searching for prospect with celular: {clean_phone}")
+            logger.info(f"🔍 Searching for prospect | Input: {phone_number} | Cleaned: {clean_phone}")
             
-            # Query prospectos collection by celular field
             prospectos_ref = self._db.collection("prospectos")
+            
+            # ATTEMPT 1: Try exact match with cleaned phone
+            logger.info(f"   Attempt 1: Exact match with '{clean_phone}'")
             query = prospectos_ref.where("celular", "==", clean_phone).limit(1)
             docs = query.get()
             
-            # Check if prospect exists
-            if not docs:
-                logger.info(f"📭 No prospect found for {clean_phone}")
-                return {
-                    "name": None,
-                    "moto_interest": None,
-                    "summary": None,
-                    "exists": False
+            if docs:
+                doc = docs[0]
+                data = doc.to_dict()
+                
+                prospect_data = {
+                    "name": data.get("nombre"),
+                    "moto_interest": data.get("motoInteres"),
+                    "summary": data.get("ai_summary"),
+                    "exists": True
                 }
+                
+                logger.info(
+                    f"✅ Prospect found (Attempt 1): {prospect_data['name']} | "
+                    f"Interest: {prospect_data['moto_interest']} | "
+                    f"Has summary: {prospect_data['summary'] is not None}"
+                )
+                
+                return prospect_data
             
-            # Extract prospect data
-            doc = docs[0]
-            data = doc.to_dict()
+            # ATTEMPT 2: Try with country code stripped (if starts with "57")
+            if clean_phone.startswith("57") and len(clean_phone) > 10:
+                short_phone = clean_phone[2:]  # Remove "57" prefix
+                logger.info(f"   Attempt 2: Country code stripped '{short_phone}'")
+                
+                query = prospectos_ref.where("celular", "==", short_phone).limit(1)
+                docs = query.get()
+                
+                if docs:
+                    doc = docs[0]
+                    data = doc.to_dict()
+                    
+                    prospect_data = {
+                        "name": data.get("nombre"),
+                        "moto_interest": data.get("motoInteres"),
+                        "summary": data.get("ai_summary"),
+                        "exists": True
+                    }
+                    
+                    logger.info(
+                        f"✅ Prospect found (Attempt 2): {prospect_data['name']} | "
+                        f"Interest: {prospect_data['moto_interest']} | "
+                        f"Has summary: {prospect_data['summary'] is not None}"
+                    )
+                    
+                    return prospect_data
             
-            prospect_data = {
-                "name": data.get("nombre"),
-                "moto_interest": data.get("motoInteres"),
-                "summary": data.get("ai_summary"),  # Handle null gracefully
-                "exists": True
+            # No match found
+            logger.info(f"📭 No prospect found for {phone_number} (tried: {clean_phone}, {clean_phone[2:] if clean_phone.startswith('57') else 'N/A'})")
+            return {
+                "name": None,
+                "moto_interest": None,
+                "summary": None,
+                "exists": False
             }
-            
-            logger.info(
-                f"✅ Prospect found: {prospect_data['name']} | "
-                f"Interest: {prospect_data['moto_interest']} | "
-                f"Has summary: {prospect_data['summary'] is not None}"
-            )
-            
-            return prospect_data
             
         except Exception as e:
             logger.error(f"❌ Error retrieving prospect data for {phone_number}: {str(e)}", exc_info=True)
