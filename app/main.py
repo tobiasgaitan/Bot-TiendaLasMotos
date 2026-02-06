@@ -76,7 +76,13 @@ async def lifespan(app: FastAPI):
         
         # 6. Initialize Memory Service for CRM Integration
         logger.info("🧠 Initializing Memory Service...")
-        init_memory_service(db)
+        try:
+            init_memory_service(db)
+            logger.info("✅ Memory Service initialized successfully")
+        except Exception as mem_error:
+            logger.error(f"❌ Failed to initialize Memory Service: {str(mem_error)}", exc_info=True)
+            logger.warning("⚠️  Bot will continue without CRM memory integration")
+        
         
         logger.info("✅ Application startup complete!")
         # logger.info(f"📊 Loaded {len(catalog_service.get_all_items())} catalog items")
