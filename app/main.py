@@ -7,6 +7,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from google.cloud import firestore
 
 from app.core.config import settings
@@ -17,7 +18,7 @@ from app.services.config_loader import ConfigLoader as FinanceConfigLoader
 from app.services.catalog_service import catalog_service
 from app.services.storage_service import storage_service
 from app.services.memory_service import init_memory_service
-from app.routers import whatsapp
+from app.routers import whatsapp, admin
 
 # Configure logging
 logging.basicConfig(
@@ -108,8 +109,27 @@ app = FastAPI(
 )
 
 
+# ============================================================================
+# CORS CONFIGURATION
+# ============================================================================
+# Enable cross-origin requests from Admin Panel
+# Using allow_origins=["*"] for immediate testing and flexibility
+# For production, restrict to specific domains:
+# ["https://tiendalasmotos.com", "https://beta.tiendalasmotos.com", "http://localhost:3000"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for testing
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
+)
+
+# ============================================================================
+# ROUTER INCLUSION
+# ============================================================================
 # Include routers
 app.include_router(whatsapp.router)
+app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 
 @app.get("/health")
