@@ -32,12 +32,12 @@ class MemoryService:
     
     def get_prospect_data(self, phone_number: str) -> Dict[str, Any]:
         """
-        Retrieve prospect data from Firestore by phone number.
+        Retrieve prospect data from Firestore by document ID (phone number).
         
+        The database stores prospects with phone numbers as document IDs.
         Uses multi-attempt strategy to handle different phone formats:
-        1. Try exact match (remove + only)
-        2. Try with country code stripped (remove 57 prefix)
-        3. Query by 'celular' field as fallback
+        1. Direct ID lookup with normalized phone
+        2. Colombia prefix (57) stripped lookup
         
         Args:
             phone_number: Phone number to search for (e.g., "573192564288", "+573192564288", "3192564288")
@@ -60,20 +60,18 @@ class MemoryService:
             }
         """
         try:
-            # Step 1: Clean phone (remove + prefix)
-            clean_phone = phone_number.replace("+", "")
+            # STEP 1: Normalize input - strip spaces, dashes, and +
+            normalized_phone = phone_number.replace("+", "").replace(" ", "").replace("-", "").strip()
             
-            logger.info(f"🔍 Searching for prospect | Input: {phone_number} | Cleaned: {clean_phone}")
+            logger.info(f"🔍 Buscando prospecto | Input: {phone_number} | Normalizado: {normalized_phone}")
             
             prospectos_ref = self._db.collection("prospectos")
             
-            # ATTEMPT 1: Try exact match with cleaned phone
-            logger.info(f"   Attempt 1: Exact match with '{clean_phone}'")
-            query = prospectos_ref.where("celular", "==", clean_phone).limit(1)
-            docs = query.get()
+            # ATTEMPT 1: Direct document ID lookup with normalized phone
+            logger.info(f"🔍 Buscando ID: {normalized_phone}")
+            doc = prospectos_ref.document(normalized_phone).get()
             
-            if docs:
-                doc = docs[0]
+            if doc.exists:
                 data = doc.to_dict()
                 
                 prospect_data = {
@@ -84,23 +82,21 @@ class MemoryService:
                 }
                 
                 logger.info(
-                    f"✅ Prospect found (Attempt 1): {prospect_data['name']} | "
-                    f"Interest: {prospect_data['moto_interest']} | "
-                    f"Has summary: {prospect_data['summary'] is not None}"
+                    f"✅ Prospecto encontrado: {prospect_data['name']} | "
+                    f"Moto de interés: {prospect_data['moto_interest']} | "
+                    f"Tiene resumen: {prospect_data['summary'] is not None}"
                 )
                 
                 return prospect_data
             
-            # ATTEMPT 2: Try with country code stripped (if starts with "57")
-            if clean_phone.startswith("57") and len(clean_phone) > 10:
-                short_phone = clean_phone[2:]  # Remove "57" prefix
-                logger.info(f"   Attempt 2: Country code stripped '{short_phone}'")
+            # ATTEMPT 2: Strip Colombia prefix (57) and try again
+            if normalized_phone.startswith("57") and len(normalized_phone) > 10:
+                short_phone = normalized_phone[2:]  # Remove "57" prefix
+                logger.info(f"🔄 Intento secundario ID: {short_phone}")
                 
-                query = prospectos_ref.where("celular", "==", short_phone).limit(1)
-                docs = query.get()
+                doc = prospectos_ref.document(short_phone).get()
                 
-                if docs:
-                    doc = docs[0]
+                if doc.exists:
                     data = doc.to_dict()
                     
                     prospect_data = {
@@ -111,15 +107,18 @@ class MemoryService:
                     }
                     
                     logger.info(
-                        f"✅ Prospect found (Attempt 2): {prospect_data['name']} | "
-                        f"Interest: {prospect_data['moto_interest']} | "
-                        f"Has summary: {prospect_data['summary'] is not None}"
+                        f"✅ Prospecto encontrado: {prospect_data['name']} | "
+                        f"Moto de interés: {prospect_data['moto_interest']} | "
+                        f"Tiene resumen: {prospect_data['summary'] is not None}"
                     )
                     
                     return prospect_data
             
             # No match found
-            logger.info(f"📭 No prospect found for {phone_number} (tried: {clean_phone}, {clean_phone[2:] if clean_phone.startswith('57') else 'N/A'})")
+            logger.info(
+                f"📭 Prospecto no encontrado para {phone_number} | "
+                f"Intentos: [{normalized_phone}, {normalized_phone[2:] if normalized_phone.startswith('57') and len(normalized_phone) > 10 else 'N/A'}]"
+            )
             return {
                 "name": None,
                 "moto_interest": None,
@@ -128,7 +127,7 @@ class MemoryService:
             }
             
         except Exception as e:
-            logger.error(f"❌ Error retrieving prospect data for {phone_number}: {str(e)}", exc_info=True)
+            logger.error(f"❌ Error al recuperar datos del prospecto {phone_number}: {str(e)}", exc_info=True)
             # Return empty context on error to prevent blocking conversation
             return {
                 "name": None,

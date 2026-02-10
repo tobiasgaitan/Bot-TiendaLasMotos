@@ -7,31 +7,137 @@ import logging
 import httpx
 import asyncio
 import time
+import re
 from typing import Dict, Any, Optional, List, Tuple
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Request, Query, HTTPException, BackgroundTasks
+from google.cloud import firestore
 
 from app.core.config import settings
+
+# CRITICAL: Import CLASSES, not instances
 from app.services.finance import MotorFinanciero
 from app.services.catalog import MotorVentas
 from app.services.ai_brain import CerebroIA
 from app.services.vision_service import VisionService
 from app.services.audio_service import AudioService
 from app.services.audit_service import audit_service
-from app.services.message_buffer import MessageBuffer
 from app.services.notification_service import notification_service
-from app.services.memory_service import memory_service
 
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# GLOBAL INITIALIZATION BLOCK - DEFENSE IN DEPTH
+# ============================================================================
+# Initialize services individually with compartmentalized error handling.
+# If one service fails, others can still initialize and the bot remains operational.
+
+# Initialize Firestore client
+db = None
+try:
+    db = firestore.Client()
+    logger.info("✅ Firestore client initialized in whatsapp router")
+except Exception as e:
+    logger.error(f"❌ CRITICAL: Failed to initialize Firestore client: {e}", exc_info=True)
+    db = None
+
+# Initialize ConfigLoader
+config_loader = None
+if db:
+    try:
+        from app.core.config_loader import ConfigLoader
+        config_loader = ConfigLoader(db)
+        logger.info("✅ ConfigLoader initialized in whatsapp router")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize ConfigLoader: {e}", exc_info=True)
+        config_loader = None
+else:
+    logger.warning("⚠️ Skipping ConfigLoader initialization (no db)")
+
+# Initialize MotorVentas
+motor_ventas = None
+if db:
+    try:
+        motor_ventas = MotorVentas(db=db, config_loader=config_loader)
+        logger.info("✅ MotorVentas initialized in whatsapp router")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize MotorVentas: {e}", exc_info=True)
+        motor_ventas = None
+else:
+    logger.warning("⚠️ Skipping MotorVentas initialization (no db)")
+
+# Initialize MotorFinanciero
+motor_financiero = None
+if db:
+    try:
+        # CRITICAL FIX: Pass db as first positional argument
+        motor_financiero = MotorFinanciero(db, config_loader)
+        logger.info("✅ MotorFinanciero initialized in whatsapp router")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize MotorFinanciero: {e}", exc_info=True)
+        motor_financiero = None
+else:
+    logger.warning("⚠️ Skipping MotorFinanciero initialization (no db)")
+
+# Initialize MemoryService
+memory_service = None
+if db:
+    try:
+        from app.services.memory_service import MemoryService
+        memory_service = MemoryService(db)
+        logger.info("✅ MemoryService initialized in whatsapp router")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize MemoryService: {e}", exc_info=True)
+        memory_service = None
+else:
+    logger.warning("⚠️ Skipping MemoryService initialization (no db)")
+
+# Initialize MessageBuffer (independent of db)
+message_buffer = None
+try:
+    from app.services.message_buffer import MessageBuffer
+    message_buffer = MessageBuffer(debounce_seconds=4.0)
+    logger.info("✅ MessageBuffer initialized (class import)")
+except ImportError:
+    logger.warning("⚠️ MessageBuffer class not found, trying instance import")
+    try:
+        from app.services.message_buffer import message_buffer
+        logger.info("✅ MessageBuffer initialized (instance import)")
+    except ImportError:
+        logger.error("❌ MessageBuffer not available, debouncing disabled")
+        message_buffer = None
+except Exception as e:
+    logger.error(f"❌ Failed to initialize MessageBuffer: {e}", exc_info=True)
+    message_buffer = None
+
+# Log initialization summary
+logger.info("=" * 60)
+logger.info("🚀 WhatsApp Router Initialization Summary:")
+logger.info(f"   Firestore DB: {'✅' if db else '❌'}")
+logger.info(f"   ConfigLoader: {'✅' if config_loader else '❌'}")
+logger.info(f"   MotorVentas: {'✅' if motor_ventas else '❌'}")
+logger.info(f"   MotorFinanciero: {'✅' if motor_financiero else '❌'}")
+logger.info(f"   MemoryService: {'✅' if memory_service else '❌'}")
+logger.info(f"   MessageBuffer: {'✅' if message_buffer else '❌'}")
+logger.info("=" * 60)
+
+# ============================================================================
+# ROUTER SETUP
+# ============================================================================
 
 # Idempotency Cache: Track messages being processed
 processing_messages: set = set()
 
-# Message Buffer: Debounce logic for message aggregation (Section 3.1)
-message_buffer = MessageBuffer(debounce_seconds=4.0)
+# Helper Constants
+SESSION_TIMEOUT_MINUTES = 30
 
 router = APIRouter(prefix="/webhook", tags=["WhatsApp"])
 
+
+# ============================================================================
+# WEBHOOK ENDPOINTS
+# ============================================================================
 
 @router.get("")
 async def verify_webhook(
@@ -110,9 +216,7 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks) -
         background_tasks.add_task(
             _handle_message_background,
             msg_data=msg_data,
-            message_id=message_id,
-            config_loader=request.app.state.config_loader,
-            db=request.app.state.db
+            message_id=message_id
         )
         
         # Return immediately to prevent timeout
@@ -125,11 +229,13 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks) -
         return {"status": "error", "message": str(e)}
 
 
+# ============================================================================
+# BACKGROUND MESSAGE PROCESSING
+# ============================================================================
+
 async def _handle_message_background(
     msg_data: Dict[str, Any],
-    message_id: str,
-    config_loader: Any,
-    db: Any
+    message_id: str
 ) -> None:
     """
     Background task to process WhatsApp messages asynchronously.
@@ -149,9 +255,7 @@ async def _handle_message_background(
             logger.info(f"⏸️ Session paused for {user_phone} | Reason: {paused_reason} | Message ignored")
             return  # Exit immediately without sending any response
         
-        # Initialize services
-        motor_financiero = MotorFinanciero(db, config_loader)
-        motor_ventas = MotorVentas(db=db, config_loader=config_loader)
+        # Initialize services (use global instances)
         cerebro_ia = CerebroIA(config_loader)
         vision_service = VisionService(db)
         audio_service = AudioService(config_loader)
@@ -160,6 +264,8 @@ async def _handle_message_background(
         prospect_data = None
         if memory_service:
             try:
+                # DEBUG: Log the phone number being searched
+                logger.info(f"🔍 Searching identity for: {user_phone}")
                 prospect_data = memory_service.get_prospect_data(user_phone)
                 if prospect_data and prospect_data.get("exists"):
                     logger.info(f"🧠 Prospect data loaded for {user_phone}: {prospect_data.get('name')}")
@@ -195,8 +301,10 @@ async def _handle_message_background(
             # Generate unique task ID for debounce tracking
             task_id = f"{message_id}_{time.time()}"
             
-            # Add message to buffer and check if first
-            is_first_message = await message_buffer.add_message(user_phone, text, task_id)
+            # Add message to buffer and check if first (only if buffer is available)
+            is_first_message = False
+            if message_buffer:
+                is_first_message = await message_buffer.add_message(user_phone, text, task_id)
             
             # CRITICAL: Send typing indicator immediately if first message
             # This provides instant feedback while we accumulate messages
@@ -204,28 +312,33 @@ async def _handle_message_background(
                 logger.info(f"⌨️ Sending typing indicator for first message from {user_phone}")
                 await _send_whatsapp_status(user_phone, "typing")
             
-            # Debounce period: Wait 4 seconds to accumulate fragmented messages
-            logger.info(f"⏳ Starting {message_buffer.debounce_seconds}s debounce for {user_phone} (task: {task_id})")
-            await asyncio.sleep(message_buffer.debounce_seconds)
-            
-            # Check if this task is still active (not superseded by newer message)
-            if not message_buffer.is_task_active(user_phone, task_id):
-                logger.info(f"⏭️ Task {task_id} superseded for {user_phone}, aborting silently")
-                return
-            
-            # Retrieve aggregated message from buffer
-            aggregated_text = await message_buffer.get_aggregated_message(user_phone)
-            
-            if not aggregated_text:
-                logger.warning(f"⚠️ Empty aggregated message for {user_phone}, aborting")
-                await message_buffer.clear_buffer(user_phone)
-                return
-            
-            logger.info(
-                f"🔀 Processing aggregated message for {user_phone} | "
-                f"Length: {len(aggregated_text)} chars | "
-                f"Task: {task_id}"
-            )
+            # Debounce period: Wait 4 seconds to accumulate fragmented messages (only if buffer is available)
+            if message_buffer:
+                logger.info(f"⏳ Starting {message_buffer.debounce_seconds}s debounce for {user_phone} (task: {task_id})")
+                await asyncio.sleep(message_buffer.debounce_seconds)
+                
+                # Check if this task is still active (not superseded by newer message)
+                if not message_buffer.is_task_active(user_phone, task_id):
+                    logger.info(f"⏭️ Task {task_id} superseded for {user_phone}, aborting silently")
+                    return
+                
+                # Retrieve aggregated message from buffer
+                aggregated_text = await message_buffer.get_aggregated_message(user_phone)
+                
+                if not aggregated_text:
+                    logger.warning(f"⚠️ Empty aggregated message for {user_phone}, aborting")
+                    await message_buffer.clear_buffer(user_phone)
+                    return
+                
+                logger.info(
+                    f"🔀 Processing aggregated message for {user_phone} | "
+                    f"Length: {len(aggregated_text)} chars | "
+                    f"Task: {task_id}"
+                )
+            else:
+                # No buffer available, use original text
+                aggregated_text = text
+                logger.info(f"⚠️ MessageBuffer not available, processing message directly")
             
             # Process the aggregated message
             response_text = await _route_message(
@@ -253,8 +366,9 @@ async def _handle_message_background(
                 # Replace response with exact required phrase
                 response_text = "Te pondré en contacto con un compañero con más conocimiento del tema."
             
-            # Clear buffer after successful processing
-            await message_buffer.clear_buffer(user_phone)
+            # Clear buffer after successful processing (only if buffer is available)
+            if message_buffer:
+                await message_buffer.clear_buffer(user_phone)
             
         elif msg_type == "image":
             logger.info("📷 Image received")
@@ -335,6 +449,10 @@ async def _handle_message_background(
             logger.debug(f"🗑️  Removed {message_id} from processing cache")
 
 
+# ============================================================================
+# HELPER FUNCTIONS - MESSAGE VALIDATION & EXTRACTION
+# ============================================================================
+
 def _is_valid_message(payload: Dict[str, Any]) -> bool:
     """
     Check if payload contains a valid message.
@@ -357,6 +475,15 @@ def _is_valid_message(payload: Dict[str, Any]) -> bool:
 
 
 def _extract_message_data(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract message data from WhatsApp webhook payload.
+    
+    Args:
+        payload: WhatsApp webhook payload
+        
+    Returns:
+        Dictionary with message data or None if extraction fails
+    """
     try:
         msg = payload["entry"][0]["changes"][0]["value"]["messages"][0]
         msg_type = msg["type"]
@@ -384,8 +511,20 @@ def _extract_message_data(payload: Dict[str, Any]) -> Dict[str, Any]:
         return None
 
 
+# ============================================================================
+# HELPER FUNCTIONS - MEDIA DOWNLOAD
+# ============================================================================
+
 async def _download_media(media_id: str) -> bytes:
-    """Download media from WhatsApp Cloud API."""
+    """
+    Download media from WhatsApp Cloud API.
+    
+    Args:
+        media_id: WhatsApp media ID
+        
+    Returns:
+        Media bytes or None if download fails
+    """
     try:
         url = f"https://graph.facebook.com/v18.0/{media_id}"
         headers = {"Authorization": f"Bearer {settings.whatsapp_token}"}
@@ -405,17 +544,22 @@ async def _download_media(media_id: str) -> bytes:
         logger.error(f"❌ Download failed: {e}")
         return None
 
-    # ... Imports
-import re
-from datetime import datetime, timedelta, timezone
 
-    # ... [Existing Standard Imports] ...
+# ============================================================================
+# HELPER FUNCTIONS - SESSION MANAGEMENT
+# ============================================================================
 
-# Helper Constants
-SESSION_TIMEOUT_MINUTES = 30
-    
 async def _get_session(db: Any, phone: str) -> Dict[str, Any]:
-    """Get user session from Firestore."""
+    """
+    Get user session from Firestore.
+    
+    Args:
+        db: Firestore client
+        phone: User phone number
+        
+    Returns:
+        Session dictionary with status, answers, and last_interaction
+    """
     try:
         doc_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(phone)
         doc = doc_ref.get()
@@ -427,14 +571,27 @@ async def _get_session(db: Any, phone: str) -> Dict[str, Any]:
         logger.error(f"Error getting session: {e}")
         return {"status": "IDLE", "answers": {}, "last_interaction": datetime.now(timezone.utc)}
 
+
 async def _update_session(db: Any, phone: str, data: Dict[str, Any]) -> None:
-    """Update user session in Firestore."""
+    """
+    Update user session in Firestore.
+    
+    Args:
+        db: Firestore client
+        phone: User phone number
+        data: Session data to update
+    """
     try:
         doc_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(phone)
         data["last_interaction"] = datetime.now(timezone.utc)
         doc_ref.set(data, merge=True)
     except Exception as e:
         logger.error(f"Error updating session: {e}")
+
+
+# ============================================================================
+# HELPER FUNCTIONS - FINANCIAL SURVEY FLOW
+# ============================================================================
 
 async def _handle_survey_flow(
     db: Any,
@@ -443,7 +600,19 @@ async def _handle_survey_flow(
     current_session: Dict[str, Any],
     motor_finanzas: MotorFinanciero
 ) -> str:
-    """Handle the multi-step financial survey."""
+    """
+    Handle the multi-step financial survey.
+    
+    Args:
+        db: Firestore client
+        phone: User phone number
+        message_text: User's message
+        current_session: Current session data
+        motor_finanzas: MotorFinanciero instance
+        
+    Returns:
+        Response text for the current survey step
+    """
     status = current_session.get("status", "IDLE")
     answers = current_session.get("answers", {})
     
@@ -498,6 +667,11 @@ async def _handle_survey_flow(
     
     return "Algo salió mal. ¿Empezamos de nuevo?"
 
+
+# ============================================================================
+# HELPER FUNCTIONS - MESSAGE ROUTING
+# ============================================================================
+
 async def _route_message(
     message_text: str,
     config_loader,
@@ -508,44 +682,73 @@ async def _route_message(
     user_phone: str,
     prospect_data: Optional[Dict[str, Any]] = None
 ) -> str:
+    """
+    Route message to appropriate handler based on intent.
+    
+    Args:
+        message_text: User's message text
+        config_loader: ConfigLoader instance
+        motor_finanzas: MotorFinanciero instance
+        motor_ventas: MotorVentas instance
+        cerebro_ia: CerebroIA instance
+        db: Firestore client
+        user_phone: User phone number
+        prospect_data: Optional prospect data from CRM
         
-        # 0. GET SESSION
-        session = await _get_session(db, user_phone)
-        status = session.get("status", "IDLE")
-        
-        # 1. CHECK ACTIVE SURVEY
-        if status.startswith("SURVEY_"):
-            return await _handle_survey_flow(db, user_phone, message_text, session, motor_finanzas)
-        
-        # 2. NORMAL ROUTING (IDLE)
-        routing_rules = config_loader.get_routing_rules()
-        financial_keywords = routing_rules.get("financial_keywords", []) + ["credito", "crédito", "fiado", "cuotas", "financiar"]
-        sales_keywords = routing_rules.get("sales_keywords", [])
-        
-        # Check Financial Intent
-        if _has_financial_intent(message_text, financial_keywords):
-            # START SURVEY
-            logger.info("💰 Starting Financial Survey")
-            await _update_session(db, user_phone, {"status": "SURVEY_CONTRACT", "answers": {}, "start_time": datetime.now(timezone.utc)})
-            return "¡De una! Para ver qué crédito te sale más barato, respóndeme 3 preguntas rápidas ⚡\n\n1️⃣ ¿Qué tipo de contrato laboral tienes? (Ej: Indefinido, Obra labor, Independiente)"
+    Returns:
+        Response text
+    """
+    # 0. GET SESSION
+    session = await _get_session(db, user_phone)
+    status = session.get("status", "IDLE")
+    
+    # 1. CHECK ACTIVE SURVEY
+    if status.startswith("SURVEY_"):
+        return await _handle_survey_flow(db, user_phone, message_text, session, motor_finanzas)
+    
+    # 2. NORMAL ROUTING (IDLE)
+    routing_rules = config_loader.get_routing_rules()
+    financial_keywords = routing_rules.get("financial_keywords", []) + ["credito", "crédito", "fiado", "cuotas", "financiar"]
+    sales_keywords = routing_rules.get("sales_keywords", [])
+    
+    # Check Financial Intent
+    if _has_financial_intent(message_text, financial_keywords):
+        # START SURVEY
+        logger.info("💰 Starting Financial Survey")
+        await _update_session(db, user_phone, {"status": "SURVEY_CONTRACT", "answers": {}, "start_time": datetime.now(timezone.utc)})
+        return "¡De una! Para ver qué crédito te sale más barato, respóndeme 3 preguntas rápidas ⚡\n\n1️⃣ ¿Qué tipo de contrato laboral tienes? (Ej: Indefinido, Obra labor, Independiente)"
 
-        # Check Sales Intent
-        message_lower = message_text.lower()
-        if any(keyword in message_lower for keyword in sales_keywords):
-             return motor_ventas.buscar_moto(message_text)
+    # Check Sales Intent
+    message_lower = message_text.lower()
+    if any(keyword in message_lower for keyword in sales_keywords):
+         return motor_ventas.buscar_moto(message_text)
 
-        # AI Brain with Context (Memory) and Prospect Data
-        context = session.get("summary", "")
-        return cerebro_ia.pensar_respuesta(message_text, context=context, prospect_data=prospect_data)
-        
+    # AI Brain with Context (Memory) and Prospect Data
+    context = session.get("summary", "")
+    return cerebro_ia.pensar_respuesta(message_text, context=context, prospect_data=prospect_data)
+
+
 def _has_financial_intent(text: str, keywords: list) -> bool:
-    """Check for financial intent."""
+    """
+    Check for financial intent in user message.
+    
+    Args:
+        text: User message text
+        keywords: List of financial keywords
+        
+    Returns:
+        True if financial intent detected, False otherwise
+    """
     text_lower = text.lower()
     if any(keyword in text_lower for keyword in keywords):
         return True
     # Simple regex for money amounts if needed, but keywords usually suffice for "initiation"
     return False
 
+
+# ============================================================================
+# HELPER FUNCTIONS - WHATSAPP API
+# ============================================================================
 
 async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
     """
