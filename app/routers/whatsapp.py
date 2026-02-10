@@ -247,20 +247,7 @@ async def _handle_message_background(
         
         logger.info(f"🔄 Background processing started for {message_id}")
         
-        # KILL SWITCH: Check if session is paused (MUST BE FIRST CHECK)
-        # If paused, bot will not respond to any messages from this user
-        session = await _get_session(db, user_phone)
-        if session.get("paused") == True:
-            paused_reason = session.get("paused_reason", "unknown")
-            logger.info(f"⏸️ Session paused for {user_phone} | Reason: {paused_reason} | Message ignored")
-            return  # Exit immediately without sending any response
-        
-        # Initialize services (use global instances)
-        cerebro_ia = CerebroIA(config_loader)
-        vision_service = VisionService(db)
-        audio_service = AudioService(config_loader)
-        
-        # PRE-PROCESSING: Retrieve prospect data from CRM for context seeding
+        # PRE-PROCESSING: Retrieve prospect data from CRM FIRST (needed for gatekeeper check)
         prospect_data = None
         if memory_service:
             try:
@@ -272,6 +259,32 @@ async def _handle_message_background(
             except Exception as e:
                 logger.error(f"⚠️ Failed to load prospect data: {str(e)}")
                 prospect_data = None
+        
+        # ============================================================================
+        # GATEKEEPER: Check if user requested human help
+        # ============================================================================
+        # If human_help_requested flag is True, bot MUST remain silent.
+        # Only manual admin intervention in Firestore can reset this flag.
+        if prospect_data and prospect_data.get('human_help_requested'):
+            logger.info(
+                f"⏸️ User in Human Mode. AI Muted. | "
+                f"Phone: {user_phone} | "
+                f"Flag: human_help_requested=True"
+            )
+            return  # Exit immediately without processing or replying
+        
+        # KILL SWITCH: Check if session is paused (legacy check, kept for compatibility)
+        # If paused, bot will not respond to any messages from this user
+        session = await _get_session(db, user_phone)
+        if session.get("paused") == True:
+            paused_reason = session.get("paused_reason", "unknown")
+            logger.info(f"⏸️ Session paused for {user_phone} | Reason: {paused_reason} | Message ignored")
+            return  # Exit immediately without sending any response
+        
+        # Initialize services (use global instances)
+        cerebro_ia = CerebroIA(config_loader)
+        vision_service = VisionService(db)
+        audio_service = AudioService(config_loader)
         
         response_text = "Lo siento, no entendí ese mensaje."
         sentiment = "NEUTRAL"
@@ -352,7 +365,15 @@ async def _handle_message_background(
                 
                 logger.warning(f"🚨 Human handoff triggered for {user_phone} | Reason: {reason}")
                 
-                # Pause the session
+                # Set the human_help_requested flag in Firestore
+                if memory_service:
+                    try:
+                        memory_service.set_human_help_status(user_phone, True)
+                        logger.info(f"✅ Set human_help_requested=True for {user_phone}")
+                    except Exception as e:
+                        logger.error(f"❌ Failed to set human_help_status: {str(e)}")
+                
+                # Pause the session (legacy compatibility)
                 await _update_session(db, user_phone, {
                     "paused": True,
                     "paused_reason": "human_handoff",
@@ -364,7 +385,7 @@ async def _handle_message_background(
                 await notification_service.notify_human_handoff(user_phone, reason)
                 
                 # Replace response with exact required phrase
-                response_text = "Te pondré en contacto con un compañero con más conocimiento del tema."
+                response_text = "Entendido, te paso con un asesor humano."
             
             # Clear buffer after successful processing (only if buffer is available)
             if message_buffer:

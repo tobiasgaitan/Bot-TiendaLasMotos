@@ -78,6 +78,7 @@ class MemoryService:
                     "name": data.get("nombre"),
                     "moto_interest": data.get("motoInteres"),
                     "summary": data.get("ai_summary"),
+                    "human_help_requested": data.get("human_help_requested", False),
                     "exists": True
                 }
                 
@@ -103,6 +104,7 @@ class MemoryService:
                         "name": data.get("nombre"),
                         "moto_interest": data.get("motoInteres"),
                         "summary": data.get("ai_summary"),
+                        "human_help_requested": data.get("human_help_requested", False),
                         "exists": True
                     }
                     
@@ -123,6 +125,7 @@ class MemoryService:
                 "name": None,
                 "moto_interest": None,
                 "summary": None,
+                "human_help_requested": False,
                 "exists": False
             }
             
@@ -133,6 +136,7 @@ class MemoryService:
                 "name": None,
                 "moto_interest": None,
                 "summary": None,
+                "human_help_requested": False,
                 "exists": False
             }
     
@@ -221,6 +225,96 @@ class MemoryService:
             
         except Exception as e:
             logger.error(f"❌ Error updating prospect summary for {phone_number}: {str(e)}", exc_info=True)
+    
+    def set_human_help_status(self, phone_number: str, status: bool) -> None:
+        """
+        Set the human_help_requested flag for a prospect in Firestore.
+        
+        This flag controls whether the bot should remain silent for this user.
+        When True, the bot will not respond to any messages until an admin
+        manually sets it back to False in the Firestore console.
+        
+        Uses multi-attempt strategy to handle different phone formats:
+        1. Direct ID lookup with normalized phone
+        2. Colombia prefix (57) stripped lookup
+        
+        Args:
+            phone_number: Phone number to update (e.g., "573192564288", "+573192564288", "3192564288")
+            status: True to enable human handoff mode (bot muted), False to resume bot
+        
+        Example:
+            >>> memory_service.set_human_help_status("573192564288", True)
+            # Bot will now be silent for this user
+            
+            >>> memory_service.set_human_help_status("573192564288", False)
+            # Bot will resume responding
+        """
+        try:
+            # STEP 1: Normalize input - strip spaces, dashes, and +
+            normalized_phone = phone_number.replace("+", "").replace(" ", "").replace("-", "").strip()
+            
+            logger.info(
+                f"🔧 Setting human_help_requested={status} | "
+                f"Input: {phone_number} | Normalizado: {normalized_phone}"
+            )
+            
+            prospectos_ref = self._db.collection("prospectos")
+            
+            # ATTEMPT 1: Direct document ID lookup with normalized phone
+            doc_ref = prospectos_ref.document(normalized_phone)
+            doc = doc_ref.get()
+            
+            if doc.exists:
+                doc_ref.update({
+                    "human_help_requested": status,
+                    "updated_at": firestore.SERVER_TIMESTAMP
+                })
+                logger.info(
+                    f"✅ Updated human_help_requested={status} for {normalized_phone}"
+                )
+                return
+            
+            # ATTEMPT 2: Strip Colombia prefix (57) and try again
+            if normalized_phone.startswith("57") and len(normalized_phone) > 10:
+                short_phone = normalized_phone[2:]  # Remove "57" prefix
+                logger.info(f"🔄 Intento secundario ID: {short_phone}")
+                
+                doc_ref = prospectos_ref.document(short_phone)
+                doc = doc_ref.get()
+                
+                if doc.exists:
+                    doc_ref.update({
+                        "human_help_requested": status,
+                        "updated_at": firestore.SERVER_TIMESTAMP
+                    })
+                    logger.info(
+                        f"✅ Updated human_help_requested={status} for {short_phone}"
+                    )
+                    return
+            
+            # No existing document found - create new one
+            logger.warning(
+                f"⚠️ No existing prospect found for {phone_number}, creating new document"
+            )
+            
+            # Use normalized phone as document ID
+            new_doc_ref = prospectos_ref.document(normalized_phone)
+            new_doc_ref.set({
+                "celular": normalized_phone,
+                "human_help_requested": status,
+                "created_at": firestore.SERVER_TIMESTAMP,
+                "updated_at": firestore.SERVER_TIMESTAMP
+            })
+            
+            logger.info(
+                f"✅ Created new prospect with human_help_requested={status} for {normalized_phone}"
+            )
+            
+        except Exception as e:
+            logger.error(
+                f"❌ Error setting human_help_status for {phone_number}: {str(e)}",
+                exc_info=True
+            )
 
 
 # Singleton instance (will be initialized in main.py with db)
