@@ -318,6 +318,73 @@ class MemoryService:
                 f"❌ Error setting human_help_status for {phone_number}: {str(e)}",
                 exc_info=True
             )
+    
+    def update_last_interaction(self, phone_number: str) -> None:
+        """
+        Updates only the timestamp to bring user to top of list.
+        
+        This method is called when a user in "Human Mode" sends a message.
+        Even though the bot is muted, we want to update the timestamp so
+        admins can see recent activity in the Admin Panel.
+        
+        Uses multi-attempt strategy to handle different phone formats:
+        1. Direct ID lookup with normalized phone
+        2. Colombia prefix (57) stripped lookup
+        
+        Args:
+            phone_number: Phone number to update (e.g., "573192564288", "+573192564288", "3192564288")
+        
+        Example:
+            >>> memory_service.update_last_interaction("573192564288")
+            # Updates fecha field to current timestamp
+        """
+        try:
+            # STEP 1: Normalize input - strip spaces, dashes, and +
+            normalized_phone = phone_number.replace("+", "").replace(" ", "").replace("-", "").strip()
+            
+            logger.info(
+                f"🕐 Updating timestamp for muted user | "
+                f"Input: {phone_number} | Normalizado: {normalized_phone}"
+            )
+            
+            prospectos_ref = self._db.collection("prospectos")
+            
+            # ATTEMPT 1: Direct document ID lookup with normalized phone
+            doc_ref = prospectos_ref.document(normalized_phone)
+            doc = doc_ref.get()
+            
+            if doc.exists:
+                doc_ref.update({"fecha": firestore.SERVER_TIMESTAMP})
+                logger.info(
+                    f"✅ Updated timestamp for {normalized_phone}"
+                )
+                return
+            
+            # ATTEMPT 2: Strip Colombia prefix (57) and try again
+            if normalized_phone.startswith("57") and len(normalized_phone) > 10:
+                short_phone = normalized_phone[2:]  # Remove "57" prefix
+                logger.info(f"🔄 Intento secundario ID: {short_phone}")
+                
+                doc_ref = prospectos_ref.document(short_phone)
+                doc = doc_ref.get()
+                
+                if doc.exists:
+                    doc_ref.update({"fecha": firestore.SERVER_TIMESTAMP})
+                    logger.info(
+                        f"✅ Updated timestamp for {short_phone}"
+                    )
+                    return
+            
+            # No existing document found
+            logger.warning(
+                f"⚠️ No prospect found to update timestamp for {phone_number}"
+            )
+            
+        except Exception as e:
+            logger.error(
+                f"❌ Error updating timestamp for {phone_number}: {str(e)}",
+                exc_info=True
+            )
 
 
 # Singleton instance (will be initialized in main.py with db)

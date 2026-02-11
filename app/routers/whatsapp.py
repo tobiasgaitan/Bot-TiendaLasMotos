@@ -271,6 +271,9 @@ async def _handle_message_background(
                 f"Phone: {user_phone} | "
                 f"Flag: human_help_requested=True"
             )
+            # Update timestamp so admin sees the new activity
+            if memory_service:
+                memory_service.update_last_interaction(user_phone)
             return  # Exit immediately without processing or replying
         
         # KILL SWITCH: Check if session is paused (legacy check, kept for compatibility)
