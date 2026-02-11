@@ -274,7 +274,7 @@ async def _handle_message_background(
                 f"⏸️ User in Human Mode. AI Muted. | "
                 f"Phone: {user_phone} | "
                 f"Flag: human_help_requested=True | "
-                f"✅ MARKER: MUTED UPDATE APPLIED - TIMESTAMP REFRESHED"
+                f"✅ MARKER: TIMESTAMP UPDATED ON GITHUB"
             )
             return  # Exit immediately without processing or replying
         
@@ -291,7 +291,7 @@ async def _handle_message_background(
             logger.info(
                 f"⏸️ Session paused for {user_phone} | "
                 f"Reason: {paused_reason} | "
-                f"✅ MARKER: TIMESTAMP UPDATED"
+                f"✅ MARKER: TIMESTAMP UPDATED ON GITHUB"
             )
             return
         
