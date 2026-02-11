@@ -185,38 +185,21 @@ class MemoryService:
         still need to see the user's latest activity in the Admin Panel.
         This method bumps the fecha field so the user floats to the top.
 
+        Production-proven: Uses celular field query (not document ID) to
+        match the fix that was manually applied and verified on the live server.
+
         Args:
             phone_number: Phone number to update
         """
         try:
-            normalized_phone = phone_number.replace("+", "").replace(" ", "").replace("-", "").strip()
-            logger.info(f"🕐 Updating timestamp for muted user | Input: {phone_number} | Normalizado: {normalized_phone}")
-
-            prospectos_ref = self._db.collection("prospectos")
-
-            # ATTEMPT 1: Direct document ID lookup
-            doc_ref = prospectos_ref.document(normalized_phone)
-            doc = doc_ref.get()
-            if doc.exists:
-                doc_ref.update({"fecha": firestore.SERVER_TIMESTAMP})
-                logger.info(f"✅ Updated timestamp for {normalized_phone}")
-                return
-
-            # ATTEMPT 2: Strip Colombia prefix (57)
-            if normalized_phone.startswith("57") and len(normalized_phone) > 10:
-                short_phone = normalized_phone[2:]
-                logger.info(f"🔄 Intento secundario ID: {short_phone}")
-                doc_ref = prospectos_ref.document(short_phone)
-                doc = doc_ref.get()
-                if doc.exists:
-                    doc_ref.update({"fecha": firestore.SERVER_TIMESTAMP})
-                    logger.info(f"✅ Updated timestamp for {short_phone}")
-                    return
-
-            logger.warning(f"⚠️ No prospect found to update timestamp for {phone_number}")
-
+            clean_phone = phone_number.replace("+", "")
+            # FIX: Uses self._db and hardcoded "prospectos" — matches working production code
+            docs = self._db.collection("prospectos").where("celular", "==", clean_phone).stream()
+            for doc in docs:
+                doc.reference.update({"fecha": firestore.SERVER_TIMESTAMP})
+                logger.info(f"✅ TIMESTAMP UPDATED for {clean_phone}")
         except Exception as e:
-            logger.error(f"❌ Error updating timestamp for {phone_number}: {str(e)}", exc_info=True)
+            logger.error(f"❌ Error updating timestamp: {e}", exc_info=True)
 
     def set_human_help_status(self, phone_number: str, status: bool) -> None:
         """
