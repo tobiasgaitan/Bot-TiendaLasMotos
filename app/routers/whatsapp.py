@@ -266,14 +266,16 @@ async def _handle_message_background(
         # If human_help_requested flag is True, bot MUST remain silent.
         # Only manual admin intervention in Firestore can reset this flag.
         if prospect_data and prospect_data.get('human_help_requested'):
-            logger.info(
-                f"⏸️ User in Human Mode. AI Muted. | "
-                f"Phone: {user_phone} | "
-                f"Flag: human_help_requested=True"
-            )
             # Update timestamp so admin sees the new activity
             if memory_service:
                 memory_service.update_last_interaction(user_phone)
+            
+            logger.info(
+                f"⏸️ User in Human Mode. AI Muted. | "
+                f"Phone: {user_phone} | "
+                f"Flag: human_help_requested=True | "
+                f"✅ MARKER: MUTED UPDATE APPLIED - TIMESTAMP REFRESHED"
+            )
             return  # Exit immediately without processing or replying
         
         # KILL SWITCH: Check if session is paused (legacy check, kept for compatibility)
