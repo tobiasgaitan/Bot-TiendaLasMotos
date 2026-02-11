@@ -242,16 +242,44 @@ async def _handle_message_background(
     Handles AI processing, artificial latency, and message sending.
     """
     try:
+        # ==================================================================
+        # STEP 1: Extract basic data
+        # ==================================================================
         user_phone = msg_data["from"]
         msg_type = msg_data["type"]
-        
+        message_body = ""
+        if msg_type == "text":
+            message_body = msg_data.get("text", "").strip()
+
         logger.info(f"🔄 Background processing started for {message_id}")
-        
-        # PRE-PROCESSING: Retrieve prospect data from CRM FIRST (needed for gatekeeper check)
+
+        # ==================================================================
+        # 🟢 PRIORITY 1: MAGIC WORD CHECK — runs BEFORE anything else
+        # ==================================================================
+        # Why first? If user is muted (human_help_requested=True), the
+        # gatekeeper would block ALL messages including #bot. By checking
+        # the magic word BEFORE loading prospect data, muted users can
+        # self-reactivate the bot without admin intervention.
+        if message_body.strip().lower() in ("#bot", "#reset"):
+            logger.info(f"🔑 Magic word '{message_body}' received from {user_phone}")
+            if memory_service:
+                memory_service.set_human_help_status(user_phone, False)
+            # Also unpause legacy session
+            try:
+                session_ref = db.collection("sessions").document(user_phone)
+                session_ref.set({"paused": False, "paused_reason": None}, merge=True)
+            except Exception as e:
+                logger.warning(f"⚠️ Could not unpause legacy session: {e}")
+            await _send_whatsapp_message(user_phone, "🤖 Bot Reactivado. ¿En qué puedo ayudarte?")
+            logger.info(f"✅ Bot reactivated for {user_phone} via magic word — DEPLOY v3")
+            return
+
+        # ==================================================================
+        # STEP 2: Load prospect data from CRM
+        # ==================================================================
         prospect_data = None
         if memory_service:
             try:
-                # DEBUG: Log the phone number being searched
                 logger.info(f"🔍 Searching identity for: {user_phone}")
                 prospect_data = memory_service.get_prospect_data(user_phone)
                 if prospect_data and prospect_data.get("exists"):
@@ -259,39 +287,22 @@ async def _handle_message_background(
             except Exception as e:
                 logger.error(f"⚠️ Failed to load prospect data: {str(e)}")
                 prospect_data = None
-        
-        # ============================================================================
-        # STEP A: MAGIC WORD — Self-service bot reactivation (#bot or #reset)
-        # ============================================================================
-        # CRITICAL: This MUST run BEFORE the gatekeeper so muted users can reset.
-        # Flow: Load prospect → Check magic word → Check gatekeeper → Process AI
-        if msg_type == "text":
-            raw_text = msg_data.get("text", "").strip().lower()
-            if raw_text in ("#bot", "#reset"):
-                logger.info(f"🔑 Magic word received from {user_phone}: {raw_text}")
-                if memory_service:
-                    memory_service.set_human_help_status(user_phone, False)
-                # Also unpause legacy session
-                try:
-                    session_ref = db.collection("sessions").document(user_phone)
-                    session_ref.set({"paused": False, "paused_reason": None}, merge=True)
-                except Exception as e:
-                    logger.warning(f"⚠️ Could not unpause legacy session: {e}")
-                # Reply to the user confirming reactivation
-                await _send_whatsapp_message(user_phone, "🤖 Bot Reactivado. ¿En qué puedo ayudarte?")
-                logger.info(f"✅ Bot reactivated for {user_phone} via magic word — DEPLOY v2")
-                return
 
-        # ============================================================================
-        # GATEKEEPER: Check if user requested human help
-        # ============================================================================
-        # If human_help_requested flag is True, bot MUST remain silent.
-        # Only manual admin intervention in Firestore can reset this flag.
-        if prospect_data and prospect_data.get('human_help_requested'):
-            # Update timestamp so admin sees the new activity
-            if memory_service:
+        # ==================================================================
+        # STEP 3: Update timestamp (for muted users, keeps them visible)
+        # ==================================================================
+        if memory_service:
+            try:
                 memory_service.update_last_interaction(user_phone)
-            
+            except Exception as e:
+                logger.warning(f"⚠️ Could not update timestamp: {e}")
+
+        # ==================================================================
+        # 🔴 PRIORITY 2: HUMAN MODE GATEKEEPER
+        # ==================================================================
+        # If human_help_requested flag is True, bot MUST remain silent.
+        # Only admin or #bot magic word can reset this flag.
+        if prospect_data and prospect_data.get('human_help_requested'):
             logger.info(
                 f"⏸️ User in Human Mode. AI Muted. | "
                 f"Phone: {user_phone} | "
@@ -299,17 +310,11 @@ async def _handle_message_background(
                 f"✅ MARKER: TIMESTAMP UPDATED ON GITHUB"
             )
             return  # Exit immediately without processing or replying
-        
-        # KILL SWITCH: Check if session is paused (legacy check, kept for compatibility)
-        # If paused, bot will not respond to any messages from this user
+
+        # KILL SWITCH: Legacy session pause check (kept for compatibility)
         session = await _get_session(db, user_phone)
         if session.get("paused") == True:
             paused_reason = session.get("paused_reason", "unknown")
-            
-            # FORCE TIMESTAMP UPDATE
-            if memory_service:
-                memory_service.update_last_interaction(user_phone)
-            
             logger.info(
                 f"⏸️ Session paused for {user_phone} | "
                 f"Reason: {paused_reason} | "
