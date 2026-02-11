@@ -283,8 +283,17 @@ async def _handle_message_background(
         session = await _get_session(db, user_phone)
         if session.get("paused") == True:
             paused_reason = session.get("paused_reason", "unknown")
-            logger.info(f"⏸️ Session paused for {user_phone} | Reason: {paused_reason} | Message ignored")
-            return  # Exit immediately without sending any response
+            
+            # FORCE TIMESTAMP UPDATE
+            if memory_service:
+                memory_service.update_last_interaction(user_phone)
+            
+            logger.info(
+                f"⏸️ Session paused for {user_phone} | "
+                f"Reason: {paused_reason} | "
+                f"✅ MARKER: TIMESTAMP UPDATED"
+            )
+            return
         
         # Initialize services (use global instances)
         cerebro_ia = CerebroIA(config_loader)
