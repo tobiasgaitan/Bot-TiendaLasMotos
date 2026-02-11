@@ -267,7 +267,8 @@ class MemoryService:
             if doc.exists:
                 doc_ref.update({
                     "human_help_requested": status,
-                    "updated_at": firestore.SERVER_TIMESTAMP
+                    "updated_at": firestore.SERVER_TIMESTAMP,
+                    "fecha": firestore.SERVER_TIMESTAMP
                 })
                 logger.info(
                     f"✅ Updated human_help_requested={status} for {normalized_phone}"
@@ -285,7 +286,8 @@ class MemoryService:
                 if doc.exists:
                     doc_ref.update({
                         "human_help_requested": status,
-                        "updated_at": firestore.SERVER_TIMESTAMP
+                        "updated_at": firestore.SERVER_TIMESTAMP,
+                        "fecha": firestore.SERVER_TIMESTAMP
                     })
                     logger.info(
                         f"✅ Updated human_help_requested={status} for {short_phone}"
@@ -303,7 +305,8 @@ class MemoryService:
                 "celular": normalized_phone,
                 "human_help_requested": status,
                 "created_at": firestore.SERVER_TIMESTAMP,
-                "updated_at": firestore.SERVER_TIMESTAMP
+                "updated_at": firestore.SERVER_TIMESTAMP,
+                "fecha": firestore.SERVER_TIMESTAMP
             })
             
             logger.info(
