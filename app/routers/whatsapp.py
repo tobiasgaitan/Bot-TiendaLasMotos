@@ -261,10 +261,10 @@ async def _handle_message_background(
                 prospect_data = None
         
         # ============================================================================
-        # MAGIC WORD: Self-service bot reactivation (#bot or #reset)
+        # STEP A: MAGIC WORD — Self-service bot reactivation (#bot or #reset)
         # ============================================================================
-        # Allows users to reactivate the bot without waiting for admin UI.
-        # Must run BEFORE the gatekeeper so muted users can still reset themselves.
+        # CRITICAL: This MUST run BEFORE the gatekeeper so muted users can reset.
+        # Flow: Load prospect → Check magic word → Check gatekeeper → Process AI
         if msg_type == "text":
             raw_text = msg_data.get("text", "").strip().lower()
             if raw_text in ("#bot", "#reset"):
@@ -277,9 +277,9 @@ async def _handle_message_background(
                     session_ref.set({"paused": False, "paused_reason": None}, merge=True)
                 except Exception as e:
                     logger.warning(f"⚠️ Could not unpause legacy session: {e}")
-                # Reply to the user
+                # Reply to the user confirming reactivation
                 await _send_whatsapp_message(user_phone, "🤖 Bot Reactivado. ¿En qué puedo ayudarte?")
-                logger.info(f"✅ Bot reactivated for {user_phone} via magic word")
+                logger.info(f"✅ Bot reactivated for {user_phone} via magic word — DEPLOY v2")
                 return
 
         # ============================================================================
