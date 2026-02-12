@@ -66,10 +66,6 @@ def _set_human_help_status_direct(phone_number: str, status: bool) -> None:
     This is a self-sufficient implementation that creates its own
     Firestore client and doesn't rely on global services.
     
-    Uses multi-attempt strategy to handle different phone formats:
-    1. Direct ID lookup with normalized phone
-    2. Colombia prefix (57) stripped lookup
-    
     Args:
         phone_number: Phone number to update (e.g., "573192564288", "+573192564288", "3192564288")
         status: True to enable human handoff mode (bot muted), False to resume bot
@@ -77,39 +73,24 @@ def _set_human_help_status_direct(phone_number: str, status: bool) -> None:
     Raises:
         Exception: If Firestore operation fails
     """
-    # Initialize Firestore client (self-sufficient)
-    db = firestore.Client()
-    
-    # Normalize input - strip spaces, dashes, and +
-    normalized_phone = phone_number.replace("+", "").replace(" ", "").replace("-", "").strip()
-    
-    logger.info(
-        f"🔧 Admin API: Setting human_help_requested={status} | "
-        f"Input: {phone_number} | Normalizado: {normalized_phone}"
-    )
-    
-    prospectos_ref = db.collection("prospectos")
-    
-    # ATTEMPT 1: Direct document ID lookup with normalized phone
-    doc_ref = prospectos_ref.document(normalized_phone)
-    doc = doc_ref.get()
-    
-    if doc.exists:
-        doc_ref.update({
-            "human_help_requested": status,
-            "updated_at": firestore.SERVER_TIMESTAMP
-        })
-        logger.info(
-            f"✅ Admin API: Updated human_help_requested={status} for {normalized_phone}"
-        )
-        return
-    
-    # ATTEMPT 2: Strip Colombia prefix (57) and try again
-    if normalized_phone.startswith("57") and len(normalized_phone) > 10:
-        short_phone = normalized_phone[2:]  # Remove "57" prefix
-        logger.info(f"🔄 Admin API: Intento secundario ID: {short_phone}")
+    try:
+        from app.core.utils import PhoneNormalizer
         
-        doc_ref = prospectos_ref.document(short_phone)
+        # Initialize Firestore client (self-sufficient)
+        db = firestore.Client()
+        
+        # Normalize input
+        normalized_phone = PhoneNormalizer.normalize(phone_number)
+        
+        logger.info(
+            f"🔧 Admin API: Setting human_help_requested={status} | "
+            f"Input: {phone_number} | Normalizado (ID): {normalized_phone}"
+        )
+        
+        prospectos_ref = db.collection("prospectos")
+        
+        # ATTEMPT 1: Direct document ID lookup
+        doc_ref = prospectos_ref.document(normalized_phone)
         doc = doc_ref.get()
         
         if doc.exists:
@@ -118,27 +99,44 @@ def _set_human_help_status_direct(phone_number: str, status: bool) -> None:
                 "updated_at": firestore.SERVER_TIMESTAMP
             })
             logger.info(
-                f"✅ Admin API: Updated human_help_requested={status} for {short_phone}"
+                f"✅ Admin API: Updated human_help_requested={status} for {normalized_phone}"
             )
             return
-    
-    # No existing document found - create new one
-    logger.warning(
-        f"⚠️ Admin API: No existing prospect found for {phone_number}, creating new document"
-    )
-    
-    # Use normalized phone as document ID
-    new_doc_ref = prospectos_ref.document(normalized_phone)
-    new_doc_ref.set({
-        "celular": normalized_phone,
-        "human_help_requested": status,
-        "created_at": firestore.SERVER_TIMESTAMP,
-        "updated_at": firestore.SERVER_TIMESTAMP
-    })
-    
-    logger.info(
-        f"✅ Admin API: Created new prospect with human_help_requested={status} for {normalized_phone}"
-    )
+        
+        # Fallback: Query by field
+        query = prospectos_ref.where("celular", "==", normalized_phone).limit(1)
+        docs = query.get()
+        
+        if docs:
+            docs[0].reference.update({
+                "human_help_requested": status,
+                "updated_at": firestore.SERVER_TIMESTAMP
+            })
+            logger.info(
+                f"✅ Admin API: Updated human_help_requested={status} for {normalized_phone} (Legacy Query)"
+            )
+            return
+        
+        # No existing document found - create new one
+        logger.warning(
+            f"⚠️ Admin API: No existing prospect found for {phone_number}, creating new document"
+        )
+        
+        # Use normalized phone as document ID
+        new_doc_ref = prospectos_ref.document(normalized_phone)
+        new_doc_ref.set({
+            "celular": normalized_phone,
+            "human_help_requested": status,
+            "created_at": firestore.SERVER_TIMESTAMP,
+            "updated_at": firestore.SERVER_TIMESTAMP
+        })
+        
+        logger.info(
+            f"✅ Admin API: Created new prospect with human_help_requested={status} for {normalized_phone}"
+        )
+    except Exception as e:
+        logger.error(f"❌ Admin API: Error setting human_help_status: {str(e)}", exc_info=True)
+        raise
 
 
 # ============================================================================

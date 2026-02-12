@@ -263,13 +263,17 @@ async def _handle_message_background(
         # ==============================================================
         # STEP 1: INPUT PARSING
         # ==============================================================
-        user_phone = msg_data["from"]
+        raw_phone = msg_data["from"]
         msg_type = msg_data["type"]
         message_body = ""
         if msg_type == "text":
             message_body = msg_data.get("text", "").strip()
 
-        logger.info(f"🔄 Background processing started for {message_id}")
+        # Normalize phone for internal use (DB keys, etc.)
+        from app.core.utils import PhoneNormalizer
+        user_phone = PhoneNormalizer.normalize(raw_phone)
+
+        logger.info(f"🔄 Background processing started for {message_id} | Raw: {raw_phone} | Norm: {user_phone}")
 
         # ==============================================================
         # STEP 2: MAGIC WORD CHECK (#bot / #reset)
@@ -912,6 +916,10 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
             )
             return
 
+        # Ensure international format for sending
+        from app.core.utils import PhoneNormalizer
+        to_phone_intl = PhoneNormalizer.to_international(to_phone)
+
         url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
         headers = {
             "Authorization": f"Bearer {settings.whatsapp_token}",
@@ -920,12 +928,12 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": to_phone,
+            "to": to_phone_intl,
             "type": "text",
             "text": {"body": message_text},
         }
 
-        logger.info(f"📤 Sending message to {to_phone} via WhatsApp API")
+        logger.info(f"📤 Sending message to {to_phone_intl} (raw: {to_phone}) via WhatsApp API")
 
         # Disable keep-alive — Cloud Run containers recycle aggressively
         limits = httpx.Limits(

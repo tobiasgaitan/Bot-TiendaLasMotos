@@ -32,27 +32,21 @@ class MemoryService:
 
     def get_prospect_data(self, phone_number: str) -> Dict[str, Any]:
         """
-        Retrieve prospect data from Firestore by document ID (phone number).
-
-        Uses multi-attempt strategy to handle different phone formats:
-        1. Direct ID lookup with normalized phone
-        2. Colombia prefix (57) stripped lookup
+        Retrieve prospect data from Firestore by document ID (normalized phone).
 
         Args:
-            phone_number: Phone number to search for
+            phone_number: Raw phone number to search for
 
         Returns:
             Dictionary with prospect data or empty context on error
         """
         try:
-            normalized_phone = phone_number.replace("+", "").replace(" ", "").replace("-", "").strip()
-
-            logger.info(f"🔍 Buscando prospecto | Input: {phone_number} | Normalizado: {normalized_phone}")
+            from app.core.utils import PhoneNormalizer
+            
+            normalized_phone = PhoneNormalizer.normalize(phone_number)
+            logger.info(f"🔍 Buscando prospecto | Input: {phone_number} | Normalizado (ID): {normalized_phone}")
 
             prospectos_ref = self._db.collection("prospectos")
-
-            # ATTEMPT 1: Direct document ID lookup with normalized phone
-            logger.info(f"🔍 Buscando ID: {normalized_phone}")
             doc = prospectos_ref.document(normalized_phone).get()
 
             if doc.exists:
@@ -66,37 +60,29 @@ class MemoryService:
                 }
                 logger.info(
                     f"✅ Prospecto encontrado: {prospect_data['name']} | "
-                    f"Moto de interés: {prospect_data['moto_interest']} | "
-                    f"Tiene resumen: {prospect_data['summary'] is not None}"
+                    f"Moto: {prospect_data['moto_interest']} | "
+                    f"Human Help: {prospect_data['human_help_requested']}"
                 )
                 return prospect_data
 
-            # ATTEMPT 2: Strip Colombia prefix (57) and try again
-            if normalized_phone.startswith("57") and len(normalized_phone) > 10:
-                short_phone = normalized_phone[2:]
-                logger.info(f"🔄 Intento secundario ID: {short_phone}")
-                doc = prospectos_ref.document(short_phone).get()
-                if doc.exists:
-                    data = doc.to_dict()
-                    prospect_data = {
-                        "name": data.get("nombre"),
-                        "moto_interest": data.get("motoInteres"),
-                        "summary": data.get("ai_summary"),
-                        "human_help_requested": data.get("human_help_requested", False),
-                        "exists": True
-                    }
-                    logger.info(
-                        f"✅ Prospecto encontrado: {prospect_data['name']} | "
-                        f"Moto de interés: {prospect_data['moto_interest']} | "
-                        f"Tiene resumen: {prospect_data['summary'] is not None}"
-                    )
-                    return prospect_data
+            # Fallback legacy check: Try querying by 'celular' field in case ID migration isn't done
+            # This is a safe fallback during transition but the ID lookup is primary
+            logger.info("⚠️ No found by ID, checking legacy 'celular' field...")
+            query = prospectos_ref.where("celular", "==", normalized_phone).limit(1)
+            docs = query.get()
+            
+            if docs:
+                data = docs[0].to_dict()
+                logger.info(f"✅ Found via legacy field query (ID mismatch): {docs[0].id}")
+                return {
+                    "name": data.get("nombre"),
+                    "moto_interest": data.get("motoInteres"),
+                    "summary": data.get("ai_summary"),
+                    "human_help_requested": data.get("human_help_requested", False),
+                    "exists": True
+                }
 
-            # No match found
-            logger.info(
-                f"📭 Prospecto no encontrado para {phone_number} | "
-                f"Intentos: [{normalized_phone}, {normalized_phone[2:] if normalized_phone.startswith('57') and len(normalized_phone) > 10 else 'N/A'}]"
-            )
+            logger.info(f"📭 Prospecto no encontrado para {normalized_phone}")
             return {
                 "name": None,
                 "moto_interest": None,
@@ -130,13 +116,22 @@ class MemoryService:
             extracted_data: Optional dict with extracted fields
         """
         try:
-            clean_phone = phone_number.replace("+", "").replace("57", "", 1) if phone_number.startswith("+57") else phone_number.replace("+", "")
+            from app.core.utils import PhoneNormalizer
+            clean_phone = PhoneNormalizer.normalize(phone_number)
 
             logger.info(f"💾 Updating prospect summary for {clean_phone}")
 
             prospectos_ref = self._db.collection("prospectos")
-            query = prospectos_ref.where("celular", "==", clean_phone).limit(1)
-            docs = query.get()
+            # First try by ID
+            doc_ref = prospectos_ref.document(clean_phone)
+            doc = doc_ref.get()
+            
+            if doc.exists:
+                docs = [doc]
+            else:
+                 # Fallback query
+                 query = prospectos_ref.where("celular", "==", clean_phone).limit(1)
+                 docs = query.get()
 
             if not docs:
                 logger.warning(f"⚠️ No prospect found to update for {clean_phone}")
@@ -192,12 +187,21 @@ class MemoryService:
             phone_number: Phone number to update
         """
         try:
-            clean_phone = phone_number.replace("+", "")
+            from app.core.utils import PhoneNormalizer
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            
             # FIX: Uses self._db and hardcoded "prospectos" — matches working production code
-            docs = self._db.collection("prospectos").where("celular", "==", clean_phone).stream()
-            for doc in docs:
-                doc.reference.update({"fecha": firestore.SERVER_TIMESTAMP})
-                logger.info(f"✅ TIMESTAMP UPDATED for {clean_phone}")
+            # Try ID first
+            doc_ref = self._db.collection("prospectos").document(clean_phone)
+            if doc_ref.get().exists:
+                doc_ref.update({"fecha": firestore.SERVER_TIMESTAMP})
+                logger.info(f"✅ TIMESTAMP UPDATED for {clean_phone} (ID)")
+            else:
+                # Fallback query
+                docs = self._db.collection("prospectos").where("celular", "==", clean_phone).stream()
+                for doc in docs:
+                    doc.reference.update({"fecha": firestore.SERVER_TIMESTAMP})
+                    logger.info(f"✅ TIMESTAMP UPDATED for {clean_phone} (Query)")
         except Exception as e:
             logger.error(f"❌ Error updating timestamp: {e}", exc_info=True)
 
@@ -213,10 +217,12 @@ class MemoryService:
             status: True to mute bot, False to resume bot
         """
         try:
-            normalized_phone = phone_number.replace("+", "").replace(" ", "").replace("-", "").strip()
+            from app.core.utils import PhoneNormalizer
+            normalized_phone = PhoneNormalizer.normalize(phone_number)
+            
             logger.info(
                 f"🔧 Setting human_help_requested={status} | "
-                f"Input: {phone_number} | Normalizado: {normalized_phone}"
+                f"Input: {phone_number} | Normalizado (ID): {normalized_phone}"
             )
 
             prospectos_ref = self._db.collection("prospectos")
@@ -224,6 +230,7 @@ class MemoryService:
             # ATTEMPT 1: Direct document ID lookup
             doc_ref = prospectos_ref.document(normalized_phone)
             doc = doc_ref.get()
+            
             if doc.exists:
                 doc_ref.update({
                     "human_help_requested": status,
@@ -233,20 +240,18 @@ class MemoryService:
                 logger.info(f"✅ Updated human_help_requested={status} for {normalized_phone}")
                 return
 
-            # ATTEMPT 2: Strip Colombia prefix (57)
-            if normalized_phone.startswith("57") and len(normalized_phone) > 10:
-                short_phone = normalized_phone[2:]
-                logger.info(f"🔄 Intento secundario ID: {short_phone}")
-                doc_ref = prospectos_ref.document(short_phone)
-                doc = doc_ref.get()
-                if doc.exists:
-                    doc_ref.update({
-                        "human_help_requested": status,
-                        "updated_at": firestore.SERVER_TIMESTAMP,
-                        "fecha": firestore.SERVER_TIMESTAMP
-                    })
-                    logger.info(f"✅ Updated human_help_requested={status} for {short_phone}")
-                    return
+            # Fallback: Query by field
+            query = prospectos_ref.where("celular", "==", normalized_phone).limit(1)
+            docs = query.get()
+            
+            if docs:
+                 docs[0].reference.update({
+                    "human_help_requested": status,
+                    "updated_at": firestore.SERVER_TIMESTAMP,
+                    "fecha": firestore.SERVER_TIMESTAMP
+                })
+                 logger.info(f"✅ Updated human_help_requested={status} for {normalized_phone} (Legacy Query)")
+                 return
 
             # No existing document found - create new one
             logger.warning(f"⚠️ No existing prospect found for {phone_number}, creating new document")
