@@ -150,10 +150,6 @@ def main():
             grouped[norm] = []
         grouped[norm].append(doc)
         
-        if norm not in grouped:
-            grouped[norm] = []
-        grouped[norm].append(doc)
-        
     duplicates_found = 0
     records_to_migrate = 0
     
