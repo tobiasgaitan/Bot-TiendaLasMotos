@@ -129,22 +129,26 @@ def main():
     # Group by normalized phone
     grouped = {}
     for doc in all_docs:
-        # Use ID as primary source, 'celular' field as secondary
-        raw_id = doc.id
+        # Use 'celular' field as primary source, ID as secondary
+        # The ID might be auto-generated (random) or a phone number.
+        # The 'celular' field typically contains the actual phone.
         data = doc.to_dict()
         raw_field = data.get("celular", "")
+        raw_id = doc.id
         
-        # Normalize ID
-        norm = PhoneNormalizer.normalize(raw_id)
+        # Determine the best source for the phone number
+        source_val = str(raw_field) if raw_field else raw_id
         
-        # Verify normalization matches field (just for info)
-        if raw_field:
-            norm_field = PhoneNormalizer.normalize(raw_field)
-            if norm != norm_field:
-                 # Trust the ID more? Or field? 
-                 # Usually ID is what we query by. Let's group by normalized ID.
-                 # Actually, if we have ID "57300..." and "300...", they both normalize to "300...".
-                 pass
+        # Normalize to get the grouping key
+        norm = PhoneNormalizer.normalize(source_val)
+        
+        # Skip invalid/empty normalizations (e.g. from purely random IDs without digits)
+        if not norm:
+            continue
+            
+        if norm not in grouped:
+            grouped[norm] = []
+        grouped[norm].append(doc)
         
         if norm not in grouped:
             grouped[norm] = []
