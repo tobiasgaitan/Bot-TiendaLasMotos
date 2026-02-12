@@ -242,9 +242,9 @@ async def _handle_message_background(
     Handles AI processing, artificial latency, and message sending.
     """
     try:
-        # ==================================================================
+        # ==============================================================
         # STEP 1: Extract basic data
-        # ==================================================================
+        # ==============================================================
         user_phone = msg_data["from"]
         msg_type = msg_data["type"]
         message_body = ""
@@ -253,84 +253,81 @@ async def _handle_message_background(
 
         logger.info(f"🔄 Background processing started for {message_id}")
 
-        # ==================================================================
-        # 🟢 PRIORITY 1: MAGIC WORD CHECK — runs BEFORE anything else
-        # ==================================================================
-        # Why first? If user is muted (human_help_requested=True), the
-        # gatekeeper would block ALL messages including #bot. By checking
-        # the magic word BEFORE loading prospect data, muted users can
-        # self-reactivate the bot without admin intervention.
-        if message_body.strip().lower() in ("#bot", "#reset"):
-            logger.info(f"🔑 Magic word '{message_body}' received from {user_phone}")
+        # ==============================================================
+        # 🟢 PRIORITY 1: MAGIC WORD CHECK (#bot / #reset)
+        # ==============================================================
+        # Runs BEFORE loading prospect data so muted users can reset.
+        if message_body.lower() in ("#bot", "#reset"):
+            logger.info(f"🔑 Magic word '{message_body}' from {user_phone}")
             if memory_service:
                 memory_service.set_human_help_status(user_phone, False)
-            # Also unpause legacy session
             try:
                 session_ref = db.collection("sessions").document(user_phone)
                 session_ref.set({"paused": False, "paused_reason": None}, merge=True)
             except Exception as e:
                 logger.warning(f"⚠️ Could not unpause legacy session: {e}")
             await _send_whatsapp_message(user_phone, "🤖 Bot Reactivado. ¿En qué puedo ayudarte?")
-            logger.info(f"✅ Bot reactivated for {user_phone} via magic word — DEPLOY v3")
+            logger.info(f"✅ Bot reactivated for {user_phone} — DEPLOY v4")
             return
 
-        # ==================================================================
+        # ==============================================================
         # STEP 2: Load prospect data from CRM
-        # ==================================================================
+        # ==============================================================
         prospect_data = None
         if memory_service:
             try:
                 logger.info(f"🔍 Searching identity for: {user_phone}")
                 prospect_data = memory_service.get_prospect_data(user_phone)
                 if prospect_data and prospect_data.get("exists"):
-                    logger.info(f"🧠 Prospect data loaded for {user_phone}: {prospect_data.get('name')}")
+                    logger.info(f"🧠 Prospect loaded: {user_phone}: {prospect_data.get('name')}")
             except Exception as e:
                 logger.error(f"⚠️ Failed to load prospect data: {str(e)}")
                 prospect_data = None
 
-        # ==================================================================
-        # STEP 3: Update timestamp (for muted users, keeps them visible)
-        # ==================================================================
+        # ==============================================================
+        # STEP 3: Update timestamp (keeps muted users visible in admin)
+        # ==============================================================
         if memory_service:
             try:
                 memory_service.update_last_interaction(user_phone)
             except Exception as e:
                 logger.warning(f"⚠️ Could not update timestamp: {e}")
 
-        # ==================================================================
+        # ==============================================================
         # 🔴 PRIORITY 2: HUMAN MODE GATEKEEPER
-        # ==================================================================
-        # If human_help_requested flag is True, bot MUST remain silent.
-        # Only admin or #bot magic word can reset this flag.
-        if prospect_data and prospect_data.get('human_help_requested'):
+        # ==============================================================
+        # If human_help_requested is True, bot stays silent.
+        if prospect_data and prospect_data.get("human_help_requested"):
             logger.info(
-                f"⏸️ User in Human Mode. AI Muted. | "
+                f"⏸️ Human Mode. AI Muted. | "
                 f"Phone: {user_phone} | "
                 f"Flag: human_help_requested=True | "
-                f"✅ MARKER: TIMESTAMP UPDATED ON GITHUB"
+                f"✅ MARKER: TIMESTAMP UPDATED"
             )
-            return  # Exit immediately without processing or replying
+            return
 
-        # KILL SWITCH: Legacy session pause check (kept for compatibility)
+        # KILL SWITCH: Legacy session pause check
         session = await _get_session(db, user_phone)
         if session.get("paused") == True:
             paused_reason = session.get("paused_reason", "unknown")
             logger.info(
                 f"⏸️ Session paused for {user_phone} | "
                 f"Reason: {paused_reason} | "
-                f"✅ MARKER: TIMESTAMP UPDATED ON GITHUB"
+                f"✅ MARKER: TIMESTAMP UPDATED"
             )
             return
-        
-        # Initialize services (use global instances)
+
+        # ==============================================================
+        # STEP 4: Initialize AI services
+        # ==============================================================
         cerebro_ia = CerebroIA(config_loader)
         vision_service = VisionService(db)
         audio_service = AudioService(config_loader)
-        
+
         response_text = "Lo siento, no entendí ese mensaje."
         sentiment = "NEUTRAL"
-        
-        # Phase 4: Sentiment Check (Before routing)
+
+        # Sentiment check (before routing)
         if msg_type == "text":
             sentiment = cerebro_ia.detect_sentiment(msg_data["text"])
             if sentiment == "ANGRY":
@@ -338,52 +335,52 @@ async def _handle_message_background(
                 await _update_session(db, user_phone, {"status": "PAUSED", "paused": True, "paused_reason": "sentiment_angry"})
                 response_text = "Noto que estás molesto. Un asesor se comunicará contigo pronto. 🙏"
                 await _send_whatsapp_message(user_phone, response_text)
-                # Send notification to admin
                 await notification_service.notify_human_handoff(user_phone, "sentiment_angry")
                 return
 
-        # Check if PAUSED (moved after sentiment check for angry users)
+        # Check if PAUSED (after sentiment check)
         session = await _get_session(db, user_phone)
         if session.get("status") == "PAUSED":
             logger.info(f"⏸️ Session paused for {user_phone}. Ignoring message.")
             return
 
-        # Route based on message type
+        # ==============================================================
+        # STEP 5: Route based on message type
+        # ==============================================================
         if msg_type == "text":
             text = msg_data["text"]
-            
+
             # Generate unique task ID for debounce tracking
             task_id = f"{message_id}_{time.time()}"
-            
-            # Add message to buffer and check if first (only if buffer is available)
+
+            # Add message to buffer and check if first
             is_first_message = False
             if message_buffer:
                 is_first_message = await message_buffer.add_message(user_phone, text, task_id)
-            
-            # CRITICAL: Send typing indicator immediately if first message
-            # This provides instant feedback while we accumulate messages
+
+            # Send typing indicator immediately if first message
             if is_first_message:
                 logger.info(f"⌨️ Sending typing indicator for first message from {user_phone}")
                 await _send_whatsapp_status(user_phone, "typing")
-            
-            # Debounce period: Wait 4 seconds to accumulate fragmented messages (only if buffer is available)
+
+            # Debounce period: Wait to accumulate fragmented messages
             if message_buffer:
                 logger.info(f"⏳ Starting {message_buffer.debounce_seconds}s debounce for {user_phone} (task: {task_id})")
                 await asyncio.sleep(message_buffer.debounce_seconds)
-                
-                # Check if this task is still active (not superseded by newer message)
+
+                # Check if this task is still active
                 if not message_buffer.is_task_active(user_phone, task_id):
                     logger.info(f"⏭️ Task {task_id} superseded for {user_phone}, aborting silently")
                     return
-                
+
                 # Retrieve aggregated message from buffer
                 aggregated_text = await message_buffer.get_aggregated_message(user_phone)
-                
+
                 if not aggregated_text:
                     logger.warning(f"⚠️ Empty aggregated message for {user_phone}, aborting")
                     await message_buffer.clear_buffer(user_phone)
                     return
-                
+
                 logger.info(
                     f"🔀 Processing aggregated message for {user_phone} | "
                     f"Length: {len(aggregated_text)} chars | "
@@ -393,19 +390,18 @@ async def _handle_message_background(
                 # No buffer available, use original text
                 aggregated_text = text
                 logger.info(f"⚠️ MessageBuffer not available, processing message directly")
-            
+
             # Process the aggregated message
             response_text = await _route_message(
                 aggregated_text, config_loader, motor_financiero, motor_ventas, cerebro_ia, db, user_phone, prospect_data
             )
-            
+
             # Check if AI triggered human handoff
             if response_text.startswith("HANDOFF_TRIGGERED:"):
-                # Extract reason from response
                 reason = response_text.split(":", 1)[1] if ":" in response_text else "unknown"
-                
+
                 logger.warning(f"🚨 Human handoff triggered for {user_phone} | Reason: {reason}")
-                
+
                 # Set the human_help_requested flag in Firestore
                 if memory_service:
                     try:
@@ -413,7 +409,7 @@ async def _handle_message_background(
                         logger.info(f"✅ Set human_help_requested=True for {user_phone}")
                     except Exception as e:
                         logger.error(f"❌ Failed to set human_help_status: {str(e)}")
-                
+
                 # Pause the session (legacy compatibility)
                 await _update_session(db, user_phone, {
                     "paused": True,
@@ -421,17 +417,17 @@ async def _handle_message_background(
                     "handoff_reason": reason,
                     "status": "PAUSED"
                 })
-                
+
                 # Send notifications to admin
                 await notification_service.notify_human_handoff(user_phone, reason)
-                
+
                 # Replace response with exact required phrase
                 response_text = "Entendido, te paso con un asesor humano."
-            
-            # Clear buffer after successful processing (only if buffer is available)
+
+            # Clear buffer after successful processing
             if message_buffer:
                 await message_buffer.clear_buffer(user_phone)
-            
+
         elif msg_type == "image":
             logger.info("📷 Image received")
             media_id = msg_data["media_id"]
@@ -441,7 +437,7 @@ async def _handle_message_background(
                 response_text = await vision_service.analyze_image(image_bytes, mime_type, user_phone)
             else:
                 response_text = "No pude descargar la imagen. 😢"
-                
+
         elif msg_type == "audio":
             logger.info("🎤 Audio received")
             media_id = msg_data["media_id"]
@@ -451,37 +447,35 @@ async def _handle_message_background(
                 response_text = await audio_service.process_audio(audio_bytes, mime_type)
             else:
                 response_text = "No pude descargar el audio. 😢"
-        
+
         else:
             response_text = "Aún no soporto este tipo de mensaje. 😅"
 
-        # Keep-Alive Typing Loop: Maintain "Escribiendo..." indicator
-        # Cap at 5s max to avoid excessive delays (0.04s per char, ~125 chars = 5s)
+        # ==============================================================
+        # STEP 6: Send response with typing animation
+        # ==============================================================
         delay = min(len(response_text) * 0.04, 5.0)
         logger.info(f"⏳ Artificial Latency: {delay:.2f}s (response: {len(response_text)} chars)")
-        
+
         elapsed = 0.0
-        typing_interval = 5.0  # WhatsApp typing indicator lasts ~5s
-        
+        typing_interval = 5.0
         while elapsed < delay:
             await _send_whatsapp_status(user_phone, "typing")
             sleep_time = min(typing_interval, delay - elapsed)
             await asyncio.sleep(sleep_time)
             elapsed += sleep_time
-        
-        # Send response
+
         await _send_whatsapp_message(user_phone, response_text)
-        
-        # POST-PROCESSING: Update prospect summary in CRM (only for successful responses)
+
+        # ==============================================================
+        # STEP 7: Post-processing — CRM summary update
+        # ==============================================================
         if msg_type == "text" and not response_text.startswith("HANDOFF_TRIGGERED:"):
             if memory_service:
                 try:
-                    # Generate conversation summary with structured data extraction
                     aggregated_text_for_summary = locals().get("aggregated_text", msg_data.get("text", ""))
                     conversation = f"Usuario: {aggregated_text_for_summary}\nSebas: {response_text}"
                     summary_data = cerebro_ia.generate_summary(conversation)
-                    
-                    # Update prospect summary in Firestore
                     await memory_service.update_prospect_summary(
                         user_phone,
                         summary_data.get("summary", ""),
@@ -490,18 +484,16 @@ async def _handle_message_background(
                     logger.info(f"💾 Prospect summary updated for {user_phone}")
                 except Exception as e:
                     logger.error(f"⚠️ Failed to update prospect summary: {str(e)}")
-        
-        # Phase 4: Audit Log
-        # For text messages, log the aggregated text (after debounce)
-        # For media messages, log the type indicator
+
+        # Audit log
         if msg_type == "text":
             user_input = locals().get("aggregated_text", msg_data.get("text", "[Unknown]"))
         else:
             user_input = "[Media]"
         await audit_service.log_interaction(user_phone, user_input, response_text, sentiment)
-        
+
         logger.info(f"✅ Response sent to {user_phone}")
-        
+
     except Exception as e:
         logger.error(f"❌ Error in background processing: {str(e)}", exc_info=True)
     finally:
