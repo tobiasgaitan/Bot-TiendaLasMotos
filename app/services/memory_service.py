@@ -18,6 +18,10 @@ class MemoryService:
     - Retrieve existing prospect data for context seeding
     - Update conversation summaries and extracted information
     - Track chatbot engagement status
+    
+    Security:
+    - Handles PII (names, phones) - strictly uses normalized phone IDs.
+    - No raw query logging recommended in production.
     """
 
     def __init__(self, db: firestore.Client):

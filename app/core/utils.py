@@ -7,8 +7,13 @@ class PhoneNormalizer:
     """
     Standardizes phone numbers to a consistent format (10-digit national).
     
-    Format: 3XXXXXXXXX (without +57 prefix)
-    Used as the unique ID for Firestore documents to prevent duplicates.
+    Format target: 3XXXXXXXXX (National format, no country code).
+    Use cases:
+    - Firestore Document IDs (Uniqueness)
+    - Database queries (Consistency)
+    - System-internal references
+    
+    This class ensures that "57319..." and "319..." map to the same entity.
     """
     
     @staticmethod
