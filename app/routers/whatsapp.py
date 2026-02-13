@@ -313,6 +313,18 @@ async def _handle_message_background(
                 prospect_data = None
 
         # ==============================================================
+        # LATENCY CHECK: IS NEW CONVERSATION?
+        # ==============================================================
+        # If the user has no summary, we treat this as a "Greeting" or first message.
+        # We skip artificial delays (debounce, typing) to feel instant.
+        is_new_conversation = True
+        if prospect_data and prospect_data.get("summary"):
+            is_new_conversation = False
+
+        if is_new_conversation:
+             logger.info(f"🚀 New conversation detected (no summary) for {user_phone}. Latency will be minimized.")
+
+        # ==============================================================
         # STEP 4: TIMESTAMP UPDATE
         # ==============================================================
         # Always update even for muted users — keeps them visible in
@@ -407,11 +419,19 @@ async def _handle_message_background(
 
             # Debounce — wait to accumulate fragmented messages
             if message_buffer:
-                logger.info(
-                    f"⏳ Starting {message_buffer.debounce_seconds}s debounce "
-                    f"for {user_phone} (task: {task_id})"
-                )
-                await asyncio.sleep(message_buffer.debounce_seconds)
+                debounce_time = message_buffer.debounce_seconds
+                
+                # OPTIMIZATION: Instant reply for first message
+                if is_new_conversation:
+                    debounce_time = 0.0
+                    logger.info("🚀 Skipping debounce for first message.")
+
+                if debounce_time > 0:
+                    logger.info(
+                        f"⏳ Starting {debounce_time}s debounce "
+                        f"for {user_phone} (task: {task_id})"
+                    )
+                    await asyncio.sleep(debounce_time)
 
                 if not message_buffer.is_task_active(user_phone, task_id):
                     logger.info(
@@ -527,6 +547,12 @@ async def _handle_message_background(
         # STEP 7: SEND RESPONSE WITH TYPING ANIMATION
         # ==============================================================
         delay = min(len(response_text) * 0.04, 5.0)
+        
+        # OPTIMIZATION: Instant reply for first message
+        if is_new_conversation:
+            delay = 0.0
+            logger.info("🚀 Skipping typing delay for first message.")
+
         logger.info(
             f"⏳ Artificial Latency: {delay:.2f}s "
             f"(response: {len(response_text)} chars)"
