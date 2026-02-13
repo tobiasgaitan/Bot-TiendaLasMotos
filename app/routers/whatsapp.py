@@ -339,7 +339,13 @@ async def _handle_message_background(
         # STEP 5: HUMAN MODE GATEKEEPER
         # ==============================================================
         # If the prospect has requested human help, the bot stays silent.
-        if prospect_data and prospect_data.get("human_help_requested"):
+        # Explicit handling: If prospect is None, human_help_requested defaults to False
+        human_help_requested = False
+        if prospect_data:
+            human_help_requested = prospect_data.get("human_help_requested", False)
+
+        # If the prospect has requested human help, the bot stays silent.
+        if human_help_requested:
             logger.info(
                 f"⏸️ Human Mode. AI Muted. | "
                 f"Phone: {user_phone} | "
