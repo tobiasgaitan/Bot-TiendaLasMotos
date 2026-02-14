@@ -345,7 +345,8 @@ async def _handle_message_background(
             human_help_requested = prospect_data.get("human_help_requested", False)
 
         # If the prospect has requested human help, the bot stays silent.
-        if human_help_requested:
+        # FIX: Ensure we don't pause if it's a new conversation (or deleted user)
+        if human_help_requested and not is_new_conversation:
             logger.info(
                 f"⏸️ Human Mode. AI Muted. | "
                 f"Phone: {user_phone} | "
@@ -355,7 +356,7 @@ async def _handle_message_background(
 
         # Legacy session-based pause check (backwards compat)
         session = await _get_session(db, user_phone)
-        if session.get("paused") is True:
+        if session.get("paused") is True and not is_new_conversation:
             paused_reason = session.get("paused_reason", "unknown")
             logger.info(
                 f"⏸️ Session paused for {user_phone} | Reason: {paused_reason}"
