@@ -276,6 +276,63 @@ class MemoryService:
             )
 
 
+
+    def create_prospect_if_missing(self, phone_number: str) -> bool:
+        """
+        Ensures a prospect document exists for the given phone number.
+        Crucial for new users coming via latency bypass to appear in Admin Panel.
+        
+        Fields set:
+        - chatbot_status: "ACTIVE"
+        - status: "Pendiente"
+        - name: "Cliente WhatsApp"
+        - source: "whatsapp_bot"
+        - created_at: SERVER_TIMESTAMP
+        - updated_at: SERVER_TIMESTAMP
+        
+        Args:
+            phone_number: Raw phone number
+            
+        Returns:
+            bool: True if created, False if already existed
+        """
+        try:
+            from app.core.utils import PhoneNormalizer
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            
+            logger.info(f"💾 Ensuring prospect existence for {clean_phone}...")
+            
+            prospectos_ref = self._db.collection("prospectos")
+            doc_ref = prospectos_ref.document(clean_phone)
+            doc = doc_ref.get()
+            
+            if doc.exists:
+                # Optional: Ensure minimal fields are present even if exists?
+                # For now, just return False as it exists
+                return False
+                
+            # Create new with strict defaults for visibility in Admin Panel
+            new_data = {
+                "celular": clean_phone,
+                "name": "Cliente WhatsApp",
+                "nombre": "Cliente WhatsApp", # Legacy compat
+                "chatbot_status": "ACTIVE",
+                "status": "Pendiente",
+                "source": "whatsapp_bot",
+                "human_help_requested": False,
+                "created_at": firestore.SERVER_TIMESTAMP,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+                "fecha": firestore.SERVER_TIMESTAMP
+            }
+            doc_ref.set(new_data)
+            logger.info(f"✅ Created NEW prospect for {clean_phone} via integrity check")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error creating prospect for {phone_number}: {e}", exc_info=True)
+            return False
+
+
 # Singleton instance (will be initialized in main.py with db)
 memory_service: Optional[MemoryService] = None
 

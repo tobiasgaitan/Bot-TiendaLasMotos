@@ -325,6 +325,10 @@ async def _handle_message_background(
              # Force human_help_requested False if new conversation to ensure no blocking
              if prospect_data:
                  prospect_data['human_help_requested'] = False
+             
+             # DATA INTEGRITY FIX: Ensure prospect exists in DB so it shows in Admin Panel
+             if memory_service:
+                 memory_service.create_prospect_if_missing(user_phone)
 
              logger.info(f"🚀 New conversation detected (no summary) for {user_phone}. Latency will be minimized.")
 
