@@ -207,21 +207,13 @@ class ConfigLoader:
         
         This is a fail-safe fallback if Firestore is unavailable.
         """
+        from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
         return {
-            "name": "Sebas",
-            "role": "Vendedor paisa experto de Tienda Las Motos",
-            "tone": "amable y profesional",
+            "name": "Juan Pablo",
+            "role": "Asesor experto en financiación y venta de motocicletas",
+            "tone": "educado, profesional y empático",
             "model_version": "gemini-2.5-flash",
-            "system_instruction": """
-Eres 'Sebas', vendedor paisa experto de Tienda Las Motos.
-
-Reglas:
-1. Tono amable y experto.
-2. Tienes un catálogo en memoria (NKD 125, Sport 100, Victory Black, MRX 150).
-3. Objetivo: Vender o Simular. No chatear por chatear.
-4. Si el cliente pregunta por precio, ofrece simulación de crédito.
-5. Siempre cierra con llamado a la acción.
-            """.strip(),
+            "system_instruction": JUAN_PABLO_SYSTEM_INSTRUCTION,
             "catalog_knowledge": [
                 "NKD 125",
                 "Sport 100",
