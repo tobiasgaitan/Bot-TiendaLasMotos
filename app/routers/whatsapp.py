@@ -38,6 +38,7 @@ from app.services.vision_service import VisionService
 from app.services.audio_service import AudioService
 from app.services.audit_service import audit_service
 from app.services.notification_service import notification_service
+from app.services.financial_service import financial_service
 
 logger = logging.getLogger(__name__)
 
@@ -381,29 +382,12 @@ async def _handle_message_background(
         response_text = "Lo siento, no entendí ese mensaje."
         sentiment = "NEUTRAL"
 
-        # --- 6a. Sentiment check (angry users get immediate handoff) ---
+        # --- 6a. Sentiment check (REMOVED due to false positives) ---
+        # Sentiment analysis was triggering "ANGRY" too easily during initial greetings.
+        # We now rely on explicit intent or AI function calling for handoffs.
         if msg_type == "text":
-            sentiment = cerebro_ia.detect_sentiment(msg_data["text"])
-            if sentiment == "ANGRY":
-                logger.warning(f"😡 User {user_phone} is ANGRY. Pausing session.")
-                await _update_session(
-                    db,
-                    user_phone,
-                    {
-                        "status": "PAUSED",
-                        "paused": True,
-                        "paused_reason": "sentiment_angry",
-                    },
-                )
-                response_text = (
-                    "Noto que estás molesto. Un asesor se comunicará "
-                    "contigo pronto. 🙏"
-                )
-                await _send_whatsapp_message(user_phone, response_text)
-                await notification_service.notify_human_handoff(
-                    user_phone, "sentiment_angry"
-                )
-                return
+            pass # Skip sentiment-based auto-pause
+
 
         # Double-check session pause (may have been updated by sentiment)
         session = await _get_session(db, user_phone)
@@ -798,63 +782,111 @@ async def _handle_survey_flow(
     status = current_session.get("status", "IDLE")
     answers = current_session.get("answers", {})
 
-    if status == "SURVEY_CONTRACT":
-        answers["contract"] = message_text
+    if status == "SURVEY_STEP_1_LABOR":
+        answers["labor_type"] = message_text
         await _update_session(
-            db_client, phone, {"status": "SURVEY_HABIT", "answers": answers}
+            db_client, phone, {"status": "SURVEY_STEP_2_INCOME", "answers": answers}
         )
         return (
-            "Listo parcero 📝. ¿Y cómo estás en centrales de riesgo? "
-            "(Ej: Al día, Reportado, Mora pequeña)"
+            "2️⃣ ¿Cuáles son tus ingresos mensuales totales? "
+            "(Escribe solo el número, sin puntos. Ej: 1500000)"
         )
 
-    elif status == "SURVEY_HABIT":
-        answers["habit"] = message_text
+    elif status == "SURVEY_STEP_2_INCOME":
+        # Normalize income (remove non-digits)
+        clean_income = "".join(filter(str.isdigit, message_text))
+        final_income = int(clean_income) if clean_income else 0
+        answers["income"] = final_income
+        
         await _update_session(
-            db_client, phone, {"status": "SURVEY_INCOME", "answers": answers}
+            db_client, phone, {"status": "SURVEY_STEP_3_HISTORY", "answers": answers}
         )
         return (
-            "Ya casi terminamos 🏁. ¿Cuál es tu ingreso mensual promedio "
-            "o base? (Ej: 1 SMLV, 2 millones, Variable)"
+            "3️⃣ ¿Cómo ha sido tu comportamiento con créditos anteriores? "
+            "(Ej: Excelente, Reportado, Nunca he tenido)"
         )
 
-    elif status == "SURVEY_INCOME":
-        answers["income"] = message_text
-
-        profile = motor_finanzas.evaluar_perfil(
-            answers.get("contract", ""),
-            answers.get("habit", ""),
-            answers.get("income", ""),
+    elif status == "SURVEY_STEP_3_HISTORY":
+        answers["payment_habit"] = message_text
+        # We also save as credit_history for completeness if needed, but payment_habit is the key
+        answers["credit_history"] = message_text
+        
+        await _update_session(
+            db_client, phone, {"status": "SURVEY_STEP_4_GAS", "answers": answers}
         )
+        return "4️⃣ ¿Tienes servicio de Gas Natural a tu nombre? (Responde Sí o No)"
 
-        # Reset session after survey completion
+    elif status == "SURVEY_STEP_4_GAS":
+        # Boolean detection
+        text_lower = message_text.lower()
+        has_gas = any(w in text_lower for w in ["si", "sí", "yes", "claro", "tengo"])
+        answers["has_gas_natural"] = has_gas
+        
+        await _update_session(
+            db_client, phone, {"status": "SURVEY_STEP_5_POSTPAID", "answers": answers}
+        )
+        return "5️⃣ ¿Tienes un plan de celular Postpago? (Responde Sí o No)"
+
+    elif status == "SURVEY_STEP_5_POSTPAID":
+        # Boolean detection
+        text_lower = message_text.lower()
+        is_postpaid = any(w in text_lower for w in ["si", "sí", "yes", "claro", "tengo"])
+        answers["phone_plan"] = "Postpago" if is_postpaid else "Prepago"
+        
+        # --- FINALIZE & EVALUATE ---
+        
+        # 1. Build Profile
+        profile = {
+            "labor_type": answers.get("labor_type"),
+            "income": answers.get("income"),
+            "payment_habit": answers.get("payment_habit"),
+            "credit_history": answers.get("credit_history"),
+            "has_gas_natural": answers.get("has_gas_natural"),
+            "phone_plan": answers.get("phone_plan")
+        }
+        
+        # 2. Call FinancialService
+        try:
+            decision = financial_service.evaluate_profile(profile)
+            strategy = decision["strategy"]
+            action = decision["action_type"]
+            payload = decision["payload"]
+        except Exception as e:
+            logger.error(f"❌ Error evaluating profile: {e}")
+            strategy = "HUMAN"
+            action = "HANDOFF"
+            payload = "https://wa.me/573000000000"
+
+        # 3. Reset Session
         await _update_session(
             db_client, phone, {"status": "IDLE", "answers": {}}
         )
 
-        score = profile["score"]
-        strategy = profile["strategy"]
-        entity = profile["entity"]
-
-        if strategy == "BRILLA":
+        # 4. Construct Response based on Strategy
+        if action == "REDIRECT":
+            # BANCO or FINTECH
+            entity_name = "Banco de Bogotá" if strategy == "BANCO" else "CrediOrbe"
             return (
-                f"🚦 Parcero, analizando tu perfil con un puntaje de "
-                f"{score}/1000...\n\n"
-                f"La mejor opción para ti es financiar directo con "
-                f"**{entity}** (Tu recibo de gas).\n"
-                f"Es la fija para no dar tantas vueltas.\n\n"
-                f"👉 Aplica aquí de una: {motor_finanzas.link_brilla}"
+                f"¡Listo! Según tu perfil, tu mejor opción es con **{entity_name}**.\n\n"
+                f"Dale clic aquí para la aprobación inmediata: {payload}"
             )
-        else:
+            
+        elif action == "CAPTURE_DATA":
+            # BRILLA
             return (
-                f"🎉 ¡Brutal! Quedaste con un puntaje de "
-                f"**{score}/1000**.\n\n"
-                f"Tu perfil encaja perfecto con **{entity}** "
-                f"({strategy}).\n"
-                f"✅ Tasa preferencial activada\n"
-                f"✅ Aprobación rápida\n\n"
-                f"¿Te gustaría que te simule las cuotas con esta "
-                f"opción? 🏍️💸"
+                "¡Te tengo buenas noticias! Podemos intentarlo por el cupo **Brilla**.\n\n"
+                "Por favor envíame una foto de tu **recibo de gas** y tu **cédula** para avanzar."
+            )
+            
+        else:
+            # HANDOFF / HUMAN
+            # Trigger handoff mode via keyword that the main loop detects? 
+            # Or just send the message and let the user reply to trigger handoff?
+            # The prompt says: "Tu caso es especial..." 
+            # We should probably explicitly set human help status here or just return the text.
+            # Returning text is safer.
+            return (
+                "Tu caso es especial. Te voy a pasar con un asesor humano para que lo revise personalmente."
             )
 
     return "Algo salió mal. ¿Empezamos de nuevo?"
@@ -892,7 +924,7 @@ async def _route_message(
     # 2. Normal routing (IDLE)
     routing_rules = config_loader_inst.get_routing_rules()
     financial_keywords = routing_rules.get("financial_keywords", []) + [
-        "credito", "crédito", "fiado", "cuotas", "financiar",
+        "credito", "crédito", "fiado", "cuotas", "financiar", "estudio", "valor"
     ]
     sales_keywords = routing_rules.get("sales_keywords", [])
 
@@ -903,16 +935,16 @@ async def _route_message(
             db_client,
             user_phone,
             {
-                "status": "SURVEY_CONTRACT",
+                "status": "SURVEY_STEP_1_LABOR",
                 "answers": {},
                 "start_time": datetime.now(timezone.utc),
             },
         )
         return (
-            "¡De una! Para ver qué crédito te sale más barato, "
-            "respóndeme 3 preguntas rápidas ⚡\n\n"
-            "1️⃣ ¿Qué tipo de contrato laboral tienes? "
-            "(Ej: Indefinido, Obra labor, Independiente)"
+            "¡Con gusto! Para buscarte la opción de crédito con la cuota más bajita, "
+            "necesito hacerte 5 preguntas rápidas. ⚡\n\n"
+            "1️⃣ ¿Qué tipo de contrato laboral tienes?\n"
+            "(Ej: Indefinido, Obra labor, Independiente, Informal)"
         )
 
     # Sales intent

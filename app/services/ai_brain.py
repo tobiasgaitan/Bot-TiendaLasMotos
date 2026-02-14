@@ -64,22 +64,15 @@ class CerebroIA:
     
     def _get_system_instruction(self) -> str:
         """
-        Get system instruction from config or use default.
+        Get system instruction.
         
-        Returns:
-            System instruction prompt for the AI
+        CRITICAL UPDATE: Forcing "Juan Pablo" persona via code constant to ensure 
+        consistency and avoid stale Firestore configurations.
         """
-        if self._config_loader:
-            try:
-                personality = self._config_loader.get_sebas_personality()
-                # If config has a custom instruction, use it. Otherwise, fallback to our new constant.
-                # Note: We might want to prefer the code constant if we are deprecating the old config.
-                # For now, let's allow config to override, but change the default fallback.
-                return personality.get("system_instruction", self._default_instruction())
-            except Exception as e:
-                logger.error(f"❌ Error loading personality: {str(e)}")
-        
-        return self._default_instruction()
+        # We process the code constant directly to guarantee the update
+        from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
+        return JUAN_PABLO_SYSTEM_INSTRUCTION
+
     
     def _default_instruction(self) -> str:
         """Get default system instruction."""
