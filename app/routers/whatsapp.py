@@ -322,6 +322,10 @@ async def _handle_message_background(
             is_new_conversation = False
 
         if is_new_conversation:
+             # Force human_help_requested False if new conversation to ensure no blocking
+             if prospect_data:
+                 prospect_data['human_help_requested'] = False
+
              logger.info(f"🚀 New conversation detected (no summary) for {user_phone}. Latency will be minimized.")
 
         # ==============================================================
@@ -399,7 +403,7 @@ async def _handle_message_background(
 
         # Double-check session pause (may have been updated by sentiment)
         session = await _get_session(db, user_phone)
-        if session.get("status") == "PAUSED":
+        if session.get("status") == "PAUSED" and not is_new_conversation:
             logger.info(f"⏸️ Session paused for {user_phone}. Ignoring message.")
             return
 
