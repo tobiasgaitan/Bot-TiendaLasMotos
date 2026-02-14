@@ -345,32 +345,63 @@ async def _handle_message_background(
                 logger.warning(f"⚠️ Could not update timestamp: {e}")
 
         # ==============================================================
-        # STEP 5: HUMAN MODE GATEKEEPER
+        # STEP 5: STRICT HANDOFF & INTENT HIERARCHY (A -> B -> C)
         # ==============================================================
-        # If the prospect has requested human help, the bot stays silent.
-        # Explicit handling: If prospect is None, human_help_requested defaults to False
-        human_help_requested = False
-        if prospect_data:
-            human_help_requested = prospect_data.get("human_help_requested", False)
-
-        # If the prospect has requested human help, the bot stays silent.
-        # FIX: Ensure we don't pause if it's a new conversation (or deleted user)
-        if human_help_requested and not is_new_conversation:
-            logger.info(
-                f"⏸️ Human Mode. AI Muted. | "
-                f"Phone: {user_phone} | "
-                f"Flag: human_help_requested=True"
+        
+        # --- CHECK A: EXPLICIT HANDOFF (High Priority) ---
+        handoff_keywords = ['asesor', 'humano', 'persona', 'alguien real', 'jefe', 'gerente', 'reclamo', 'queja']
+        if any(k in message_body.lower() for k in handoff_keywords):
+            logger.warning(f"🚨 EXPLICIT HANDOFF TRIGGERED by '{message_body}'")
+            
+            # 1. Update DB
+            if memory_service:
+                memory_service.set_human_help_status(user_phone, True)
+            
+            await _update_session(
+                db, 
+                user_phone, 
+                {
+                    "paused": True, 
+                    "paused_reason": "explicit_request",
+                    "status": "PAUSED"
+                }
             )
-            return  # ← silent exit
-
-        # Legacy session-based pause check (backwards compat)
-        session = await _get_session(db, user_phone)
-        if session.get("paused") is True and not is_new_conversation:
-            paused_reason = session.get("paused_reason", "unknown")
-            logger.info(
-                f"⏸️ Session paused for {user_phone} | Reason: {paused_reason}"
+            
+            # 2. Notify
+            await notification_service.notify_human_handoff(user_phone, "explicit_user_request")
+            
+            # 3. Send Message & STOP
+            await _send_whatsapp_message(
+                user_phone, 
+                "Entendido. He pausado mi respuesta automática. 🛑 Un asesor humano revisará tu caso en breve y te escribirá por aquí. 👨💻"
             )
-            return  # ← silent exit
+            return # <--- STOP
+
+        # --- CHECK B: FINANCIAL INTENT (Medium Priority) ---
+        financial_keywords = ['credito', 'financiar', 'estudio', 'cuotas', 'valor', 'precio']
+        is_financial_intent = any(k in message_body.lower() for k in financial_keywords)
+        
+        # --- CHECK C: HUMAN GATEKEEPER (Normal Flow) ---
+        # Only check gatekeeper if NOT financial intent (Financial topics bypass silence)
+        if not is_financial_intent:
+            # If the prospect has requested human help, the bot stays silent.
+            human_help_requested = False
+            if prospect_data:
+                human_help_requested = prospect_data.get("human_help_requested", False)
+
+            # FIX: Ensure we don't pause if it's a new conversation
+            if human_help_requested and not is_new_conversation:
+                logger.info(f"⏸️ Human Mode. AI Muted. | Flag: human_help_requested=True")
+                return  # ← silent exit
+
+            # Legacy session-based pause check
+            session = await _get_session(db, user_phone)
+            if session.get("paused") is True and not is_new_conversation:
+                paused_reason = session.get("paused_reason", "unknown")
+                logger.info(f"⏸️ Session paused | Reason: {paused_reason}")
+                return  # ← silent exit
+        else:
+            logger.info("💰 Financial Intent detected! Bypassing Human Gatekeeper.")
 
         # ==============================================================
         # STEP 6: AI LOGIC
@@ -425,6 +456,11 @@ async def _handle_message_background(
                     debounce_time = 0.0
                     logger.info("🚀 Skipping debounce for first message.")
 
+                # If financial intent detected, reduce debounce to feel more responsive to hot leads
+                if is_financial_intent:
+                    debounce_time = 1.0
+                    logger.info("💰 Financial intent: reducing debounce.")
+
                 if debounce_time > 0:
                     logger.info(
                         f"⏳ Starting {debounce_time}s debounce "
@@ -463,6 +499,23 @@ async def _handle_message_background(
                 )
 
             # Route aggregated text through AI / sales / finance
+            # FORCE FINANCIAL if identified in Check B
+            if is_financial_intent:
+                logger.info("💰 STRICT ROUTING: Forcing Financial Flow.")
+                # We can call the survey starter directly or pass a flag.
+                # Since we haven't seen _route_message source, let's inject a prefix that _route_message hopefully respects 
+                # OR call the handling logic directly if possible.
+                # However, to be safe and clean, let's assume _route_message handles "magic" or we pass the flag.
+                # Let's pass 'is_financial_intent' to _route_message.
+                # I'll need to update _route_message signature in a separate step if I do that.
+                # Alternative: Call logic directly.
+                # "EXECUTE: Call start_financial_survey." -> This implies a specific function.
+                # I'll assume standard routing for now but with the intent flag likely forcing it if I could.
+                # For now, I will modify the call to _route_message to pass the intent explicitly IF I knew the signature changes.
+                # I will try to update _route_message in the next step.
+                # For this step, I'm just updating the surrounding logic to use the variable I defined.
+                pass 
+
             response_text = await _route_message(
                 aggregated_text,
                 config_loader,
@@ -472,6 +525,7 @@ async def _handle_message_background(
                 db,
                 user_phone,
                 prospect_data,
+                force_financial=is_financial_intent # Passing new arg
             )
 
             # Handle AI-triggered human handoff
@@ -905,6 +959,7 @@ async def _route_message(
     db_client: Any,
     user_phone: str,
     prospect_data: Optional[Dict[str, Any]] = None,
+    force_financial: bool = False,
 ) -> str:
     """
     Route user message to the correct engine.
@@ -929,7 +984,7 @@ async def _route_message(
     sales_keywords = routing_rules.get("sales_keywords", [])
 
     # Finance intent
-    if _has_financial_intent(message_text, financial_keywords):
+    if force_financial or _has_financial_intent(message_text, financial_keywords):
         logger.info("💰 Starting Financial Survey")
         await _update_session(
             db_client,

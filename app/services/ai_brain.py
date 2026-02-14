@@ -95,18 +95,19 @@ class CerebroIA:
             AI-generated response text or HANDOFF_TRIGGERED marker
         """
         # FAST PATH: Detect human handoff keywords BEFORE AI processing
-        # This ensures immediate detection without relying on AI function calling
-        texto_lower = texto.lower()
-        handoff_keywords = [
-            "asesor", "humano", "persona", "alguien real", 
-            "hablar con", "pásame con", "comunícame con",
-            "alguien", "otra persona", "compañero",
-            "no entiendes", "no sirves", "quiero hablar"
-        ]
+        # DISABLED: Router now handles strict handoff logic (Check A)
+        # This prevents AI from blocking sales topics.
+        # texto_lower = texto.lower()
+        # handoff_keywords = [
+        #     "asesor", "humano", "persona", "alguien real", 
+        #     "hablar con", "pásame con", "comunícame con",
+        #     "alguien", "otra persona", "compañero",
+        #     "no entiendes", "no sirves", "quiero hablar"
+        # ]
         
-        if any(keyword in texto_lower for keyword in handoff_keywords):
-            logger.warning(f"🚨 Fast-path handoff detected | Keywords found in: {texto[:50]}...")
-            return "HANDOFF_TRIGGERED:user_request"
+        # if any(keyword in texto_lower for keyword in handoff_keywords):
+        #     logger.warning(f"🚨 Fast-path handoff detected | Keywords found in: {texto[:50]}...")
+        #     return "HANDOFF_TRIGGERED:user_request"
         
         # Normal AI processing
         return self._generate_with_retry(texto, context, prospect_data)
