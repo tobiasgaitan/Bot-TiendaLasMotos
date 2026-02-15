@@ -75,7 +75,7 @@ async def run_test():
     whatsapp._send_whatsapp_message.reset_mock()
     mock_notification_service.notify_human_handoff.reset_mock()
     
-    msg_data = {"from": "573001234567", "type": "text", "text": "necesito un credito"}
+    msg_data = {"from": "573001234567", "type": "text", "text": "necesito un crédito"}
     
     # Even if human help requested is True (simulating a paused session), Finance should BYPASS it?
     # Requirement: "Disable any internal 'Safety Handoff' ... Block valid sales topics."

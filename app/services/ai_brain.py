@@ -50,12 +50,12 @@ class CerebroIA:
         if VERTEX_AI_AVAILABLE:
             try:
                 vertexai.init(project="tiendalasmotos", location="us-central1")
-                # Initialize model with tools for function calling
+                # Initialize model SANS tools (No internal handoff)
                 self._model = GenerativeModel(
                     "gemini-2.5-flash",
-                    tools=[self._tools] if self._tools else None
+                    tools=[] # DISABLE AI HANDOFF
                 )
-                logger.info("🧠 CerebroIA initialized with Gemini 2.5 Flash + Human Handoff Tool")
+                logger.info("🧠 CerebroIA initialized with Gemini 2.5 Flash (No Tools)")
             except Exception as e:
                 logger.error(f"❌ Error initializing Vertex AI: {str(e)}")
                 self._model = None

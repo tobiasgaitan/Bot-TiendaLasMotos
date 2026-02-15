@@ -269,6 +269,8 @@ async def _handle_message_background(
         message_body = ""
         if msg_type == "text":
             message_body = msg_data.get("text", "").strip()
+            # DEBUG: Print exact message content
+            logger.info(f"🔍 DEBUG: Incoming Message Body: '{message_body}'")
 
         # Normalize phone for internal use (DB keys, etc.)
         from app.core.utils import PhoneNormalizer
@@ -285,7 +287,11 @@ async def _handle_message_background(
         text_lower = message_body.lower()
         
         # --- PRIORITY A: EXPLICIT HANDOFF ---
-        handoff_keywords = ['asesor', 'humano', 'persona', 'alguien real', 'jefe', 'gerente', 'reclamo', 'queja']
+        # Added accents and variations
+        handoff_keywords = [
+            'asesor', 'humano', 'persona', 'alguien real', 'jefe', 'gerente', 
+            'reclamo', 'queja', 'contactar', 'hablar con alguien'
+        ]
         if any(k in text_lower for k in handoff_keywords):
             logger.warning(f"🚨 EXPLICIT HANDOFF TRIGGERED by '{message_body}'")
             
@@ -309,7 +315,12 @@ async def _handle_message_background(
             return # <--- STOP
 
         # --- PRIORITY B: FINANCIAL INTENT (BYPASS) ---
-        financial_keywords = ['credito', 'financiar', 'estudio', 'cuotas', 'valor', 'precio']
+        # Added accents and common misspellings
+        financial_keywords = [
+            'credito', 'crédito', 'financiar', 'financiación', 'financiacion',
+            'estudio', 'cuotas', 'valor', 'precio', 'cotizacion', 'cotización',
+            'fiado', 'prestamo', 'préstamo'
+        ]
         is_financial_intent = any(k in text_lower for k in financial_keywords)
         
         if is_financial_intent:
@@ -343,6 +354,9 @@ async def _handle_message_background(
         if message_body.lower() in ("#bot", "#reset"):
             logger.info(f"🔑 Magic word '{message_body}' from {user_phone}")
             if memory_service:
+                # ... (rest of magic word logic is fine)
+                pass # Using existing logic below...
+
                 memory_service.set_human_help_status(user_phone, False)
             try:
                 session_ref = db.collection("sessions").document(user_phone)
