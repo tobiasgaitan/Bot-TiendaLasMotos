@@ -330,7 +330,8 @@ class MemoryService:
             # --- ZOMBIE SESSION PURGE ---
             try:
                 # Delete any stuck session to ensure a fresh start
-                session_ref = self._db.collection("sessions").document(clean_phone)
+                # Fix: Correct path is mensajeria/whatsapp/sesiones
+                session_ref = self._db.collection("mensajeria").document("whatsapp").collection("sesiones").document(clean_phone)
                 session_ref.delete()
                 logger.info(f"🗑️ Zombie session purged for new prospect {clean_phone}")
             except Exception as e:
