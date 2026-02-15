@@ -33,6 +33,7 @@ async def run_test():
     whatsapp.motor_financiero = mock_motor_financiero
     whatsapp.memory_service = mock_memory_service
     whatsapp.notification_service = mock_notification_service
+    whatsapp.CerebroIA = MagicMock() # Mock the class itself so instantiation works
     
     # Mock Helper Functions
     whatsapp._get_session = AsyncMock(return_value={"status": "IDLE", "paused": False})
@@ -98,6 +99,10 @@ async def run_test():
     # 2. Should NOT have triggered explicit handoff
     mock_notification_service.notify_human_handoff.assert_not_called()
     print("✅ No Explicit Handoff triggered")
+
+    # 3. Should have sent the response (since Nuclear Fix sends it immediately)
+    whatsapp._send_whatsapp_message.assert_called_with("3001234567", "AI Response")
+    print("✅ Response sent immediately")
 
     print("\n🎉 ALL TESTS PASSED!")
 

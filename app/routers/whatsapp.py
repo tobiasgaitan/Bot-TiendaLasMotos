@@ -277,6 +277,65 @@ async def _handle_message_background(
         logger.info(f"🔄 Background processing started for {message_id} | Raw: {raw_phone} | Norm: {user_phone}")
 
         # ==============================================================
+        # STEP 0: NUCLEAR HANDOFF & FINANCIAL BYPASS (STRICT PRIORITY)
+        # ==============================================================
+        # CRITICAL: These run BEFORE loading prospect data or checking existing sessions.
+        # This fixes the issue where a "Paused" session blocks a valid financial request.
+
+        text_lower = message_body.lower()
+        
+        # --- PRIORITY A: EXPLICIT HANDOFF ---
+        handoff_keywords = ['asesor', 'humano', 'persona', 'alguien real', 'jefe', 'gerente', 'reclamo', 'queja']
+        if any(k in text_lower for k in handoff_keywords):
+            logger.warning(f"🚨 EXPLICIT HANDOFF TRIGGERED by '{message_body}'")
+            
+            # 1. Update DB & Memory
+            if memory_service:
+                memory_service.set_human_help_status(user_phone, True)
+            
+            await _update_session(
+                db, user_phone, 
+                {"paused": True, "paused_reason": "explicit_request", "status": "PAUSED"}
+            )
+            
+            # 2. Notify
+            await notification_service.notify_human_handoff(user_phone, "explicit_user_request")
+            
+            # 3. Send Message & STOP
+            await _send_whatsapp_message(
+                user_phone, 
+                "Entendido. He pausado mi respuesta automática. 🛑 Un asesor humano revisará tu caso en breve y te escribirá por aquí. 👨💻"
+            )
+            return # <--- STOP
+
+        # --- PRIORITY B: FINANCIAL INTENT (BYPASS) ---
+        financial_keywords = ['credito', 'financiar', 'estudio', 'cuotas', 'valor', 'precio']
+        is_financial_intent = any(k in text_lower for k in financial_keywords)
+        
+        if is_financial_intent:
+            logger.info(f"🚀 FINANCIAL BYPASS ACTIVATED for '{message_body}'")
+            
+            # Initialize minimal dependencies needed for routing
+            # Note: motor_financiero and motor_ventas are assumed global or imported
+            cerebro_ia_lite = CerebroIA(config_loader) 
+            
+            response = await _route_message(
+                message_body,
+                config_loader,
+                motor_financiero,
+                motor_ventas,
+                cerebro_ia_lite,
+                db,
+                user_phone,
+                prospect_data=None, # Explicitly valid to pass None here for forced flow
+                force_financial=True
+            )
+            
+            if response:
+                await _send_whatsapp_message(user_phone, response)
+            return # <--- STOP
+
+        # ==============================================================
         # STEP 2: MAGIC WORD CHECK (#bot / #reset)
         # ==============================================================
         # Runs BEFORE loading prospect data so muted users can still
@@ -345,63 +404,26 @@ async def _handle_message_background(
                 logger.warning(f"⚠️ Could not update timestamp: {e}")
 
         # ==============================================================
-        # STEP 5: STRICT HANDOFF & INTENT HIERARCHY (A -> B -> C)
+        # STEP 5: HUMAN GATEKEEPER (Normal Flow)
         # ==============================================================
+        # Only reached if NO financial intent and NO explicit handoff.
         
-        # --- CHECK A: EXPLICIT HANDOFF (High Priority) ---
-        handoff_keywords = ['asesor', 'humano', 'persona', 'alguien real', 'jefe', 'gerente', 'reclamo', 'queja']
-        if any(k in message_body.lower() for k in handoff_keywords):
-            logger.warning(f"🚨 EXPLICIT HANDOFF TRIGGERED by '{message_body}'")
-            
-            # 1. Update DB
-            if memory_service:
-                memory_service.set_human_help_status(user_phone, True)
-            
-            await _update_session(
-                db, 
-                user_phone, 
-                {
-                    "paused": True, 
-                    "paused_reason": "explicit_request",
-                    "status": "PAUSED"
-                }
-            )
-            
-            # 2. Notify
-            await notification_service.notify_human_handoff(user_phone, "explicit_user_request")
-            
-            # 3. Send Message & STOP
-            await _send_whatsapp_message(
-                user_phone, 
-                "Entendido. He pausado mi respuesta automática. 🛑 Un asesor humano revisará tu caso en breve y te escribirá por aquí. 👨💻"
-            )
-            return # <--- STOP
+        # If the prospect has requested human help, the bot stays silent.
+        human_help_requested = False
+        if prospect_data:
+            human_help_requested = prospect_data.get("human_help_requested", False)
 
-        # --- CHECK B: FINANCIAL INTENT (Medium Priority) ---
-        financial_keywords = ['credito', 'financiar', 'estudio', 'cuotas', 'valor', 'precio']
-        is_financial_intent = any(k in message_body.lower() for k in financial_keywords)
-        
-        # --- CHECK C: HUMAN GATEKEEPER (Normal Flow) ---
-        # Only check gatekeeper if NOT financial intent (Financial topics bypass silence)
-        if not is_financial_intent:
-            # If the prospect has requested human help, the bot stays silent.
-            human_help_requested = False
-            if prospect_data:
-                human_help_requested = prospect_data.get("human_help_requested", False)
+        # FIX: Ensure we don't pause if it's a new conversation
+        if human_help_requested and not is_new_conversation:
+            logger.info(f"⏸️ Human Mode. AI Muted. | Flag: human_help_requested=True")
+            return  # ← silent exit
 
-            # FIX: Ensure we don't pause if it's a new conversation
-            if human_help_requested and not is_new_conversation:
-                logger.info(f"⏸️ Human Mode. AI Muted. | Flag: human_help_requested=True")
-                return  # ← silent exit
-
-            # Legacy session-based pause check
-            session = await _get_session(db, user_phone)
-            if session.get("paused") is True and not is_new_conversation:
-                paused_reason = session.get("paused_reason", "unknown")
-                logger.info(f"⏸️ Session paused | Reason: {paused_reason}")
-                return  # ← silent exit
-        else:
-            logger.info("💰 Financial Intent detected! Bypassing Human Gatekeeper.")
+        # Legacy session-based pause check
+        session = await _get_session(db, user_phone)
+        if session.get("paused") is True and not is_new_conversation:
+            paused_reason = session.get("paused_reason", "unknown")
+            logger.info(f"⏸️ Session paused | Reason: {paused_reason}")
+            return  # ← silent exit
 
         # ==============================================================
         # STEP 6: AI LOGIC
