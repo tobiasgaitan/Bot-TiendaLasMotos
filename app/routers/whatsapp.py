@@ -39,6 +39,7 @@ from app.services.audio_service import AudioService
 from app.services.audit_service import audit_service
 from app.services.notification_service import notification_service
 from app.services.financial_service import financial_service
+from app.services.survey_service import survey_service
 
 logger = logging.getLogger(__name__)
 
@@ -277,6 +278,29 @@ async def _handle_message_background(
         user_phone = PhoneNormalizer.normalize(raw_phone)
 
         logger.info(f"🔄 Background processing started for {message_id} | Raw: {raw_phone} | Norm: {user_phone}")
+
+        # ==============================================================
+        # STEP 0: NUCLEAR RESET (MANUAL OVERRIDE)
+        # ==============================================================
+        if message_body.lower() == "/reset":
+             logger.warning(f"☢️ MANUAL RESET TRIGGERED by {user_phone}")
+             try:
+                 # 1. Delete Prospect & Session
+                 if db:
+                    db.collection("prospectos").document(user_phone).delete()
+                    db.collection("sessions").document(user_phone).delete()
+                    logger.info(f"🗑️ Deleted prospect and session for {user_phone}")
+                 
+                 # 2. Reply and Stop
+                 await _send_whatsapp_message(
+                     user_phone, 
+                     "♻️ SISTEMA REINICIADO. Memoria borrada. Escribe 'Hola' para comenzar de nuevo."
+                 )
+                 return
+             except Exception as e:
+                 logger.error(f"❌ Reset failed: {e}")
+                 await _send_whatsapp_message(user_phone, "❌ Error al reiniciar. Intenta de nuevo.")
+                 return
 
         # ==============================================================
         # STEP 0: NUCLEAR HANDOFF & FINANCIAL BYPASS (STRICT PRIORITY)
@@ -668,7 +692,7 @@ async def _handle_message_background(
                     )
                     conversation = (
                         f"Usuario: {aggregated_text_for_summary}\n"
-                        f"Sebas: {response_text}"
+                        f"Juan Pablo: {response_text}"
                     )
                     summary_data = cerebro_ia.generate_summary(conversation)
                     await memory_service.update_prospect_summary(
@@ -851,135 +875,6 @@ async def _update_session(
         logger.error(f"Error updating session: {e}")
 
 
-# ============================================================================
-# HELPER FUNCTIONS — FINANCIAL SURVEY FLOW
-# ============================================================================
-
-async def _handle_survey_flow(
-    db_client: Any,
-    phone: str,
-    message_text: str,
-    current_session: Dict[str, Any],
-    motor_finanzas: MotorFinanciero,
-) -> str:
-    """
-    Step-through financial survey (contract → credit history → income).
-
-    Each invocation advances the user one step. When all three answers
-    are collected the financial profile is evaluated and a recommendation
-    is returned.
-    """
-    status = current_session.get("status", "IDLE")
-    answers = current_session.get("answers", {})
-
-    if status == "SURVEY_STEP_1_LABOR":
-        answers["labor_type"] = message_text
-        await _update_session(
-            db_client, phone, {"status": "SURVEY_STEP_2_INCOME", "answers": answers}
-        )
-        return (
-            "2️⃣ ¿Cuáles son tus ingresos mensuales totales? "
-            "(Escribe solo el número, sin puntos. Ej: 1500000)"
-        )
-
-    elif status == "SURVEY_STEP_2_INCOME":
-        # Normalize income (remove non-digits)
-        clean_income = "".join(filter(str.isdigit, message_text))
-        final_income = int(clean_income) if clean_income else 0
-        answers["income"] = final_income
-        
-        await _update_session(
-            db_client, phone, {"status": "SURVEY_STEP_3_HISTORY", "answers": answers}
-        )
-        return (
-            "3️⃣ ¿Cómo ha sido tu comportamiento con créditos anteriores? "
-            "(Ej: Excelente, Reportado, Nunca he tenido)"
-        )
-
-    elif status == "SURVEY_STEP_3_HISTORY":
-        answers["payment_habit"] = message_text
-        # We also save as credit_history for completeness if needed, but payment_habit is the key
-        answers["credit_history"] = message_text
-        
-        await _update_session(
-            db_client, phone, {"status": "SURVEY_STEP_4_GAS", "answers": answers}
-        )
-        return "4️⃣ ¿Tienes servicio de Gas Natural a tu nombre? (Responde Sí o No)"
-
-    elif status == "SURVEY_STEP_4_GAS":
-        # Boolean detection
-        text_lower = message_text.lower()
-        has_gas = any(w in text_lower for w in ["si", "sí", "yes", "claro", "tengo"])
-        answers["has_gas_natural"] = has_gas
-        
-        await _update_session(
-            db_client, phone, {"status": "SURVEY_STEP_5_POSTPAID", "answers": answers}
-        )
-        return "5️⃣ ¿Tienes un plan de celular Postpago? (Responde Sí o No)"
-
-    elif status == "SURVEY_STEP_5_POSTPAID":
-        # Boolean detection
-        text_lower = message_text.lower()
-        is_postpaid = any(w in text_lower for w in ["si", "sí", "yes", "claro", "tengo"])
-        answers["phone_plan"] = "Postpago" if is_postpaid else "Prepago"
-        
-        # --- FINALIZE & EVALUATE ---
-        
-        # 1. Build Profile
-        profile = {
-            "labor_type": answers.get("labor_type"),
-            "income": answers.get("income"),
-            "payment_habit": answers.get("payment_habit"),
-            "credit_history": answers.get("credit_history"),
-            "has_gas_natural": answers.get("has_gas_natural"),
-            "phone_plan": answers.get("phone_plan")
-        }
-        
-        # 2. Call FinancialService
-        try:
-            decision = financial_service.evaluate_profile(profile)
-            strategy = decision["strategy"]
-            action = decision["action_type"]
-            payload = decision["payload"]
-        except Exception as e:
-            logger.error(f"❌ Error evaluating profile: {e}")
-            strategy = "HUMAN"
-            action = "HANDOFF"
-            payload = "https://wa.me/573000000000"
-
-        # 3. Reset Session
-        await _update_session(
-            db_client, phone, {"status": "IDLE", "answers": {}}
-        )
-
-        # 4. Construct Response based on Strategy
-        if action == "REDIRECT":
-            # BANCO or FINTECH
-            entity_name = "Banco de Bogotá" if strategy == "BANCO" else "CrediOrbe"
-            return (
-                f"¡Listo! Según tu perfil, tu mejor opción es con **{entity_name}**.\n\n"
-                f"Dale clic aquí para la aprobación inmediata: {payload}"
-            )
-            
-        elif action == "CAPTURE_DATA":
-            # BRILLA
-            return (
-                "¡Te tengo buenas noticias! Podemos intentarlo por el cupo **Brilla**.\n\n"
-                "Por favor envíame una foto de tu **recibo de gas** y tu **cédula** para avanzar."
-            )
-            
-        else:
-            # HANDOFF / HUMAN
-            # Trigger handoff mode via keyword that the main loop detects? 
-            # Or just send the message and let the user reply to trigger handoff?
-            # The prompt says: "Tu caso es especial..." 
-            # We should probably explicitly set human help status here or just return the text.
-            # Returning text is safer.
-            return (
-                "Tu caso es especial. Te voy a pasar con un asesor humano para que lo revise personalmente."
-            )
-
-    return "Algo salió mal. ¿Empezamos de nuevo?"
 
 
 # ============================================================================
@@ -1008,7 +903,7 @@ async def _route_message(
 
     # 1. Active survey takes priority
     if status.startswith("SURVEY_"):
-        return await _handle_survey_flow(
+        return await survey_service.handle_survey_step(
             db_client, user_phone, message_text, session, motor_finanzas
         )
 

@@ -118,7 +118,7 @@ class VisionService:
         prompt = """
         Identify the motorcycle model in this image.
         If it looks like one of the Auteco/Victory/Bajaj bikes (NKD, MRX, Victory, Boxer, Pulsar), identify it.
-        Reply in character as 'Sebas' (Asesor Paisa):
+        Reply in character as 'Juan Pablo' (Asesor Experto):
         "¡Uff qué nave! Esa parece una [Modelo]..."
         Then briefly mention if we have it or something similar in stock.
         """

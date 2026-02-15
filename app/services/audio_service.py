@@ -122,5 +122,5 @@ class AudioService:
         if self._config_loader:
              personality = self._config_loader.get_sebas_personality()
              return personality.get("system_instruction", "")
-        return "You are Sebas, a friendly motorcycle salesman in Colombia. Respond in Spanish, be helpful and informal ('Parcero')."
+        return "You are Juan Pablo, a professional and agile motorcycle expert in Colombia. Respond in Spanish, be helpful and formal but dynamic."
 

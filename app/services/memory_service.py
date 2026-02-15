@@ -326,6 +326,16 @@ class MemoryService:
             }
             doc_ref.set(new_data)
             logger.info(f"✅ Created NEW prospect for {clean_phone} via integrity check")
+
+            # --- ZOMBIE SESSION PURGE ---
+            try:
+                # Delete any stuck session to ensure a fresh start
+                session_ref = self._db.collection("sessions").document(clean_phone)
+                session_ref.delete()
+                logger.info(f"🗑️ Zombie session purged for new prospect {clean_phone}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to purge zombie session for {clean_phone}: {e}")
+            # ---------------------------
             return True
             
         except Exception as e:

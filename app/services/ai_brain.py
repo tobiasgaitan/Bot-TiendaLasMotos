@@ -191,7 +191,7 @@ class CerebroIA:
                 if context:
                     full_prompt += f"RESUMEN CONVERSACIÓN ANTERIOR:\n{context}\n\n"
                 
-                full_prompt += f"Usuario: {texto}\n\nSebas:"
+                full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
                 response = chat.send_message(full_prompt)
                 
@@ -269,6 +269,9 @@ class CerebroIA:
             
             # Enhanced prompt for structured extraction
             prompt = f"""
+Eres Juan Pablo, el asistente virtual experto de Tienda Las Motos.
+Tu misión es resumir la conversación con el cliente y extraer datos clave.
+
 Analiza esta conversación y genera:
 1. Un resumen conciso (1-2 oraciones) del tema principal y datos clave
 2. Extrae información estructurada si está presente
@@ -336,7 +339,7 @@ Si no detectas un campo, omítelo del objeto extracted.
         # Simple keyword-based responses
         if any(word in texto_lower for word in ["hola", "buenos", "buenas"]):
             return """
-¡Hola! Soy Sebas de Tienda Las Motos 🏍️
+¡Hola! Soy Juan Pablo de Tienda Las Motos 🏍️
 
 Estoy aquí para ayudarte a encontrar tu moto ideal. Tenemos:
 - NKD 125: Económica y perfecta para ciudad
@@ -377,7 +380,7 @@ Déjame saber en qué puedo ayudarte o si prefieres información sobre nuestras 
         
         else:
             return """
-Gracias por tu mensaje. Soy Sebas, tu asesor en Tienda Las Motos 🏍️
+Gracias por tu mensaje. Soy Juan Pablo, tu asesor experto en motos 🏍️
 
 Puedo ayudarte con:
 ✅ Información sobre nuestras motos (NKD, Sport, Victory, MRX)

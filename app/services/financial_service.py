@@ -41,7 +41,14 @@ class FinancialService:
         
         # 1. Labor Profile (30%)
         labor_type = str(profile.get("labor_type", "")).lower()
-        if "informal" in labor_type or "diario" in labor_type:
+        
+        # Group C: 50 Points (Informal / Verbal / Risk)
+        group_c_keywords = [
+            "informal", "diario", "verbal", "de palabra", 
+            "sin contrato", "no tengo", "independiente", "prestacion"
+        ]
+        
+        if any(k in labor_type for k in group_c_keywords):
             score += 50
         elif any(x in labor_type for x in ["indefinido", "formal", "propio", "pensionado", "camara"]):
             score += 300
