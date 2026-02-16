@@ -118,9 +118,9 @@ class AudioService:
             return None
 
     def _get_system_prompt(self) -> str:
-        """Reuse Sebas personality."""
+        """Reuse Juan Pablo personality."""
         if self._config_loader:
-             personality = self._config_loader.get_sebas_personality()
+             personality = self._config_loader.get_juan_pablo_personality()
              return personality.get("system_instruction", "")
         return "You are Juan Pablo, a professional and agile motorcycle expert in Colombia. Respond in Spanish, be helpful and formal but dynamic."
 

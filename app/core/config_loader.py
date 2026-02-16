@@ -1,7 +1,7 @@
 """
 V6.0 Dynamic Configuration Loader
 Loads and manages dynamic configuration from Firestore for:
-- Sebas personality and system instructions
+- Juan Pablo personality and system instructions
 - Routing rules for message classification
 - Catalog configuration
 """
@@ -58,7 +58,7 @@ class ConfigLoader:
             raise ValueError("Firestore client is required for first initialization")
         
         self._db = db
-        self._sebas_personality: Optional[Dict[str, Any]] = None
+        self._juan_pablo_personality: Optional[Dict[str, Any]] = None
         self._routing_rules: Optional[Dict[str, Any]] = None
         self._catalog_config: Optional[Dict[str, Any]] = None
         self._last_loaded: Optional[datetime] = None
@@ -76,8 +76,8 @@ class ConfigLoader:
         try:
             logger.info("🧠 Loading V6.0 dynamic configuration...")
             
-            # Load Sebas personality configuration
-            self._load_sebas_personality()
+            # Load Juan Pablo personality configuration
+            self._load_juan_pablo_personality()
             
             # Load routing rules
             self._load_routing_rules()
@@ -93,22 +93,22 @@ class ConfigLoader:
             # Initialize with safe defaults to prevent crashes
             self._initialize_defaults()
     
-    def _load_sebas_personality(self) -> None:
-        """Load Sebas AI personality configuration from Firestore."""
+    def _load_juan_pablo_personality(self) -> None:
+        """Load Juan Pablo AI personality configuration from Firestore."""
         try:
-            doc_ref = self._db.collection("configuracion").document("sebas_personality")
+            doc_ref = self._db.collection("configuracion").document("juan_pablo_personality")
             doc = doc_ref.get()
             
             if doc.exists:
-                self._sebas_personality = doc.to_dict()
-                logger.info(f"✅ Sebas personality loaded (model: {self._sebas_personality.get('model_version')})")
+                self._juan_pablo_personality = doc.to_dict()
+                logger.info(f"✅ Juan Pablo personality loaded (model: {self._juan_pablo_personality.get('model_version')})")
             else:
-                logger.warning("⚠️  Sebas personality document not found, using defaults")
-                self._sebas_personality = self._get_default_sebas_personality()
+                logger.warning("⚠️  Juan Pablo personality document not found, using defaults")
+                self._juan_pablo_personality = self._get_default_juan_pablo_personality()
                 
         except Exception as e:
-            logger.error(f"❌ Error loading Sebas personality: {str(e)}")
-            self._sebas_personality = self._get_default_sebas_personality()
+            logger.error(f"❌ Error loading Juan Pablo personality: {str(e)}")
+            self._juan_pablo_personality = self._get_default_juan_pablo_personality()
     
     def _load_routing_rules(self) -> None:
         """Load message routing rules from Firestore."""
@@ -146,15 +146,15 @@ class ConfigLoader:
     
     def _initialize_defaults(self) -> None:
         """Initialize all configurations with safe defaults."""
-        self._sebas_personality = self._get_default_sebas_personality()
+        self._juan_pablo_personality = self._get_default_juan_pablo_personality()
         self._routing_rules = self._get_default_routing_rules()
         self._catalog_config = self._get_default_catalog_config()
     
     # ==================== Getters ====================
     
-    def get_sebas_personality(self) -> Dict[str, Any]:
+    def get_juan_pablo_personality(self) -> Dict[str, Any]:
         """
-        Get Sebas AI personality configuration.
+        Get Juan Pablo AI personality configuration.
         
         Returns:
             Dictionary containing personality settings including:
@@ -163,9 +163,9 @@ class ConfigLoader:
             - tone: Communication tone
             - system_instruction: Full system prompt
             - model_version: Gemini model version to use
-            - catalog_knowledge: Array of products Sebas knows about
+            - catalog_knowledge: Array of products Juan Pablo knows about
         """
-        return self._sebas_personality or self._get_default_sebas_personality()
+        return self._juan_pablo_personality or self._get_default_juan_pablo_personality()
     
     def get_routing_rules(self) -> Dict[str, Any]:
         """
@@ -201,9 +201,9 @@ class ConfigLoader:
     # ==================== Default Configurations ====================
     
     @staticmethod
-    def _get_default_sebas_personality() -> Dict[str, Any]:
+    def _get_default_juan_pablo_personality() -> Dict[str, Any]:
         """
-        Get default Sebas personality configuration.
+        Get default Juan Pablo personality configuration.
         
         This is a fail-safe fallback if Firestore is unavailable.
         """

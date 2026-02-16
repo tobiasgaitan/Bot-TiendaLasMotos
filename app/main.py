@@ -87,7 +87,7 @@ async def lifespan(app: FastAPI):
         
         logger.info("✅ Application startup complete!")
         # logger.info(f"📊 Loaded {len(catalog_service.get_all_items())} catalog items")
-        logger.info(f"🧠 V6.0 Config: {config_loader.get_sebas_personality().get('personality_name')} personality loaded (model: {config_loader.get_sebas_personality().get('model_version')})")
+        logger.info(f"🧠 V6.0 Config: {config_loader.get_juan_pablo_personality().get('personality_name')} personality loaded (model: {config_loader.get_juan_pablo_personality().get('model_version')})")
         logger.info("🚀 STARTUP CHECK: V6.1 - DEPLOY v3 - MAGIC WORD ENABLED")
         
     except Exception as e:
@@ -150,7 +150,7 @@ async def health_check():
         "catalog_items": len(catalog_service.get_all_items()),
         "storage_bucket": storage_service.get_bucket_name(),
         "v6_config": {
-            "sebas_model": config_loader.get_sebas_personality().get("model_version"),
+            "juan_pablo_model": config_loader.get_juan_pablo_personality().get("model_version"),
             "routing_keywords_loaded": len(config_loader.get_routing_rules().get("financial_keywords", [])),
             "catalog_config_items": len(config_loader.get_catalog_config().get("items", []))
         }
