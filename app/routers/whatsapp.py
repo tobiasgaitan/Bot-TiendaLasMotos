@@ -189,13 +189,15 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         session = await _get_session(db, user_phone)
         
         # KEYWORDS que activan el SurveyService (Modo Estricto)
+        # KEYWORDS que activan el SurveyService (Modo Estricto)
         KEYWORDS_FINANCIERAS = ["credito", "crédito", "financiar", "cuotas", "simular", "reportado", "viabilidad"]
         
-        tiene_sesion_activa = session.get("status") != "IDLE"
+        tiene_sesion_activa = session.get("status", "IDLE") != "IDLE"
         es_mensaje_financiero = any(k in message_body.lower() for k in KEYWORDS_FINANCIERAS)
+        es_intencion_corta = len(message_body.split()) < 4  # New Check: Only strictly short commands
 
-        # Regla: Solo pasar a Encuesta si hay sesión activa O intención financiera explícita
-        if msg_type == "text" and (tiene_sesion_activa or es_mensaje_financiero):
+        # Regla: Solo pasar a Encuesta si hay sesión activa O (intención financiera explícita Y es corta)
+        if msg_type == "text" and (tiene_sesion_activa or (es_mensaje_financiero and es_intencion_corta)):
             # Using singleton survey_service
             survey_response = await survey_service.handle_survey_step(
                 db_client=db,
