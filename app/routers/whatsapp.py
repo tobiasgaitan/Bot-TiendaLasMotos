@@ -158,7 +158,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                             logger.info(f"🗑️ Deleted active session {pid}")
                     except Exception: pass
 
-            await _send_whatsapp_message(user_phone, f"☢️ **RESET NUCLEAR COMPLETADO**.\nDocumentos eliminados: {deleted_count}.\nEscribe *Hola*.")
+            if deleted_count > 0:
+                await _send_whatsapp_message(user_phone, "☢️ SISTEMA REINICIADO. Memoria borrada. Escribe 'Hola' para iniciar.")
             return
         # --- FIN RESET NUCLEAR ---
 
