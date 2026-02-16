@@ -124,6 +124,35 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         if msg_type == "text":
             message_body = msg_data.get("text", "").strip()
             
+        elif msg_type == "image":
+            logger.info(f"📸 Image detected from {user_phone}. Processing immediately...")
+            await _mark_message_as_read(msg_data["id"])
+            
+            # Initialize Vision Service locally
+            if db:
+                try:
+                    vision_service = VisionService(db)
+                    media_id = msg_data.get("media_id")
+                    mime_type = msg_data.get("mime_type")
+                    
+                    image_bytes = await _download_media(media_id)
+                    if image_bytes:
+                        logger.info(f"📥 Image downloaded ({len(image_bytes)} bytes). Analyzing...")
+                        response_text = await vision_service.analyze_image(image_bytes, mime_type, user_phone)
+                        logger.info(f"🧠 Vision response: {response_text}")
+                        
+                        if response_text:
+                            await _send_whatsapp_message(user_phone, response_text)
+                        else:
+                            await _send_whatsapp_message(user_phone, "¡Uff, qué nave! 🏍️ Pero no alcanzo a ver bien los detalles. ¿Me cuentas qué modelo es?")
+                    else:
+                        await _send_whatsapp_message(user_phone, "No pude descargar la imagen. Intenta de nuevo.")
+                except Exception as e:
+                    logger.error(f"❌ Error processing image: {e}")
+                    await _send_whatsapp_message(user_phone, "Tuve un problema viendo la imagen. ¿Me cuentas qué es? 😅")
+            
+            return  # EARLY EXIT: Stop processing here
+            
         # Marcar como leído locally
         await _mark_message_as_read(msg_data["id"]) 
 
@@ -235,23 +264,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             context = prospect_data.get("summary", "") if prospect_data else ""
             response_text = cerebro_ia.pensar_respuesta(message_body, context=context, prospect_data=prospect_data)
             
-        elif msg_type == "image":
-            media_id = msg_data.get("media_id")
-            mime_type = msg_data.get("mime_type")
-            logger.info(f"🖼️ Processing image ID: {media_id}, MIME: {mime_type}")
-            
-            image_bytes = await _download_media(media_id)
-            if image_bytes:
-                logger.info(f"📥 Image downloaded ({len(image_bytes)} bytes). Analyzing...")
-                response_text = await vision_service.analyze_image(image_bytes, mime_type, user_phone)
-                logger.info(f"👁️ Vision response: {response_text}")
-                
-                # Fallback if Vision returns empty
-                if not response_text:
-                    response_text = "Vi tu imagen, pero no supe qué decir. ¿Es una moto? 🏍️"
-            else:
-                logger.error("❌ Failed to download image media.")
-                response_text = "No pude descargar la imagen. 😢"
+
                 
         elif msg_type == "audio":
             media_id = msg_data.get("media_id")
