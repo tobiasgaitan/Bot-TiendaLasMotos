@@ -177,7 +177,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             # logger.info(f"⏸️ Ignored message from {user_phone} (Human Help Requested)")
             return
 
-        # 3. Encuesta Financiera
+        # 3. Encuesta Financiera (Router Inteligente)
         # Initialize MotorFinanciero locally (Lazy Loading)
         motor_financiero = None
         if db:
@@ -187,7 +187,14 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
 
         session = await _get_session(db, user_phone)
         
-        if msg_type == "text":
+        # KEYWORDS que activan el SurveyService (Modo Estricto)
+        KEYWORDS_FINANCIERAS = ["credito", "crédito", "financiar", "cuotas", "simular", "reportado", "viabilidad"]
+        
+        tiene_sesion_activa = session.get("status") != "IDLE"
+        es_mensaje_financiero = any(k in message_body.lower() for k in KEYWORDS_FINANCIERAS)
+
+        # Regla: Solo pasar a Encuesta si hay sesión activa O intención financiera explícita
+        if msg_type == "text" and (tiene_sesion_activa or es_mensaje_financiero):
             # Using singleton survey_service
             survey_response = await survey_service.handle_survey_step(
                 db_client=db,
@@ -203,8 +210,6 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                         memory_service.set_human_help_status(user_phone, True)
                     await _send_whatsapp_message(user_phone, "Entendido. Un asesor humano revisará tu caso. 👨💻")
                     # No notification here to keep it simple and imported-free, or import notification_service if needed.
-                    # Given the constraint to remove external imports that don't exist, we skip notification_service unless proven it exists.
-                    # Previous context showed notification_service existed. Let's try importing it inside.
                     try:
                         from app.services.notification_service import notification_service
                         await notification_service.notify_human_handoff(user_phone, "survey_fallback")
