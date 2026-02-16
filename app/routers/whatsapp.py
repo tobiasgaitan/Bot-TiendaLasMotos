@@ -238,10 +238,19 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         elif msg_type == "image":
             media_id = msg_data.get("media_id")
             mime_type = msg_data.get("mime_type")
+            logger.info(f"🖼️ Processing image ID: {media_id}, MIME: {mime_type}")
+            
             image_bytes = await _download_media(media_id)
             if image_bytes:
+                logger.info(f"📥 Image downloaded ({len(image_bytes)} bytes). Analyzing...")
                 response_text = await vision_service.analyze_image(image_bytes, mime_type, user_phone)
+                logger.info(f"👁️ Vision response: {response_text}")
+                
+                # Fallback if Vision returns empty
+                if not response_text:
+                    response_text = "Vi tu imagen, pero no supe qué decir. ¿Es una moto? 🏍️"
             else:
+                logger.error("❌ Failed to download image media.")
                 response_text = "No pude descargar la imagen. 😢"
                 
         elif msg_type == "audio":
