@@ -44,14 +44,14 @@ class CatalogService:
         Maps Spanish fields (referencia, precio, categoria) to English model.
         """
         try:
-            logger.info("🏍️  Loading catalog from Firestore 'catalogo'...")
+            logger.info("🔍 Connecting to sub-collection: pagina/catalogo/items")
             
             if not self._db:
                 logger.warning("⚠️ Firestore client not initialized in CatalogService")
                 return
 
-            # Query all items from root 'motos' collection
-            items_ref = self._db.collection("motos")
+            # Query all items from sub-collection 'pagina/catalogo/items'
+            items_ref = self._db.collection("pagina").document("catalogo").collection("items")
             items_docs = items_ref.stream()
             
             # Reset indexes
