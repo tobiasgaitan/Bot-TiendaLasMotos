@@ -42,11 +42,11 @@ class CerebroIA:
             config_loader: Optional ConfigLoader instance for dynamic personality
             catalog_service: Optional CatalogService instance for tool use
         """
-        self._config_loader = config_loader
-        self._catalog_service = catalog_service
+        self.config_loader = config_loader
+        self.catalog_service = catalog_service 
         self._model = None
         self._system_instruction = self._get_system_instruction()
-        self._tools = self._create_tools()
+        self.tools = self._create_tools()
         
         # Initialize Vertex AI if available
         if VERTEX_AI_AVAILABLE:
@@ -55,9 +55,9 @@ class CerebroIA:
                 # Initialize model WITH tools
                 self._model = GenerativeModel(
                     "gemini-2.5-flash",
-                    tools=[self._tools] if self._tools else []
+                    tools=[self.tools] if self.tools else []
                 )
-                logger.info(f"🧠 CerebroIA initialized with Gemini 2.5 Flash ({'Tools Enabled' if self._tools else 'No Tools'})")
+                logger.info(f"🧠 CerebroIA initialized with Gemini 2.5 Flash ({'Tools Enabled' if self.tools else 'No Tools'})")
             except Exception as e:
                 logger.error(f"❌ Error initializing Vertex AI: {str(e)}")
                 self._model = None
@@ -67,9 +67,6 @@ class CerebroIA:
     def _get_system_instruction(self) -> str:
         """
         Get system instruction.
-        
-        CRITICAL UPDATE: Forcing "Juan Pablo" persona via code constant to ensure 
-        consistency and avoid stale Firestore configurations.
         """
         # We process the code constant directly to guarantee the update
         from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
@@ -84,34 +81,7 @@ class CerebroIA:
     def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None) -> str:
         """
         Generate an intelligent response using Gemini AI with Retry Logic.
-        
-        Includes fast-path detection for human handoff requests to ensure
-        immediate response without relying on AI function calling.
-        
-        Args:
-            texto: User message text
-            context: Previous conversation summary
-            prospect_data: Optional prospect data from CRM for personalization
-        
-        Returns:
-            AI-generated response text or HANDOFF_TRIGGERED marker
         """
-        # FAST PATH: Detect human handoff keywords BEFORE AI processing
-        # DISABLED: Router now handles strict handoff logic (Check A)
-        # This prevents AI from blocking sales topics.
-        # texto_lower = texto.lower()
-        # handoff_keywords = [
-        #     "asesor", "humano", "persona", "alguien real", 
-        #     "hablar con", "pásame con", "comunícame con",
-        #     "alguien", "otra persona", "compañero",
-        #     "no entiendes", "no sirves", "quiero hablar"
-        # ]
-        
-        # if any(keyword in texto_lower for keyword in handoff_keywords):
-        #     logger.warning(f"🚨 Fast-path handoff detected | Keywords found in: {texto[:50]}...")
-        #     return "HANDOFF_TRIGGERED:user_request"
-        
-        # Normal AI processing
         return self._generate_with_retry(texto, context, prospect_data)
 
     def _create_tools(self) -> Optional[Tool]:
@@ -165,22 +135,11 @@ class CerebroIA:
     def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None) -> str:
         """
         Internal generation with exponential backoff.
-        
-        Handles both regular text responses and function calls (human handoff).
-        Injects prospect data for personalized responses when available.
-        
-        Args:
-            texto: User message text
-            context: Previous conversation summary
-            prospect_data: Optional prospect data from CRM
-        
-        Returns:
-            AI-generated response or HANDOFF_TRIGGERED marker
         """
         if not self._model: return self._fallback_response(texto)
         
         max_retries = 3
-        base_delay = 2 # Increased base delay for 429 safety
+        base_delay = 2 
         
         import time
         from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
@@ -229,9 +188,9 @@ class CerebroIA:
                         logger.info(f"🔎 AI searching catalog for: '{query}'")
                         
                         search_results = "No se encontraron resultados."
-                        if self._catalog_service:
+                        if self.catalog_service:
                             # Simple search implementation (can be improved)
-                            all_items = self._catalog_service.get_all_items()
+                            all_items = self.catalog_service.get_all_items()
                             # Filter simplistic
                             matches = [
                                 item for item in all_items 
@@ -249,11 +208,6 @@ class CerebroIA:
                             
                         # Feed result back to Gemini
                         logger.info(f"📤 Sending tool response to AI: {search_results[:100]}...")
-                        
-                        # Construct Tool Response
-                        # Note: Vertex AI SDK requires a specific flow for multi-turn tool use.
-                        # For simplicity in this 'stateless' method, we restart chat with history + tool response.
-                        # BUT, `chat` object maintains history. So we just send the tool response.
                         
                         from vertexai.generative_models import Part
                         
@@ -309,19 +263,6 @@ class CerebroIA:
     def generate_summary(self, conversation_text: str) -> Dict[str, Any]:
         """
         Summarize the conversation and extract structured data.
-        
-        Args:
-            conversation_text: Full conversation text to summarize
-        
-        Returns:
-            Dictionary with:
-            - summary: Concise conversation summary
-            - extracted: Dict with name, moto_interest if detected
-        
-        Example:
-            >>> result = cerebro.generate_summary("User: Hola soy Carlos...")
-            >>> print(result)
-            {"summary": "Cliente preguntó por...", "extracted": {"name": "Carlos"}}
         """
         if not self._model:
             return {"summary": "", "extracted": {}}
@@ -387,14 +328,6 @@ Si no detectas un campo, omítelo del objeto extracted.
     def _fallback_response(self, texto: str) -> str:
         """
         Generate a fallback response when AI is not available.
-        # ... (rest of fallback)
-
-        
-        Args:
-            texto: User message text
-        
-        Returns:
-            Fallback response string
         """
         texto_lower = texto.lower()
         
