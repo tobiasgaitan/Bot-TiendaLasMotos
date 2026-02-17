@@ -214,12 +214,7 @@ class ConfigLoader:
             "tone": "educado, profesional y empático",
             "model_version": "gemini-2.5-flash",
             "system_instruction": JUAN_PABLO_SYSTEM_INSTRUCTION,
-            "catalog_knowledge": [
-                "NKD 125",
-                "Sport 100",
-                "Victory Black",
-                "MRX 150"
-            ]
+            "catalog_knowledge": [] # CLEANED HALLUCINATIONS
         }
     
     @staticmethod
@@ -230,28 +225,8 @@ class ConfigLoader:
         These keywords determine which service handles the message.
         """
         return {
-            "financial_keywords": [
-                "simular",
-                "simulación",
-                "cuota",
-                "crédito",
-                "credito",
-                "financiar",
-                "financiación",
-                "inicial",
-                "mensual"
-            ],
-            "sales_keywords": [
-                "precio",
-                "busco",
-                "nkd",
-                "comprar",
-                "vender",
-                "disponible",
-                "catálogo",
-                "catalogo",
-                "motos"
-            ],
+            "financial_keywords": ["simular", "credito", "financiar", "cuota", "inicial"],
+            "sales_keywords": ["precio", "comprar", "moto", "catalogo", "info"],
             "default_handler": "cerebro_ia"
         }
     

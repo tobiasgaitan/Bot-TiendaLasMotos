@@ -76,7 +76,9 @@ class CerebroIA:
         # 1. Try ConfigLoader (Firestore)
         if self.config_loader:
             try:
-                instruction = self.config_loader.get_system_prompt()
+                # FIX: Correct method name and dictionary access
+                personality = self.config_loader.get_juan_pablo_personality()
+                instruction = personality.get("system_instruction", "")
                 if instruction:
                     logger.info("🧠 Loaded system instruction from Firestore Config")
                     return instruction
@@ -114,9 +116,7 @@ class CerebroIA:
     def _create_tools(self) -> Optional[Tool]:
         """
         Create tools for function calling (human handoff).
-        
-        Returns:
-            Tool object with function declarations, or None if not available
+        Returns: Tool object with function declarations, or None if not available
         """
         if not VERTEX_AI_AVAILABLE:
             return None
@@ -179,7 +179,6 @@ class CerebroIA:
                 
                 # Inject prospect data for personalization
                 if prospect_data and prospect_data.get("exists"):
-                    # ... (existing prospect data injection) ...
                     full_prompt += "═══════════════════════════════════════════════════════════════════\n"
                     full_prompt += "INFORMACIÓN DEL PROSPECTO (CRM):\n"
                     if prospect_data.get("name"):
@@ -207,35 +206,32 @@ class CerebroIA:
                 
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
+                # 1. Send initial message
                 response = chat.send_message(full_prompt)
                 
-                # Check if model wants to call a function (human handoff or catalog)
+                # 2. Check for Function Call
                 if response.candidates[0].content.parts[0].function_call:
                     function_call = response.candidates[0].content.parts[0].function_call
+                    function_name = function_call.name
                     
-                    # 1. Human Handoff
-                    if function_call.name == "trigger_human_handoff":
+                    # A) Human Handoff
+                    if function_name == "trigger_human_handoff":
                         reason = function_call.args.get("reason", "unknown")
                         logger.warning(f"🚨 AI triggered human handoff | Reason: {reason}")
                         return f"HANDOFF_TRIGGERED:{reason}"
                     
-                    # 2. Catalog Search
-                    elif function_call.name == "search_catalog":
+                    # B) Catalog Search
+                    elif function_name == "search_catalog":
                         query = function_call.args.get("query", "")
                         logger.info(f"🔎 AI searching catalog for: '{query}'")
                         
                         search_results = "No se encontraron resultados."
-                        search_results = "No se encontraron resultados."
                         if self.catalog_service:
-                            # Use robust search implementation from service
                             matches = self.catalog_service.search_items(query)
-                            
                             if matches:
                                 search_results = f"Encontré {len(matches)} motos relacionadas:\n"
-                                for m in matches: # Already limited to top 5 by service
-                                    # Format with key details for AI to use
+                                for m in matches: 
                                     search_results += f"- {m['name']} ({m['category']}): {m['formatted_price']}\n"
-                                    # Add highlights or specs if available could be useful
                                     if m.get('specs'):
                                          specs = str(m['specs'])
                                          search_results += f"  Info: {specs}\n"
@@ -243,27 +239,25 @@ class CerebroIA:
                                 search_results = "No encontré motos que coincidan con esa búsqueda. Intenta con otra categoría o nombre."
                         else:
                             search_results = "Error: Servicio de catálogo no disponible."
-                            
-                        # Feed result back to Gemini
+                        
                         logger.info(f"📤 Sending tool response to AI: {search_results[:100]}...")
                         
-                        from vertexai.generative_models import Part
-                        
-                        tool_response = Part.from_function_response(
-                            name="search_catalog",
-                            response={"content": search_results}
+                        # FIX: Create correct Part for Function Response
+                        tool_response_part = Part.from_function_response(
+                            name=function_name,
+                            response={
+                                "content": search_results 
+                            }
                         )
                         
-                        # Send tool response back to model to get final text
-                        final_response = chat.send_message(
-                            [tool_response]
-                        )
+                        # Send the tool response to the SAME chat session
+                        # This completes the turn: User -> Model(Call) -> User(Response) -> Model(Answer)
+                        final_response = chat.send_message([tool_response_part])
                         
                         return final_response.text.strip()
                 
                 # Normal text response
                 ai_response = response.text.strip()
-                
                 if not ai_response:
                         logger.warning("⚠️ Empty AI response")
                         return self._fallback_response(texto)
@@ -286,7 +280,6 @@ class CerebroIA:
     def detect_sentiment(self, text: str) -> str:
         """
         Analyze sentiment of the user message.
-        Returns: 'POSITIVE', 'NEUTRAL', 'NEGATIVE', 'ANGRY'
         """
         if not self._model: return "NEUTRAL"
         try:
@@ -307,8 +300,6 @@ class CerebroIA:
         
         try:
             chat = self._model.start_chat()
-            
-            # Enhanced prompt for structured extraction
             prompt = f"""
 Eres Juan Pablo, el asistente virtual experto de Tienda Las Motos.
 Tu misión es resumir la conversación con el cliente y extraer datos clave.
@@ -328,36 +319,26 @@ Responde en formato JSON:
     "moto_interest": "modelo de moto si se mencionó"
   }}
 }}
-
-Si no detectas un campo, omítelo del objeto extracted.
 """
-            
             response = chat.send_message(prompt)
             response_text = response.text.strip()
             
-            # Try to parse JSON response
             import json
             import re
-            
-            # Extract JSON from markdown code blocks if present
             json_match = re.search(r'```(?:json)?\s*({.*?})\s*```', response_text, re.DOTALL)
             if json_match:
                 response_text = json_match.group(1)
             
             result = json.loads(response_text)
             
-            # Validate structure
-            if "summary" not in result:
-                result["summary"] = ""
-            if "extracted" not in result:
-                result["extracted"] = {}
+            if "summary" not in result: result["summary"] = ""
+            if "extracted" not in result: result["extracted"] = {}
             
             logger.info(f"📝 Generated summary with {len(result.get('extracted', {}))} extracted fields")
             return result
             
         except Exception as e:
             logger.error(f"❌ Error generating summary: {str(e)}")
-            # Fallback: return simple summary without extraction
             return {
                 "summary": conversation_text[:200] + "..." if len(conversation_text) > 200 else conversation_text,
                 "extracted": {}
@@ -365,61 +346,17 @@ Si no detectas un campo, omítelo del objeto extracted.
 
     def _fallback_response(self, texto: str) -> str:
         """
-        Generate a fallback response when AI is not available.
+        Clean, generic fallback response to avoid hallucinations.
         """
-        texto_lower = texto.lower()
-        
-        # Simple keyword-based responses
-        if any(word in texto_lower for word in ["hola", "buenos", "buenas"]):
-            return """
+        return """
 ¡Hola! Soy Juan Pablo de Tienda Las Motos 🏍️
 
-Estoy aquí para ayudarte a encontrar tu moto ideal. Tenemos:
-- NKD 125: Económica y perfecta para ciudad
-- Sport 100: Deportiva para jóvenes
-- Victory Black: Elegante para ejecutivos
-- MRX 150: Aventurera todo terreno
+Estoy teniendo un pequeño problema de conexión con mi sistema, pero estoy aquí para ayudarte.
 
-¿Qué tipo de moto estás buscando? También puedo ayudarte con simulaciones de crédito.
-            """.strip()
-        
-        elif any(word in texto_lower for word in ["precio", "costo", "valor"]):
-            return """
-¡Excelente pregunta! 💰
-
-Nuestros precios varían según el modelo. Para darte información exacta y ofrecerte las mejores opciones de financiación, ¿me dices qué moto te interesa?
-
-- NKD 125
-- Sport 100
-- Victory Black
-- MRX 150
-
-También puedo hacer una simulación de crédito personalizada con tu inicial y plazo preferido.
-            """.strip()
-        
-        elif any(word in texto_lower for word in ["servicio", "taller", "repuesto"]):
-            return """
-🔧 **Servicio Técnico y Repuestos**
-
-Contamos con taller especializado y repuestos originales para todas nuestras motos.
-
-¿Necesitas:
-- Mantenimiento preventivo?
-- Reparación?
-- Repuestos específicos?
-
-Déjame saber en qué puedo ayudarte o si prefieres información sobre nuestras motos.
-            """.strip()
-        
-        else:
-            return """
-Gracias por tu mensaje. Soy Juan Pablo, tu asesor experto en motos 🏍️
-
-Puedo ayudarte con:
-✅ Información sobre nuestras motos (NKD, Sport, Victory, MRX)
+Puedo colaborarte con:
+✅ Información sobre nuestro catálogo de motos
 ✅ Simulaciones de crédito
-✅ Servicio técnico y repuestos
-✅ Agendar visita a nuestras sedes
+✅ Dudas sobre servicio técnico
 
-¿En qué te puedo ayudar hoy?
-            """.strip()
+¿En qué puedo ayudarte en este momento? 
+        """.strip()

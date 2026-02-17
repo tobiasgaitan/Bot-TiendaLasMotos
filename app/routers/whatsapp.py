@@ -205,7 +205,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             await memory_service.save_message(user_phone, "user", message_body)
 
         # --- LÓGICA DE RESET NUCLEAR (PRIORIDAD 0) ---
-        if message_body.strip() == "/reset":
+        # FIX: Ensure it is strict text match
+        if msg_type == "text" and message_body.strip() == "/reset":
             logger.warning(f"☢️ NUCLEAR RESET TRIGGERED for {user_phone}")
             
             # Variantes de ID
@@ -337,7 +338,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     if diff < 7200:
                         skip_greeting = True
                         logger.info(f"⏳ Recent conversation detected ({int(diff)}s ago). Skipping greeting.")
-
+            
             # Inject SKIP_GREETING instruction into context for AI
             if skip_greeting:
                 context += "\n[SYSTEM: SKIP GREETING. User returned recently. Do NOT say 'Hola' or introduce yourself again. Continue conversation naturally.]"
