@@ -256,9 +256,18 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         # --- FIN RESET NUCLEAR ---
 
         # 2. Gestión de Sesión
+        # 2. Gestión de Sesión & Servicios
         logger.info(f"⚙️ Starting Session Management for {user_phone}...")
         prospect_data = None
         current_history = []
+        skip_greeting = False
+        context = "" # Initialize context to prevent UnboundLocalError
+        
+        # Initialize Services Locally
+        logger.info("🧠 Initializing CerebroIA...")
+        cerebro_ia = CerebroIA(config_loader, catalog_service_local)
+        vision_service = VisionService(db)
+        audio_service = AudioService(config_loader)
         
         if memory_service_module.memory_service:
             ms = memory_service_module.memory_service
@@ -280,7 +289,6 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             current_history = await ms.get_chat_history(user_phone, limit=10)
             
             # GREETING BYPASS LOGIC (Time-Based)
-            skip_greeting = False
             if current_history:
                 last_msg = current_history[-1]
                 last_ts = last_msg.get("timestamp")
@@ -299,22 +307,20 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 if last_time:
                     # Calculate duration since last message
                     now = datetime.now(timezone.utc)
-                    # Ensure last_time is timezone aware for subtraction
                     if last_time.tzinfo is None:
                         last_time = last_time.replace(tzinfo=timezone.utc)
                         
                     delta = now - last_time
                     diff_seconds = delta.total_seconds()
                     
-                    # If less than 2 hours (7200s), skip greeting
                     if diff_seconds < 7200:
                         skip_greeting = True
                         logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
         else:
-            logger.warning("⚠️ Memory Service is NOT initialized (None). Skipping persistence.")
+            logger.warning("⚠️ Memory Service is NOT initialized. Skipping persistence.")
 
-            # Inject SKIP_GREETING instruction into context for AI - Handled in ai_brain
-            
+        # 3. Generar Respuesta (AI o Audio)
+        if msg_type == "text":
             logger.info(f"🧠 Calling CerebroIA.pensar_respuesta... (Skip Greeting: {skip_greeting})")
             response_text = cerebro_ia.pensar_respuesta(
                 message_body, 
