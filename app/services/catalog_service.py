@@ -39,16 +39,20 @@ class CatalogService:
     
     def load_catalog(self) -> None:
         """
-        Load catalog items from Firestore into memory.
+        Load catalog items from Firestore 'catalogo' collection into memory.
         
-        Loads all documents from pagina/catalogo/items collection
+        Loads all documents from the root 'catalogo' collection
         and builds indexes for fast lookup by ID and category.
         """
         try:
-            logger.info("🏍️  Loading catalog from Firestore...")
+            logger.info("🏍️  Loading catalog from Firestore 'catalogo'...")
             
-            # Query all items from catalog
-            items_ref = self._db.collection("catalog_items")
+            if not self._db:
+                logger.warning("⚠️ Firestore client not initialized in CatalogService")
+                return
+
+            # Query all items from root 'catalogo' collection
+            items_ref = self._db.collection("catalogo")
             items_docs = items_ref.stream()
             
             # Reset indexes
@@ -58,23 +62,31 @@ class CatalogService:
             
             # Process each item
             for doc in items_docs:
-                item_data = doc.to_dict()
-                item_data["id"] = doc.id  # Add document ID to item data
+                raw_data = doc.to_dict()
+                
+                # --- Availability Logic ---
+                # Default to Available unless 'active' is explicitly False
+                # (Some legacy items might not have the 'active' field)
+                is_active = raw_data.get("active", True)
+                if not is_active:
+                    continue
+
+                # --- Data Mapping ---
+                item_data = self._map_firestore_data(doc.id, raw_data)
                 
                 # Add to main list
                 self._items.append(item_data)
                 
-                # Index by ID
-                self._items_by_id[doc.id] = item_data
+                # Index by ID (using the mapped logical ID)
+                self._items_by_id[item_data["id"]] = item_data
                 
                 # Index by category
-                category = item_data.get("category", "uncategorized")
+                category = item_data.get("category", "general")
                 if category not in self._items_by_category:
                     self._items_by_category[category] = []
                 self._items_by_category[category].append(item_data)
             
-            # Silencing legacy log to avoid confusion with V6.0 dynamic config
-            # logger.info(f"✅ Catalog loaded: {len(self._items)} items")
+            logger.info(f"✅ Catalog loaded: {len(self._items)} items from 'catalogo'")
             logger.info(f"📂 Categories: {list(self._items_by_category.keys())}")
             
         except Exception as e:
@@ -84,6 +96,68 @@ class CatalogService:
             self._items_by_id = {}
             self._items_by_category = {}
     
+    def _map_firestore_data(self, doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Map raw Firestore data to the standardized internal item format.
+        
+        Args:
+            doc_id: The Firestore document ID.
+            data: The raw dictionary from Firestore.
+            
+        Returns:
+            Standardized item dictionary.
+        """
+        # 1. ID & Name
+        # Prefer 'referencia' -> 'nombre' -> doc_id
+        # We use a normalized ID for internal lookups
+        raw_name = data.get("referencia") or data.get("nombre") or doc_id
+        item_id = str(raw_name).lower().replace(" ", "-") # Simple normalization
+        
+        # 2. Price
+        # Handle string prices like "5.000.000" or integers
+        price = 0
+        raw_price = data.get("precio", 0)
+        try:
+            if isinstance(raw_price, (int, float)):
+                price = int(raw_price)
+            elif isinstance(raw_price, str):
+                # Remove currency symbols, dots, etc.
+                clean_price = raw_price.replace("$", "").replace(".", "").replace(",", "").strip()
+                if clean_price:
+                    price = int(clean_price)
+        except (ValueError, TypeError):
+            logger.warning(f"⚠️ Could not parse price for item {doc_id}: {raw_price}")
+            price = 0
+
+        # 3. Image
+        # Check 'imagen', 'foto', 'thumbnail'. Handle lists or strings.
+        image_url = ""
+        for img_field in ["imagen", "foto", "thumbnail", "image"]:
+            val = data.get(img_field)
+            if val:
+                if isinstance(val, list) and len(val) > 0:
+                    image_url = val[0]
+                    break
+                elif isinstance(val, str) and val.strip():
+                    image_url = val
+                    break
+        
+        # 4. Category
+        # Default to 'general' if missing
+        category = data.get("categoria", "general").lower()
+        
+        return {
+            "id": item_id,
+            "name": str(raw_name).strip(),  # Display Name
+            "price": price,
+            "formatted_price": f"${price:,.0f}".replace(",", "."), # COP formatting
+            "image": image_url,
+            "category": category,
+            "description": data.get("descripcion", ""),
+            "specs": data.get("ficha_tecnica", {}), # Preserve raw specs if avail
+            "raw_id": doc_id # Keep reference to original doc ID
+        }
+
     def get_all_items(self) -> List[Dict[str, Any]]:
         """
         Get all catalog items.
@@ -98,7 +172,7 @@ class CatalogService:
         Get a specific item by ID.
         
         Args:
-            item_id: Document ID of the item
+            item_id: Document ID or normalized name of the item
             
         Returns:
             Item data if found, None otherwise
