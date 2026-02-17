@@ -24,7 +24,9 @@ from app.services.ai_brain import CerebroIA
 from app.services.vision_service import VisionService
 from app.services.audio_service import AudioService
 from app.services.catalog_service import CatalogService # Local instantiation class
+from app.services.catalog_service import CatalogService # Local instantiation class
 from app.services.survey_service import survey_service # Singleton
+from app.services.message_buffer import MessageBuffer # Local instantiation
 
 # --- MEMORY SERVICE (MODULE IMPORT FOR SINGLETON ACCESS) ---
 import app.services.memory_service as memory_service_module
@@ -44,10 +46,11 @@ db = None
 config_loader = None
 motor_financiero = None
 catalog_service_local = None
+message_buffer = None
 
 def _ensure_services():
     """Lazy initialization of services"""
-    global db, config_loader, motor_financiero, catalog_service_local
+    global db, config_loader, motor_financiero, catalog_service_local, message_buffer
     
     # 1. Firestore
     if not db:
@@ -83,6 +86,10 @@ def _ensure_services():
             logger.info("✅ CatalogService initialized")
         except Exception as e:
              logger.error(f"❌ Failed to initialize CatalogService: {e}")
+             
+    # 5. Message Buffer
+    if not message_buffer:
+        message_buffer = MessageBuffer(debounce_seconds=3.0)
 
 # ============================================================================
 # WEBHOOK ENDPOINTS
@@ -151,8 +158,33 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         message_body = ""
         response_text = None # FIX: Initialize to prevent UnboundLocalError
         
+        msg_id_unique = msg_data.get("id") or f"{user_phone}_{int(datetime.now().timestamp())}"
+        
         if msg_type == "text":
             message_body = msg_data.get("text", "").strip()
+            
+            # --- DEBOUNCE LOGIC START ---
+            if message_buffer:
+                # Add to buffer
+                is_first = await message_buffer.add_message(user_phone, message_body, msg_id_unique)
+                
+                # Wait for debounce window (3s)
+                await asyncio.sleep(message_buffer.debounce_seconds)
+                
+                # Check if this task is still active (or superseded by newer message)
+                if not message_buffer.is_task_active(user_phone, msg_id_unique):
+                    logger.info(f"⏭️ Task {msg_id_unique} superseded. Skipping processing.")
+                    return
+                
+                # Get aggregated message
+                message_body = await message_buffer.get_aggregated_message(user_phone)
+                # Clear buffer immediately to prepare for next batch (or keep if we want strict window)
+                # But here we consume it, so we should clear.
+                await message_buffer.clear_buffer(user_phone)
+                
+                if not message_body:
+                    return # Should not happen if logic is correct
+            # --- DEBOUNCE LOGIC END ---
             
         elif msg_type in ["image", "document"]:
             logger.info(f"📸 Media detected from {user_phone} (Type: {msg_type}). Processing immediately...")
@@ -330,6 +362,14 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 skip_greeting=skip_greeting
             )
             logger.info(f"🧠 AI Response generated: '{str(response_text)[:50]}...'")
+            
+            # LATENCY SIMULATION (Natural Typing Delay)
+            typing_delay = min(5.0, len(str(response_text)) * 0.03) # 0.03s per char, max 5s
+            if typing_delay > 0.5:
+                # await _send_typing_indicator(user_phone) # Optional if implemented
+                pass
+            logger.info(f"⏳ Simulating typing delay: {typing_delay:.2f}s")
+            await asyncio.sleep(typing_delay)
             
         elif msg_type == "audio":
             media_id = msg_data.get("media_id")

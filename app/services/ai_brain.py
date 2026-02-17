@@ -209,7 +209,7 @@ class CerebroIA:
                 
                 # Greeting Bypass Instruction
                 if skip_greeting:
-                    full_prompt += "\n[SYSTEM: Omit introductory greetings. Respond directly to the user's query as the conversation is ongoing.]\n"
+                    full_prompt += "\n[SYSTEM: Omit introductory greetings. Respond directly to the user's query as the conversation is ongoing. KEEP IT SHORT.]\n"
 
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
