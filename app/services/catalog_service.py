@@ -50,8 +50,8 @@ class CatalogService:
                 logger.warning("⚠️ Firestore client not initialized in CatalogService")
                 return
 
-            # Query all items from root 'catalogo' collection
-            items_ref = self._db.collection("catalogo")
+            # Query all items from root 'motos' collection
+            items_ref = self._db.collection("motos")
             items_docs = items_ref.stream()
             
             # Reset indexes
@@ -63,26 +63,27 @@ class CatalogService:
             for doc in items_docs:
                 data = doc.to_dict()
                 
-                # --- Map Fields Explicitly (Spanish -> English) ---
+                # --- Map Fields Explicitly (Spanish -> English, with Fallbacks) ---
                 
-                # Name: referencia -> nombre -> doc.id
-                name = data.get("referencia", data.get("nombre", doc.id))
+                # Name: referencia -> nombre -> title -> name -> doc.id
+                name = data.get("referencia") or data.get("nombre") or data.get("title") or data.get("name") or doc.id
                 
-                # Price: Handle string formats like "$ 5.000.000"
-                price = self._parse_price(data.get("precio", 0))
+                # Price: precio -> price
+                price_val = data.get("precio") or data.get("price") or 0
+                price = self._parse_price(price_val)
                 
-                # Category: Default to 'general'
-                category = data.get("categoria", "general")
+                # Category: categoria -> category -> machine_name -> 'general'
+                category = data.get("categoria") or data.get("category") or data.get("machine_name") or "general"
                 
-                # Image: Handle list or string, prioritize imagen -> foto
-                image_val = data.get("imagen", data.get("foto", ""))
+                # Image: imagen -> foto -> image -> picture
+                image_val = data.get("imagen") or data.get("foto") or data.get("image") or data.get("picture") or ""
                 image_url = self._get_first_image(image_val)
                 
-                # Active Status
-                is_active = data.get("active", True)
+                # Active Status: active -> activo -> is_active -> True (default)
+                is_active = data.get("active", data.get("activo", data.get("is_active", True)))
                 
-                # Only process active items
-                if not is_active:
+                # Only process active items (unless forced to load all?) - relying on 'active' default True
+                if str(is_active).lower() == 'false': # Handle string 'false' from some CMS
                     continue
 
                 # Create standardized item
@@ -93,9 +94,9 @@ class CatalogService:
                     "formatted_price": f"${price:,.0f}".replace(",", "."),
                     "category": str(category).lower().strip(),
                     "image_url": image_url,
-                    "active": is_active,
-                    "description": data.get("descripcion", ""),
-                    "specs": data.get("ficha_tecnica", {})
+                    "active": True,
+                    "description": data.get("descripcion", data.get("description", "")),
+                    "specs": data.get("ficha_tecnica", data.get("specs", {}))
                 }
 
                 self._items.append(mapped_item)
@@ -109,7 +110,7 @@ class CatalogService:
                     self._items_by_category[cat_key] = []
                 self._items_by_category[cat_key].append(mapped_item)
             
-            logger.info(f"✅ Catalog loaded: {len(self._items)} items from 'catalogo'")
+            logger.info(f"✅ Catalog loaded: {len(self._items)} items from 'motos'")
             logger.info(f"📂 Categories: {list(self._items_by_category.keys())}")
             
         except Exception as e:
