@@ -128,8 +128,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         if msg_type == "text":
             message_body = msg_data.get("text", "").strip()
             
-        elif msg_type == "image":
-            logger.info(f"📸 Image detected from {user_phone}. Processing immediately...")
+        elif msg_type in ["image", "document"]:
+            logger.info(f"📸 Media detected from {user_phone} (Type: {msg_type}). Processing immediately...")
             await _mark_message_as_read(msg_data["id"])
             
             # Initialize Vision Service locally
@@ -137,20 +137,32 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 try:
                     vision_service = VisionService(db)
                     
-                    # Robust extraction as per user request
-                    image_data = msg_data.get("image", {})
-                    media_id = image_data.get("id") or msg_data.get("media_id") # Fallback to root key
-                    mime_type = image_data.get("mime_type") or msg_data.get("mime_type")
-                    caption = image_data.get("caption", "")
+                    # Robust extraction for Image OR Document
+                    media_data = {}
+                    if msg_type == "image":
+                        media_data = msg_data.get("image", {})
+                    elif msg_type == "document":
+                        media_data = msg_data.get("document", {})
                     
+                    # Fallback to root keys
+                    media_id = media_data.get("id") or msg_data.get("media_id")
+                    mime_type = media_data.get("mime_type") or msg_data.get("mime_type")
+                    caption = media_data.get("caption", "")
+                    
+                    # FILTER: If it's a document, ensure it's an image
+                    if msg_type == "document" and not mime_type.startswith("image/"):
+                        logger.info(f"📄 Document ignored (MIME: {mime_type}). Not an image.")
+                        # Optional: Reply saying we only read images? For now, ignore to avoid spam on PDF contracts.
+                        return 
+
                     if not media_id:
-                        logger.error("❌ Failed to extract media_id from image message")
-                        await _send_whatsapp_message(user_phone, "No pude procesar la imagen. 😢")
+                        logger.error("❌ Failed to extract media_id from message")
+                        await _send_whatsapp_message(user_phone, "No pude procesar el archivo. 😢")
                         return
 
                     image_bytes = await _download_media(media_id)
                     if image_bytes:
-                        logger.info(f"📥 Image downloaded ({len(image_bytes)} bytes). Analyzing with caption: '{caption}'...")
+                        logger.info(f"📥 Media downloaded ({len(image_bytes)} bytes). Analyzing with caption: '{caption}'...")
                         response_text = await vision_service.analyze_image(image_bytes, mime_type, user_phone, caption=caption)
                         logger.info(f"🧠 Vision response: {response_text}")
                         
@@ -159,10 +171,10 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                         else:
                             await _send_whatsapp_message(user_phone, "¡Uff, qué nave! 🏍️ Pero no alcanzo a ver bien los detalles. ¿Me cuentas qué modelo es?")
                     else:
-                        await _send_whatsapp_message(user_phone, "No pude descargar la imagen. Intenta de nuevo.")
+                        await _send_whatsapp_message(user_phone, "No pude descargar el archivo. Intenta de nuevo.")
                 except Exception as e:
-                    logger.error(f"❌ Error processing image: {e}")
-                    await _send_whatsapp_message(user_phone, "Tuve un problema viendo la imagen. ¿Me cuentas qué es? 😅")
+                    logger.error(f"❌ Error processing media: {e}")
+                    await _send_whatsapp_message(user_phone, "Tuve un problema viendo el archivo. ¿Me cuentas qué es? 😅")
             
             return  # EARLY EXIT: Stop processing here
             
@@ -352,6 +364,13 @@ def _extract_message_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             data["media_id"] = image_obj.get("id")
             data["mime_type"] = image_obj.get("mime_type")
             data["caption"] = image_obj.get("caption", "")
+        elif msg_type == "document":
+            doc_obj = msg["document"]
+            data["document"] = doc_obj
+            data["media_id"] = doc_obj.get("id")
+            data["mime_type"] = doc_obj.get("mime_type")
+            data["caption"] = doc_obj.get("caption", "")
+            data["filename"] = doc_obj.get("filename", "")
         elif msg_type == "audio":
             data["media_id"] = msg["audio"]["id"]
             data["mime_type"] = msg["audio"]["mime_type"]
