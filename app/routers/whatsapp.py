@@ -16,6 +16,7 @@ from google.cloud import firestore
 
 from app.core.config import settings
 from app.core.config_loader import ConfigLoader
+from app.core.security import get_firebase_credentials_object
 
 # --- SERVICE CLASSES (INSTANTIATED LOCALLY) ---
 from app.services.finance import MotorFinanciero
@@ -39,8 +40,9 @@ router = APIRouter(prefix="/webhook", tags=["WhatsApp"])
 # Initialize dependencies locally for this router to ensure availability
 db = None
 try:
-    db = firestore.Client()
-    logger.info("✅ Firestore client initialized in whatsapp router")
+    creds = get_firebase_credentials_object()
+    db = firestore.Client(credentials=creds, project=settings.gcp_project_id)
+    logger.info(f"✅ Database connected to project: {settings.gcp_project_id}")
 except Exception as e:
     logger.error(f"❌ Failed to initialize Firestore: {e}", exc_info=True)
 
