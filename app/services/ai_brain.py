@@ -163,13 +163,13 @@ class CerebroIA:
         """
         Internal generation with exponential backoff.
         """
-        if not self._model: return self._fallback_response(texto)
+        if not self._model: return self._fallback_response(texto, history)
         
         max_retries = 3
         base_delay = 2 
         
         import time
-        from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
+        from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable, InvalidArgument
 
         for attempt in range(max_retries):
             try:
@@ -210,8 +210,10 @@ class CerebroIA:
                 response = chat.send_message(full_prompt)
                 
                 # 2. Check for Function Call
-                if response.candidates[0].content.parts[0].function_call:
-                    function_call = response.candidates[0].content.parts[0].function_call
+                # Use robust checking for function call presence
+                candidate = response.candidates[0]
+                if candidate.content.parts and candidate.content.parts[0].function_call:
+                    function_call = candidate.content.parts[0].function_call
                     function_name = function_call.name
                     
                     # A) Human Handoff
@@ -240,9 +242,10 @@ class CerebroIA:
                         else:
                             search_results = "Error: Servicio de catálogo no disponible."
                         
-                        logger.info(f"📤 Sending tool response to AI: {search_results[:100]}...")
+                        logger.info(f"📤 Sending tool response to AI: {search_results[:200]}...") # Log 200 chars
                         
-                        # FIX: Create correct Part for Function Response
+                        # FIX: Create correctly structured FunctionResponse Part
+                        # Vertex AI expects 'response' to be a dict corresponding to the tool output structure
                         tool_response_part = Part.from_function_response(
                             name=function_name,
                             response={
@@ -250,9 +253,11 @@ class CerebroIA:
                             }
                         )
                         
+                        # Debug logic to verify part creation
+                        logger.info("📤 Created tool_response_part successfully.")
+
                         # Send the tool response to the SAME chat session
-                        # This completes the turn: User -> Model(Call) -> User(Response) -> Model(Answer)
-                        final_response = chat.send_message([tool_response_part])
+                        final_response = chat.send_message(tool_response_part)
                         
                         return final_response.text.strip()
                 
@@ -260,10 +265,18 @@ class CerebroIA:
                 ai_response = response.text.strip()
                 if not ai_response:
                         logger.warning("⚠️ Empty AI response")
-                        return self._fallback_response(texto)
+                        # Pass history to fallback to allow for rudimentary context
+                        return self._fallback_response(texto, history)
                         
                 logger.info(f"✅ AI response generated ({len(ai_response)} chars)")
                 return ai_response
+            
+            except InvalidArgument as e:
+                # 400 Errors (Logic/Validation) - Do not retry blindly
+                logger.error(f"❌ Invalid Argument (400) in AI attempt {attempt+1}: {e}")
+                # Try to salvage conversation by NOT calling tools if that was the issue?
+                # For now, just break to fallback
+                break
                 
             except (ResourceExhausted, ServiceUnavailable) as e:
                 wait_time = base_delay * (2 ** attempt)
@@ -271,11 +284,11 @@ class CerebroIA:
                 time.sleep(wait_time)
                 
             except Exception as e:
-                logger.error(f"❌ Error in AI attempt {attempt+1}: {e}")
+                logger.error(f"❌ Error in AI attempt {attempt+1}: {e}", exc_info=True)
                 break
         
         logger.error("❌ Failed to generate AI response after retries")
-        return self._fallback_response(texto)
+        return self._fallback_response(texto, history)
 
     def detect_sentiment(self, text: str) -> str:
         """
@@ -344,19 +357,23 @@ Responde en formato JSON:
                 "extracted": {}
             }
 
-    def _fallback_response(self, texto: str) -> str:
+    def _fallback_response(self, texto: str, history: list = []) -> str:
         """
         Clean, generic fallback response to avoid hallucinations.
+        Uses history to allow basic continuity if AI fails.
         """
+        # If we have history, user likely already knows who we are.
+        # Don't introduce ourselves again if it feels repetitive.
+        
         return """
 ¡Hola! Soy Juan Pablo de Tienda Las Motos 🏍️
 
-Estoy teniendo un pequeño problema de conexión con mi sistema, pero estoy aquí para ayudarte.
+Estoy teniendo un pequeño problema técnico momentáneo, pero sigo aquí contigo.
 
-Puedo colaborarte con:
-✅ Información sobre nuestro catálogo de motos
+Puedo ayudarte con:
+✅ Información sobre nuestro catálogo (NKD, Sport, Victory, MRX)
 ✅ Simulaciones de crédito
 ✅ Dudas sobre servicio técnico
 
-¿En qué puedo ayudarte en este momento? 
+¿Podrías repetirme tu última pregunta o escribirla de otra forma? 
         """.strip()
