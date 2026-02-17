@@ -53,6 +53,10 @@ if db:
         pass
 
 # Initialize MotorFinanciero (Needed for survey)
+motor_financiero = None
+if db:
+    try:
+        motor_financiero = MotorFinanciero(db, config_loader)
     except Exception:
         pass
 
@@ -161,7 +165,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                         logger.info(f"📄 Document ignored (MIME: {mime_type}). Not an image.")
                         # Optional: Reply saying we only read images? For now, ignore to avoid spam on PDF contracts.
                         return 
-
+                    
                     if not media_id:
                         logger.error("❌ Failed to extract media_id from message")
                         await _send_whatsapp_message(user_phone, "No pude procesar el archivo. 😢")
@@ -296,8 +300,6 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             context = prospect_data.get("summary", "") if prospect_data else ""
             response_text = cerebro_ia.pensar_respuesta(message_body, context=context, prospect_data=prospect_data)
             
-
-                
         elif msg_type == "audio":
             media_id = msg_data.get("media_id")
             mime_type = msg_data.get("mime_type")
