@@ -38,7 +38,7 @@ class VisionService:
             except Exception as e:
                 logger.error(f"❌ VisionService init error: {e}")
 
-    async def analyze_image(self, image_bytes: bytes, mime_type: str, phone: str) -> str:
+    async def analyze_image(self, image_bytes: bytes, mime_type: str, phone: str, caption: str = "") -> str:
         """
         General analysis of an image sent by user.
         Routes to specific logic (OCR vs Bike ID) based on content.
@@ -51,11 +51,14 @@ class VisionService:
             
             # 1. Classification Prompt
             # Ask Gemini what it sees first to route logic
-            prompt = """
-            Analyze this image.
-            If it is a Colombian ID card (Cédula de Ciudadanía), output JSON: {"type": "id_card"}
-            If it is a motorcycle, output JSON: {"type": "moto", "description": "brief description of the bike"}
-            Otherwise, output JSON: {"type": "other", "description": "what is it"}
+            # Also consider the user's caption if provided
+            caption_context = f"User caption: '{caption}'" if caption else ""
+            
+            prompt = f"""
+            Analyze this image. {caption_context}
+            If it is a Colombian ID card (Cédula de Ciudadanía), output JSON: {{"type": "id_card"}}
+            If it is a motorcycle, output JSON: {{"type": "moto", "description": "brief description of the bike"}}
+            Otherwise, output JSON: {{"type": "other", "description": "what is it"}}
             Output ONLY raw JSON.
             """
             

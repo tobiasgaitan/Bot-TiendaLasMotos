@@ -132,13 +132,22 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             if db:
                 try:
                     vision_service = VisionService(db)
-                    media_id = msg_data.get("media_id")
-                    mime_type = msg_data.get("mime_type")
                     
+                    # Robust extraction as per user request
+                    image_data = msg_data.get("image", {})
+                    media_id = image_data.get("id") or msg_data.get("media_id") # Fallback to root key
+                    mime_type = image_data.get("mime_type") or msg_data.get("mime_type")
+                    caption = image_data.get("caption", "")
+                    
+                    if not media_id:
+                        logger.error("❌ Failed to extract media_id from image message")
+                        await _send_whatsapp_message(user_phone, "No pude procesar la imagen. 😢")
+                        return
+
                     image_bytes = await _download_media(media_id)
                     if image_bytes:
-                        logger.info(f"📥 Image downloaded ({len(image_bytes)} bytes). Analyzing...")
-                        response_text = await vision_service.analyze_image(image_bytes, mime_type, user_phone)
+                        logger.info(f"📥 Image downloaded ({len(image_bytes)} bytes). Analyzing with caption: '{caption}'...")
+                        response_text = await vision_service.analyze_image(image_bytes, mime_type, user_phone, caption=caption)
                         logger.info(f"🧠 Vision response: {response_text}")
                         
                         if response_text:
@@ -332,8 +341,13 @@ def _extract_message_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if msg_type == "text":
             data["text"] = msg["text"]["body"]
         elif msg_type == "image":
-            data["media_id"] = msg["image"]["id"]
-            data["mime_type"] = msg["image"]["mime_type"]
+            # Extract full image object for flexibility (id, mime_type, caption, sha256)
+            image_obj = msg["image"]
+            data["image"] = image_obj
+            # Keep flat keys for backward compatibility/ease of use if needed
+            data["media_id"] = image_obj.get("id")
+            data["mime_type"] = image_obj.get("mime_type")
+            data["caption"] = image_obj.get("caption", "")
         elif msg_type == "audio":
             data["media_id"] = msg["audio"]["id"]
             data["mime_type"] = msg["audio"]["mime_type"]
