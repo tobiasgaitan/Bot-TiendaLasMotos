@@ -63,10 +63,16 @@ class CatalogService:
             for doc in items_docs:
                 data = doc.to_dict()
                 
-                # --- Map Fields Explicitly (Spanish -> English, with Fallbacks) ---
+                # --- Map Fields Explicitly (New Schema) ---
                 
-                # Name: referencia -> nombre -> title -> name -> doc.id
-                name = data.get("referencia") or data.get("nombre") or data.get("title") or data.get("name") or doc.id
+                # Brand: brand -> marca -> ""
+                brand = data.get("brand") or data.get("marca") or ""
+                
+                # Reference: referencia -> nombre -> title -> doc.id
+                ref = data.get("referencia") or data.get("nombre") or data.get("title") or doc.id
+                
+                # Name: Construct "Brand Reference" if brand exists, else just Reference
+                name = f"{brand} {ref}".strip() if brand else str(ref).strip()
                 
                 # Price: precio -> price
                 price_val = data.get("precio") or data.get("price") or 0
@@ -75,28 +81,40 @@ class CatalogService:
                 # Category: categoria -> category -> machine_name -> 'general'
                 category = data.get("categoria") or data.get("category") or data.get("machine_name") or "general"
                 
-                # Image: imagen -> foto -> image -> picture
-                image_val = data.get("imagen") or data.get("foto") or data.get("image") or data.get("picture") or ""
-                image_url = self._get_first_image(image_val)
+                # Image: imagenUrl (map) -> url. Fallback to string fields.
+                image_val = data.get("imagenUrl", {})
+                if isinstance(image_val, dict):
+                    image_url = image_val.get("url", "")
+                else:
+                    image_url = self._get_first_image(data.get("imagen") or data.get("foto") or data.get("image") or "")
+
+                # Search Tags: searchBy (list)
+                search_tags = data.get("searchBy", [])
+                if not isinstance(search_tags, list):
+                    search_tags = []
+                
+                # Normalize tags
+                search_tags = [str(t).lower().strip() for t in search_tags if t]
                 
                 # Active Status: active -> activo -> is_active -> True (default)
                 is_active = data.get("active", data.get("activo", data.get("is_active", True)))
                 
-                # Only process active items (unless forced to load all?) - relying on 'active' default True
-                if str(is_active).lower() == 'false': # Handle string 'false' from some CMS
+                # Relaxed active check
+                if str(is_active).lower() == 'false': 
                     continue
 
                 # Create standardized item
                 mapped_item = {
                     "id": doc.id,
-                    "name": str(name).strip(),
+                    "name": name,
                     "price": price,
                     "formatted_price": f"${price:,.0f}".replace(",", "."),
                     "category": str(category).lower().strip(),
                     "image_url": image_url,
                     "active": True,
                     "description": data.get("descripcion", data.get("description", "")),
-                    "specs": data.get("ficha_tecnica", data.get("specs", {}))
+                    "specs": data.get("ficha_tecnica", data.get("specs", {})),
+                    "search_tags": search_tags 
                 }
 
                 self._items.append(mapped_item)
@@ -110,7 +128,7 @@ class CatalogService:
                     self._items_by_category[cat_key] = []
                 self._items_by_category[cat_key].append(mapped_item)
             
-            logger.info(f"✅ Catalog loaded: {len(self._items)} items from 'motos'")
+            logger.info(f"✅ Catalog loaded: {len(self._items)} items from 'pagina/catalogo/items'")
             logger.info(f"📂 Categories: {list(self._items_by_category.keys())}")
             
         except Exception as e:
@@ -178,7 +196,7 @@ class CatalogService:
     
     def search_items(self, query: str) -> List[Dict[str, Any]]:
         """
-        Search for items using fuzzy matching and token tolerance.
+        Search for items using fuzzy matching, token tolerance, and tags.
         Returns top results sorted by implementation score.
         """
         import difflib
@@ -192,61 +210,77 @@ class CatalogService:
         # Pre-compute query tokens
         query_tokens = query.split()
         
+        logger.info(f"🔎 DEBUG SEARCH: Query='{query}' Tokens={query_tokens}")
+        
         for item in self._items:
             score = 0
             
             # Fields to search
             name = item.get("name", "").lower()
             category = item.get("category", "").lower()
-            desc = item.get("description", "").lower()
+            tags = item.get("search_tags", [])
             
             # 1. Exact Substring in Name (Highest Confidence)
             if query in name:
                 score += 100
-                
-            # 2. Exact Substring in Category
-            elif query in category: # Only check if not in name (or additive?) additive is fine
-                score += 80
+            
+            # 2. Check Search Tags (High Confidence)
+            # If query matches a tag exactly or if all query tokens are present in tags
+            for tag in tags:
+                if query == tag:
+                    score += 95
+                elif query in tag:
+                    score += 80
             
             # 3. Token Match (e.g. "TVS 125" -> "TVS" + "125" in "TVS Raider 125")
-            # Checks if ALL query tokens exist in the item's name/category
-            # Only relevant if not a direct substring match
-            elif len(query_tokens) > 1:
-                item_text = f"{name} {category}"
-                matches = sum(1 for t in query_tokens if t in item_text)
-                if matches == len(query_tokens):
+            # Checks if ALL query tokens exist in the item's name/category/tags
+            if len(query_tokens) > 0:
+                # Combine all text sources
+                item_text = f"{name} {category} {' '.join(tags)}"
+                
+                matches = 0
+                for t in query_tokens:
+                    if t in item_text:
+                        matches += 1
+                    else:
+                        # Fuzzy matches for tokens? "Raidr" -> "Raider"
+                        # Check against name words and tags
+                        fuzzy_hit = False
+                        
+                        # Check name words
+                        for word in name.split():
+                            if difflib.SequenceMatcher(None, t, word).ratio() > 0.8:
+                                fuzzy_hit = True
+                                break
+                        
+                        # Check tags
+                        if not fuzzy_hit:
+                            for tag in tags:
+                                if difflib.SequenceMatcher(None, t, tag).ratio() > 0.8:
+                                    fuzzy_hit = True
+                                    break
+                                    
+                        if fuzzy_hit:
+                            matches += 0.8 # Slightly less than exact token match
+
+                if matches >= len(query_tokens):
                     score += 90 
                 elif matches > 0:
-                    score += (matches / len(query_tokens)) * 60
+                    score += (matches / len(query_tokens)) * 70
 
-            # 4. Fuzzy Word Match (Typos: "Raidr" -> "Raider")
-            # If no strong match, check individual query words against item name words
-            else:
-                # Compare query against name using SequenceMatcher
-                ratio = difflib.SequenceMatcher(None, query, name).ratio()
-                if ratio > 0.6: # Reasonable similarity threshold
-                    score += ratio * 70
-                    
-                # Also check word-by-word (e.g. query "Raidr" vs name "Raider 125")
-                # Split item name into words
-                name_words = name.split()
-                max_word_score = 0
-                for qw in query_tokens:
-                    # Find best match for this query word in name words
-                    best_match = difflib.get_close_matches(qw, name_words, n=1, cutoff=0.7)
-                    if best_match:
-                        mw_score = difflib.SequenceMatcher(None, qw, best_match[0]).ratio()
-                        if mw_score > max_word_score:
-                            max_word_score = mw_score
-                
-                if max_word_score > 0:
-                     score += max_word_score * 50 # Add fuzzy component
+            # 4. Fuzzy Overall Name Match (Typos: "Raidr" -> "Raider")
+            ratio = difflib.SequenceMatcher(None, query, name).ratio()
+            if ratio > 0.6: # Reasonable similarity threshold
+                score += ratio * 60
 
-            if score > 45: # Minimum confidence threshold
+            if score > 30: # Lowered threshold as requested
                 scored_results.append((score, item))
         
         # Sort by score descending
         scored_results.sort(key=lambda x: x[0], reverse=True)
+        
+        if scored_results:
+             logger.info(f"✅ Top Result: {scored_results[0][1]['name']} (Score: {scored_results[0][0]})")
         
         # Return top 5 unique items
         unique_results = []
