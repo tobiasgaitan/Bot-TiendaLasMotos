@@ -34,44 +34,49 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhook", tags=["WhatsApp"])
 
 # ============================================================================
-# LOCAL DEPENDENCIES (To avoid import errors)
+# STATE & INITIALIZATION
 # ============================================================================
 
-# Initialize dependencies locally for this router to ensure availability
+# Global variables initialized to None
 db = None
-try:
-    creds = get_firebase_credentials_object()
-    db = firestore.Client(credentials=creds, project=settings.gcp_project_id)
-    logger.info(f"✅ Database connected to project: {settings.gcp_project_id}")
-except Exception as e:
-    logger.error(f"❌ Failed to initialize Firestore: {e}", exc_info=True)
-
-# Initialize ConfigLoader (needed for AI)
 config_loader = None
-if db:
-    try:
-        config_loader = ConfigLoader(db)
-    except Exception:
-        pass
-
-# Initialize MotorFinanciero (Needed for survey)
 motor_financiero = None
-if db:
-    try:
-        motor_financiero = MotorFinanciero(db, config_loader)
-    except Exception:
-        pass
-
-# Initialize CatalogService (Needed for AI Tools)
 catalog_service_local = None
-if db:
-    try:
-        catalog_service_local = CatalogService()
-        catalog_service_local.initialize(db)
-        logger.info("✅ CatalogService initialized in whatsapp router")
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize CatalogService in router: {e}")
 
+def _ensure_services():
+    """Lazy initialization of services"""
+    global db, config_loader, motor_financiero, catalog_service_local
+    
+    # 1. Firestore
+    if not db:
+        try:
+            creds = get_firebase_credentials_object()
+            db = firestore.Client(credentials=creds, project=settings.gcp_project_id)
+            logger.info(f"✅ Database connected to project: {settings.gcp_project_id}")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Firestore: {e}", exc_info=True)
+            return # Cannot proceed
+
+    # 2. Config Loader
+    if db and not config_loader:
+        try:
+            config_loader = ConfigLoader(db)
+        except Exception: pass
+
+    # 3. Motor Financiero
+    if db and not motor_financiero:
+         try:
+            motor_financiero = MotorFinanciero(db, config_loader)
+         except Exception: pass
+
+    # 4. Catalog Service
+    if db and not catalog_service_local:
+        try:
+            catalog_service_local = CatalogService()
+            catalog_service_local.initialize(db)
+            logger.info("✅ CatalogService initialized")
+        except Exception as e:
+             logger.error(f"❌ Failed to initialize CatalogService: {e}")
 
 # ============================================================================
 # WEBHOOK ENDPOINTS
@@ -108,8 +113,6 @@ async def webhook_handler(
         if not msg_data:
             return {"status": "ignored"}
 
-        # Use processing_messages set if desired, but kept simple here
-        
         # Procesamiento en segundo plano
         background_tasks.add_task(_handle_message_background, msg_data)
         return {"status": "received"}
@@ -125,6 +128,9 @@ async def webhook_handler(
 
 async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
     """Lógica principal del bot (Procesamiento Asíncrono)"""
+    # Ensure services are initialized before proceeding
+    _ensure_services()
+
     try:
         # 1. Extracción de Datos
         from app.core.utils import PhoneNormalizer
@@ -145,7 +151,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             logger.info(f"📸 Media detected from {user_phone} (Type: {msg_type}). Processing immediately...")
             await _mark_message_as_read(msg_data["id"])
             
-            # Initialize Vision Service locally
+            # Initialize Vision Service locally if needed
             if db:
                 try:
                     vision_service = VisionService(db)
@@ -165,7 +171,6 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     # FILTER: If it's a document, ensure it's an image
                     if msg_type == "document" and not mime_type.startswith("image/"):
                         logger.info(f"📄 Document ignored (MIME: {mime_type}). Not an image.")
-                        # Optional: Reply saying we only read images? For now, ignore to avoid spam on PDF contracts.
                         return 
                     
                     if not media_id:
@@ -246,17 +251,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             return
 
         # 3. Encuesta Financiera (Router Inteligente)
-        # Initialize MotorFinanciero locally (Lazy Loading)
-        motor_financiero = None
-        if db:
-            try:
-                motor_financiero = MotorFinanciero(db, config_loader)
-            except Exception: pass
-
         session = await _get_session(db, user_phone)
         
-        # KEYWORDS que activan el SurveyService (Modo Estricto)
-        # KEYWORDS que activan el SurveyService (Modo Estricto)
         KEYWORDS_FINANCIERAS = ["credito", "crédito", "financiar", "cuotas", "simular", "reportado", "viabilidad"]
         
         tiene_sesion_activa = session.get("status", "IDLE") != "IDLE"
@@ -279,7 +275,6 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     if memory_service:
                         memory_service.set_human_help_status(user_phone, True)
                     await _send_whatsapp_message(user_phone, "Entendido. Un asesor humano revisará tu caso. 👨💻")
-                    # No notification here to keep it simple and imported-free, or import notification_service if needed.
                     try:
                         from app.services.notification_service import notification_service
                         await notification_service.notify_human_handoff(user_phone, "survey_fallback")
@@ -291,7 +286,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 return
 
         # 4. Cerebro IA (Juan Pablo)
-        # Instantiate services that need config
+        # Instantiate services with verified dependencies
         cerebro_ia = CerebroIA(config_loader, catalog_service_local)
         vision_service = VisionService(db)
         audio_service = AudioService(config_loader)
@@ -368,10 +363,8 @@ def _extract_message_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if msg_type == "text":
             data["text"] = msg["text"]["body"]
         elif msg_type == "image":
-            # Extract full image object for flexibility (id, mime_type, caption, sha256)
             image_obj = msg["image"]
             data["image"] = image_obj
-            # Keep flat keys for backward compatibility/ease of use if needed
             data["media_id"] = image_obj.get("id")
             data["mime_type"] = image_obj.get("mime_type")
             data["caption"] = image_obj.get("caption", "")
@@ -450,12 +443,10 @@ async def _download_media(media_id: str) -> Optional[bytes]:
         headers = {"Authorization": f"Bearer {settings.whatsapp_token}"}
         
         async with httpx.AsyncClient() as client:
-            # 1. Get URL
             r1 = await client.get(url, headers=headers)
             if r1.status_code != 200: return None
             media_url = r1.json().get("url")
             
-            # 2. Get Content
             r2 = await client.get(media_url, headers=headers)
             if r2.status_code != 200: return None
             return r2.content
