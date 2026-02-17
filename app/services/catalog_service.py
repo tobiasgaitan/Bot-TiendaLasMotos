@@ -176,6 +176,88 @@ class CatalogService:
         """Get list of all available categories."""
         return list(self._items_by_category.keys())
     
+    def search_items(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Search for items using fuzzy matching and token tolerance.
+        Returns top results sorted by implementation score.
+        """
+        import difflib
+        
+        query = query.lower().strip()
+        if not query:
+            return []
+
+        scored_results = []
+        
+        # Pre-compute query tokens
+        query_tokens = query.split()
+        
+        for item in self._items:
+            score = 0
+            
+            # Fields to search
+            name = item.get("name", "").lower()
+            category = item.get("category", "").lower()
+            desc = item.get("description", "").lower()
+            
+            # 1. Exact Substring in Name (Highest Confidence)
+            if query in name:
+                score += 100
+                
+            # 2. Exact Substring in Category
+            elif query in category: # Only check if not in name (or additive?) additive is fine
+                score += 80
+            
+            # 3. Token Match (e.g. "TVS 125" -> "TVS" + "125" in "TVS Raider 125")
+            # Checks if ALL query tokens exist in the item's name/category
+            # Only relevant if not a direct substring match
+            elif len(query_tokens) > 1:
+                item_text = f"{name} {category}"
+                matches = sum(1 for t in query_tokens if t in item_text)
+                if matches == len(query_tokens):
+                    score += 90 
+                elif matches > 0:
+                    score += (matches / len(query_tokens)) * 60
+
+            # 4. Fuzzy Word Match (Typos: "Raidr" -> "Raider")
+            # If no strong match, check individual query words against item name words
+            else:
+                # Compare query against name using SequenceMatcher
+                ratio = difflib.SequenceMatcher(None, query, name).ratio()
+                if ratio > 0.6: # Reasonable similarity threshold
+                    score += ratio * 70
+                    
+                # Also check word-by-word (e.g. query "Raidr" vs name "Raider 125")
+                # Split item name into words
+                name_words = name.split()
+                max_word_score = 0
+                for qw in query_tokens:
+                    # Find best match for this query word in name words
+                    best_match = difflib.get_close_matches(qw, name_words, n=1, cutoff=0.7)
+                    if best_match:
+                        mw_score = difflib.SequenceMatcher(None, qw, best_match[0]).ratio()
+                        if mw_score > max_word_score:
+                            max_word_score = mw_score
+                
+                if max_word_score > 0:
+                     score += max_word_score * 50 # Add fuzzy component
+
+            if score > 45: # Minimum confidence threshold
+                scored_results.append((score, item))
+        
+        # Sort by score descending
+        scored_results.sort(key=lambda x: x[0], reverse=True)
+        
+        # Return top 5 unique items
+        unique_results = []
+        seen_ids = set()
+        for _, item in scored_results:
+            if item["id"] not in seen_ids:
+                unique_results.append(item)
+                seen_ids.add(item["id"])
+                
+        return unique_results[:5]
+
     def refresh(self) -> None:
         """Refresh catalog from Firestore."""
         logger.info("🔄 Refreshing catalog...")

@@ -188,21 +188,22 @@ class CerebroIA:
                         logger.info(f"🔎 AI searching catalog for: '{query}'")
                         
                         search_results = "No se encontraron resultados."
+                        search_results = "No se encontraron resultados."
                         if self.catalog_service:
-                            # Simple search implementation (can be improved)
-                            all_items = self.catalog_service.get_all_items()
-                            # Filter simplistic
-                            matches = [
-                                item for item in all_items 
-                                if query.lower() in item['name'].lower() or query.lower() in item['category'].lower()
-                            ]
+                            # Use robust search implementation from service
+                            matches = self.catalog_service.search_items(query)
                             
                             if matches:
-                                search_results = f"Encontré {len(matches)} motos:\n"
-                                for m in matches[:3]: # Limit to 3 results
-                                    search_results += f"- {m['name']}: {m['formatted_price']} (Categoría: {m['category']})\n"
+                                search_results = f"Encontré {len(matches)} motos relacionadas:\n"
+                                for m in matches: # Already limited to top 5 by service
+                                    # Format with key details for AI to use
+                                    search_results += f"- {m['name']} ({m['category']}): {m['formatted_price']}\n"
+                                    # Add highlights or specs if available could be useful
+                                    if m.get('specs'):
+                                         specs = str(m['specs'])[:100] # Truncate specs
+                                         search_results += f"  Info: {specs}...\n"
                             else:
-                                search_results = "No encontré motos con ese nombre exacto. Intenta con una categoría (Deportiva, Trabajo, etc)."
+                                search_results = "No encontré motos que coincidan con esa búsqueda. Intenta con otra categoría o nombre."
                         else:
                             search_results = "Error: Servicio de catálogo no disponible."
                             
