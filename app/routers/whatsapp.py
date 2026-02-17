@@ -26,8 +26,10 @@ from app.services.audio_service import AudioService
 from app.services.catalog_service import CatalogService # Local instantiation class
 from app.services.survey_service import survey_service # Singleton
 
-# --- MEMORY SERVICE (SINGLETON) ---
-from app.services.memory_service import memory_service
+# --- MEMORY SERVICE (MODULE IMPORT FOR SINGLETON ACCESS) ---
+import app.services.memory_service as memory_service_module
+# Note: Access via memory_service_module.memory_service to get the updated instance
+
 
 logger = logging.getLogger(__name__)
 
@@ -205,9 +207,9 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         await _mark_message_as_read(msg_data["id"]) 
 
         # 1.5 Save User Message to History (PERSISTENCE FIX)
-        if memory_service and msg_type == "text":
+        if memory_service_module.memory_service and msg_type == "text":
             # Optimistic save (don't block too long)
-            await memory_service.save_message(user_phone, "user", message_body)
+            await memory_service_module.memory_service.save_message(user_phone, "user", message_body)
 
         # --- LÓGICA DE RESET NUCLEAR (PRIORIDAD 0) ---
         # FIX: Ensure it is strict text match
@@ -258,13 +260,14 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         prospect_data = None
         current_history = []
         
-        if memory_service:
+        if memory_service_module.memory_service:
+            ms = memory_service_module.memory_service
             # Create if missing (ensure prospect exists)
-            memory_service.create_prospect_if_missing(user_phone)
+            ms.create_prospect_if_missing(user_phone)
             # Update timestamp
-            memory_service.update_last_interaction(user_phone)
+            ms.update_last_interaction(user_phone)
             # Get data
-            prospect_data = memory_service.get_prospect_data(user_phone)
+            prospect_data = ms.get_prospect_data(user_phone)
             logger.info(f"👤 Prospect Data Loaded: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
             
             # Human Gatekeeper Check
@@ -274,7 +277,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
 
             # LOAD HISTORY for Context (CONTEXT FIX)
             logger.info(f"📜 Loading chat history for {user_phone}...")
-            current_history = await memory_service.get_chat_history(user_phone, limit=10)
+            current_history = await ms.get_chat_history(user_phone, limit=10)
             
             # GREETING BYPASS LOGIC (Time-Based)
             skip_greeting = False
@@ -307,6 +310,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     if diff_seconds < 7200:
                         skip_greeting = True
                         logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
+        else:
+            logger.warning("⚠️ Memory Service is NOT initialized (None). Skipping persistence.")
 
             # Inject SKIP_GREETING instruction into context for AI - Handled in ai_brain
             
@@ -332,8 +337,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         if response_text:
             # Check for AI Handoff
             if response_text.startswith("HANDOFF_TRIGGERED"):
-                if memory_service:
-                    memory_service.set_human_help_status(user_phone, True)
+                if memory_service_module.memory_service:
+                    memory_service_module.memory_service.set_human_help_status(user_phone, True)
                 await _send_whatsapp_message(user_phone, "Entendido. Buscando un humano... 🔍")
                 try:
                     from app.services.notification_service import notification_service
@@ -343,15 +348,15 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 await _send_whatsapp_message(user_phone, response_text)
                 
                 # Save Bot Response to History (PERSISTENCE FIX)
-                if memory_service:
-                    await memory_service.save_message(user_phone, "model", response_text)
+                if memory_service_module.memory_service:
+                    await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
 
                 # Update Summary
-                if msg_type == "text" and memory_service:
+                if msg_type == "text" and memory_service_module.memory_service:
                     try:
                         conversation = f"User: {message_body}\nBot: {response_text}"
                         summary_data = cerebro_ia.generate_summary(conversation)
-                        await memory_service.update_prospect_summary(
+                        await memory_service_module.memory_service.update_prospect_summary(
                             user_phone, 
                             summary_data.get("summary", ""), 
                             summary_data.get("extracted", {})
