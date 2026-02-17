@@ -143,6 +143,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         logger.info(f"🕵️ DEBUG: Received message from {user_phone} | Type: '{msg_type}' | Keys: {list(msg_data.keys())}")
         
         message_body = ""
+        response_text = None # FIX: Initialize to prevent UnboundLocalError
         
         if msg_type == "text":
             message_body = msg_data.get("text", "").strip()
