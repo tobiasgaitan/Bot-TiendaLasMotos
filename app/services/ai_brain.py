@@ -107,11 +107,11 @@ class CerebroIA:
     def _default_instruction(self) -> str:
         return self._get_system_instruction()
     
-    def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None, history: list = []) -> str:
+    def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
         """
         Generate an intelligent response using Gemini AI with Retry Logic.
         """
-        return self._generate_with_retry(texto, context, prospect_data, history)
+        return self._generate_with_retry(texto, context, prospect_data, history, skip_greeting)
 
     def _create_tools(self) -> Optional[Tool]:
         """
@@ -159,7 +159,7 @@ class CerebroIA:
             logger.error(f"❌ Error creating tools: {str(e)}")
             return None
 
-    def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = []) -> str:
+    def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
         """
         Internal generation with exponential backoff.
         """
@@ -176,6 +176,9 @@ class CerebroIA:
                 chat = self._model.start_chat()
                 
                 full_prompt = f"{self._system_instruction}\n\n"
+                
+                # Identity Guard
+                full_prompt += "Your name is Juan Pablo. NEVER address the user as Juan Pablo.\n"
                 
                 # Inject prospect data for personalization
                 if prospect_data and prospect_data.get("exists"):
@@ -204,13 +207,16 @@ class CerebroIA:
                 if context:
                     full_prompt += f"RESUMEN CONVERSACIÓN ANTERIOR (Largo Plazo):\n{context}\n\n"
                 
+                # Greeting Bypass Instruction
+                if skip_greeting:
+                    full_prompt += "\n[SYSTEM: Omit introductory greetings. Respond directly to the user's query as the conversation is ongoing.]\n"
+
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
                 # 1. Send initial message
                 response = chat.send_message(full_prompt)
                 
                 # 2. Check for Function Call
-                # Use robust checking for function call presence
                 candidate = response.candidates[0]
                 if candidate.content.parts and candidate.content.parts[0].function_call:
                     function_call = candidate.content.parts[0].function_call
@@ -242,10 +248,8 @@ class CerebroIA:
                         else:
                             search_results = "Error: Servicio de catálogo no disponible."
                         
-                        logger.info(f"📤 Sending tool response to AI: {search_results[:200]}...") # Log 200 chars
+                        logger.info(f"📤 Sending tool response to AI: {search_results[:200]}...") 
                         
-                        # FIX: Create correctly structured FunctionResponse Part
-                        # Vertex AI expects 'response' to be a dict corresponding to the tool output structure
                         tool_response_part = Part.from_function_response(
                             name=function_name,
                             response={
@@ -253,10 +257,8 @@ class CerebroIA:
                             }
                         )
                         
-                        # Debug logic to verify part creation
                         logger.info("📤 Created tool_response_part successfully.")
 
-                        # Send the tool response to the SAME chat session
                         final_response = chat.send_message(tool_response_part)
                         
                         return final_response.text.strip()
@@ -265,17 +267,13 @@ class CerebroIA:
                 ai_response = response.text.strip()
                 if not ai_response:
                         logger.warning("⚠️ Empty AI response")
-                        # Pass history to fallback to allow for rudimentary context
                         return self._fallback_response(texto, history)
                         
                 logger.info(f"✅ AI response generated ({len(ai_response)} chars)")
                 return ai_response
             
             except InvalidArgument as e:
-                # 400 Errors (Logic/Validation) - Do not retry blindly
                 logger.error(f"❌ Invalid Argument (400) in AI attempt {attempt+1}: {e}")
-                # Try to salvage conversation by NOT calling tools if that was the issue?
-                # For now, just break to fallback
                 break
                 
             except (ResourceExhausted, ServiceUnavailable) as e:
@@ -362,9 +360,6 @@ Responde en formato JSON:
         Clean, generic fallback response to avoid hallucinations.
         Uses history to allow basic continuity if AI fails.
         """
-        # If we have history, user likely already knows who we are.
-        # Don't introduce ourselves again if it feels repetitive.
-        
         return """
 ¡Hola! Soy Juan Pablo de Tienda Las Motos 🏍️
 

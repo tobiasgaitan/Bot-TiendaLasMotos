@@ -262,92 +262,45 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             
             # LOAD HISTORY for Context (CONTEXT FIX)
             current_history = await memory_service.get_chat_history(user_phone, limit=10)
-        
-        # Human Gatekeeper
-        if prospect_data and prospect_data.get('human_help_requested', False):
-            return
-
-        # 3. Encuesta Financiera (Router Inteligente)
-        session = await _get_session(db, user_phone)
-        
-        KEYWORDS_FINANCIERAS = ["credito", "crédito", "financiar", "cuotas", "simular", "reportado", "viabilidad"]
-        
-        tiene_sesion_activa = session.get("status", "IDLE") != "IDLE"
-        es_mensaje_financiero = any(k in message_body.lower() for k in KEYWORDS_FINANCIERAS)
-        es_intencion_corta = len(message_body.split()) < 4 
-
-        # Regla: Solo pasar a Encuesta si hay sesión activa O (intención financiera explícita Y es corta)
-        if msg_type == "text" and (tiene_sesion_activa or (es_mensaje_financiero and es_intencion_corta)):
-            # Using singleton survey_service
-            survey_response = await survey_service.handle_survey_step(
-                db_client=db,
-                phone=user_phone,
-                message_text=message_body,
-                current_session=session,
-                motor_finanzas=motor_financiero
-            )
             
-            if survey_response:
-                if survey_response.startswith("HANDOFF_TRIGGERED"):
-                    if memory_service:
-                        memory_service.set_human_help_status(user_phone, True)
-                    await _send_whatsapp_message(user_phone, "Entendido. Un asesor humano revisará tu caso. 👨💻")
-                    try:
-                        from app.services.notification_service import notification_service
-                        await notification_service.notify_human_handoff(user_phone, "survey_fallback")
-                    except ImportError:
-                        pass
-                    return
-                
-                await _send_whatsapp_message(user_phone, survey_response)
-                # Save Survey Bot Response
-                if memory_service:
-                    await memory_service.save_message(user_phone, "model", survey_response)
-                return
-
-        # 4. Cerebro IA (Juan Pablo)
-        cerebro_ia = CerebroIA(config_loader, catalog_service_local)
-        vision_service = VisionService(db)
-        audio_service = AudioService(config_loader)
-
-        response_text = ""
-        
-        if msg_type == "text":
-            context = prospect_data.get("summary", "") if prospect_data else ""
-            
-            # GREETING BYPASS LOGIC
+            # GREETING BYPASS LOGIC (Time-Based)
             skip_greeting = False
             if current_history:
                 last_msg = current_history[-1]
                 last_ts = last_msg.get("timestamp")
                 
-                # If timestamp is a Firestore Timestamp, convert to datetime
-                if hasattr(last_ts, 'timestamp'):
+                # Normalize timestamp to datetime
+                last_time = None
+                if hasattr(last_ts, 'timestamp'): # Firestore Timestamp
                     last_time = datetime.fromtimestamp(last_ts.timestamp(), tz=timezone.utc)
                 elif isinstance(last_ts, datetime):
                     last_time = last_ts
-                else:
-                    last_time = None
+                elif isinstance(last_ts, str): # String ISO format fallback
+                    try:
+                        last_time = datetime.fromisoformat(last_ts.replace('Z', '+00:00'))
+                    except: pass
                 
                 if last_time:
                     # Calculate duration since last message
                     now = datetime.now(timezone.utc)
-                    diff = (now - last_time).total_seconds()
+                    # Ensure last_time is timezone aware for subtraction
+                    if last_time.tzinfo is None:
+                        last_time = last_time.replace(tzinfo=timezone.utc)
+                        
+                    delta = now - last_time
+                    diff_seconds = delta.total_seconds()
                     
                     # If less than 2 hours (7200s), skip greeting
-                    if diff < 7200:
+                    if diff_seconds < 7200:
                         skip_greeting = True
-                        logger.info(f"⏳ Recent conversation detected ({int(diff)}s ago). Skipping greeting.")
-            
-            # Inject SKIP_GREETING instruction into context for AI
-            if skip_greeting:
-                context += "\n[SYSTEM: SKIP GREETING. User returned recently. Do NOT say 'Hola' or introduce yourself again. Continue conversation naturally.]"
+                        logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
 
             response_text = cerebro_ia.pensar_respuesta(
                 message_body, 
                 context=context, 
                 prospect_data=prospect_data,
-                history=current_history 
+                history=current_history,
+                skip_greeting=skip_greeting
             )
             
         elif msg_type == "audio":
