@@ -118,7 +118,11 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         
         raw_phone = msg_data["from"]
         user_phone = PhoneNormalizer.normalize(raw_phone)
-        msg_type = msg_data["type"]
+        msg_type = msg_data["type"].lower()
+        
+        # DEBUG LOG for Image Troubleshooting
+        logger.info(f"🕵️ DEBUG: Received message from {user_phone} | Type: '{msg_type}' | Keys: {list(msg_data.keys())}")
+        
         message_body = ""
         
         if msg_type == "text":
