@@ -22,6 +22,7 @@ from app.services.finance import MotorFinanciero
 from app.services.ai_brain import CerebroIA
 from app.services.vision_service import VisionService
 from app.services.audio_service import AudioService
+from app.services.catalog_service import CatalogService # Local instantiation class
 from app.services.survey_service import survey_service # Singleton
 
 # --- MEMORY SERVICE (SINGLETON) ---
@@ -52,12 +53,18 @@ if db:
         pass
 
 # Initialize MotorFinanciero (Needed for survey)
-motor_financiero = None
-if db:
-    try:
-        motor_financiero = MotorFinanciero(db, config_loader)
     except Exception:
         pass
+
+# Initialize CatalogService (Needed for AI Tools)
+catalog_service_local = None
+if db:
+    try:
+        catalog_service_local = CatalogService()
+        catalog_service_local.initialize(db)
+        logger.info("✅ CatalogService initialized in whatsapp router")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize CatalogService in router: {e}")
 
 
 # ============================================================================
@@ -279,7 +286,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
 
         # 4. Cerebro IA (Juan Pablo)
         # Instantiate services that need config
-        cerebro_ia = CerebroIA(config_loader)
+        cerebro_ia = CerebroIA(config_loader, catalog_service_local)
         vision_service = VisionService(db)
         audio_service = AudioService(config_loader)
 

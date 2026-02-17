@@ -73,22 +73,22 @@ class TestCatalogServiceRefactor(unittest.TestCase):
         self.assertEqual(len(items), 3, "Should load 3 items (1 inactive skipped)")
 
         # Verify Item 1 (Standard)
-        item1 = next(i for i in items if i["id"] == "nkd-125")
+        item1 = next(i for i in items if i["id"] == "moto_1") # id is now doc.id as per user snippet
         self.assertEqual(item1["name"], "NKD 125")
         self.assertEqual(item1["price"], 5000000)
-        self.assertEqual(item1["image"], "http://img.com/nkd.jpg")
+        self.assertEqual(item1["image_url"], "http://img.com/nkd.jpg")
         self.assertEqual(item1["category"], "urbana")
 
         # Verify Item 2 (Edge cases)
-        item2 = next(i for i in items if i["id"] == "sport-100")
+        item2 = next(i for i in items if i["id"] == "moto_2")
         self.assertEqual(item2["name"], "Sport 100")
         self.assertEqual(item2["price"], 4500000)
-        self.assertEqual(item2["image"], "http://img.com/sport.jpg")
+        self.assertEqual(item2["image_url"], "http://img.com/sport.jpg")
         
         # Verify Item 4 (Bad Data)
-        item4 = next(i for i in items if i["id"] == "mystery-moto")
+        item4 = next(i for i in items if i["id"] == "moto_4")
         self.assertEqual(item4["price"], 0)
-        self.assertEqual(item4["image"], "")
+        self.assertEqual(item4["image_url"], "")
 
         print("\n✅ Catalog Service Refactor Verification Passed!")
         print(f"   Loaded {len(items)} items correctly.")

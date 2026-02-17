@@ -34,14 +34,16 @@ class CerebroIA:
     services, and dealership information.
     """
     
-    def __init__(self, config_loader=None):
+    def __init__(self, config_loader=None, catalog_service=None):
         """
         Initialize the AI brain.
         
         Args:
             config_loader: Optional ConfigLoader instance for dynamic personality
+            catalog_service: Optional CatalogService instance for tool use
         """
         self._config_loader = config_loader
+        self._catalog_service = catalog_service
         self._model = None
         self._system_instruction = self._get_system_instruction()
         self._tools = self._create_tools()
@@ -50,12 +52,12 @@ class CerebroIA:
         if VERTEX_AI_AVAILABLE:
             try:
                 vertexai.init(project="tiendalasmotos", location="us-central1")
-                # Initialize model SANS tools (No internal handoff)
+                # Initialize model WITH tools
                 self._model = GenerativeModel(
                     "gemini-2.5-flash",
-                    tools=[] # DISABLE AI HANDOFF
+                    tools=[self._tools] if self._tools else []
                 )
-                logger.info("🧠 CerebroIA initialized with Gemini 2.5 Flash (No Tools)")
+                logger.info(f"🧠 CerebroIA initialized with Gemini 2.5 Flash ({'Tools Enabled' if self._tools else 'No Tools'})")
             except Exception as e:
                 logger.error(f"❌ Error initializing Vertex AI: {str(e)}")
                 self._model = None
@@ -138,8 +140,24 @@ class CerebroIA:
                     "required": ["reason"]
                 }
             )
+
+            # Define catalog search function
+            catalog_function = FunctionDeclaration(
+                name="search_catalog",
+                description="Search for motorcycles in the catalog using a query string. Use this to find prices, specs, and models.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query (e.g., 'NKD 125', 'motos deportivas', 'precio de la Victory')"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            )
             
-            return Tool(function_declarations=[handoff_function])
+            return Tool(function_declarations=[handoff_function, catalog_function])
         except Exception as e:
             logger.error(f"❌ Error creating tools: {str(e)}")
             return None
@@ -195,17 +213,61 @@ class CerebroIA:
                 
                 response = chat.send_message(full_prompt)
                 
-                # Check if model wants to call a function (human handoff)
+                # Check if model wants to call a function (human handoff or catalog)
                 if response.candidates[0].content.parts[0].function_call:
                     function_call = response.candidates[0].content.parts[0].function_call
                     
+                    # 1. Human Handoff
                     if function_call.name == "trigger_human_handoff":
                         reason = function_call.args.get("reason", "unknown")
                         logger.warning(f"🚨 AI triggered human handoff | Reason: {reason}")
-                        
-                        # Return special marker that router will detect
-                        # Format: HANDOFF_TRIGGERED:reason
                         return f"HANDOFF_TRIGGERED:{reason}"
+                    
+                    # 2. Catalog Search
+                    elif function_call.name == "search_catalog":
+                        query = function_call.args.get("query", "")
+                        logger.info(f"🔎 AI searching catalog for: '{query}'")
+                        
+                        search_results = "No se encontraron resultados."
+                        if self._catalog_service:
+                            # Simple search implementation (can be improved)
+                            all_items = self._catalog_service.get_all_items()
+                            # Filter simplistic
+                            matches = [
+                                item for item in all_items 
+                                if query.lower() in item['name'].lower() or query.lower() in item['category'].lower()
+                            ]
+                            
+                            if matches:
+                                search_results = f"Encontré {len(matches)} motos:\n"
+                                for m in matches[:3]: # Limit to 3 results
+                                    search_results += f"- {m['name']}: {m['formatted_price']} (Categoría: {m['category']})\n"
+                            else:
+                                search_results = "No encontré motos con ese nombre exacto. Intenta con una categoría (Deportiva, Trabajo, etc)."
+                        else:
+                            search_results = "Error: Servicio de catálogo no disponible."
+                            
+                        # Feed result back to Gemini
+                        logger.info(f"📤 Sending tool response to AI: {search_results[:100]}...")
+                        
+                        # Construct Tool Response
+                        # Note: Vertex AI SDK requires a specific flow for multi-turn tool use.
+                        # For simplicity in this 'stateless' method, we restart chat with history + tool response.
+                        # BUT, `chat` object maintains history. So we just send the tool response.
+                        
+                        from vertexai.generative_models import Part
+                        
+                        tool_response = Part.from_function_response(
+                            name="search_catalog",
+                            response={"content": search_results}
+                        )
+                        
+                        # Send tool response back to model to get final text
+                        final_response = chat.send_message(
+                            [tool_response]
+                        )
+                        
+                        return final_response.text.strip()
                 
                 # Normal text response
                 ai_response = response.text.strip()
