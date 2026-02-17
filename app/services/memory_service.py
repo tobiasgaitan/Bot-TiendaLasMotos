@@ -343,6 +343,76 @@ class MemoryService:
             logger.error(f"❌ Error creating prospect for {phone_number}: {e}", exc_info=True)
             return False
 
+    async def save_message(self, phone_number: str, role: str, content: str) -> None:
+        """
+        Save a message to the chat history sub-collection.
+        
+        Path: mensajeria/whatsapp/sesiones/{phone}/historial
+        
+        Args:
+            phone_number: User's phone number
+            role: 'user' or 'model'
+            content: Message text
+        """
+        try:
+            from app.core.utils import PhoneNormalizer
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            
+            # Sub-collection reference
+            history_ref = self._db.collection("mensajeria").document("whatsapp").collection("sesiones").document(clean_phone).collection("historial")
+            
+            # Create message document
+            message_data = {
+                "role": role,
+                "content": content,
+                "timestamp": firestore.SERVER_TIMESTAMP
+            }
+            
+            # Using add() allows auto-ID generation
+            history_ref.add(message_data)
+            # logger.debug(f"💾 Message saved for {clean_phone} ({role})")
+            
+        except Exception as e:
+            logger.error(f"❌ Error saving message history for {phone_number}: {e}")
+
+    async def get_chat_history(self, phone_number: str, limit: int = 10) -> list:
+        """
+        Retrieve recent chat history for context injection.
+        
+        Args:
+            phone_number: User's phone number
+            limit: Number of recent messages to retrieve
+            
+        Returns:
+            List of dicts: [{"role": "user", "content": "..."}, ...] (Oldest first)
+        """
+        try:
+            from app.core.utils import PhoneNormalizer
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            
+            history_ref = self._db.collection("mensajeria").document("whatsapp").collection("sesiones").document(clean_phone).collection("historial")
+            
+            # Query: Order by timestamp DESC to get recent, then reverse list
+            query = history_ref.order_by("timestamp", direction=firestore.Query.DESCENDING).limit(limit)
+            docs = query.stream()
+            
+            messages = []
+            for doc in docs:
+                data = doc.to_dict()
+                messages.append({
+                    "role": data.get("role"),
+                    "content": data.get("content"),
+                    # Add timestamp for potential time-based logic (last 30m)
+                    "timestamp": data.get("timestamp")
+                })
+            
+            # Return reversed (chronological order: Oldest -> Newest)
+            return messages[::-1]
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting chat history for {phone_number}: {e}")
+            return []
+
 
 # Singleton instance (will be initialized in main.py with db)
 memory_service: Optional[MemoryService] = None

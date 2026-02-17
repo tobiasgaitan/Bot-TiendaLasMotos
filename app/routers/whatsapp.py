@@ -199,8 +199,13 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         # Marcar como leído locally
         await _mark_message_as_read(msg_data["id"]) 
 
+        # 1.5 Save User Message to History (PERSISTENCE FIX)
+        if memory_service and msg_type == "text":
+            # Optimistic save (don't block too long)
+            await memory_service.save_message(user_phone, "user", message_body)
+
         # --- LÓGICA DE RESET NUCLEAR (PRIORIDAD 0) ---
-        if message_body.lower() == "/reset":
+        if message_body.strip() == "/reset":
             logger.warning(f"☢️ NUCLEAR RESET TRIGGERED for {user_phone}")
             
             # Variantes de ID
@@ -228,6 +233,13 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                             doc_ref_active.delete()
                             deleted_count += 1
                             logger.info(f"🗑️ Deleted active session {pid}")
+                        
+                        # 3. Clean history as well
+                        history_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid).collection("historial")
+                        formatted_docs = history_ref.limit(50).stream() 
+                        for hdoc in formatted_docs:
+                            hdoc.reference.delete()
+                            
                     except Exception: pass
 
             # Always send confirmation
@@ -237,6 +249,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
 
         # 2. Gestión de Sesión
         prospect_data = None
+        current_history = []
+        
         if memory_service:
             # Create if missing (ensure prospect exists)
             memory_service.create_prospect_if_missing(user_phone)
@@ -244,10 +258,12 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             memory_service.update_last_interaction(user_phone)
             # Get data
             prospect_data = memory_service.get_prospect_data(user_phone)
+            
+            # LOAD HISTORY for Context (CONTEXT FIX)
+            current_history = await memory_service.get_chat_history(user_phone, limit=10)
         
         # Human Gatekeeper
         if prospect_data and prospect_data.get('human_help_requested', False):
-            # logger.info(f"⏸️ Ignored message from {user_phone} (Human Help Requested)")
             return
 
         # 3. Encuesta Financiera (Router Inteligente)
@@ -257,7 +273,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         
         tiene_sesion_activa = session.get("status", "IDLE") != "IDLE"
         es_mensaje_financiero = any(k in message_body.lower() for k in KEYWORDS_FINANCIERAS)
-        es_intencion_corta = len(message_body.split()) < 4  # New Check: Only strictly short commands
+        es_intencion_corta = len(message_body.split()) < 4 
 
         # Regla: Solo pasar a Encuesta si hay sesión activa O (intención financiera explícita Y es corta)
         if msg_type == "text" and (tiene_sesion_activa or (es_mensaje_financiero and es_intencion_corta)):
@@ -283,10 +299,12 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     return
                 
                 await _send_whatsapp_message(user_phone, survey_response)
+                # Save Survey Bot Response
+                if memory_service:
+                    await memory_service.save_message(user_phone, "model", survey_response)
                 return
 
         # 4. Cerebro IA (Juan Pablo)
-        # Instantiate services with verified dependencies
         cerebro_ia = CerebroIA(config_loader, catalog_service_local)
         vision_service = VisionService(db)
         audio_service = AudioService(config_loader)
@@ -295,7 +313,41 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         
         if msg_type == "text":
             context = prospect_data.get("summary", "") if prospect_data else ""
-            response_text = cerebro_ia.pensar_respuesta(message_body, context=context, prospect_data=prospect_data)
+            
+            # GREETING BYPASS LOGIC
+            skip_greeting = False
+            if current_history:
+                last_msg = current_history[-1]
+                last_ts = last_msg.get("timestamp")
+                
+                # If timestamp is a Firestore Timestamp, convert to datetime
+                if hasattr(last_ts, 'timestamp'):
+                    last_time = datetime.fromtimestamp(last_ts.timestamp(), tz=timezone.utc)
+                elif isinstance(last_ts, datetime):
+                    last_time = last_ts
+                else:
+                    last_time = None
+                
+                if last_time:
+                    # Calculate duration since last message
+                    now = datetime.now(timezone.utc)
+                    diff = (now - last_time).total_seconds()
+                    
+                    # If less than 2 hours (7200s), skip greeting
+                    if diff < 7200:
+                        skip_greeting = True
+                        logger.info(f"⏳ Recent conversation detected ({int(diff)}s ago). Skipping greeting.")
+
+            # Inject SKIP_GREETING instruction into context for AI
+            if skip_greeting:
+                context += "\n[SYSTEM: SKIP GREETING. User returned recently. Do NOT say 'Hola' or introduce yourself again. Continue conversation naturally.]"
+
+            response_text = cerebro_ia.pensar_respuesta(
+                message_body, 
+                context=context, 
+                prospect_data=prospect_data,
+                history=current_history 
+            )
             
         elif msg_type == "audio":
             media_id = msg_data.get("media_id")
@@ -319,6 +371,10 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             else:
                 await _send_whatsapp_message(user_phone, response_text)
                 
+                # Save Bot Response to History (PERSISTENCE FIX)
+                if memory_service:
+                    await memory_service.save_message(user_phone, "model", response_text)
+
                 # Update Summary
                 if msg_type == "text" and memory_service:
                     try:

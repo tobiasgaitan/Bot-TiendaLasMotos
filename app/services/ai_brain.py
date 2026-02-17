@@ -66,23 +66,50 @@ class CerebroIA:
     
     def _get_system_instruction(self) -> str:
         """
-        Get system instruction.
+        Get system instruction with fallback strategy:
+        1. Firestore Config (via ConfigLoader) - Dynamic
+        2. Local JSON file - Robust Fallback
+        3. Code Constant - Last Resort
         """
-        # We process the code constant directly to guarantee the update
+        instruction = ""
+        
+        # 1. Try ConfigLoader (Firestore)
+        if self.config_loader:
+            try:
+                instruction = self.config_loader.get_system_prompt()
+                if instruction:
+                    logger.info("🧠 Loaded system instruction from Firestore Config")
+                    return instruction
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to load prompt from ConfigLoader: {e}")
+
+        # 2. Try JSON File
+        try:
+            import json
+            json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "core", "personality.json")
+            if os.path.exists(json_path):
+                with open(json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    instruction = data.get("system_instruction", "")
+                    if instruction:
+                        logger.info("🧠 Loaded system instruction from personality.json")
+                        return instruction
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load prompt from JSON: {e}")
+
+        # 3. Fallback to constant
         from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
+        logger.info("🧠 Loaded system instruction from code constant (Fallback)")
         return JUAN_PABLO_SYSTEM_INSTRUCTION
 
-    
     def _default_instruction(self) -> str:
-        """Get default system instruction."""
-        from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
-        return JUAN_PABLO_SYSTEM_INSTRUCTION
+        return self._get_system_instruction()
     
-    def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None) -> str:
+    def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None, history: list = []) -> str:
         """
         Generate an intelligent response using Gemini AI with Retry Logic.
         """
-        return self._generate_with_retry(texto, context, prospect_data)
+        return self._generate_with_retry(texto, context, prospect_data, history)
 
     def _create_tools(self) -> Optional[Tool]:
         """
@@ -131,8 +158,8 @@ class CerebroIA:
         except Exception as e:
             logger.error(f"❌ Error creating tools: {str(e)}")
             return None
-    
-    def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None) -> str:
+
+    def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = []) -> str:
         """
         Internal generation with exponential backoff.
         """
@@ -152,6 +179,7 @@ class CerebroIA:
                 
                 # Inject prospect data for personalization
                 if prospect_data and prospect_data.get("exists"):
+                    # ... (existing prospect data injection) ...
                     full_prompt += "═══════════════════════════════════════════════════════════════════\n"
                     full_prompt += "INFORMACIÓN DEL PROSPECTO (CRM):\n"
                     if prospect_data.get("name"):
@@ -165,8 +193,17 @@ class CerebroIA:
                     full_prompt += "Verifica cortésmente si la información sigue vigente.\n"
                     full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
                 
+                # Inject Chat History (Recent Context)
+                if history:
+                    full_prompt += "📜 HISTORIAL RECIENTE (Últimos mensajes):\n"
+                    for msg in history:
+                        role_label = "Usuario" if msg['role'] == 'user' else "Juan Pablo"
+                        content_safe = str(msg.get('content', '')).replace('\n', ' ')
+                        full_prompt += f"- {role_label}: {content_safe}\n"
+                    full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
+
                 if context:
-                    full_prompt += f"RESUMEN CONVERSACIÓN ANTERIOR:\n{context}\n\n"
+                    full_prompt += f"RESUMEN CONVERSACIÓN ANTERIOR (Largo Plazo):\n{context}\n\n"
                 
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
@@ -200,8 +237,8 @@ class CerebroIA:
                                     search_results += f"- {m['name']} ({m['category']}): {m['formatted_price']}\n"
                                     # Add highlights or specs if available could be useful
                                     if m.get('specs'):
-                                         specs = str(m['specs'])[:100] # Truncate specs
-                                         search_results += f"  Info: {specs}...\n"
+                                         specs = str(m['specs'])
+                                         search_results += f"  Info: {specs}\n"
                             else:
                                 search_results = "No encontré motos que coincidan con esa búsqueda. Intenta con otra categoría o nombre."
                         else:
