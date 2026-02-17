@@ -61,6 +61,10 @@ def _ensure_services():
     if db and not config_loader:
         try:
             config_loader = ConfigLoader(db)
+            # Ensure configuration is actually loaded in this worker process
+            if not config_loader.get_juan_pablo_personality().get("name"):
+                 logger.info("🔧 ConfigLoader initialized empty in worker. forcing load_all()...")
+                 config_loader.load_all()
         except Exception: pass
 
     # 3. Motor Financiero
@@ -250,6 +254,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         # --- FIN RESET NUCLEAR ---
 
         # 2. Gestión de Sesión
+        logger.info(f"⚙️ Starting Session Management for {user_phone}...")
         prospect_data = None
         current_history = []
         
@@ -260,8 +265,15 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             memory_service.update_last_interaction(user_phone)
             # Get data
             prospect_data = memory_service.get_prospect_data(user_phone)
+            logger.info(f"👤 Prospect Data Loaded: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
             
+            # Human Gatekeeper Check
+            if prospect_data and prospect_data.get('human_help_requested', False):
+                logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
+                return
+
             # LOAD HISTORY for Context (CONTEXT FIX)
+            logger.info(f"📜 Loading chat history for {user_phone}...")
             current_history = await memory_service.get_chat_history(user_phone, limit=10)
             
             # GREETING BYPASS LOGIC (Time-Based)
@@ -296,6 +308,9 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                         skip_greeting = True
                         logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
 
+            # Inject SKIP_GREETING instruction into context for AI - Handled in ai_brain
+            
+            logger.info(f"🧠 Calling CerebroIA.pensar_respuesta... (Skip Greeting: {skip_greeting})")
             response_text = cerebro_ia.pensar_respuesta(
                 message_body, 
                 context=context, 
@@ -303,6 +318,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 history=current_history,
                 skip_greeting=skip_greeting
             )
+            logger.info(f"🧠 AI Response generated: '{str(response_text)[:50]}...'")
             
         elif msg_type == "audio":
             media_id = msg_data.get("media_id")

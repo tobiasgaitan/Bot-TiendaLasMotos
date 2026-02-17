@@ -87,7 +87,7 @@ async def lifespan(app: FastAPI):
         
         logger.info("✅ Application startup complete!")
         # logger.info(f"📊 Loaded {len(catalog_service.get_all_items())} catalog items")
-        logger.info(f"🧠 V6.0 Config: {config_loader.get_juan_pablo_personality().get('personality_name')} personality loaded (model: {config_loader.get_juan_pablo_personality().get('model_version')})")
+        logger.info(f"🧠 V6.0 Config: {config_loader.get_juan_pablo_personality().get('name')} personality loaded (model: {config_loader.get_juan_pablo_personality().get('model_version')})")
         logger.info("🚀 STARTUP CHECK: V6.1 - DEPLOY v3 - MAGIC WORD ENABLED")
         
     except Exception as e:
