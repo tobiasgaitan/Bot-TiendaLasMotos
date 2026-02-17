@@ -216,51 +216,59 @@ class CerebroIA:
                 # 1. Send initial message
                 response = chat.send_message(full_prompt)
                 
-                # 2. Check for Function Call
+                # 2. Check for Function Call(s)
                 candidate = response.candidates[0]
-                if candidate.content.parts and candidate.content.parts[0].function_call:
-                    function_call = candidate.content.parts[0].function_call
-                    function_name = function_call.name
+                function_calls = [part.function_call for part in candidate.content.parts if part.function_call]
+                
+                if function_calls:
+                    logger.info(f"⚡ AI triggered {len(function_calls)} function call(s)")
+                    response_parts = []
                     
-                    # A) Human Handoff
-                    if function_name == "trigger_human_handoff":
-                        reason = function_call.args.get("reason", "unknown")
-                        logger.warning(f"🚨 AI triggered human handoff | Reason: {reason}")
-                        return f"HANDOFF_TRIGGERED:{reason}"
-                    
-                    # B) Catalog Search
-                    elif function_name == "search_catalog":
-                        query = function_call.args.get("query", "")
-                        logger.info(f"🔎 AI searching catalog for: '{query}'")
+                    for function_call in function_calls:
+                        function_name = function_call.name
                         
-                        search_results = "No se encontraron resultados."
-                        if self.catalog_service:
-                            matches = self.catalog_service.search_items(query)
-                            if matches:
-                                search_results = f"Encontré {len(matches)} motos relacionadas:\n"
-                                for m in matches: 
-                                    search_results += f"- {m['name']} ({m['category']}): {m['formatted_price']}\n"
-                                    if m.get('specs'):
-                                         specs = str(m['specs'])
-                                         search_results += f"  Info: {specs}\n"
+                        # A) Human Handoff
+                        if function_name == "trigger_human_handoff":
+                            reason = function_call.args.get("reason", "unknown")
+                            logger.warning(f"🚨 AI triggered human handoff | Reason: {reason}")
+                            # Special case: If handoff is triggered, we can stop immediately or process others.
+                            # For safety, we'll return immediately as this overrides other actions.
+                            return f"HANDOFF_TRIGGERED:{reason}"
+                        
+                        # B) Catalog Search
+                        elif function_name == "search_catalog":
+                            query = function_call.args.get("query", "")
+                            logger.info(f"🔎 AI searching catalog for: '{query}'")
+                            
+                            search_results = "No se encontraron resultados."
+                            if self.catalog_service:
+                                matches = self.catalog_service.search_items(query)
+                                if matches:
+                                    search_results = f"Encontré {len(matches)} motos relacionadas:\n"
+                                    for m in matches: 
+                                        search_results += f"- {m['name']} ({m['category']}): {m['formatted_price']}\n"
+                                        if m.get('specs'):
+                                             specs = str(m['specs'])
+                                             search_results += f"  Info: {specs}\n"
+                                else:
+                                    search_results = "No encontré motos que coincidan con esa búsqueda. Intenta con otra categoría o nombre."
                             else:
-                                search_results = "No encontré motos que coincidan con esa búsqueda. Intenta con otra categoría o nombre."
-                        else:
-                            search_results = "Error: Servicio de catálogo no disponible."
-                        
-                        logger.info(f"📤 Sending tool response to AI: {search_results[:200]}...") 
-                        
-                        tool_response_part = Part.from_function_response(
-                            name=function_name,
-                            response={
-                                "content": search_results 
-                            }
-                        )
-                        
-                        logger.info("📤 Created tool_response_part successfully.")
-
-                        final_response = chat.send_message(tool_response_part)
-                        
+                                search_results = "Error: Servicio de catálogo no disponible."
+                            
+                            logger.info(f"📤 Preparing tool response for '{query}'...") 
+                            
+                            tool_response_part = Part.from_function_response(
+                                name=function_name,
+                                response={
+                                    "content": search_results 
+                                }
+                            )
+                            response_parts.append(tool_response_part)
+                    
+                    # Send ALL responses back to the model in a single turn
+                    if response_parts:
+                        logger.info(f"📤 Sending {len(response_parts)} tool responses to AI...")
+                        final_response = chat.send_message(response_parts)
                         return final_response.text.strip()
                 
                 # Normal text response
