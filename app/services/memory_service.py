@@ -314,8 +314,8 @@ class MemoryService:
             # Create new with strict defaults for visibility in Admin Panel
             new_data = {
                 "celular": clean_phone,
-                "name": "Cliente WhatsApp",
-                "nombre": "Cliente WhatsApp", # Legacy compat
+                "name": "",
+                "nombre": "", # Legacy compat
                 "chatbot_status": "ACTIVE",
                 "status": "Pendiente",
                 "source": "whatsapp_bot",

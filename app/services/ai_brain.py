@@ -17,7 +17,8 @@ try:
         Tool,
         FunctionDeclaration,
         Content,
-        Part
+        Part,
+        GenerationConfig
     )
     VERTEX_AI_AVAILABLE = True
 except ImportError:
@@ -214,7 +215,11 @@ class CerebroIA:
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
                 # 1. Send initial message
-                response = chat.send_message(full_prompt)
+                response = chat.send_message(
+                    full_prompt,
+                    generation_config=GenerationConfig(temperature=0.2, max_output_tokens=1000),
+                    timeout=60.0
+                )
                 
                 # 2. Check for Function Call(s)
                 candidate = response.candidates[0]
@@ -241,19 +246,23 @@ class CerebroIA:
                             logger.info(f"🔎 AI searching catalog for: '{query}'")
                             
                             search_results = "No se encontraron resultados."
-                            if self.catalog_service:
-                                matches = self.catalog_service.search_items(query)
-                                if matches:
-                                    search_results = f"Encontré {len(matches)} motos relacionadas:\n"
-                                    for m in matches: 
-                                        search_results += f"- {m['name']} ({m['category']}): {m['formatted_price']}\n"
-                                        if m.get('specs'):
-                                             specs = str(m['specs'])
-                                             search_results += f"  Info: {specs}\n"
+                            try:
+                                if self.catalog_service:
+                                    matches = self.catalog_service.search_items(query)
+                                    if matches:
+                                        search_results = f"Encontré {len(matches)} motos relacionadas:\n"
+                                        for m in matches: 
+                                            search_results += f"- {m['name']} ({m['category']}): {m['formatted_price']}\n"
+                                            if m.get('specs'):
+                                                specs = str(m['specs'])
+                                                search_results += f"  Info: {specs}\n"
+                                    else:
+                                        search_results = "No encontré motos que coincidan con esa búsqueda. Intenta con otra categoría o nombre."
                                 else:
-                                    search_results = "No encontré motos que coincidan con esa búsqueda. Intenta con otra categoría o nombre."
-                            else:
-                                search_results = "Error: Servicio de catálogo no disponible."
+                                    search_results = "Error: Servicio de catálogo no disponible."
+                            except Exception as e:
+                                logger.error(f"❌ Tool Execution Error (Catalog): {e}")
+                                search_results = "Tuve un problema consultando el catálogo momentáneamente. ¿Me podrías preguntar de nuevo?"
                             
                             logger.info(f"📤 Preparing tool response for '{query}'...") 
                             
@@ -268,7 +277,7 @@ class CerebroIA:
                     # Send ALL responses back to the model in a single turn
                     if response_parts:
                         logger.info(f"📤 Sending {len(response_parts)} tool responses to AI...")
-                        final_response = chat.send_message(response_parts)
+                        final_response = chat.send_message(response_parts, timeout=60.0)
                         return final_response.text.strip()
                 
                 # Normal text response

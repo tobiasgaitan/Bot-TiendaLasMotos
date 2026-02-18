@@ -89,7 +89,7 @@ def _ensure_services():
              
     # 5. Message Buffer
     if not message_buffer:
-        message_buffer = MessageBuffer(debounce_seconds=3.0)
+        message_buffer = MessageBuffer(debounce_seconds=5.0)
 
 # ============================================================================
 # WEBHOOK ENDPOINTS
