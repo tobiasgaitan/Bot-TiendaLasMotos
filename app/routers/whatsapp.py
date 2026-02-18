@@ -364,12 +364,18 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             logger.info(f"🧠 AI Response generated: '{str(response_text)[:50]}...'")
             
             # LATENCY SIMULATION (Natural Typing Delay)
-            typing_delay = min(5.0, len(str(response_text)) * 0.03) # 0.03s per char, max 5s
-            if typing_delay > 0.5:
+            # Rule: First response to a new session (or after long pause) must be instant (0s).
+            # Rule: Subsequent responses need natural delay (Calculated).
+            if not skip_greeting:
+                logger.info("🚀 Smart Latency: New session detected. Skipping typing delay (0s).")
+                typing_delay = 0
+            else:
+                typing_delay = min(5.0, len(str(response_text)) * 0.03) # 0.03s per char, max 5s
+                logger.info(f"⏳ Smart Latency: Specific delay applied: {typing_delay:.2f}s")
+
+            if typing_delay > 0:
                 # await _send_typing_indicator(user_phone) # Optional if implemented
-                pass
-            logger.info(f"⏳ Simulating typing delay: {typing_delay:.2f}s")
-            await asyncio.sleep(typing_delay)
+                await asyncio.sleep(typing_delay)
             
         elif msg_type == "audio":
             media_id = msg_data.get("media_id")
