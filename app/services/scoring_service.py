@@ -59,22 +59,22 @@ class ScoringService:
         "variable": 500
     }
     
-    def calculate_score(self, contract: str, habit: str, income: str) -> int:
+    def calculate_score(self, ocupacion_y_contrato: str, historial_datacredito: str, ingresos_demostrables: str) -> int:
         """
         Calculate credit score based on user profile.
         
         Args:
-            contract: Contract type (e.g., "Indefinido")
-            habit: Payment habit details (e.g., "Al día", "Reportado")
-            income: Income level (e.g., "1-2 SMLV")
+            ocupacion_y_contrato: Contract type (e.g., "Indefinido")
+            historial_datacredito: Payment habit details (e.g., "Al día", "Reportado")
+            ingresos_demostrables: Income level (e.g., "1-2 SMLV")
             
         Returns:
             Calculated score (0-1000)
         """
         # Normalize inputs
-        c_key = self._normalize_input(contract)
-        h_key = self._normalize_input(habit)
-        i_key = self._normalize_input(income)
+        c_key = self._normalize_input(ocupacion_y_contrato)
+        h_key = self._normalize_input(historial_datacredito)
+        i_key = self._normalize_input(ingresos_demostrables)
         
         # Get points (Default to lowest safe value if unknown)
         p_contract = self._get_points(self.POINTS_CONTRACT, c_key, default=300)
@@ -112,17 +112,36 @@ class ScoringService:
                 
         return default
 
-    def determine_strategy(self, score: int) -> Dict[str, Any]:
+    def determine_strategy(self, score: int, tiene_gas_natural: bool = False, historial_datacredito: str = "", mora_y_paz_salvo: str = "") -> Dict[str, Any]:
         """
         Determine financing strategy based on score.
         
         Returns dictionary with strategy details.
         """
+        h_key = self._normalize_input(historial_datacredito)
+        m_key = self._normalize_input(mora_y_paz_salvo)
+        
+        is_reported = "reportado" in h_key or "mora > 60" in h_key or "castigado" in h_key or "mora sin paz" in m_key
+        has_paz_y_salvo = "paz y salvo" in m_key
+        
+        # Priority Logic: If user has gas receipt, is reported, and does NOT have a "paz y salvo".
+        if tiene_gas_natural and is_reported and not has_paz_y_salvo:
+            logger.info("⚡ Brilla priority path triggered: Gas receipt + Reported without Paz y Salvo.")
+            return {
+                "strategy": "BRILLA",
+                "entity": "Brilla de Gases",
+                "rate_key": None,
+                "link_key": "link_brilla",
+                "requires_aval": False,
+                "is_fallback": False
+            }
+
         if score >= 700:
             return {
                 "strategy": "BANCO",
                 "entity": "Banco de Bogotá",
                 "rate_key": "tasa_nmv_banco",
+                "link_key": "link_banco_bogota",
                 "requires_aval": False
             }
         elif score >= 400:
@@ -130,6 +149,7 @@ class ScoringService:
                 "strategy": "FINTECH",
                 "entity": "Crediorbe",
                 "rate_key": "tasa_nmv_fintech",
+                "link_key": "link_crediorbe",
                 "requires_aval": True
             }
         else:
@@ -137,6 +157,7 @@ class ScoringService:
                 "strategy": "BRILLA",
                 "entity": "Brilla de Gases",
                 "rate_key": None, # Brilla has fixed rate usually or handled differently
+                "link_key": "link_brilla",
                 "requires_aval": False,
                 "is_fallback": True
             }

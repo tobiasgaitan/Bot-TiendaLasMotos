@@ -44,31 +44,62 @@ class MotorFinanciero:
             return partners.get("link_brilla", "#")
         return "#"
 
-    def evaluar_perfil(self, contrato: str, habito: str, ingreso: str) -> Dict[str, Any]:
+    def evaluar_perfil(
+        self, 
+        ocupacion_y_contrato: str, 
+        ingresos_demostrables: str, 
+        historial_datacredito: str,
+        mora_y_paz_salvo: str,
+        gastos_vivienda: str,
+        tiene_gas_natural: bool,
+        plan_celular: str
+    ) -> Dict[str, Any]:
         """
         Evaluate financial profile and determine best strategy.
         
         Args:
-            contrato: Contract type
-            habito: Payment habit
-            ingreso: Income level
+            ocupacion_y_contrato: Contract type
+            ingresos_demostrables: Income level
+            historial_datacredito: Payment habit
+            mora_y_paz_salvo: Arrears context
+            gastos_vivienda: Housing expenses
+            tiene_gas_natural: Has natural gas bill
+            plan_celular: Mobile plan type
             
         Returns:
             Dictionary with score, strategy, and recommended entity
         """
         # Calculate Score
-        score = self._scoring_service.calculate_score(contrato, habito, ingreso)
+        score = self._scoring_service.calculate_score(
+            ocupacion_y_contrato=ocupacion_y_contrato, 
+            historial_datacredito=historial_datacredito, 
+            ingresos_demostrables=ingresos_demostrables
+        )
         
         # Determine Strategy
-        strategy_info = self._scoring_service.determine_strategy(score)
+        strategy_info = self._scoring_service.determine_strategy(
+            score=score,
+            tiene_gas_natural=tiene_gas_natural,
+            historial_datacredito=historial_datacredito,
+            mora_y_paz_salvo=mora_y_paz_salvo
+        )
+        
+        # Fetch Link
+        link_key = strategy_info.get("link_key")
+        link_url = "#"
+        if self._config_loader and link_key:
+            partners = self._config_loader.get_partners_config()
+            link_url = partners.get(link_key, "#")
         
         return {
             "score": score,
             "strategy": strategy_info["strategy"],
             "entity": strategy_info["entity"],
             "rate_key": strategy_info["rate_key"],
+            "link_url": link_url,
             "requires_aval": strategy_info["requires_aval"],
-            "is_fallback": strategy_info.get("is_fallback", False)
+            "is_fallback": strategy_info.get("is_fallback", False),
+            "explanation": f"Basado en tu perfil (Score: {score}), la mejor opción es {strategy_info['entity']}."
         }
     
     def simular_credito(self, texto: str, motor_ventas: Optional[Any] = None) -> str:

@@ -45,6 +45,7 @@ class CerebroIA:
         """
         self.config_loader = config_loader
         self.catalog_service = catalog_service 
+        self.motor_financiero = None # Will be injected
         self._model = None
         self._system_instruction = self._get_system_instruction()
         self.tools = self._create_tools()
@@ -155,7 +156,55 @@ class CerebroIA:
                 }
             )
             
-            return Tool(function_declarations=[handoff_function, catalog_function])
+            # Define credit calculation function
+            credit_function = FunctionDeclaration(
+                name="calculate_credit_score",
+                description="Calculate credit score and financing strategy based on user profile. Returns score, entity, and application link.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "ocupacion_y_contrato": {
+                            "type": "string",
+                            "description": "Ocupación y tipo de contrato (e.g., 'Empleado fijo', 'Independiente', 'Pensionado')"
+                        },
+                        "ingresos_demostrables": {
+                            "type": "string",
+                            "description": "Nivel de ingresos (e.g., 'Minimo', '1750905')"
+                        },
+                        "historial_datacredito": {
+                            "type": "string",
+                            "description": "Estado en Datacrédito (e.g., 'Al dia', 'Reportado', 'Sin experiencia')"
+                        },
+                        "mora_y_paz_salvo": {
+                            "type": "string",
+                            "description": "Detalles de mora (>30 días) y Paz y Salvo. Opciones: 'Sin mora', 'Con mora y paz y salvo', 'Con mora sin paz y salvo'"
+                        },
+                        "gastos_vivienda": {
+                            "type": "string",
+                            "description": "Gastos de vivienda (e.g., 'Familiar', 'Arriendo 500k')"
+                        },
+                        "tiene_gas_natural": {
+                            "type": "boolean",
+                            "description": "Indica si tiene recibo de Gas Natural a su nombre (true o false)"
+                        },
+                        "plan_celular": {
+                            "type": "string",
+                            "description": "Tipo de plan de celular (e.g., 'Postpago', 'Prepago')"
+                        }
+                    },
+                    "required": [
+                        "ocupacion_y_contrato", 
+                        "ingresos_demostrables", 
+                        "historial_datacredito", 
+                        "mora_y_paz_salvo", 
+                        "gastos_vivienda", 
+                        "tiene_gas_natural", 
+                        "plan_celular"
+                    ]
+                }
+            )
+
+            return Tool(function_declarations=[handoff_function, catalog_function, credit_function])
         except Exception as e:
             logger.error(f"❌ Error creating tools: {str(e)}")
             return None
@@ -270,6 +319,54 @@ class CerebroIA:
                                 name=function_name,
                                 response={
                                     "content": search_results 
+                                }
+                            )
+                            response_parts.append(tool_response_part)
+
+                        # C) Credit Calculation
+                        elif function_name == "calculate_credit_score":
+                            ocupacion = function_call.args.get("ocupacion_y_contrato", "")
+                            ingresos = function_call.args.get("ingresos_demostrables", "")
+                            datacredito = function_call.args.get("historial_datacredito", "")
+                            mora = function_call.args.get("mora_y_paz_salvo", "")
+                            vivienda = function_call.args.get("gastos_vivienda", "")
+                            gas = function_call.args.get("tiene_gas_natural", False)
+                            celular = function_call.args.get("plan_celular", "")
+                            
+                            logger.info(f"💰 AI calculating credit score: Ocupacion={ocupacion}, Ingresos={ingresos}, Datacredito={datacredito}, Gas={gas}")
+                            
+                            credit_result = "No disponible."
+                            try:
+                                if self.motor_financiero:
+                                    result = self.motor_financiero.evaluar_perfil(
+                                        ocupacion_y_contrato=ocupacion,
+                                        ingresos_demostrables=ingresos,
+                                        historial_datacredito=datacredito,
+                                        mora_y_paz_salvo=mora,
+                                        gastos_vivienda=vivienda,
+                                        tiene_gas_natural=gas,
+                                        plan_celular=celular
+                                    )
+                                    credit_result = f"""
+✅ Análisis de Crédito Completado:
+- Score: {result['score']}/1000
+- Estrategia: {result['strategy']}
+- Entidad Recomendada: {result['entity']}
+- Link de Solicitud: {result['link_url']}
+- Explicación: {result['explanation']}
+
+INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si hay link, invítalo a dar clic.
+                                    """.strip()
+                                else:
+                                    credit_result = "Error: Motor financiero no conectado."
+                            except Exception as e:
+                                logger.error(f"❌ Tool Execution Error (Credit): {e}")
+                                credit_result = "Error calculando el crédito. Intenta de nuevo."
+                            
+                            tool_response_part = Part.from_function_response(
+                                name=function_name,
+                                response={
+                                    "content": credit_result
                                 }
                             )
                             response_parts.append(tool_response_part)
