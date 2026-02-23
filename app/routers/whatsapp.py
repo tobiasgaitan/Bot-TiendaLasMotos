@@ -166,7 +166,10 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             # --- DEBOUNCE LOGIC START ---
             if message_buffer:
                 # Add to buffer
-                is_first = await message_buffer.add_message(user_phone, message_body, msg_id_unique)
+                is_added = await message_buffer.add_message(user_phone, message_body, msg_id_unique)
+                if not is_added:
+                    logger.info(f"⏭️ Duplicate webhook ignored immediately for {msg_id_unique}")
+                    return
                 
                 # Wait for debounce window (3s)
                 await asyncio.sleep(message_buffer.debounce_seconds)
@@ -298,6 +301,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         # Initialize Services Locally
         logger.info("🧠 Initializing CerebroIA...")
         cerebro_ia = CerebroIA(config_loader, catalog_service_local)
+        cerebro_ia.motor_financiero = motor_financiero # Inject Financial Motor
         vision_service = VisionService(db)
         audio_service = AudioService(config_loader)
         

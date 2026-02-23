@@ -42,6 +42,7 @@ class MessageBuffer:
         self._buffers: Dict[str, List[str]] = {}
         self._active_tasks: Dict[str, str] = {}
         self._locks: Dict[str, asyncio.Lock] = {}
+        self._processed_wamids: Dict[str, set] = {}
         logger.info(f"📦 MessageBuffer initialized with {debounce_seconds}s debounce")
     
     def _get_lock(self, wa_id: str) -> asyncio.Lock:
@@ -71,10 +72,19 @@ class MessageBuffer:
             task_id: Unique identifier for this processing task
             
         Returns:
-            True if this is the first message in the buffer (should trigger typing indicator)
+            True if the message was successfully added, False if it was completely ignored as a duplicate wamid.
         """
         lock = self._get_lock(wa_id)
         async with lock:
+            if wa_id not in self._processed_wamids:
+                self._processed_wamids[wa_id] = set()
+
+            if task_id in self._processed_wamids[wa_id]:
+                logger.warning(f"🔄 Duplicate webhook ignored for wamid/task_id: {task_id}")
+                return False
+
+            self._processed_wamids[wa_id].add(task_id)
+
             # Initialize buffer if needed
             if wa_id not in self._buffers:
                 self._buffers[wa_id] = []
@@ -100,7 +110,7 @@ class MessageBuffer:
                 f"First: {is_first_message}"
             )
             
-            return is_first_message
+            return True
     
     def is_task_active(self, wa_id: str, task_id: str) -> bool:
         """
@@ -177,6 +187,10 @@ class MessageBuffer:
             if wa_id in self._active_tasks:
                 del self._active_tasks[wa_id]
                 logger.debug(f"🗑️ Cleared active task for {wa_id}")
+            
+            # Remove processed wamids
+            if wa_id in self._processed_wamids:
+                del self._processed_wamids[wa_id]
     
     async def get_buffer_stats(self) -> Dict[str, int]:
         """
