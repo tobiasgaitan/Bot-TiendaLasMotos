@@ -227,7 +227,56 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                         logger.info(f"🧠 Vision response: {response_text}")
                         
                         if response_text:
-                            await _send_whatsapp_message(user_phone, response_text)
+                            if response_text.startswith("MOTO_DETECTADA:"):
+                                logger.info("🧠 Moto detected. Routing to CerebroIA for cross-selling...")
+                                _ensure_services()
+                                cerebro_ia = CerebroIA(config_loader, catalog_service_local)
+                                cerebro_ia.motor_financiero = motor_financiero
+                                
+                                vision_description = response_text.replace("MOTO_DETECTADA:", "").strip()
+                                
+                                prospect_data = None
+                                current_history = []
+                                skip_greeting = True # Skip greeting since we are mid-conversation usually
+                                
+                                if memory_service_module.memory_service:
+                                    ms = memory_service_module.memory_service
+                                    ms.create_prospect_if_missing(user_phone)
+                                    ms.update_last_interaction(user_phone)
+                                    prospect_data = ms.get_prospect_data(user_phone)
+                                    
+                                    if prospect_data and prospect_data.get('human_help_requested', False):
+                                        logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
+                                        return
+                                    
+                                    current_history = await ms.get_chat_history(user_phone, limit=10)
+                                    simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
+                                    
+                                    final_response = cerebro_ia.pensar_respuesta(
+                                        simulated_user_msg, 
+                                        context="", 
+                                        prospect_data=prospect_data,
+                                        history=current_history,
+                                        skip_greeting=skip_greeting
+                                    )
+                                    
+                                    await _send_whatsapp_message(user_phone, final_response)
+                                    
+                                    # Save to History
+                                    await ms.save_message(user_phone, "user", simulated_user_msg)
+                                    await ms.save_message(user_phone, "model", final_response)
+                                    
+                                    # Update Summary
+                                    try:
+                                        summary_data = cerebro_ia.generate_summary(f"User: {simulated_user_msg}\nBot: {final_response}")
+                                        await ms.update_prospect_summary(user_phone, summary_data.get("summary", ""), summary_data.get("extracted", {}))
+                                    except Exception as e:
+                                        logger.warning(f"Failed to update summary: {e}")
+                                else:
+                                    logger.warning("⚠️ Memory Service is NOT initialized. Cannot route image properly.")
+                                    await _send_whatsapp_message(user_phone, "No pude conectar con mi cerebro para buscar esta moto. 😢")
+                            else:
+                                await _send_whatsapp_message(user_phone, response_text)
                         else:
                             await _send_whatsapp_message(user_phone, "¡Uff, qué nave! 🏍️ Pero no alcanzo a ver bien los detalles. ¿Me cuentas qué modelo es?")
                     else:
