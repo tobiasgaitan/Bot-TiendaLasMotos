@@ -421,9 +421,7 @@ class MemoryService:
     def clear_survey_state(self, phone_number: str) -> None:
         """
         Clears the active survey state from a prospect document once completed or cancelled.
-
-        Args:
-            phone_number: The prospect's raw phone number
+        Also cleans up any legacy field based survivors.
         """
         try:
             from app.core.utils import PhoneNormalizer
@@ -431,18 +429,52 @@ class MemoryService:
             
             logger.info(f"🧹 Limpiando estado de encuesta para {clean_phone}")
             
+            # 1. Clear by ID
             doc_ref = self._db.collection("prospectos").document(clean_phone)
-            
-            # firestore.DELETE_FIELD atomically removes the field from the document
             doc_ref.update({
                 "survey_state": firestore.DELETE_FIELD,
                 "updated_at": firestore.SERVER_TIMESTAMP
             })
             
-            logger.info(f"✅ Estado de encuesta limpiado para {clean_phone}")
+            # 2. Clear by Field (Nuclear Fix for auto-generated IDs)
+            docs = self._db.collection("prospectos").where("celular", "==", clean_phone).stream()
+            for doc in docs:
+                doc.reference.update({
+                    "survey_state": firestore.DELETE_FIELD,
+                    "updated_at": firestore.SERVER_TIMESTAMP
+                })
+            
+            logger.info(f"✅ Estado de encuesta limpiado para {clean_phone} (ID y Campo)")
             
         except Exception as e:
-            logger.error(f"❌ Error al limpiar estado de encuesta para {phone_number}: {e}", exc_info=True)
+            logger.error(f"❌ Error al limpiar estado de encuesta para {phone_number}: {e}")
+
+    def delete_prospect_completely(self, phone_number: str) -> int:
+        """
+        Nuclear deletion of all prospect documents matching the phone (ID or field).
+        Used in /reset command.
+        """
+        deleted = 0
+        try:
+            from app.core.utils import PhoneNormalizer
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            
+            # 1. Delete by ID
+            doc_ref = self._db.collection("prospectos").document(clean_phone)
+            if doc_ref.get().exists:
+                doc_ref.delete()
+                deleted += 1
+                
+            # 2. Delete by Field (The "Ghost" Fix)
+            docs = self._db.collection("prospectos").where("celular", "==", clean_phone).stream()
+            for doc in docs:
+                doc.reference.delete()
+                deleted += 1
+                
+            return deleted
+        except Exception as e:
+            logger.error(f"❌ Error in nuclear prospect delete for {phone_number}: {e}")
+            return deleted
 
     async def save_message(self, phone_number: str, role: str, content: str) -> None:
         """

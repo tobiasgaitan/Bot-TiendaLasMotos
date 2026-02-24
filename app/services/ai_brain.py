@@ -556,16 +556,14 @@ Responde en formato JSON:
             
         try:
             prompt = f"""
-You are a boolean classifier for a virtual assistant.
-Is the user answering the current question? Respond ONLY with JSON.
+You are an Intent Classifier. 
+Is the user answering the question: "{pending_question}"?
+User message: "{user_message}"
 
-PENDING QUESTION: "{pending_question}"
-USER MESSAGE: "{user_message}"
-
-SCHEMA:
+Respond ONLY with JSON:
 {{
   "is_answering_survey": true/false,
-  "reasoning": "brief explanation"
+  "reasoning": "short"
 }}
 """
             # Request specific JSON response using GenerationConfig
@@ -577,7 +575,12 @@ SCHEMA:
                 )
             )
             
-            raw_text = response.text.strip() if response.text else ""
+            # CRITICAL: If response has no text, handle it explicitly
+            if not response or not hasattr(response, 'text') or not response.text:
+                logger.warning("⚠️ Intent Evaluator returned NO text. Using Fail-Closed.")
+                return default_fallback
+                
+            raw_text = response.text.strip()
             
             # Robust Sanitization (Cleanup markdown artifacts if present)
             clean_json = raw_text.replace("```json", "").replace("```", "").replace("```", "").strip()

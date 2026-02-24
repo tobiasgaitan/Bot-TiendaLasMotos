@@ -311,35 +311,41 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             collections_to_check = ["sessions", "prospectos"]
             
             if db:
-                # NEW: Clear persistent survey state (V16/V17 Sync)
+                # 1. NUCLEAR PROSPECT WIPE (IDs and Auto-generated IDs)
                 if memory_service_module.memory_service:
-                    memory_service_module.memory_service.clear_survey_state(user_phone)
-                    logger.info(f"🧹 Persistent survey_state cleared for {user_phone}")
+                    ms = memory_service_module.memory_service
+                    p_deleted = ms.delete_prospect_completely(user_phone)
+                    logger.info(f"🧹 Nuclear Prospect Wipe for {user_phone}. Docs deleted: {p_deleted}")
 
                 for pid in ids_to_purge:
-                    # 1. Main Collections (sessions/prospectos)
-                    for col in collections_to_check:
-                        try:
-                            doc_ref = db.collection(col).document(pid)
-                            if doc_ref.get().exists:
-                                doc_ref.delete()
-                                deleted_count += 1
-                                logger.info(f"🗑️ Deleted {col}/{pid}")
-                        except Exception: pass
-                    
-                    # 2. Deep Wipe of Global Session State (V16/V17 + Legacy + History)
+                    # 2. Main Sessions Collection (ROOT)
                     try:
-                        # Explicit Hard Delete for sessions collection document (redundancy)
-                        db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid).delete()
-                        logger.info(f"🔥 Hard Purge for mensajeria/whatsapp/sesiones/{pid}")
+                        doc_ref_session = db.collection("sessions").document(pid)
+                        if doc_ref_session.get().exists:
+                            doc_ref_session.delete()
+                            logger.info(f"🗑️ Deleted ROOT session document {pid}")
+                    except Exception: pass
+                    
+                    # 3. Deep Wipe of Global Session State (V16/V17 + Legacy + History)
+                    try:
+                        # Path alignment verification
+                        doc_path = f"mensajeria/whatsapp/sesiones/{pid}"
+                        doc_ref_active = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
                         
+                        # NUCLEAR DELETE (recursive history wipe included in delete_session)
                         await survey_service.delete_session(db, pid)
+                        
+                        # VERIFICATION LOG
+                        exists_after = doc_ref_active.get().exists
+                        logger.info(f"🔥 Hard Purge for {doc_path}. Exists now: {exists_after}")
+                        if not exists_after:
+                            deleted_count += 1
                     except Exception as e: 
                         logger.error(f"❌ Error during hard purge for {pid}: {e}")
 
-
             # Always send confirmation
-            await _send_whatsapp_message(user_phone, "☢️ RESET COMPLETADO. Memoria limpia. Escribe 'Hola' para iniciar.")
+            confirm_msg = f"☢️ RESET COMPLETADO. Memoria limpia. ({deleted_count} registros purgados). Escribe 'Hola' para iniciar."
+            await _send_whatsapp_message(user_phone, confirm_msg)
             return
         # --- FIN RESET NUCLEAR ---
 
