@@ -574,7 +574,7 @@ REQUIRED FORMAT:
 {{"is_answering_survey": boolean, "reasoning": "string"}}
 """
             # Request specific JSON response using GenerationConfig
-            response = chat.send_message(
+            response = self._model.generate_content(
                 prompt,
                 generation_config=GenerationConfig(
                     temperature=0.0, # Deterministic
