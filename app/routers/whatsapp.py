@@ -414,11 +414,37 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         session = {}
 
         if msg_type == "text" and db:
-            # 1. Check for active survey status
+            # 1. Check for active survey status (Transient Session)
             session = await _get_session(db, user_phone)
             status = session.get("status", "IDLE")
             
+            # 2. Check for Persistent Survey State (Source of Truth for Context Switching)
+            persistent_survey = None
+            if memory_service_module.memory_service:
+                persistent_survey = memory_service_module.memory_service.get_survey_state(user_phone)
+
+            # 3. Decision Logic: Is there a survey active?
+            active_survey_step = None
+            
             if status.startswith("SURVEY_STEP_"):
+                active_survey_step = status
+                logger.info(f"📋 Survey active in SESSION for {user_phone}: {status}")
+            elif persistent_survey and persistent_survey.get("is_active"):
+                active_survey_step = persistent_survey.get("current_step")
+                logger.info(f"📋 Survey active in PROSPECT for {user_phone}: {active_survey_step}")
+                # Synchronize session if missing
+                if not status.startswith("SURVEY_STEP_"):
+                    status = active_survey_step
+                    session = {
+                        "status": status,
+                        "answers": persistent_survey.get("collected_data", {}),
+                        "retry_count": 0
+                    }
+                    await _get_session(db, user_phone) # Dummy read? No, we should update.
+                    # Actually, we just populate the variables for the flow below
+                    logger.info(f"🔄 Synchronized transient session from persistent state for {user_phone}")
+
+            if active_survey_step:
                 # Map technical step ID to the actual human question
                 SURVEY_STEPS_MAP = {
                     "SURVEY_STEP_1_LABOR": "¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)",
@@ -427,7 +453,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     "SURVEY_STEP_4_GAS": "¿Tienes servicio de Gas Natural a tu nombre? (Responde Sí o No)",
                     "SURVEY_STEP_5_POSTPAID": "¿Tienes un plan de celular Postpago? (Responde Sí o No)"
                 }
-                survey_pending_question = SURVEY_STEPS_MAP.get(status)
+                survey_pending_question = SURVEY_STEPS_MAP.get(active_survey_step)
                 
                 if survey_pending_question:
                     logger.info(f"📋 Survey Active ({status}). Evaluating intent...")

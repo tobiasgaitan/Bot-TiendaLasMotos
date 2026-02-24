@@ -372,6 +372,7 @@ class MemoryService:
                 "survey_id": survey_id,
                 "current_step": current_step,
                 "collected_data": collected_data,
+                "is_active": True,
                 "updated_at": firestore.SERVER_TIMESTAMP
             }
             

@@ -199,8 +199,9 @@ class SurveyService:
             )
 
     async def _update_session(self, db_client, phone, data):
-        """Helper to update Firestore session."""
+        """Helper to update Firestore session and prospect survey_state."""
         try:
+            # 1. Update Session Document (Legacy/Router Sync)
             doc_ref = (
                 db_client.collection("mensajeria")
                 .document("whatsapp")
@@ -209,8 +210,26 @@ class SurveyService:
             )
             data["last_interaction"] = datetime.now(timezone.utc)
             doc_ref.set(data, merge=True)
+
+            # 2. Update Prospect Document (V16 Persistence/Context Switch Sync)
+            import app.services.memory_service as memory_service_module
+            if memory_service_module.memory_service:
+                ms = memory_service_module.memory_service
+                status = data.get("status", "IDLE")
+                
+                if status == "IDLE":
+                    ms.clear_survey_state(phone)
+                    logger.info(f"🧹 Prospect survey_state cleared for {phone}")
+                elif status.startswith("SURVEY_STEP_"):
+                    ms.save_survey_state(
+                        phone_number=phone,
+                        survey_id="financial_capture",
+                        current_step=status,
+                        collected_data=data.get("answers", {})
+                    )
+                    logger.info(f"💾 Prospect survey_state updated for {phone} step {status}")
         except Exception as e:
-            logger.error(f"Error updating session: {e}")
+            logger.error(f"Error updating session/prospect state: {e}")
 
     def _is_boolean_answer(self, text: str) -> bool:
         """Check if text looks like a boolean answer."""
