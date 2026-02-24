@@ -70,7 +70,30 @@ class SurveyService:
         response_text = ""
         is_valid = False
 
-        if status == "SURVEY_STEP_1_LABOR":
+        if status == "SURVEY_STEP_0_AUTH":
+            # Validation: Boolean-ish
+            if self._is_boolean_answer(text_lower):
+                is_valid = True
+                consent = self._parse_boolean(text_lower)
+                if consent:
+                    next_status = "SURVEY_STEP_1_LABOR"
+                    response_text = (
+                        "¡Gracias por tu confianza! 😊 Comencemos:\n\n"
+                        "1️⃣ ¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)"
+                    )
+                else:
+                    # Explicit Denial: Exit Survey
+                    logger.info(f"🚫 User denied Habeas Data for {phone}. Exiting survey.")
+                    await self._update_session(db_client, phone, {"status": "IDLE", "answers": {}, "retry_count": 0})
+                    return (
+                        "Entiendo perfectamente. Por políticas de seguridad y privacidad, "
+                        "no podemos realizar el estudio de crédito sin tu autorización de datos. 🛡️\n\n"
+                        "Si cambias de opinión, solo escribe **'crédito'** de nuevo. ¿En qué más te puedo ayudar?"
+                    )
+            else:
+                is_valid = False
+
+        elif status == "SURVEY_STEP_1_LABOR":
             # Validation: Just needs to be non-empty text
             if len(message_text.strip()) > 1:
                 is_valid = True
@@ -80,7 +103,6 @@ class SurveyService:
                     "2️⃣ ¿Cuáles son tus ingresos mensuales totales? "
                     "(Escribe solo el número, sin puntos. Ej: 1500000)"
                 )
-        
         elif status == "SURVEY_STEP_2_INCOME":
             # Validation: Must extract digits
             clean_income = "".join(filter(str.isdigit, message_text))

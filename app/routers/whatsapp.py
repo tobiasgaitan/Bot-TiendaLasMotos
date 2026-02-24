@@ -451,6 +451,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             if active_survey_step:
                 # Map technical step ID to the actual human question
                 SURVEY_STEPS_MAP = {
+                    "SURVEY_STEP_0_AUTH": "¿Autorizas el tratamiento de tus datos personales para realizar tu estudio de crédito?",
                     "SURVEY_STEP_1_LABOR": "1️⃣ ¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)",
                     "SURVEY_STEP_2_INCOME": "2️⃣ ¿Cuáles son tus ingresos mensuales totales? (Escribe solo el número)",
                     "SURVEY_STEP_3_HISTORY": "3️⃣ ¿Cómo ha sido tu comportamiento con créditos anteriores? (Ej: Excelente, Reportado)",
@@ -484,11 +485,11 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     logger.info(f"🎯 Deterministic Trigger! Financial keyword detected in '{message_body}'. Starting survey...")
                     is_answering_survey = True
                     # Initialize session for SurveyService
-                    status = "SURVEY_STEP_1_LABOR"
+                    status = "SURVEY_STEP_0_AUTH"
                     session = {"status": status, "answers": {}, "retry_count": 0}
                     # Force response to first question
                     first_q = "¡Claro que sí! 🤩 Vamos a realizar un estudio rápido para ver tus opciones de crédito y financiación.\n\n"
-                    first_q += "1️⃣ ¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)"
+                    first_q += "Antes de empezar, por motivos legales, ¿autorizas el tratamiento de tus datos personales para este estudio de crédito? (Responde Sí o No)"
                     response_text = first_q
                     # Synchronize persistence
                     if memory_service_module.memory_service:
@@ -522,11 +523,11 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     logger.info(f"🎯 AI-Driven Trigger! Initiating survey '{survey_id}' for {user_phone}")
                     is_answering_survey = True
                     # Re-route to SurveyService immediately
-                    status = "SURVEY_STEP_1_LABOR"
+                    status = "SURVEY_STEP_0_AUTH"
                     session = {"status": status, "answers": {}, "retry_count": 0}
                     # Force response to first question
-                    first_q = "¡Excelente! 🤩 Para ayudarte con tu financiación, necesito que me respondas 5 preguntas rápidas.\n\n"
-                    first_q += "1️⃣ ¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)"
+                    first_q = "¡Excelente! 🤩 Para ayudarte con tu financiación, necesito tu autorización legal para procesar tus datos.\n\n"
+                    first_q += "¿Autorizas el tratamiento de tus datos personales para realizar este estudio de crédito? (Responde Sí o No)"
                     response_text = first_q
                     # Synchronize persistence
                     if memory_service_module.memory_service:
