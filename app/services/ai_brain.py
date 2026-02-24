@@ -382,11 +382,11 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
                     if not ai_response:
                         logger.warning("⚠️ Empty AI response (valid text but no content)")
                         return self._fallback_response(texto, history)
-                except ValueError as ve:
+                except Exception as e:
                     # Mantenibilidad & Seguridad (QA Baseline):
                     # Handle Gemini reasoning engine edge case where thoughts_token_count > 0 
-                    # but text is empty, causing Vertex AI SDK to raise ValueError when accessing .text.
-                    logger.warning(f"⚠️ AI returned empty text/thoughts without function calls. Fallback injected. Error: {ve}")
+                    # but text is empty, causing Vertex AI SDK to raise exceptions when accessing .text.
+                    logger.warning(f"⚠️ Empty reasoning response caught. Fallback injected. Error: {e}")
                     return "¡Qué buena máquina, parcero! Esa no la manejo, pero tengo opciones equivalentes en nuestro catálogo. ¿Te gustaría que busquemos una parecida?"
                         
                 logger.info(f"✅ AI response generated ({len(ai_response)} chars)")

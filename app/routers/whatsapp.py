@@ -260,6 +260,10 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                         skip_greeting=skip_greeting
                                     )
                                     
+                                    if not final_response or not str(final_response).strip():
+                                        final_response = "¡Qué buena máquina, parcero! Esa no la manejo, pero tengo opciones equivalentes en nuestro catálogo. ¿Te gustaría que busquemos una parecida?"
+                                        logger.warning(f"⚠️ CerebroIA returned empty response for moto image. Injected fallback.")
+                                    
                                     await _send_whatsapp_message(user_phone, final_response)
                                     
                                     # Save to History
