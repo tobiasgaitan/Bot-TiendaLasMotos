@@ -556,22 +556,17 @@ Responde en formato JSON:
             
         try:
             prompt = f"""
-SYSTEM: You are a Draconian Intent Evaluator.
-YOUR MISSION: Determine if the message below is an attempt to answer the currently pending survey question OR a context-switching distraction.
+You are a boolean classifier for a virtual assistant.
+Is the user answering the current question? Respond ONLY with JSON.
 
 PENDING QUESTION: "{pending_question}"
 USER MESSAGE: "{user_message}"
 
-RULES:
-1. OUTPUT ONLY VALID JSON.
-2. NO MARKDOWN (no ```json).
-3. NO CONVERSATIONAL TEXT.
-4. NO EXPLANATIONS.
-5. IF THE MESSAGE IS AN ANSWER (EVEN VAGUE/NOPE): {{"is_answering_survey": true, "reasoning": "..."}}
-6. IF THE USER IS ASKING SOMETHING TOTALLY UNRELATED: {{"is_answering_survey": false, "reasoning": "..."}}
-
-REQUIRED FORMAT:
-{{"is_answering_survey": boolean, "reasoning": "string"}}
+SCHEMA:
+{{
+  "is_answering_survey": true/false,
+  "reasoning": "brief explanation"
+}}
 """
             # Request specific JSON response using GenerationConfig
             response = self._model.generate_content(

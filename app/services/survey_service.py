@@ -211,22 +211,26 @@ class SurveyService:
                 logger.info(f"🧹 Persistent state cleared for {phone}")
 
             # 2. Delete legacy session document (SESIONES)
-            # We try both normalized and potentially raw (via variants in the caller)
-            doc_ref = (
-                db_client.collection("mensajeria")
-                .document("whatsapp")
-                .collection("sesiones")
-                .document(phone)
-            )
+            # We try variants to be absolutely sure
+            from app.core.utils import PhoneNormalizer
+            variants = list(set([phone, PhoneNormalizer.normalize(phone), phone.replace("57", "", 1)]))
             
-            # Delete history subcollection first (best practice for shallow delete visibility)
-            history_ref = doc_ref.collection("historial")
-            docs = history_ref.limit(50).stream()
-            for doc in docs:
-                doc.reference.delete()
+            for pid in variants:
+                doc_ref = (
+                    db_client.collection("mensajeria")
+                    .document("whatsapp")
+                    .collection("sesiones")
+                    .document(pid)
+                )
                 
-            doc_ref.delete()
-            logger.info(f"🗑️ Legacy session document deleted for {phone}")
+                # Delete history subcollection first
+                history_ref = doc_ref.collection("historial")
+                docs = history_ref.limit(50).stream()
+                for doc in docs:
+                    doc.reference.delete()
+                    
+                doc_ref.delete()
+                logger.info(f"🗑️ Deep wipe: mensajeria/whatsapp/sesiones/{pid} removed.")
             
             return True
         except Exception as e:

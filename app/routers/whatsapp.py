@@ -329,10 +329,13 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     
                     # 2. Deep Wipe of Global Session State (V16/V17 + Legacy + History)
                     try:
+                        # Explicit Hard Delete for sessions collection document (redundancy)
+                        db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid).delete()
+                        logger.info(f"🔥 Hard Purge for mensajeria/whatsapp/sesiones/{pid}")
+                        
                         await survey_service.delete_session(db, pid)
-                        deleted_count += 1
                     except Exception as e: 
-                        logger.error(f"❌ Error during survey_service.delete_session for {pid}: {e}")
+                        logger.error(f"❌ Error during hard purge for {pid}: {e}")
 
 
             # Always send confirmation
