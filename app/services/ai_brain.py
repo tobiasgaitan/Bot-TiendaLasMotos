@@ -480,15 +480,4 @@ Responde en formato JSON:
         Clean, generic fallback response to avoid hallucinations.
         Uses history to allow basic continuity if AI fails.
         """
-        return """
-¡Hola! Soy Juan Pablo de Tienda Las Motos 🏍️
-
-Estoy teniendo un pequeño problema técnico momentáneo, pero sigo aquí contigo.
-
-Puedo ayudarte con:
-✅ Información sobre nuestro catálogo (NKD, Sport, Victory, MRX)
-✅ Simulaciones de crédito
-✅ Dudas sobre servicio técnico
-
-¿Podrías repetirme tu última pregunta o escribirla de otra forma? 
-        """.strip()
+        return "¡Qué pena! Se me quedó colgado el sistema del concesionario un segundo y no me cargó tu mensaje. 😅 ¿Me lo repites para seguir ayudándote?"
