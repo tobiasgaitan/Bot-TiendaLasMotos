@@ -481,3 +481,89 @@ Responde en formato JSON:
         Uses history to allow basic continuity if AI fails.
         """
         return "¡Qué pena! Se me quedó colgado el sistema del concesionario un segundo y no me cargó tu mensaje. 😅 ¿Me lo repites para seguir ayudándote?"
+
+    def evaluate_survey_intent(self, user_message: str, pending_question: str) -> Dict[str, Any]:
+        """
+        (V16 - Context Switching)
+        Fast, deterministic AI function that evaluates if the user's message is answering 
+        the current survey question OR asking an unrelated question (Context Switch).
+        
+        Security & Continuity (QA Baseline):
+        Implements a strict Fail-Closed paradigm. If the model fails (timeout, quota, 
+        malformed JSON), it defaults to `is_answering_survey: True`. This prevents 
+        a temporary API failure from incorrectly booting the user out of the survey flow.
+        
+        Args:
+            user_message: The message received from the user
+            pending_question: The specific survey question they should be answering
+            
+        Returns:
+            Dict containing 'is_answering_survey' (bool) and 'reasoning' (str).
+        """
+        default_fallback = {
+            "is_answering_survey": True,
+            "reasoning": "Fallback due to AI evaluation failure (Fail-Closed)"
+        }
+        
+        if not self._model:
+            logger.warning("⚠️ Cannot evaluate survey intent (AI unavailable), returning Fail-Closed fallback")
+            return default_fallback
+            
+        try:
+            chat = self._model.start_chat()
+            
+            prompt = f"""
+You are an Intent Evaluator Classifier for a motorcycle dealership virtual assistant.
+Your ONLY job is to determine if the user's message is an attempt to answer the currently pending survey question, OR if the user is asking a completely unrelated question (initiating a Context Switch).
+
+PENDING QUESTION TO THE USER: "{pending_question}"
+USER'S MESSAGE: "{user_message}"
+
+CRITERIA:
+- Return True if the user is attempting to answer the question, even if the answer is vague, incomplete, or variations of "I don't know".
+- Return False ONLY if the user is completely ignoring the question to ask something entirely different (e.g., asking for the price of a motorcycle, asking where the store is located, asking about a different topic).
+
+Respond in JSON format exactly like this:
+{{
+    "is_answering_survey": boolean,
+    "reasoning": "string explaining why"
+}}
+"""
+            # Request specific JSON response using GenerationConfig
+            response = chat.send_message(
+                prompt,
+                generation_config=GenerationConfig(
+                    temperature=0.0, # Deterministic
+                    response_mime_type="application/json"
+                )
+            )
+            
+            response_text = response.text.strip()
+            
+            # Clean up potential markdown formatting a round JSON
+            import json
+            import re
+            json_match = re.search(r'(\{.*\})', response_text, re.DOTALL)
+            if json_match:
+                response_text = json_match.group(1)
+                
+            result = json.loads(response_text)
+            
+            # Ensure required fields exist
+            if "is_answering_survey" not in result or "reasoning" not in result:
+                raise ValueError("JSON missing required fields")
+                
+            # Log the decision
+            intent_type = "ANSWERING_SURVEY" if result["is_answering_survey"] else "CONTEXT_SWITCH"
+            logger.info(f"🧭 Intent Evaluator Decision: {intent_type} | Reason: {result['reasoning']}")
+            
+            return {
+                "is_answering_survey": bool(result["is_answering_survey"]),
+                "reasoning": str(result["reasoning"])
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error during Intent Evaluation: {e}. Defaulting to Fail-Closed (True).", exc_info=True)
+            return default_fallback
+
+
