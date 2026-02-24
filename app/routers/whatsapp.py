@@ -447,13 +447,14 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             if active_survey_step:
                 # Map technical step ID to the actual human question
                 SURVEY_STEPS_MAP = {
-                    "SURVEY_STEP_1_LABOR": "¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)",
-                    "SURVEY_STEP_2_INCOME": "¿Cuáles son tus ingresos mensuales totales? (Escribe solo el número)",
-                    "SURVEY_STEP_3_HISTORY": "¿Cómo ha sido tu comportamiento con créditos anteriores? (Ej: Excelente, Reportado)",
-                    "SURVEY_STEP_4_GAS": "¿Tienes servicio de Gas Natural a tu nombre? (Responde Sí o No)",
-                    "SURVEY_STEP_5_POSTPAID": "¿Tienes un plan de celular Postpago? (Responde Sí o No)"
+                    "SURVEY_STEP_1_LABOR": "1️⃣ ¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)",
+                    "SURVEY_STEP_2_INCOME": "2️⃣ ¿Cuáles son tus ingresos mensuales totales? (Escribe solo el número)",
+                    "SURVEY_STEP_3_HISTORY": "3️⃣ ¿Cómo ha sido tu comportamiento con créditos anteriores? (Ej: Excelente, Reportado)",
+                    "SURVEY_STEP_4_GAS": "4️⃣ ¿Tienes servicio de Gas Natural a tu nombre? (Responde Sí o No)",
+                    "SURVEY_STEP_5_POSTPAID": "5️⃣ ¿Tienes un plan de celular Postpago? (Responde Sí o No)"
                 }
                 survey_pending_question = SURVEY_STEPS_MAP.get(active_survey_step)
+
                 
                 if survey_pending_question:
                     logger.info(f"📋 Survey Active ({status}). Evaluating intent...")
@@ -465,6 +466,26 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     else:
                         logger.info(f"🔄 Intent: Context Switch! Reasoning: {intent_eval.get('reasoning')}")
                         # We route to AI Brain, but we'll pass the question to re-ask it later
+            
+            # --- V17: DETERMINISTIC SURVEY TRIGGER (Init Logic) ---
+            if status == "IDLE" and not active_survey_step:
+                financial_keywords = ["brilla", "financiar", "crédito", "financiamiento", "estudio de crédito", "cuotas"]
+                if any(k in message_body.lower() for k in financial_keywords):
+                    logger.info(f"🎯 Deterministic Trigger! Financial keyword detected in '{message_body}'. Starting survey...")
+                    is_answering_survey = True
+                    # Initialize session for SurveyService
+                    status = "SURVEY_STEP_1_LABOR"
+                    session = {"status": status, "answers": {}, "retry_count": 0}
+                    # Force response to first question
+                    first_q = "¡Claro que sí! 🤩 Vamos a realizar un estudio rápido para ver tus opciones de crédito y financiación.\n\n"
+                    first_q += "1️⃣ ¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)"
+                    response_text = first_q
+                    # Synchronize persistence
+                    if memory_service_module.memory_service:
+                        memory_service_module.memory_service.save_survey_state(user_phone, "financial_capture", status, {})
+            # --------------------------------------------------------
+
+
         # --- END CONTEXT SWITCHING LOGIC ---
 
         # 3. Generar Respuesta (AI o Audio o Encuesta)
@@ -484,6 +505,24 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     skip_greeting=skip_greeting,
                     pending_survey_question=survey_pending_question
                 )
+
+                # --- V17: AI-DRIVEN SURVEY TRIGGER (Flag check) ---
+                if str(response_text).startswith("TRIGGER_SURVEY:"):
+                    survey_id = str(response_text).split(":")[1]
+                    logger.info(f"🎯 AI-Driven Trigger! Initiating survey '{survey_id}' for {user_phone}")
+                    is_answering_survey = True
+                    # Re-route to SurveyService immediately
+                    status = "SURVEY_STEP_1_LABOR"
+                    session = {"status": status, "answers": {}, "retry_count": 0}
+                    # Force response to first question
+                    first_q = "¡Excelente! 🤩 Para ayudarte con tu financiación, necesito que me respondas 5 preguntas rápidas.\n\n"
+                    first_q += "1️⃣ ¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)"
+                    response_text = first_q
+                    # Synchronize persistence
+                    if memory_service_module.memory_service:
+                        memory_service_module.memory_service.save_survey_state(user_phone, "financial_capture", status, {})
+                # ----------------------------------------------------
+
             logger.info(f"🧠 Response determined: '{str(response_text)[:50]}...'")
             
             # LATENCY SIMULATION (Natural Typing Delay)

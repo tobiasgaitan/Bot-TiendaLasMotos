@@ -204,7 +204,23 @@ class CerebroIA:
                 }
             )
 
-            return Tool(function_declarations=[handoff_function, catalog_function, credit_function])
+            # Define survey initiation function
+            start_survey_function = FunctionDeclaration(
+                name="start_credit_survey",
+                description="Initiates the formal step-by-step credit application and financial evaluation process. Use this when the user says they want to finance, get a credit, or check their Brilla cupo.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "intent": {
+                            "type": "string",
+                            "description": "The user's specific financing intent (e.g., 'brilla', 'generic_credit')"
+                        }
+                    },
+                    "required": ["intent"]
+                }
+            )
+
+            return Tool(function_declarations=[handoff_function, catalog_function, credit_function, start_survey_function])
         except Exception as e:
             logger.error(f"❌ Error creating tools: {str(e)}", exc_info=True)
             return None
@@ -273,6 +289,15 @@ class CerebroIA:
                     full_prompt += f"3. Al FINAL de tu mensaje de texto definitivo, debes volver a preguntar EXACTAMENTE: '{pending_survey_question}'\n"
                     full_prompt += "Ejemplo: 'Claro que sí, [respuesta]. Por cierto, para seguir con tu crédito, ¿me recordabas [pregunta pendiente]?'\n"
                     full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
+
+                # V17 - Survey Trigger Enforcement
+                full_prompt += "═══════════════════════════════════════════════════════════════════\n"
+                full_prompt += "🚨 REGLA DE ORO DE CRÉDITO:\n"
+                full_prompt += "- JAMÁS preguntes al usuario por su salario, ocupación, datacrédito u otros datos financieros directamente.\n"
+                full_prompt += "- Si el usuario menciona 'Crédito', 'Brilla', 'Financiar', 'Financiación' o 'Estudio de Crédito':\n"
+                full_prompt += "  DEBES USAR LA HERRAMIENTA 'start_credit_survey' INMEDIATAMENTE.\n"
+                full_prompt += "- No intentes recolectar los datos tú mismo en el chat.\n"
+                full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
 
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
@@ -382,6 +407,13 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
                                 }
                             )
                             response_parts.append(tool_response_part)
+
+                        # D) Start Credit Survey
+                        elif function_name == "start_credit_survey":
+                            intent = function_call.args.get("intent", "generic_credit")
+                            logger.info(f"📋 AI triggering formal survey initiation. Intent: {intent}")
+                            # This special flag will be caught by the router to transition to SurveyService
+                            return f"TRIGGER_SURVEY:financial_capture"
                     
                     # Send ALL responses back to the model in a single turn
                     if response_parts:
