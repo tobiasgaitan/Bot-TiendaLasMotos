@@ -556,29 +556,48 @@ Responde en formato JSON:
             
         try:
             prompt = f"""
-You are a strict boolean classifier. Read the pending question and the user's answer. 
-If the user is answering the question, reply with the exact word TRUE. 
-If the user is asking an unrelated question or changing the topic, reply with the exact word FALSE. 
-Output nothing else.
+You are an Intent Evaluator and Data Sanitizer.
+Analyze the user's message relative to the pending survey question.
 
 PENDING QUESTION: "{pending_question}"
 USER MESSAGE: "{user_message}"
+
+MISSION:
+1. Determine if they are answering the question (TRUE) or asking something else (FALSE).
+2. If TRUE, extract and sanitize the value (e.g. "Gano el minimo" -> "1300000", "estudio" -> "Estudiante").
+3. Return ONLY the format: STATUS|VALUE
+
+EXAMPLES:
+Question: "¿Cuanto ganas?" | Msg: "El minimo" -> TRUE|1300000
+Question: "¿A que te dedicas?" | Msg: "Trabajo en una oficina" -> TRUE|Empleado
+Question: "¿Cuanto ganas?" | Msg: "Donde estan ubicados?" -> FALSE|None
+
+Respond ONLY with STATUS|VALUE.
 """
-            # Zero-shot plaintext evaluation (Abandoning JSON for stability)
+            # Zero-shot bridge evaluation
             response = self._model.generate_content(prompt)
             
             if not response or not hasattr(response, 'text') or not response.text:
-                logger.warning("⚠️ Intent Evaluator returned NO text. Using Fail-Closed.")
+                logger.warning("⚠️ Intent Evaluator returned NO text.")
                 return default_fallback
                 
-            response_text = response.text.strip().upper()
-            is_answering = "TRUE" in response_text
+            response_text = response.text.strip()
             
-            logger.info(f"🧠 Intent Evaluator Result: {is_answering} (Raw: {response_text})")
+            # Bridge Parsing (STATUS|VALUE)
+            if "|" in response_text:
+                status_part, value_part = response_text.split("|", 1)
+                is_answering = "TRUE" in status_part.upper()
+                sanitized_value = value_part.strip()
+            else:
+                is_answering = "TRUE" in response_text.upper()
+                sanitized_value = user_message # Fallback to original
+            
+            logger.info(f"🧠 Intent Bridge Result: {is_answering} | Sanitized: {sanitized_value}")
             
             return {
                 "is_answering_survey": is_answering,
-                "reasoning": "Plaintext boolean"
+                "sanitized_value": sanitized_value,
+                "reasoning": "Intent Bridge Sanitization"
             }
             
         except Exception as e:

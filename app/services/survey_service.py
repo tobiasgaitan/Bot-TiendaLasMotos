@@ -200,41 +200,54 @@ class SurveyService:
 
     async def delete_session(self, db_client, phone):
         """
-        Deep wipe of both legacy session and persistent survey state.
-        Ensures NO ghost sessions survive.
+        Nuclear wipe of sessions collection. 
+        Searches by ID variants and by fields (celular, telefono).
         """
         try:
+            from app.core.utils import PhoneNormalizer
+            clean_phone = PhoneNormalizer.normalize(phone)
+            
             # 1. Clear persistent state (PROSPECT)
             import app.services.memory_service as memory_service_module
             if memory_service_module.memory_service:
                 memory_service_module.memory_service.clear_survey_state(phone)
                 logger.info(f"🧹 Persistent state cleared for {phone}")
 
-            # 2. Delete legacy session document (SESIONES)
-            # We try variants to be absolutely sure
-            from app.core.utils import PhoneNormalizer
-            variants = list(set([phone, PhoneNormalizer.normalize(phone), phone.replace("57", "", 1)]))
-            
+            # 2. DELETE BY ID VARIANTS
+            variants = list(set([phone, clean_phone, phone.replace("57", "", 1)]))
             for pid in variants:
-                doc_ref = (
-                    db_client.collection("mensajeria")
-                    .document("whatsapp")
-                    .collection("sesiones")
-                    .document(pid)
-                )
-                
-                # Delete history subcollection first
-                history_ref = doc_ref.collection("historial")
-                docs = history_ref.limit(50).stream()
-                for doc in docs:
-                    doc.reference.delete()
-                    
-                doc_ref.delete()
-                logger.info(f"🗑️ Deep wipe: mensajeria/whatsapp/sesiones/{pid} removed.")
+                doc_ref = db_client.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
+                if doc_ref.get().exists:
+                    # Recursive history wipe
+                    hist = doc_ref.collection("historial").limit(50).stream()
+                    for h in hist: h.reference.delete()
+                    doc_ref.delete()
+                    logger.info(f"🗑️ Deleted session by ID: {pid}")
+
+            # 3. DELETE BY FIELD (The Ghost Hunter)
+            # Query documents where 'celular' or 'telefono' matches ANY variant
+            field_variants = list(set([phone, clean_phone, phone.replace("57", "", 1)]))
+            for field in ["celular", "telefono"]:
+                for val in field_variants:
+                    docs = (
+                        db_client.collection("mensajeria")
+                        .document("whatsapp")
+                        .collection("sesiones")
+                        .where(field, "==", val)
+                        .stream()
+                    )
+                    for doc in docs:
+                        # Recursive history wipe for found docs
+                        try:
+                            hist = doc.reference.collection("historial").limit(50).stream()
+                            for h in hist: h.reference.delete()
+                        except: pass
+                        doc.reference.delete()
+                        logger.info(f"🗑️ Deleted session by FIELD {field}={val}: {doc.id}")
             
             return True
         except Exception as e:
-            logger.error(f"❌ Error during delete_session for {phone}: {e}")
+            logger.error(f"❌ Error during absolute nuclear wipe for {phone}: {e}")
             return False
 
     async def _update_session(self, db_client, phone, data):

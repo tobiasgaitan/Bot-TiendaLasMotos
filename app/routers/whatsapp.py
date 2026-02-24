@@ -326,20 +326,16 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                             logger.info(f"🗑️ Deleted ROOT session document {pid}")
                     except Exception: pass
                     
-                    # 3. Deep Wipe of Global Session State (V16/V17 + Legacy + History)
+                    # 3. Deep Wipe of Global Session State (Absolute Purge)
                     try:
-                        # FORCED LEGACY PATH DELETION (As requested by user)
-                        legacy_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
-                        if legacy_ref.get().exists:
-                            legacy_ref.delete()
-                            logger.info(f"🗑️ FORCED DELETE: mensajeria/whatsapp/sesiones/{pid}")
-                        
-                        # NUCLEAR DELETE (includes history wipe)
+                        # 3.1 Nuclear Delete in Survey Service (handles fields + IDs + subcollections)
                         await survey_service.delete_session(db, pid)
                         
-                        # FINAL VERIFICATION LOG
+                        # 3.2 Verification for the requested legacy path
+                        legacy_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
                         exists_after = legacy_ref.get().exists
                         logger.info(f"🔥 Hard Purge verification for {pid}. Exists now: {exists_after}")
+                        
                         if not exists_after:
                             deleted_count += 1
                     except Exception as e: 
@@ -471,6 +467,12 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     if intent_eval.get("is_answering_survey"):
                         logger.info("✅ Intent: Answering survey. Routing to SurveyService.")
                         is_answering_survey = True
+                        # --- INTENT BRIDGE: Data Sanitization ---
+                        # If the AI sanitized the user message (e.g. "minimo" -> "1300000"), we use that
+                        sanitized = intent_eval.get("sanitized_value")
+                        if sanitized and str(sanitized).lower() != "none" and str(sanitized) != message_body:
+                            logger.info(f"🌉 Intent Bridge: Sanitizing input '{message_body}' -> '{sanitized}'")
+                            message_body = str(sanitized)
                     else:
                         logger.info(f"🔄 Intent: Context Switch! Reasoning: {intent_eval.get('reasoning')}")
                         # We route to AI Brain, but we'll pass the question to re-ask it later
