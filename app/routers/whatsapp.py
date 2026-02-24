@@ -317,7 +317,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     logger.info(f"🧹 Persistent survey_state cleared for {user_phone}")
 
                 for pid in ids_to_purge:
-                    # 1. Main Collections
+                    # 1. Main Collections (sessions/prospectos)
                     for col in collections_to_check:
                         try:
                             doc_ref = db.collection(col).document(pid)
@@ -327,21 +327,13 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                 logger.info(f"🗑️ Deleted {col}/{pid}")
                         except Exception: pass
                     
-                    # 2. Nested Session Collection (mensajeria/whatsapp/sesiones)
+                    # 2. Deep Wipe of Global Session State (V16/V17 + Legacy + History)
                     try:
-                        doc_ref_active = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
-                        if doc_ref_active.get().exists:
-                            doc_ref_active.delete()
-                            deleted_count += 1
-                            logger.info(f"🗑️ Deleted active session {pid}")
-                        
-                        # 3. Clean history as well
-                        history_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid).collection("historial")
-                        formatted_docs = history_ref.limit(50).stream() 
-                        for hdoc in formatted_docs:
-                            hdoc.reference.delete()
-                            
-                    except Exception: pass
+                        await survey_service.delete_session(db, pid)
+                        deleted_count += 1
+                    except Exception as e: 
+                        logger.error(f"❌ Error during survey_service.delete_session for {pid}: {e}")
+
 
             # Always send confirmation
             await _send_whatsapp_message(user_phone, "☢️ RESET COMPLETADO. Memoria limpia. Escribe 'Hola' para iniciar.")

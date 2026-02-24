@@ -198,7 +198,43 @@ class SurveyService:
                 "Tu caso es especial. Te voy a pasar con un asesor humano para que lo revise personalmente."
             )
 
+    async def delete_session(self, db_client, phone):
+        """
+        Deep wipe of both legacy session and persistent survey state.
+        Ensures NO ghost sessions survive.
+        """
+        try:
+            # 1. Clear persistent state (PROSPECT)
+            import app.services.memory_service as memory_service_module
+            if memory_service_module.memory_service:
+                memory_service_module.memory_service.clear_survey_state(phone)
+                logger.info(f"🧹 Persistent state cleared for {phone}")
+
+            # 2. Delete legacy session document (SESIONES)
+            # We try both normalized and potentially raw (via variants in the caller)
+            doc_ref = (
+                db_client.collection("mensajeria")
+                .document("whatsapp")
+                .collection("sesiones")
+                .document(phone)
+            )
+            
+            # Delete history subcollection first (best practice for shallow delete visibility)
+            history_ref = doc_ref.collection("historial")
+            docs = history_ref.limit(50).stream()
+            for doc in docs:
+                doc.reference.delete()
+                
+            doc_ref.delete()
+            logger.info(f"🗑️ Legacy session document deleted for {phone}")
+            
+            return True
+        except Exception as e:
+            logger.error(f"❌ Error during delete_session for {phone}: {e}")
+            return False
+
     async def _update_session(self, db_client, phone, data):
+
         """Helper to update Firestore session and prospect survey_state."""
         try:
             # 1. Update Session Document (Legacy/Router Sync)

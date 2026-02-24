@@ -555,24 +555,23 @@ Responde en formato JSON:
             return default_fallback
             
         try:
-            chat = self._model.start_chat()
-            
             prompt = f"""
-You are an Intent Evaluator Classifier for a motorcycle dealership virtual assistant.
-Your ONLY job is to determine if the user's message is an attempt to answer the currently pending survey question, OR if the user is asking a completely unrelated question (initiating a Context Switch).
+SYSTEM: You are a Draconian Intent Evaluator.
+YOUR MISSION: Determine if the message below is an attempt to answer the currently pending survey question OR a context-switching distraction.
 
-PENDING QUESTION TO THE USER: "{pending_question}"
-USER'S MESSAGE: "{user_message}"
+PENDING QUESTION: "{pending_question}"
+USER MESSAGE: "{user_message}"
 
-CRITERIA:
-- Return True if the user is attempting to answer the question, even if the answer is vague, incomplete, or variations of "I don't know".
-- Return False ONLY if the user is completely ignoring the question to ask something entirely different (e.g., asking for the price of a motorcycle, asking where the store is located, asking about a different topic).
+RULES:
+1. OUTPUT ONLY VALID JSON.
+2. NO MARKDOWN (no ```json).
+3. NO CONVERSATIONAL TEXT.
+4. NO EXPLANATIONS.
+5. IF THE MESSAGE IS AN ANSWER (EVEN VAGUE/NOPE): {{"is_answering_survey": true, "reasoning": "..."}}
+6. IF THE USER IS ASKING SOMETHING TOTALLY UNRELATED: {{"is_answering_survey": false, "reasoning": "..."}}
 
-Respond in JSON format exactly like this:
-{{
-    "is_answering_survey": boolean,
-    "reasoning": "string explaining why"
-}}
+REQUIRED FORMAT:
+{{"is_answering_survey": boolean, "reasoning": "string"}}
 """
             # Request specific JSON response using GenerationConfig
             response = chat.send_message(
