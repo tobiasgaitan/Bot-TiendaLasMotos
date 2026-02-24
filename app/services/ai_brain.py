@@ -266,8 +266,7 @@ class CerebroIA:
                 # 1. Send initial message
                 response = chat.send_message(
                     full_prompt,
-                    generation_config=GenerationConfig(temperature=0.2, max_output_tokens=1000),
-                    timeout=60.0
+                    generation_config=GenerationConfig(temperature=0.2, max_output_tokens=1000)
                 )
                 
                 # 2. Check for Function Call(s)
@@ -374,7 +373,7 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
                     # Send ALL responses back to the model in a single turn
                     if response_parts:
                         logger.info(f"📤 Sending {len(response_parts)} tool responses to AI...")
-                        final_response = chat.send_message(response_parts, timeout=60.0)
+                        final_response = chat.send_message(response_parts)
                         return final_response.text.strip()
                 
                 # Normal text response
