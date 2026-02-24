@@ -206,7 +206,7 @@ class CerebroIA:
 
             return Tool(function_declarations=[handoff_function, catalog_function, credit_function])
         except Exception as e:
-            logger.error(f"❌ Error creating tools: {str(e)}")
+            logger.error(f"❌ Error creating tools: {str(e)}", exc_info=True)
             return None
 
     def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, pending_survey_question: Optional[str] = None) -> str:
@@ -268,8 +268,9 @@ class CerebroIA:
                     full_prompt += f"El usuario estaba respondiendo a esta pregunta: '{pending_survey_question}'\n"
                     full_prompt += "pero ahora acaba de enviar un mensaje diferente o aleatorio.\n\n"
                     full_prompt += "INSTRUCCIONES CRÍTICAS:\n"
-                    full_prompt += "1. Responde a su mensaje actual de forma natural y completa.\n"
-                    full_prompt += f"2. Al FINAL de tu respuesta, debes retomar el hilo y volver a preguntarle EXACTAMENTE: '{pending_survey_question}'\n"
+                    full_prompt += "1. Tienes HERRAMIENTAS (Tools) disponibles. Úsalas normalmente para obtener datos PRIMERO si es necesario.\n"
+                    full_prompt += "2. Solo cuando estés redactando tu respuesta de texto FINAL al usuario, debes retomar el hilo.\n"
+                    full_prompt += f"3. Al FINAL de tu mensaje de texto definitivo, debes volver a preguntar EXACTAMENTE: '{pending_survey_question}'\n"
                     full_prompt += "Ejemplo: 'Claro que sí, [respuesta]. Por cierto, para seguir con tu crédito, ¿me recordabas [pregunta pendiente]?'\n"
                     full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
 
@@ -321,7 +322,7 @@ class CerebroIA:
                                 else:
                                     search_results = "Error: Servicio de catálogo no disponible."
                             except Exception as e:
-                                logger.error(f"❌ Tool Execution Error (Catalog): {e}")
+                                logger.error(f"❌ Tool Execution Error (Catalog): {e}", exc_info=True)
                                 search_results = "Tuve un problema consultando el catálogo momentáneamente. ¿Me podrías preguntar de nuevo?"
                             
                             logger.info(f"📤 Preparing tool response for '{query}'...") 
@@ -371,7 +372,7 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
                                 else:
                                     credit_result = "Error: Motor financiero no conectado."
                             except Exception as e:
-                                logger.error(f"❌ Tool Execution Error (Credit): {e}")
+                                logger.error(f"❌ Tool Execution Error (Credit): {e}", exc_info=True)
                                 credit_result = "Error calculando el crédito. Intenta de nuevo."
                             
                             tool_response_part = Part.from_function_response(
@@ -481,7 +482,7 @@ Responde en formato JSON:
             return result
             
         except Exception as e:
-            logger.error(f"❌ Error generating summary: {str(e)}")
+            logger.error(f"❌ Error generating summary: {str(e)}", exc_info=True)
             return {
                 "summary": conversation_text[:200] + "..." if len(conversation_text) > 200 else conversation_text,
                 "extracted": {}
