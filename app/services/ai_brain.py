@@ -583,16 +583,21 @@ Respond in JSON format exactly like this:
                 )
             )
             
-            response_text = response.text.strip()
+            raw_text = response.text.strip() if response.text else ""
             
-            # Clean up potential markdown formatting a round JSON
-            import json
-            import re
-            json_match = re.search(r'(\{.*\})', response_text, re.DOTALL)
-            if json_match:
-                response_text = json_match.group(1)
+            # Robust Sanitization (Cleanup markdown artifacts if present)
+            clean_json = raw_text.replace("```json", "").replace("```", "").replace("```", "").strip()
+            
+            if not clean_json:
+                logger.warning("⚠️ Intent Evaluator returned empty string. Using Fail-Closed.")
+                return default_fallback
                 
-            result = json.loads(response_text)
+            import json
+            try:
+                result = json.loads(clean_json)
+            except json.JSONDecodeError as jde:
+                logger.error(f"❌ JSON Parsing Error in Intent Evaluator: {jde} | Raw: {raw_text}")
+                return default_fallback
             
             # Ensure required fields exist
             if "is_answering_survey" not in result or "reasoning" not in result:

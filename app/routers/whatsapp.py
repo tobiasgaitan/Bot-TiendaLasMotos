@@ -311,6 +311,11 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             collections_to_check = ["sessions", "prospectos"]
             
             if db:
+                # NEW: Clear persistent survey state (V16/V17 Sync)
+                if memory_service_module.memory_service:
+                    memory_service_module.memory_service.clear_survey_state(user_phone)
+                    logger.info(f"🧹 Persistent survey_state cleared for {user_phone}")
+
                 for pid in ids_to_purge:
                     # 1. Main Collections
                     for col in collections_to_check:
