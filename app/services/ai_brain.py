@@ -556,57 +556,29 @@ Responde en formato JSON:
             
         try:
             prompt = f"""
-You are an Intent Classifier. 
-Is the user answering the question: "{pending_question}"?
-User message: "{user_message}"
+You are a strict boolean classifier. Read the pending question and the user's answer. 
+If the user is answering the question, reply with the exact word TRUE. 
+If the user is asking an unrelated question or changing the topic, reply with the exact word FALSE. 
+Output nothing else.
 
-Respond ONLY with JSON:
-{{
-  "is_answering_survey": true/false,
-  "reasoning": "short"
-}}
+PENDING QUESTION: "{pending_question}"
+USER MESSAGE: "{user_message}"
 """
-            # Request specific JSON response using GenerationConfig
-            response = self._model.generate_content(
-                prompt,
-                generation_config=GenerationConfig(
-                    temperature=0.0, # Deterministic
-                    response_mime_type="application/json"
-                )
-            )
+            # Zero-shot plaintext evaluation (Abandoning JSON for stability)
+            response = self._model.generate_content(prompt)
             
-            # CRITICAL: If response has no text, handle it explicitly
             if not response or not hasattr(response, 'text') or not response.text:
                 logger.warning("⚠️ Intent Evaluator returned NO text. Using Fail-Closed.")
                 return default_fallback
                 
-            raw_text = response.text.strip()
+            response_text = response.text.strip().upper()
+            is_answering = "TRUE" in response_text
             
-            # Robust Sanitization (Cleanup markdown artifacts if present)
-            clean_json = raw_text.replace("```json", "").replace("```", "").replace("```", "").strip()
-            
-            if not clean_json:
-                logger.warning("⚠️ Intent Evaluator returned empty string. Using Fail-Closed.")
-                return default_fallback
-                
-            import json
-            try:
-                result = json.loads(clean_json)
-            except json.JSONDecodeError as jde:
-                logger.error(f"❌ JSON Parsing Error in Intent Evaluator: {jde} | Raw: {raw_text}")
-                return default_fallback
-            
-            # Ensure required fields exist
-            if "is_answering_survey" not in result or "reasoning" not in result:
-                raise ValueError("JSON missing required fields")
-                
-            # Log the decision
-            intent_type = "ANSWERING_SURVEY" if result["is_answering_survey"] else "CONTEXT_SWITCH"
-            logger.info(f"🧭 Intent Evaluator Decision: {intent_type} | Reason: {result['reasoning']}")
+            logger.info(f"🧠 Intent Evaluator Result: {is_answering} (Raw: {response_text})")
             
             return {
-                "is_answering_survey": bool(result["is_answering_survey"]),
-                "reasoning": str(result["reasoning"])
+                "is_answering_survey": is_answering,
+                "reasoning": "Plaintext boolean"
             }
             
         except Exception as e:

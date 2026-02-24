@@ -328,16 +328,18 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     
                     # 3. Deep Wipe of Global Session State (V16/V17 + Legacy + History)
                     try:
-                        # Path alignment verification
-                        doc_path = f"mensajeria/whatsapp/sesiones/{pid}"
-                        doc_ref_active = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
+                        # FORCED LEGACY PATH DELETION (As requested by user)
+                        legacy_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
+                        if legacy_ref.get().exists:
+                            legacy_ref.delete()
+                            logger.info(f"🗑️ FORCED DELETE: mensajeria/whatsapp/sesiones/{pid}")
                         
-                        # NUCLEAR DELETE (recursive history wipe included in delete_session)
+                        # NUCLEAR DELETE (includes history wipe)
                         await survey_service.delete_session(db, pid)
                         
-                        # VERIFICATION LOG
-                        exists_after = doc_ref_active.get().exists
-                        logger.info(f"🔥 Hard Purge for {doc_path}. Exists now: {exists_after}")
+                        # FINAL VERIFICATION LOG
+                        exists_after = legacy_ref.get().exists
+                        logger.info(f"🔥 Hard Purge verification for {pid}. Exists now: {exists_after}")
                         if not exists_after:
                             deleted_count += 1
                     except Exception as e: 
