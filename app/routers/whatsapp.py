@@ -415,6 +415,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         # --- V16: CONTEXT SWITCHING & SURVEY INTERCEPTION (Orchestration) ---
         survey_pending_question = None
         is_answering_survey = False
+        survey_just_triggered = False
         session = {}
 
         if msg_type == "text" and db:
@@ -484,6 +485,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 if any(k in message_body.lower() for k in financial_keywords):
                     logger.info(f"🎯 Deterministic Trigger! Financial keyword detected in '{message_body}'. Starting survey...")
                     is_answering_survey = True
+                    survey_just_triggered = True
                     # Initialize session for SurveyService
                     status = "SURVEY_STEP_0_AUTH"
                     session = {"status": status, "answers": {}, "retry_count": 0}
@@ -502,10 +504,13 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         # 3. Generar Respuesta (AI o Audio o Encuesta)
         if msg_type == "text":
             if is_answering_survey:
-                logger.info(f"📝 Executing survey step for {user_phone}...")
-                response_text = await survey_service.handle_survey_step(
-                    db, user_phone, message_body, session, motor_financiero
-                )
+                if survey_just_triggered:
+                    logger.info(f"⏩ Survey just triggered for {user_phone}. Skipping handle_survey_step execution for this turn.")
+                else:
+                    logger.info(f"📝 Executing survey step for {user_phone}...")
+                    response_text = await survey_service.handle_survey_step(
+                        db, user_phone, message_body, session, motor_financiero
+                    )
             else:
                 logger.info(f"🧠 Calling CerebroIA.pensar_respuesta... (Skip Greeting: {skip_greeting}, Pending: {survey_pending_question})")
                 response_text = cerebro_ia.pensar_respuesta(
@@ -522,6 +527,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     survey_id = str(response_text).split(":")[1]
                     logger.info(f"🎯 AI-Driven Trigger! Initiating survey '{survey_id}' for {user_phone}")
                     is_answering_survey = True
+                    survey_just_triggered = True
                     # Re-route to SurveyService immediately
                     status = "SURVEY_STEP_0_AUTH"
                     session = {"status": status, "answers": {}, "retry_count": 0}
