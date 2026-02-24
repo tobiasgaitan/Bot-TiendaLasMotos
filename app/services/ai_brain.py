@@ -109,11 +109,11 @@ class CerebroIA:
     def _default_instruction(self) -> str:
         return self._get_system_instruction()
     
-    def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
+    def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, pending_survey_question: Optional[str] = None) -> str:
         """
         Generate an intelligent response using Gemini AI with Retry Logic.
         """
-        return self._generate_with_retry(texto, context, prospect_data, history, skip_greeting)
+        return self._generate_with_retry(texto, context, prospect_data, history, skip_greeting, pending_survey_question)
 
     def _create_tools(self) -> Optional[Tool]:
         """
@@ -209,7 +209,7 @@ class CerebroIA:
             logger.error(f"❌ Error creating tools: {str(e)}")
             return None
 
-    def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
+    def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, pending_survey_question: Optional[str] = None) -> str:
         """
         Internal generation with exponential backoff.
         """
@@ -260,6 +260,18 @@ class CerebroIA:
                 # Greeting Bypass Instruction
                 if skip_greeting:
                     full_prompt += "\n[SYSTEM: Omit introductory greetings. Respond directly to the user's query as the conversation is ongoing. KEEP IT SHORT.]\n"
+
+                # V16 - Context Switching (Interruption handling)
+                if pending_survey_question:
+                    full_prompt += "═══════════════════════════════════════════════════════════════════\n"
+                    full_prompt += "⚠️ CONTEXTO DE INTERRUPCIÓN (ENCUESTA EN CURSO):\n"
+                    full_prompt += f"El usuario estaba respondiendo a esta pregunta: '{pending_survey_question}'\n"
+                    full_prompt += "pero ahora acaba de enviar un mensaje diferente o aleatorio.\n\n"
+                    full_prompt += "INSTRUCCIONES CRÍTICAS:\n"
+                    full_prompt += "1. Responde a su mensaje actual de forma natural y completa.\n"
+                    full_prompt += f"2. Al FINAL de tu respuesta, debes retomar el hilo y volver a preguntarle EXACTAMENTE: '{pending_survey_question}'\n"
+                    full_prompt += "Ejemplo: 'Claro que sí, [respuesta]. Por cierto, para seguir con tu crédito, ¿me recordabas [pregunta pendiente]?'\n"
+                    full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
 
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 

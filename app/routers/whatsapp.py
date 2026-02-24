@@ -408,17 +408,57 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         else:
             logger.warning("⚠️ Memory Service is NOT initialized. Skipping persistence.")
 
-        # 3. Generar Respuesta (AI o Audio)
+        # --- V16: CONTEXT SWITCHING & SURVEY INTERCEPTION (Orchestration) ---
+        survey_pending_question = None
+        is_answering_survey = False
+        session = {}
+
+        if msg_type == "text" and db:
+            # 1. Check for active survey status
+            session = await _get_session(db, user_phone)
+            status = session.get("status", "IDLE")
+            
+            if status.startswith("SURVEY_STEP_"):
+                # Map technical step ID to the actual human question
+                SURVEY_STEPS_MAP = {
+                    "SURVEY_STEP_1_LABOR": "¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)",
+                    "SURVEY_STEP_2_INCOME": "¿Cuáles son tus ingresos mensuales totales? (Escribe solo el número)",
+                    "SURVEY_STEP_3_HISTORY": "¿Cómo ha sido tu comportamiento con créditos anteriores? (Ej: Excelente, Reportado)",
+                    "SURVEY_STEP_4_GAS": "¿Tienes servicio de Gas Natural a tu nombre? (Responde Sí o No)",
+                    "SURVEY_STEP_5_POSTPAID": "¿Tienes un plan de celular Postpago? (Responde Sí o No)"
+                }
+                survey_pending_question = SURVEY_STEPS_MAP.get(status)
+                
+                if survey_pending_question:
+                    logger.info(f"📋 Survey Active ({status}). Evaluating intent...")
+                    intent_eval = cerebro_ia.evaluate_survey_intent(message_body, survey_pending_question)
+                    
+                    if intent_eval.get("is_answering_survey"):
+                        logger.info("✅ Intent: Answering survey. Routing to SurveyService.")
+                        is_answering_survey = True
+                    else:
+                        logger.info(f"🔄 Intent: Context Switch! Reasoning: {intent_eval.get('reasoning')}")
+                        # We route to AI Brain, but we'll pass the question to re-ask it later
+        # --- END CONTEXT SWITCHING LOGIC ---
+
+        # 3. Generar Respuesta (AI o Audio o Encuesta)
         if msg_type == "text":
-            logger.info(f"🧠 Calling CerebroIA.pensar_respuesta... (Skip Greeting: {skip_greeting})")
-            response_text = cerebro_ia.pensar_respuesta(
-                message_body, 
-                context=context, 
-                prospect_data=prospect_data,
-                history=current_history,
-                skip_greeting=skip_greeting
-            )
-            logger.info(f"🧠 AI Response generated: '{str(response_text)[:50]}...'")
+            if is_answering_survey:
+                logger.info(f"📝 Executing survey step for {user_phone}...")
+                response_text = await survey_service.handle_survey_step(
+                    db, user_phone, message_body, session, motor_financiero
+                )
+            else:
+                logger.info(f"🧠 Calling CerebroIA.pensar_respuesta... (Skip Greeting: {skip_greeting}, Pending: {survey_pending_question})")
+                response_text = cerebro_ia.pensar_respuesta(
+                    message_body, 
+                    context=context, 
+                    prospect_data=prospect_data,
+                    history=current_history,
+                    skip_greeting=skip_greeting,
+                    pending_survey_question=survey_pending_question
+                )
+            logger.info(f"🧠 Response determined: '{str(response_text)[:50]}...'")
             
             # LATENCY SIMULATION (Natural Typing Delay)
             # Rule: First response to a new session (or after long pause) must be instant (0s).
