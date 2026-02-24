@@ -60,6 +60,7 @@ class MemoryService:
                     "moto_interest": data.get("motoInteres"),
                     "summary": data.get("ai_summary"),
                     "human_help_requested": data.get("human_help_requested", False),
+                    "survey_state": data.get("survey_state"),
                     "exists": True
                 }
                 logger.info(
@@ -83,6 +84,7 @@ class MemoryService:
                     "moto_interest": data.get("motoInteres"),
                     "summary": data.get("ai_summary"),
                     "human_help_requested": data.get("human_help_requested", False),
+                    "survey_state": data.get("survey_state"),
                     "exists": True
                 }
 
@@ -92,6 +94,7 @@ class MemoryService:
                 "moto_interest": None,
                 "summary": None,
                 "human_help_requested": False,
+                "survey_state": None,
                 "exists": False
             }
 
@@ -102,6 +105,7 @@ class MemoryService:
                 "moto_interest": None,
                 "summary": None,
                 "human_help_requested": False,
+                "survey_state": None,
                 "exists": False
             }
 
@@ -342,6 +346,102 @@ class MemoryService:
         except Exception as e:
             logger.error(f"❌ Error creating prospect for {phone_number}: {e}", exc_info=True)
             return False
+
+    def save_survey_state(self, phone_number: str, survey_id: str, current_step: str, collected_data: dict) -> None:
+        """
+        Saves the current state of a survey to the prospect's profile.
+        This provides context switching capability, allowing the bot to pause
+        a survey, answer a random question, and resume the survey exactly where it left off.
+        Implementation of Security Standard: Input Validation via PhoneNormalizer.
+
+        Args:
+            phone_number: The prospect's raw phone number
+            survey_id: Identifier for the survey (e.g., 'financial_capture')
+            current_step: The current question/step the user is on
+            collected_data: Data collected so far
+        """
+        try:
+            from app.core.utils import PhoneNormalizer
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            
+            logger.info(f"💾 Guardando estado de encuesta para {clean_phone} | Survey: {survey_id} | Paso: {current_step}")
+            
+            doc_ref = self._db.collection("prospectos").document(clean_phone)
+            
+            state_data = {
+                "survey_id": survey_id,
+                "current_step": current_step,
+                "collected_data": collected_data,
+                "updated_at": firestore.SERVER_TIMESTAMP
+            }
+            
+            # Use update to safely merge this nested object without overwriting other fields
+            doc_ref.update({
+                "survey_state": state_data,
+                "updated_at": firestore.SERVER_TIMESTAMP
+            })
+            
+            logger.info(f"✅ Estado de encuesta guardado exitosamente para {clean_phone}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error guardando estado de encuesta para {phone_number}: {e}", exc_info=True)
+
+    def get_survey_state(self, phone_number: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieves the current active survey state for a prospect.
+        Implementation of Security Standard: Fail-Closed approach by safely returning None.
+
+        Args:
+            phone_number: The prospect's raw phone number
+            
+        Returns:
+            Dict containing the active survey state or None if no active survey exists
+        """
+        try:
+            from app.core.utils import PhoneNormalizer
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            
+            doc_ref = self._db.collection("prospectos").document(clean_phone)
+            doc = doc_ref.get()
+            
+            if doc.exists:
+                data = doc.to_dict()
+                state = data.get("survey_state")
+                if state:
+                    logger.info(f"🔍 Estado de encuesta ACTIVO encontrado para {clean_phone}: {state.get('survey_id')}")
+                    return state
+                    
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error al recuperar estado de encuesta para {phone_number}: {e}", exc_info=True)
+            return None
+
+    def clear_survey_state(self, phone_number: str) -> None:
+        """
+        Clears the active survey state from a prospect document once completed or cancelled.
+
+        Args:
+            phone_number: The prospect's raw phone number
+        """
+        try:
+            from app.core.utils import PhoneNormalizer
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            
+            logger.info(f"🧹 Limpiando estado de encuesta para {clean_phone}")
+            
+            doc_ref = self._db.collection("prospectos").document(clean_phone)
+            
+            # firestore.DELETE_FIELD atomically removes the field from the document
+            doc_ref.update({
+                "survey_state": firestore.DELETE_FIELD,
+                "updated_at": firestore.SERVER_TIMESTAMP
+            })
+            
+            logger.info(f"✅ Estado de encuesta limpiado para {clean_phone}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error al limpiar estado de encuesta para {phone_number}: {e}", exc_info=True)
 
     async def save_message(self, phone_number: str, role: str, content: str) -> None:
         """
