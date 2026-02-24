@@ -164,6 +164,13 @@ class SurveyService:
                 # Strike 1
                 logger.info(f"⚠️ Survey Strike 1 for {phone} at {status}")
                 await self._update_session(db_client, phone, {"retry_count": 1})
+                
+                if status == "SURVEY_STEP_0_AUTH":
+                    return (
+                        "No pude procesar tu respuesta. 😅 "
+                        "Para continuar, ¿autorizas el tratamiento de tus datos personales? "
+                        "Puedes consultar nuestra política aquí: https://tiendalasmotos.com/politica-de-privacidad (Responde Sí o No)"
+                    )
                 return self.STRIKE_1_MSG
             else:
                 # Strike 2 (>= 1)
