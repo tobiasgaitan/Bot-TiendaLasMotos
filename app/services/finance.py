@@ -87,19 +87,29 @@ class MotorFinanciero:
         # Fetch Link
         link_key = strategy_info.get("link_key")
         link_url = "#"
+        requires_documents = False
+        
         if self._config_loader and link_key:
             partners = self._config_loader.get_partners_config()
             link_url = partners.get(link_key, "#")
+            
+        entity = strategy_info["entity"]
+        
+        # Brilla Exception (Document capture instead of URL redirect)
+        if entity in ["Brilla de Gases", "Brilla"] or link_key == "link_brilla":
+            link_url = None
+            requires_documents = True
         
         return {
             "score": score,
             "strategy": strategy_info["strategy"],
-            "entity": strategy_info["entity"],
+            "entity": entity,
             "rate_key": strategy_info["rate_key"],
             "link_url": link_url,
             "requires_aval": strategy_info["requires_aval"],
             "is_fallback": strategy_info.get("is_fallback", False),
-            "explanation": f"Basado en tu perfil (Score: {score}), la mejor opción es {strategy_info['entity']}."
+            "requires_documents": requires_documents,
+            "explanation": f"Basado en tu perfil (Score: {score}), la mejor opción es {entity}."
         }
     
     def simular_credito(self, texto: str, motor_ventas: Optional[Any] = None) -> str:

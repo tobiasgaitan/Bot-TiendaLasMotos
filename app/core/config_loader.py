@@ -61,6 +61,7 @@ class ConfigLoader:
         self._juan_pablo_personality: Optional[Dict[str, Any]] = None
         self._routing_rules: Optional[Dict[str, Any]] = None
         self._catalog_config: Optional[Dict[str, Any]] = None
+        self._partners_config: Optional[Dict[str, Any]] = None
         self._last_loaded: Optional[datetime] = None
         self._initialized = True
     
@@ -84,6 +85,9 @@ class ConfigLoader:
             
             # Load catalog configuration
             self._load_catalog_config()
+            
+            # Load partners configuration
+            self._load_partners_config()
             
             self._last_loaded = datetime.now()
             logger.info("✅ V6.0 configuration loaded successfully")
@@ -143,12 +147,30 @@ class ConfigLoader:
         except Exception as e:
             logger.error(f"❌ Error loading catalog config: {str(e)}")
             self._catalog_config = self._get_default_catalog_config()
+            
+    def _load_partners_config(self) -> None:
+        """Load partners configuration from Firestore."""
+        try:
+            doc_ref = self._db.collection("configuracion").document("aliados")
+            doc = doc_ref.get()
+            
+            if doc.exists:
+                self._partners_config = doc.to_dict()
+                logger.info(f"✅ Partners config loaded ({len(self._partners_config)} items)")
+            else:
+                logger.warning("⚠️  Partners config document not found, using defaults")
+                self._partners_config = self._get_default_partners_config()
+                
+        except Exception as e:
+            logger.error(f"❌ Error loading partners config: {str(e)}")
+            self._partners_config = self._get_default_partners_config()
     
     def _initialize_defaults(self) -> None:
         """Initialize all configurations with safe defaults."""
         self._juan_pablo_personality = self._get_default_juan_pablo_personality()
         self._routing_rules = self._get_default_routing_rules()
         self._catalog_config = self._get_default_catalog_config()
+        self._partners_config = self._get_default_partners_config()
     
     # ==================== Getters ====================
     
@@ -187,6 +209,15 @@ class ConfigLoader:
             Dictionary containing catalog settings and items
         """
         return self._catalog_config or self._get_default_catalog_config()
+
+    def get_partners_config(self) -> Dict[str, Any]:
+        """
+        Get partners configuration (e.g. links).
+        
+        Returns:
+            Dictionary containing partners configuration
+        """
+        return self._partners_config or self._get_default_partners_config()
     
     def refresh(self) -> None:
         """
@@ -237,6 +268,15 @@ class ConfigLoader:
             "items": [],
             "last_updated": None,
             "auto_sync_enabled": False
+        }
+        
+    @staticmethod
+    def _get_default_partners_config() -> Dict[str, Any]:
+        """Get default partners configuration."""
+        return {
+            "link_banco_bogota": "https://digital.bancodebogota.com/",
+            "link_crediorbe": "https://crediorbe.com/",
+            "link_brilla": "https://brilladegasesdeoccidente.com/"
         }
 
 
