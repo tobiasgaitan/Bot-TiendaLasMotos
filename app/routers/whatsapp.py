@@ -547,8 +547,18 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 logger.info("🚀 Smart Latency: New session detected. Skipping typing delay (0s).")
                 typing_delay = 0
             else:
-                typing_delay = min(5.0, len(str(response_text)) * 0.03) # 0.03s per char, max 5s
-                logger.info(f"⏳ Smart Latency: Specific delay applied: {typing_delay:.2f}s")
+                import random
+                # 1. Indicador de estado "Escribiendo..."
+                await _send_typing_indicator(user_phone)
+                
+                # 2. Simulación y Naturalidad
+                base_delay = len(str(response_text)) / 35.0
+                jitter = random.uniform(0.5, 1.5)
+                calculated_delay = base_delay + jitter
+                
+                # 3. Límite de seguridad
+                typing_delay = min(8.0, calculated_delay)
+                logger.info(f"⏳ Human Latency: len={len(str(response_text))}, delay={typing_delay:.2f}s")
 
             if typing_delay > 0:
                 # await _send_typing_indicator(user_phone) # Optional if implemented
@@ -597,6 +607,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                         # Strategy B: Image then Text
                         logger.info(f"📸 Native Image Strategy B (Split): text len={len(cleaned_response_text)} > 1024")
                         await _send_whatsapp_image(user_phone, image_url, caption="")
+                        await asyncio.sleep(1.5) # Hard-coded delay between Image and Text
                         await _send_whatsapp_message(user_phone, cleaned_response_text)
                         
                     response_text = cleaned_response_text # Update for history saving (hide tags from history)
@@ -699,6 +710,34 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
             
     except Exception as e:
         logger.error(f"Error sending message: {e}")
+
+async def _send_typing_indicator(to_phone: str) -> None:
+    """Send WhatsApp typing indicator (typing_on) via Cloud API."""
+    try:
+        phone_number_id = settings.phone_number_id
+        if not phone_number_id or not settings.whatsapp_token:
+            return
+
+        from app.core.utils import PhoneNormalizer
+        to_phone_intl = PhoneNormalizer.to_international(to_phone)
+
+        url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {settings.whatsapp_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to_phone_intl,
+            "sender_action": "typing_on",
+        }
+        
+        async with httpx.AsyncClient() as client:
+            await client.post(url, json=payload, headers=headers, timeout=5.0)
+            
+    except Exception as e:
+        logger.error(f"Error sending typing indicator: {e}")
 
 async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "") -> bool:
     """Send WhatsApp image via Cloud API with optional caption."""
