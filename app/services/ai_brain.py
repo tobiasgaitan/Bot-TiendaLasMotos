@@ -278,7 +278,7 @@ class CerebroIA:
                 
                 # Greeting Bypass Instruction
                 if skip_greeting:
-                    full_prompt += "\n[SYSTEM: Omit introductory greetings. Respond directly to the user's query as the conversation is ongoing. KEEP IT SHORT.]\n"
+                    full_prompt += "\n[SYSTEM: STRICT RULE: DO NOT under any circumstance start your response with 'Hola', 'Buenos días', or any greeting. The conversation is ongoing. Jump straight into your answer.]\n"
 
                 # V16 - Context Switching (Interruption handling)
                 if pending_survey_question:
@@ -499,7 +499,7 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
         try:
             chat = self._model.start_chat()
             prompt = f"""
-Eres Juan Pablo, el asistente virtual experto de Tienda Las Motos.
+Eres Juan Pablo, el asistente virtual experto de Auteco Las Motos.
 Tu misión es resumir la conversación con el cliente y extraer datos clave.
 
 Analiza esta conversación y genera:

@@ -413,7 +413,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     delta = now - last_time
                     diff_seconds = delta.total_seconds()
                     
-                    if diff_seconds < 7200:
+                    if diff_seconds < 43200:
                         skip_greeting = True
                         logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
         else:
