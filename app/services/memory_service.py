@@ -57,6 +57,7 @@ class MemoryService:
                 data = doc.to_dict()
                 prospect_data = {
                     "name": data.get("nombre"),
+                    "ciudad": data.get("ciudad"),
                     "moto_interest": data.get("motoInteres"),
                     "summary": data.get("ai_summary"),
                     "human_help_requested": data.get("human_help_requested", False),
@@ -81,6 +82,7 @@ class MemoryService:
                 logger.info(f"✅ Found via legacy field query (ID mismatch): {docs[0].id}")
                 return {
                     "name": data.get("nombre"),
+                    "ciudad": data.get("ciudad"),
                     "moto_interest": data.get("motoInteres"),
                     "summary": data.get("ai_summary"),
                     "human_help_requested": data.get("human_help_requested", False),
@@ -91,6 +93,7 @@ class MemoryService:
             logger.info(f"📭 Prospecto no encontrado para {normalized_phone}")
             return {
                 "name": None,
+                "ciudad": None,
                 "moto_interest": None,
                 "summary": None,
                 "human_help_requested": False,
@@ -102,6 +105,7 @@ class MemoryService:
             logger.error(f"❌ Error al recuperar datos del prospecto {phone_number}: {str(e)}", exc_info=True)
             return {
                 "name": None,
+                "ciudad": None,
                 "moto_interest": None,
                 "summary": None,
                 "human_help_requested": False,

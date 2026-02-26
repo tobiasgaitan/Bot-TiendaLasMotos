@@ -6,6 +6,7 @@ Handles the financial survey flow with "Smart Retry" logic (2-Strike Rule).
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
+from google.cloud import firestore
 from app.services.finance import MotorFinanciero
 from app.services.financial_service import financial_service
 
@@ -76,10 +77,9 @@ class SurveyService:
                 is_valid = True
                 consent = self._parse_boolean(text_lower)
                 if consent:
-                    next_status = "SURVEY_STEP_1_LABOR"
+                    next_status = "SURVEY_STEP_1_NAME"
                     response_text = (
-                        "¡Gracias por tu confianza! 😊 Comencemos:\n\n"
-                        "1️⃣ ¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)"
+                        "¡Excelente! Para empezar, ¿cuál es tu nombre completo?"
                     )
                 else:
                     # Explicit Denial: Exit Survey
@@ -93,51 +93,73 @@ class SurveyService:
             else:
                 is_valid = False
 
-        elif status == "SURVEY_STEP_1_LABOR":
+        elif status == "SURVEY_STEP_1_NAME":
+            # Validation: Non-empty
+            if len(message_text.strip()) > 1:
+                is_valid = True
+                answers["nombre"] = message_text
+                next_status = "SURVEY_STEP_2_CITY"
+                response_text = (
+                    "Mucho gusto. ¿En qué ciudad te encuentras ubicado?"
+                )
+
+        elif status == "SURVEY_STEP_2_CITY":
+            # Validation: Non-empty
+            if len(message_text.strip()) > 1:
+                is_valid = True
+                answers["ciudad"] = message_text
+                next_status = "SURVEY_STEP_3_LABOR"
+                response_text = (
+                    "3️⃣ Cuéntame: ¿Cuál es tu ocupación actual y qué tipo de contrato tienes? "
+                    "(Ej: Empleado Indefinido, Independiente, etc.)"
+                )
+
+        elif status == "SURVEY_STEP_3_LABOR":
             # Validation: Just needs to be non-empty text
             if len(message_text.strip()) > 1:
                 is_valid = True
                 answers["labor_type"] = message_text
-                next_status = "SURVEY_STEP_2_INCOME"
+                next_status = "SURVEY_STEP_4_INCOME"
                 response_text = (
-                    "2️⃣ ¿Cuáles son tus ingresos mensuales totales? "
+                    "4️⃣ ¿Cuáles son tus ingresos mensuales totales? "
                     "(Escribe solo el número, sin puntos. Ej: 1500000)"
                 )
-        elif status == "SURVEY_STEP_2_INCOME":
+
+        elif status == "SURVEY_STEP_4_INCOME":
             # Validation: Must extract digits
             clean_income = "".join(filter(str.isdigit, message_text))
             if clean_income and len(clean_income) > 4: # At least 5 digits (10,000)
                 is_valid = True
                 answers["income"] = int(clean_income)
-                next_status = "SURVEY_STEP_3_HISTORY"
+                next_status = "SURVEY_STEP_5_HISTORY"
                 response_text = (
-                    "3️⃣ ¿Cómo ha sido tu comportamiento con créditos anteriores? "
-                    "(Ej: Excelente, Reportado, Nunca he tenido)"
+                    "5️⃣ ¿Cómo ha sido tu comportamiento con créditos anteriores? "
+                    "(Ej: Al día, Reportado, Nunca he tenido)"
                 )
             else:
                 is_valid = False # Input didn't look like money
 
-        elif status == "SURVEY_STEP_3_HISTORY":
+        elif status == "SURVEY_STEP_5_HISTORY":
             # Validation: Non-empty
             if len(message_text.strip()) > 1:
                 is_valid = True
                 answers["credit_history"] = message_text
                 answers["payment_habit"] = message_text # Dual purpose
-                next_status = "SURVEY_STEP_4_GAS"
-                response_text = "4️⃣ ¿Tienes servicio de Gas Natural a tu nombre? (Responde Sí o No)"
+                next_status = "SURVEY_STEP_6_GAS"
+                response_text = "6️⃣ ¿Tienes servicio de Gas Natural a tu nombre? (Responde Sí o No)"
 
-        elif status == "SURVEY_STEP_4_GAS":
+        elif status == "SURVEY_STEP_6_GAS":
             # Validation: Boolean-ish
             if self._is_boolean_answer(text_lower):
                 is_valid = True
                 has_gas = self._parse_boolean(text_lower)
                 answers["has_gas_natural"] = has_gas
-                next_status = "SURVEY_STEP_5_POSTPAID"
-                response_text = "5️⃣ ¿Tienes un plan de celular Postpago? (Responde Sí o No)"
+                next_status = "SURVEY_STEP_7_MOBILE"
+                response_text = "7️⃣ ¿Tienes un plan de celular Postpago? (Responde Sí o No)"
             else:
                 is_valid = False
 
-        elif status == "SURVEY_STEP_5_POSTPAID":
+        elif status == "SURVEY_STEP_7_MOBILE":
             # Validation: Boolean-ish
             if self._is_boolean_answer(text_lower):
                 is_valid = True
@@ -202,6 +224,20 @@ class SurveyService:
         except Exception as e:
             logger.error(f"❌ Error evaluating profile: {e}")
             return "HANDOFF_TRIGGERED:Error calculating score"
+
+        # Update Prospect document with flags and new info
+        try:
+            prospect_ref = db_client.collection("prospectos").document(phone)
+            # Fetch current data to preserve other fields if set() is used, or just use update()
+            prospect_ref.update({
+                "nombre": answers.get("nombre", ""),
+                "ciudad": answers.get("ciudad", ""),
+                "chatbot_status": "survey_completed",
+                "updated_at": firestore.SERVER_TIMESTAMP
+            })
+            logger.info(f"✅ Prospect {phone} updated with Name: {answers.get('nombre')} and City: {answers.get('ciudad')}")
+        except Exception as e:
+            logger.error(f"❌ Error updating prospect {phone} on survey finalization: {e}")
 
         # Clear session
         await self._update_session(db_client, phone, {

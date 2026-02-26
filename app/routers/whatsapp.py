@@ -452,12 +452,14 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             if active_survey_step:
                 # Map technical step ID to the actual human question
                 SURVEY_STEPS_MAP = {
-                    "SURVEY_STEP_0_AUTH": "¿Autorizas el tratamiento de tus datos personales para realizar tu estudio de crédito? Consulta nuestra política aquí: https://tiendalasmotos.com/politica-de-privacidad",
-                    "SURVEY_STEP_1_LABOR": "1️⃣ ¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)",
-                    "SURVEY_STEP_2_INCOME": "2️⃣ ¿Cuáles son tus ingresos mensuales totales? (Escribe solo el número)",
-                    "SURVEY_STEP_3_HISTORY": "3️⃣ ¿Cómo ha sido tu comportamiento con créditos anteriores? (Ej: Excelente, Reportado)",
-                    "SURVEY_STEP_4_GAS": "4️⃣ ¿Tienes servicio de Gas Natural a tu nombre? (Responde Sí o No)",
-                    "SURVEY_STEP_5_POSTPAID": "5️⃣ ¿Tienes un plan de celular Postpago? (Responde Sí o No)"
+                    "SURVEY_STEP_0_AUTH": "¿Autorizas el tratamiento de tus datos personales para realizar tu estudio de crédito?",
+                    "SURVEY_STEP_1_NAME": "¿Cuál es tu nombre completo?",
+                    "SURVEY_STEP_2_CITY": "¿En qué ciudad te encuentras ubicado?",
+                    "SURVEY_STEP_3_LABOR": "3️⃣ ¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)",
+                    "SURVEY_STEP_4_INCOME": "4️⃣ ¿Cuáles son tus ingresos mensuales totales? (Escribe solo el número)",
+                    "SURVEY_STEP_5_HISTORY": "5️⃣ ¿Cómo ha sido tu comportamiento con créditos anteriores? (Ej: Excelente, Reportado)",
+                    "SURVEY_STEP_6_GAS": "6️⃣ ¿Tienes servicio de Gas Natural a tu nombre? (Responde Sí o No)",
+                    "SURVEY_STEP_7_MOBILE": "7️⃣ ¿Tienes un plan de celular Postpago? (Responde Sí o No)"
                 }
                 survey_pending_question = SURVEY_STEPS_MAP.get(active_survey_step)
 
