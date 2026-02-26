@@ -41,7 +41,9 @@ class CatalogService:
         """
         Load catalog items from Firestore 'catalogo' collection into memory.
         
-        Maps Spanish fields (referencia, precio, categoria) to English model.
+        Security Document: Maps Spanish fields (referencia, precio, categoria, link, ficha_tecnica) to English model.
+        The 'link' field is critical to mitigate AI hallucinations and prevent spoofing of external URLs. 
+        Only authorized URLs present in Firestore are explicitly passed to the LLM.
         """
         try:
             logger.info("🔍 Connecting to sub-collection: pagina/catalogo/items")
@@ -103,6 +105,9 @@ class CatalogService:
                 if str(is_active).lower() == 'false': 
                     continue
 
+                # Link: url -> link
+                link = data.get("url") or data.get("link") or ""
+
                 # Create standardized item
                 mapped_item = {
                     "id": doc.id,
@@ -113,7 +118,8 @@ class CatalogService:
                     "image_url": image_url,
                     "active": True,
                     "description": data.get("descripcion", data.get("description", "")),
-                    "specs": data.get("ficha_tecnica", data.get("specs", {})),
+                    "specs": data.get("ficha_tecnica", data.get("specs", "")),
+                    "link": link,
                     "search_tags": search_tags 
                 }
 

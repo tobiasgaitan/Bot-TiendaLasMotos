@@ -302,6 +302,14 @@ class CerebroIA:
                 full_prompt += "- No intentes recolectar los datos tú mismo en el chat.\n"
                 full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
 
+                # V18 - Hallucination Guardrail
+                full_prompt += "═══════════════════════════════════════════════════════════════════\n"
+                full_prompt += "🔒 CRITICAL RULE (ANTI-HALLUCINATION):\n"
+                full_prompt += "- When providing motorcycle prices, colors, or technical specifications, YOU MUST ONLY use the exact data provided by the catalog tool.\n"
+                full_prompt += "- NEVER hallucinate, guess, or use external knowledge for prices or specs.\n"
+                full_prompt += "- If the tool does not provide the info, state clearly that you don't have that specific detail at the moment.\n"
+                full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
+
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
                 # 1. Send initial message
@@ -342,9 +350,11 @@ class CerebroIA:
                                         search_results = f"Encontré {len(matches)} motos relacionadas:\n"
                                         for m in matches: 
                                             search_results += f"- {m['name']} ({m['category']}): {m['formatted_price']}\n"
+                                            if m.get('link'):
+                                                search_results += f"  Link: {m['link']}\n"
                                             if m.get('specs'):
                                                 specs = str(m['specs'])
-                                                search_results += f"  Info: {specs}\n"
+                                                search_results += f"  Ficha Tecnica: {specs}\n"
                                     else:
                                         search_results = "No encontré motos que coincidan con esa búsqueda. Intenta con otra categoría o nombre."
                                 else:

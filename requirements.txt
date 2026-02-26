@@ -1,5 +1,5 @@
 # FastAPI and ASGI Server
-fastapi>=0.115.0
+fastapi>=0.115.13
 uvicorn[standard]>=0.30.0
 
 # Google Cloud Platform
@@ -11,8 +11,9 @@ google-cloud-bigquery>=3.13.0
 firebase-admin>=6.5.0
 google-auth>=2.29.0
 
-# HTTP Client
+# HTTP Client / Scraping
 httpx
+beautifulsoup4>=4.12.3
 
 # Data Validation and Settings
 pydantic>=2.9.0
