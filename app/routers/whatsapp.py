@@ -725,6 +725,11 @@ async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "")
 
         from app.core.utils import PhoneNormalizer
         to_phone_intl = PhoneNormalizer.to_international(to_phone)
+        
+        # Trim whitespace to prevent Meta API parsing errors
+        image_url = image_url.strip()
+        
+        logger.info(f"📸 Sending WhatsApp Image -> URL: {image_url} | Caption Length: {len(caption)}")
 
         url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
         headers = {

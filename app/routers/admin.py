@@ -226,6 +226,33 @@ async def reset_handoff(
             detail=f"Failed to update handoff status: {str(e)}"
         )
 
+@router.post("/sync-prompts")
+async def sync_prompts(
+    x_admin_api_key: Optional[str] = Header(None, alias="X-Admin-API-Key")
+):
+    """
+    Force synchronize the System Instruction from code to Firestore Config.
+    This resolves branding issues where Firestore overrides code changes.
+    """
+    if not x_admin_api_key or x_admin_api_key != ADMIN_API_KEY:
+        logger.warning("🔒 Unauthorized attempt to sync prompts")
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
+    try:
+        from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
+        db = firestore.Client()
+        doc_ref = db.collection("configuracion").document("juan_pablo_personality")
+        doc_ref.set({
+            "system_instruction": JUAN_PABLO_SYSTEM_INSTRUCTION,
+            "updated_at": firestore.SERVER_TIMESTAMP
+        }, merge=True)
+        
+        logger.info("✅ Admin API: Successfully synchronized JUAN_PABLO_SYSTEM_INSTRUCTION to Firestore")
+        return {"success": True, "message": "System Instruction synced to Firestore successfully."}
+    except Exception as e:
+        logger.error(f"❌ Admin API: Failed to sync prompts to Firestore: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/health")
 async def admin_health_check():
