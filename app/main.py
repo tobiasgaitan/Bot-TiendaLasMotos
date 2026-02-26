@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     Handles startup and shutdown events.
     """
     # Startup
-    logger.info("🚀 Starting Tienda Las Motos Backend...")
+    logger.info("🚀 Starting Auteco Las Motos Backend...")
     
     try:
         # 1. Get Firebase credentials from Secret Manager
@@ -97,12 +97,12 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
-    logger.info("👋 Shutting down Tienda Las Motos Backend...")
+    logger.info("👋 Shutting down Auteco Las Motos Backend...")
 
 
 # Create FastAPI application
 app = FastAPI(
-    title="Tienda Las Motos - WhatsApp Bot API",
+    title="Auteco Las Motos - WhatsApp Bot API",
     description="Backend API for motorcycle sales automation via WhatsApp",
     version="1.0.0",
     lifespan=lifespan
@@ -145,7 +145,7 @@ async def health_check():
     
     return {
         "status": "healthy",
-        "service": "Tienda Las Motos Backend",
+        "service": "Auteco Las Motos Backend",
         "version": "6.0.0",
         "catalog_items": len(catalog_service.get_all_items()),
         "storage_bucket": storage_service.get_bucket_name(),
@@ -166,7 +166,7 @@ async def root():
         Welcome message
     """
     return {
-        "message": "Tienda Las Motos - WhatsApp Bot API",
+        "message": "Auteco Las Motos - WhatsApp Bot API",
         "version": "6.0.0",
         "docs": "/docs"
     }

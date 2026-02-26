@@ -222,12 +222,12 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
 
                     image_bytes = await _download_media(media_id)
                     if image_bytes:
-                        logger.info(f"📥 Media downloaded ({len(image_bytes)} bytes). Analyzing with caption: '{caption}'...")
-                        response_text = await vision_service.analyze_image(image_bytes, mime_type, user_phone, caption=caption)
+                        vision_response = await vision_service.analyze_image(image_bytes, mime_type, user_phone, caption=caption)
+                        response_text = f"🏍️ **Catálogo Auteco Las Motos**\n\n{vision_response}" if vision_response else None
                         logger.info(f"🧠 Vision response: {response_text}")
                         
                         if response_text:
-                            if response_text.startswith("MOTO_DETECTADA:"):
+                            if response_text.startswith("🏍️ **Catálogo Auteco Las Motos**\n\nMOTO_DETECTADA:"):
                                 logger.info("🧠 Moto detected. Routing to CerebroIA for cross-selling...")
                                 _ensure_services()
                                 cerebro_ia = CerebroIA(config_loader, catalog_service_local)
@@ -729,7 +729,12 @@ async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "")
         # Trim whitespace to prevent Meta API parsing errors
         image_url = image_url.strip()
         
-        logger.info(f"📸 Sending WhatsApp Image -> URL: {image_url} | Caption Length: {len(caption)}")
+        # Diagnostic Log: Ensure the URL is valid and accessible
+        logger.info(f"📸 WHATSAPP IMAGE DISPATCH: Sending to {to_phone_intl} | URL: {image_url}")
+        
+        # Meta expects a publicly accessible URL. If this is a internal storage link, it will fail delivery even with 200 OK.
+        if "firebasestorage.googleapis.com" in image_url and "alt=media" not in image_url:
+             logger.warning(f"⚠️ Potential invalid Firebase URL (missing alt=media): {image_url}")
 
         url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
         headers = {

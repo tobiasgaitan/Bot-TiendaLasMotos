@@ -232,7 +232,6 @@ async def sync_prompts(
 ):
     """
     Force synchronize the System Instruction from code to Firestore Config.
-    This resolves branding issues where Firestore overrides code changes.
     """
     if not x_admin_api_key or x_admin_api_key != ADMIN_API_KEY:
         logger.warning("🔒 Unauthorized attempt to sync prompts")
@@ -240,17 +239,28 @@ async def sync_prompts(
     
     try:
         from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
-        db = firestore.Client()
+        from app.core.config import settings
+        
+        project_id = settings.gcp_project_id or "tiendalasmotos"
+        db = firestore.Client(project=project_id)
+        
+        logger.info(f"🔄 Syncing prompts to Firestore project: {project_id}")
+        
         doc_ref = db.collection("configuracion").document("juan_pablo_personality")
         doc_ref.set({
             "system_instruction": JUAN_PABLO_SYSTEM_INSTRUCTION,
-            "updated_at": firestore.SERVER_TIMESTAMP
+            "updated_at": firestore.SERVER_TIMESTAMP,
+            "synced_by": "api_admin_final"
         }, merge=True)
         
-        logger.info("✅ Admin API: Successfully synchronized JUAN_PABLO_SYSTEM_INSTRUCTION to Firestore")
-        return {"success": True, "message": "System Instruction synced to Firestore successfully."}
+        return {
+            "status": "success", 
+            "message": "System Instruction synchronized to Firestore Config",
+            "project": project_id,
+            "branding": "Auteco Las Motos"
+        }
     except Exception as e:
-        logger.error(f"❌ Admin API: Failed to sync prompts to Firestore: {str(e)}", exc_info=True)
+        logger.error(f"❌ Error syncing prompts: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
