@@ -310,6 +310,13 @@ class CerebroIA:
                 full_prompt += "- If the tool does not provide the info, state clearly that you don't have that specific detail at the moment.\n"
                 full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
 
+                # V19 - Native Image Integration
+                full_prompt += "═══════════════════════════════════════════════════════════════════\n"
+                full_prompt += "📸 INTEGRACIÓN DE IMÁGENES:\n"
+                full_prompt += "- Si tienes disponible un 'Image URL' de la moto proporcionado por el catálogo, DEBES incluir en tu respuesta exactamente la etiqueta `[IMAGE: url]`.\n"
+                full_prompt += "- Solo incluye esta etiqueta UNA VEZ por recomendación de moto para no saturar el chat.\n"
+                full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
+
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
                 # 1. Send initial message
@@ -350,6 +357,8 @@ class CerebroIA:
                                         search_results = f"Encontré {len(matches)} motos relacionadas:\n"
                                         for m in matches: 
                                             search_results += f"- {m['name']} ({m['category']}): {m['formatted_price']}\n"
+                                            if m.get('image_url'):
+                                                search_results += f"  Image URL: {m['image_url']}\n"
                                             if m.get('link'):
                                                 search_results += f"  Link: {m['link']}\n"
                                             if m.get('specs'):

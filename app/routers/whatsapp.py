@@ -574,7 +574,34 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     await notification_service.notify_human_handoff(user_phone, "ai_trigger")
                 except ImportError: pass
             else:
-                await _send_whatsapp_message(user_phone, response_text)
+                # --- NATIVE IMAGE INTEGRATION ---
+                import re
+                image_pattern = r'\[IMAGE:\s*(https?://[^\s\]]+)\]'
+                images_found = re.findall(image_pattern, response_text)
+                
+                # Remove all image tags from the text
+                cleaned_response_text = re.sub(image_pattern, '', response_text).strip()
+                
+                # If images found, send the first one natively
+                if images_found:
+                    image_url = images_found[0] # Take the first image
+                    
+                    if len(cleaned_response_text) < 1024:
+                        # Strategy A: Caption (Max 1024 chars in Meta API)
+                        logger.info(f"📸 Native Image Strategy A (Caption): text len={len(cleaned_response_text)}")
+                        success = await _send_whatsapp_image(user_phone, image_url, caption=cleaned_response_text)
+                        if not success:
+                            logger.warning(f"⚠️ Failed to send image natively, falling back to text only.")
+                            await _send_whatsapp_message(user_phone, cleaned_response_text)
+                    else:
+                        # Strategy B: Image then Text
+                        logger.info(f"📸 Native Image Strategy B (Split): text len={len(cleaned_response_text)} > 1024")
+                        await _send_whatsapp_image(user_phone, image_url, caption="")
+                        await _send_whatsapp_message(user_phone, cleaned_response_text)
+                        
+                    response_text = cleaned_response_text # Update for history saving (hide tags from history)
+                else:
+                    await _send_whatsapp_message(user_phone, response_text)
                 
                 # Save Bot Response to History (PERSISTENCE FIX)
                 if memory_service_module.memory_service:
@@ -672,6 +699,45 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
             
     except Exception as e:
         logger.error(f"Error sending message: {e}")
+
+async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "") -> bool:
+    """Send WhatsApp image via Cloud API with optional caption."""
+    try:
+        phone_number_id = settings.phone_number_id
+        if not phone_number_id or not settings.whatsapp_token:
+            logger.error("Missing WhatsApp credentials")
+            return False
+
+        from app.core.utils import PhoneNormalizer
+        to_phone_intl = PhoneNormalizer.to_international(to_phone)
+
+        url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {settings.whatsapp_token}",
+            "Content-Type": "application/json",
+        }
+        
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to_phone_intl,
+            "type": "image",
+            "image": {"link": image_url}
+        }
+        
+        if caption:
+            payload["image"]["caption"] = caption
+            
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, headers=headers, timeout=10.0)
+            if resp.status_code not in [200, 201]:
+                logger.error(f"Failed to send image: {resp.text}")
+                return False
+            return True
+            
+    except Exception as e:
+        logger.error(f"Error sending image: {e}")
+        return False
 
 async def _mark_message_as_read(message_id: str) -> None:
     """Mark WhatsApp message as read."""
