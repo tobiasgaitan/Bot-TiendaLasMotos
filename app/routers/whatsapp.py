@@ -299,8 +299,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             # Optimistic save (don't block too long)
             await memory_service_module.memory_service.save_message(user_phone, "user", message_body)
 
-        # --- LÓGICA DE RESET NUCLEAR (PRIORIDAD 0) ---
-        # FIX: Ensure it is strict text match
+        # --- RESET NUCLEAR ---
         if msg_type == "text" and message_body.strip() == "/reset":
             logger.warning(f"☢️ NUCLEAR RESET TRIGGERED for {user_phone}")
             
@@ -308,14 +307,13 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             ids_to_purge = list(set([user_phone, raw_phone, user_phone.replace("57", "", 1)]))
             deleted_count = 0
             
-            collections_to_check = ["sessions", "prospectos"]
-            
             if db:
                 # 1. NUCLEAR PROSPECT WIPE (IDs and Auto-generated IDs)
                 if memory_service_module.memory_service:
                     ms = memory_service_module.memory_service
+                    # THE FIX: Not only delete the doc but ensure all variations are gone
                     p_deleted = ms.delete_prospect_completely(user_phone)
-                    logger.info(f"🧹 Nuclear Prospect Wipe for {user_phone}. Docs deleted: {p_deleted}")
+                    logger.info(f"Sweep for {user_phone}. Docs deleted: {p_deleted}")
 
                 for pid in ids_to_purge:
                     # 2. Main Sessions Collection (ROOT)
@@ -326,33 +324,26 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                             logger.info(f"🗑️ Deleted ROOT session document {pid}")
                     except Exception: pass
                     
-                    # 3. Deep Wipe of Global Session State (Absolute Purge)
+                    # 3. Deep Wipe of Global Session State
                     try:
-                        # 3.1 Nuclear Delete in Survey Service (handles fields + IDs + subcollections)
                         await survey_service.delete_session(db, pid)
-                        
-                        # 3.2 Verification for the requested legacy path + Historial purge
                         legacy_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
                         
-                        # NUCLEAR HISTORY PURGE (Subcollection Orphan Cleanup)
+                        # NUCLEAR HISTORY PURGE
                         history_ref = legacy_ref.collection("historial")
-                        for doc in history_ref.stream():
-                            doc.reference.delete()
+                        async for doc in history_ref.stream(): # Use async for
+                            await doc.reference.delete()
                             deleted_count += 1
                         
-                        exists_after = legacy_ref.get().exists
-                        logger.info(f"🔥 Hard Purge verification for {pid}. Exists now: {exists_after}")
-                        
-                        if not exists_after:
-                            deleted_count += 1
+                        await legacy_ref.delete()
+                        deleted_count += 1
                     except Exception as e: 
                         logger.error(f"❌ Error during hard purge for {pid}: {e}")
 
             # Always send confirmation
-            confirm_msg = f"☢️ RESET COMPLETADO. Memoria limpia. ({deleted_count} registros purgados). Escribe 'Hola' para iniciar."
+            confirm_msg = "☢️ RESET COMPLETADO. Memoria limpia. Escribe 'Hola' para iniciar la nueva experiencia Auteco Las Motos."
             await _send_whatsapp_message(user_phone, confirm_msg)
             return
-        # --- FIN RESET NUCLEAR ---
 
         # 2. Gestión de Sesión
         # 2. Gestión de Sesión & Servicios
@@ -389,9 +380,12 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             current_history = await ms.get_chat_history(user_phone, limit=10)
             
             # GREETING BYPASS LOGIC (Time-Based)
-            if current_history:
-                last_msg = current_history[-1]
-                last_ts = last_msg.get("timestamp")
+            # FIX: We only skip greeting if there are at least 2 messages 
+            # (the current one and a prior one) AND the prior one is recent.
+            if len(current_history) > 1:
+                # Check the second to last message (the previous interaction)
+                prev_msg = current_history[-2]
+                last_ts = prev_msg.get("timestamp")
                 
                 # Normalize timestamp to datetime
                 last_time = None
@@ -405,7 +399,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     except: pass
                 
                 if last_time:
-                    # Calculate duration since last message
+                    # Calculate duration since previous message
                     now = datetime.now(timezone.utc)
                     if last_time.tzinfo is None:
                         last_time = last_time.replace(tzinfo=timezone.utc)
@@ -413,9 +407,11 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     delta = now - last_time
                     diff_seconds = delta.total_seconds()
                     
-                    if diff_seconds < 43200:
+                    if diff_seconds < 43200: # 12 hours
                         skip_greeting = True
                         logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
+            else:
+                logger.info("🆕 Fresh conversation or first message. Ensuring full greeting.")
         else:
             logger.warning("⚠️ Memory Service is NOT initialized. Skipping persistence.")
 
@@ -596,25 +592,18 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 # Remove all image tags from the text
                 cleaned_response_text = re.sub(image_pattern, '', response_text).strip()
                 
-                # If images found, send the first one natively
+                # If images found, send them using Strategy B (Split)
                 if images_found:
                     image_url = images_found[0] # Take the first image
                     
-                    if len(cleaned_response_text) < 1024:
-                        # Strategy A: Caption (Max 1024 chars in Meta API)
-                        logger.info(f"📸 Native Image Strategy A (Caption): text len={len(cleaned_response_text)}")
-                        success = await _send_whatsapp_image(user_phone, image_url, caption=cleaned_response_text)
-                        if not success:
-                            logger.warning(f"⚠️ Failed to send image natively, falling back to text only.")
-                            await _send_whatsapp_message(user_phone, cleaned_response_text)
-                    else:
-                        # Strategy B: Image then Text
-                        logger.info(f"📸 Native Image Strategy B (Split): text len={len(cleaned_response_text)} > 1024")
-                        await _send_whatsapp_image(user_phone, image_url, caption="")
-                        await asyncio.sleep(1.5) # Hard-coded delay between Image and Text
-                        await _send_whatsapp_message(user_phone, cleaned_response_text)
+                    # FORCE STRATEGY B (Split) for all motorcycle images
+                    # This avoids Meta's caption reliability issues.
+                    logger.info(f"📸 Native Image Strategy B (Split - FORCED): url={image_url}")
+                    await _send_whatsapp_image(user_phone, image_url, caption="")
+                    await asyncio.sleep(1.0) # Natural delay
+                    await _send_whatsapp_message(user_phone, cleaned_response_text)
                         
-                    response_text = cleaned_response_text # Update for history saving (hide tags from history)
+                    response_text = cleaned_response_text 
                 else:
                     await _send_whatsapp_message(user_phone, response_text)
                 
