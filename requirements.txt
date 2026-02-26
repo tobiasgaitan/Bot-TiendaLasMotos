@@ -1,5 +1,5 @@
 # FastAPI and ASGI Server
-fastapi>=0.115.13
+fastapi>=0.128.0
 uvicorn[standard]>=0.30.0
 
 # Google Cloud Platform
@@ -8,14 +8,14 @@ google-cloud-storage>=2.18.0
 google-cloud-aiplatform>=1.70.0
 google-cloud-secret-manager>=2.21.0
 google-cloud-bigquery>=3.13.0
-firebase-admin>=6.5.0
+firebase-admin>=6.6.0
 google-auth>=2.29.0
 
 # HTTP Client
 httpx
 
 # Data Validation and Settings
-pydantic>=2.9.0
+pydantic>=2.10.0
 pydantic-settings>=2.2.0
 
 # Utilities
