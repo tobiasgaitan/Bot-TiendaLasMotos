@@ -74,11 +74,16 @@ class SurveyService:
         if status == "SURVEY_STEP_0_NAME":
             # Validation: Non-empty
             if len(message_text.strip()) > 1:
+                name = message_text.strip()
                 is_valid = True
-                answers["nombre"] = message_text
+                answers["nombre"] = name
+                
+                # Dynamic personalization
+                title, first_name = self._get_name_title(name)
+                
                 next_status = "SURVEY_STEP_1_AUTH"
                 response_text = (
-                    "Mucho gusto. Para poder revisar tus opciones de financiamiento y continuar con la simulación, "
+                    f"Mucho gusto, {title} {first_name}. Para poder revisar tus opciones de financiamiento y continuar con la simulación, "
                     "¿autorizas el tratamiento de tus datos personales? Puedes consultar nuestra política aquí: "
                     "https://tiendalasmotos.com/politica-de-privacidad (Responde Sí o No)"
                 )
@@ -365,6 +370,16 @@ class SurveyService:
         """Parse text to boolean."""
         positives = ["si", "sí", "yes", "claro", "obvio", "tengo"]
         return any(w in text for w in positives)
+
+    def _get_name_title(self, full_name: str) -> tuple:
+        """Determines title (Señor/Señora) and extracts first name."""
+        first_name = full_name.split()[0] if full_name else ""
+        if not first_name: return "Señor", ""
+        
+        # Simple heuristic: ends with 'a' -> Señora
+        if first_name.lower().endswith('a'):
+            return "Señora", first_name
+        return "Señor", first_name
 
 # Singleton instance
 survey_service = SurveyService()

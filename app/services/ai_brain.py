@@ -248,17 +248,20 @@ class CerebroIA:
                 
                 # Inject prospect data for personalization
                 if prospect_data and prospect_data.get("exists"):
+                    user_name = prospect_data.get("name", "")
                     full_prompt += "═══════════════════════════════════════════════════════════════════\n"
                     full_prompt += "INFORMACIÓN DEL PROSPECTO (CRM):\n"
-                    if prospect_data.get("name"):
-                        full_prompt += f"- Nombre: {prospect_data['name']}\n"
+                    if user_name:
+                        full_prompt += f"- Nombre: {user_name}\n"
                     if prospect_data.get("moto_interest"):
                         full_prompt += f"- Interés en moto: {prospect_data['moto_interest']}\n"
                     if prospect_data.get("summary"):
                         full_prompt += f"- Resumen previo: {prospect_data['summary']}\n"
-                    full_prompt += "\n⚠️ INSTRUCCIÓN: Usa esta información para personalizar tu saludo y respuesta.\n"
-                    full_prompt += "Ejemplo: '¡Hola {nombre}! Vi que te interesa la {moto}...'\n"
-                    full_prompt += "Verifica cortésmente si la información sigue vigente.\n"
+                    
+                    full_prompt += f"\n⚠️ INSTRUCCIÓN DE IDENTIDAD: El nombre del usuario es {user_name if user_name else 'desconocido'}.\n"
+                    full_prompt += "Siempre dirígete a ellos con respeto usando 'Señor [Nombre]' o 'Señora [Nombre]' según corresponda (Heurística: nombre terminado en 'a' suele ser Señora).\n"
+                    full_prompt += "Ejemplo: '¡Hola Señor Juan!' o 'Dígame Señora Maria...'\n"
+                    full_prompt += "Verifica cortésmente si la información sigue vigente si lo consideras necesario.\n"
                     full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
                 
                 # Inject Chat History (Recent Context)
