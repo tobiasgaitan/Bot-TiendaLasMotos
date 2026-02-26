@@ -320,6 +320,7 @@ class MemoryService:
                 return False
                 
             # Create new with strict defaults for visibility in Admin Panel
+            # ULTIMATUM: Do NOT set updated_at/fecha yet to allow Greeting Logic to detect a fresh start
             new_data = {
                 "celular": clean_phone,
                 "name": "",
@@ -329,11 +330,10 @@ class MemoryService:
                 "source": "whatsapp_bot",
                 "human_help_requested": False,
                 "created_at": firestore.SERVER_TIMESTAMP,
-                "updated_at": firestore.SERVER_TIMESTAMP,
-                "fecha": firestore.SERVER_TIMESTAMP
+                # Explicitly excluded updated_at/fecha for Atomic Greeting fix
             }
             doc_ref.set(new_data)
-            logger.info(f"✅ Created NEW prospect for {clean_phone} via integrity check")
+            logger.info(f"✅ Created NEW prospect doc for {clean_phone}")
 
             # --- ZOMBIE SESSION PURGE ---
             try:
@@ -474,16 +474,33 @@ class MemoryService:
                 # 1. Delete by ID
                 doc_ref = self._db.collection("prospectos").document(variant)
                 if doc_ref.get().exists:
+                    # ULTIMATUM: Physically delete subcollections (Firestore doesn't do this auto)
+                    history_ref = doc_ref.collection("historial")
+                    batch = self._db.batch()
+                    msgs = history_ref.stream()
+                    for m in msgs:
+                        batch.delete(m.reference)
+                    batch.commit()
+                    
+                    # Delete the doc itself
                     doc_ref.delete()
                     deleted += 1
-                    logger.info(f"🗑️ Deleted prospect doc by ID: {variant}")
+                    logger.info(f"🗑️ Nuclear delete: prospect doc and history for {variant}")
                 
                 # 2. Delete by 'celular' field
                 docs = self._db.collection("prospectos").where("celular", "==", variant).stream()
                 for doc in docs:
+                    # Same nuclear subcollection purge
+                    h_ref = doc.reference.collection("historial")
+                    b = self._db.batch()
+                    m_docs = h_ref.stream()
+                    for m in m_docs:
+                        b.delete(m.reference)
+                    b.commit()
+                    
                     doc.reference.delete()
                     deleted += 1
-                    logger.info(f"🗑️ Deleted prospect doc by field: {doc.id}")
+                    logger.info(f"🗑️ Nuclear delete: prospect by field {doc.id}")
             
             return deleted
         except Exception as e:

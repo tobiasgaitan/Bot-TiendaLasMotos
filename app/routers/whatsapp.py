@@ -362,30 +362,21 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         
         if memory_service_module.memory_service:
             ms = memory_service_module.memory_service
-            # Create if missing (ensure prospect exists)
-            ms.create_prospect_if_missing(user_phone)
-            # Update timestamp
-            ms.update_last_interaction(user_phone)
-            # Get data
-            prospect_data = ms.get_prospect_data(user_phone)
-            logger.info(f"👤 Prospect Data Loaded: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
             
-            # Human Gatekeeper Check
-            if prospect_data and prospect_data.get('human_help_requested', False):
-                logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
-                return
-
-            # LOAD HISTORY for Context (CONTEXT FIX)
+            # 1. Get existing data FIRST to decide on greeting
+            prospect_data = ms.get_prospect_data(user_phone)
+            newly_created = not (prospect_data and prospect_data.get("exists", False))
+            
+            # 2. LOAD HISTORY for Context
             logger.info(f"📜 Loading chat history for {user_phone}...")
             current_history = await ms.get_chat_history(user_phone, limit=10)
             
             # GREETING BYPASS LOGIC (Time-Based)
-            # FIX: We only skip greeting if there are at least 2 messages 
-            # AND the prior one is recent. If the prospect was just created, 
-            # we MUST always greet.
-            newly_created = not (prospect_data and prospect_data.get("exists", False))
-            
-            if len(current_history) > 1 and not newly_created:
+            # ULTIMATUM: If it's a new prospect or history is empty, skip_greeting MUST be False.
+            if len(current_history) <= 1 or newly_created:
+                skip_greeting = False
+                logger.info(f"🆕 Fresh start detected (Newly created: {newly_created}). Full greeting enabled.")
+            else:
                 # Check the second to last message (the previous interaction)
                 prev_msg = current_history[-2]
                 last_ts = prev_msg.get("timestamp")
@@ -413,8 +404,17 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     if diff_seconds < 43200: # 12 hours
                         skip_greeting = True
                         logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
-            else:
-                logger.info(f"🆕 Fresh start detected (Newly created: {newly_created}). Ensuring full greeting.")
+
+            # 3. NOW update/create timestamps AFTER decision is made
+            ms.create_prospect_if_missing(user_phone)
+            ms.update_last_interaction(user_phone)
+            
+            logger.info(f"👤 Prospect Data Processed: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
+            
+            # Human Gatekeeper Check (Mantenibilidad)
+            if prospect_data and prospect_data.get('human_help_requested', False):
+                logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
+                return
         else:
             logger.warning("⚠️ Memory Service is NOT initialized. Skipping persistence.")
 
