@@ -456,25 +456,35 @@ class MemoryService:
     def delete_prospect_completely(self, phone_number: str) -> int:
         """
         Nuclear deletion of all prospect documents matching the phone (ID or field).
-        Used in /reset command.
+        Used in /reset command. Ensures timestamps and cached data are truly gone.
         """
         deleted = 0
         try:
             from app.core.utils import PhoneNormalizer
             clean_phone = PhoneNormalizer.normalize(phone_number)
             
-            # 1. Delete by ID
-            doc_ref = self._db.collection("prospectos").document(clean_phone)
-            if doc_ref.get().exists:
-                doc_ref.delete()
-                deleted += 1
+            # Variations for deep sweep
+            variants = [
+                clean_phone,                         # International: 573...
+                clean_phone.replace("57", "", 1),   # National: 3...
+                f"+{clean_phone}"                    # Plus prefixed
+            ]
+            
+            for variant in variants:
+                # 1. Delete by ID
+                doc_ref = self._db.collection("prospectos").document(variant)
+                if doc_ref.get().exists:
+                    doc_ref.delete()
+                    deleted += 1
+                    logger.info(f"🗑️ Deleted prospect doc by ID: {variant}")
                 
-            # 2. Delete by Field (The "Ghost" Fix)
-            docs = self._db.collection("prospectos").where("celular", "==", clean_phone).stream()
-            for doc in docs:
-                doc.reference.delete()
-                deleted += 1
-                
+                # 2. Delete by 'celular' field
+                docs = self._db.collection("prospectos").where("celular", "==", variant).stream()
+                for doc in docs:
+                    doc.reference.delete()
+                    deleted += 1
+                    logger.info(f"🗑️ Deleted prospect doc by field: {doc.id}")
+            
             return deleted
         except Exception as e:
             logger.error(f"❌ Error in nuclear prospect delete for {phone_number}: {e}")

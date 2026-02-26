@@ -279,6 +279,8 @@ class CerebroIA:
                 # Greeting Bypass Instruction
                 if skip_greeting:
                     full_prompt += "\n[SYSTEM: STRICT RULE: DO NOT under any circumstance start your response with 'Hola', 'Buenos días', or any greeting. The conversation is ongoing. Jump straight into your answer.]\n"
+                else:
+                    full_prompt += "\n[SYSTEM: MANDATORY WARMTH: Preséntate de forma cálida y profesional como Juan Pablo, asesor de Auteco Las Motos. No seas parco ni directo; usa un tono de bienvenida y menciona la marca Auteco Las Motos.]\n"
 
                 # V16 - Context Switching (Interruption handling)
                 if pending_survey_question:

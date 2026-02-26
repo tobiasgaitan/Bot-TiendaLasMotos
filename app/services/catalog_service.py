@@ -83,12 +83,17 @@ class CatalogService:
                 # Category: categoria -> category -> machine_name -> 'general'
                 category = data.get("categoria") or data.get("category") or data.get("machine_name") or "general"
                 
-                # Image: imagenUrl (map) -> url. Fallback to string fields.
-                image_val = data.get("imagenUrl", {})
-                if isinstance(image_val, dict):
-                    image_url = image_val.get("url", "")
+                # Image: Prioritize Firebase Storage fields (imagen/foto/image) over external imagenUrl
+                image_val = data.get("imagen") or data.get("foto") or data.get("image")
+                if image_val:
+                    image_url = self._get_first_image(image_val)
                 else:
-                    image_url = self._get_first_image(data.get("imagen") or data.get("foto") or data.get("image") or "")
+                    # Fallback to imagenUrl dictionary if storage fields are missing
+                    image_url_obj = data.get("imagenUrl", {})
+                    if isinstance(image_url_obj, dict):
+                        image_url = image_url_obj.get("url", "")
+                    else:
+                        image_url = ""
 
                 # Search Tags: searchBy (list)
                 search_tags = data.get("searchBy", [])

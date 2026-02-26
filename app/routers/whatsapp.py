@@ -381,8 +381,11 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             
             # GREETING BYPASS LOGIC (Time-Based)
             # FIX: We only skip greeting if there are at least 2 messages 
-            # (the current one and a prior one) AND the prior one is recent.
-            if len(current_history) > 1:
+            # AND the prior one is recent. If the prospect was just created, 
+            # we MUST always greet.
+            newly_created = not (prospect_data and prospect_data.get("exists", False))
+            
+            if len(current_history) > 1 and not newly_created:
                 # Check the second to last message (the previous interaction)
                 prev_msg = current_history[-2]
                 last_ts = prev_msg.get("timestamp")
@@ -411,7 +414,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                         skip_greeting = True
                         logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
             else:
-                logger.info("🆕 Fresh conversation or first message. Ensuring full greeting.")
+                logger.info(f"🆕 Fresh start detected (Newly created: {newly_created}). Ensuring full greeting.")
         else:
             logger.warning("⚠️ Memory Service is NOT initialized. Skipping persistence.")
 
