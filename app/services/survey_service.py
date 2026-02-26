@@ -71,18 +71,30 @@ class SurveyService:
         response_text = ""
         is_valid = False
 
-        if status == "SURVEY_STEP_0_AUTH":
+        if status == "SURVEY_STEP_0_NAME":
+            # Validation: Non-empty
+            if len(message_text.strip()) > 1:
+                is_valid = True
+                answers["nombre"] = message_text
+                next_status = "SURVEY_STEP_1_AUTH"
+                response_text = (
+                    "Mucho gusto. Para poder revisar tus opciones de financiamiento y continuar con la simulación, "
+                    "¿autorizas el tratamiento de tus datos personales? Puedes consultar nuestra política aquí: "
+                    "https://tiendalasmotos.com/politica-de-privacidad (Responde Sí o No)"
+                )
+
+        elif status == "SURVEY_STEP_1_AUTH":
             # Validation: Boolean-ish
             if self._is_boolean_answer(text_lower):
                 is_valid = True
                 consent = self._parse_boolean(text_lower)
                 if consent:
-                    next_status = "SURVEY_STEP_1_NAME"
+                    next_status = "SURVEY_STEP_2_CITY"
                     response_text = (
-                        "¡Excelente! Para empezar, ¿cuál es tu nombre completo?"
+                        "¡Excelente! ¿En qué ciudad te encuentras ubicado?"
                     )
                 else:
-                    # Explicit Denial: Exit Survey
+                    # Explicit Denial: Exit Survey & Purge
                     logger.info(f"🚫 User denied Habeas Data for {phone}. Exiting survey.")
                     await self._update_session(db_client, phone, {"status": "IDLE", "answers": {}, "retry_count": 0})
                     return (
@@ -92,16 +104,6 @@ class SurveyService:
                     )
             else:
                 is_valid = False
-
-        elif status == "SURVEY_STEP_1_NAME":
-            # Validation: Non-empty
-            if len(message_text.strip()) > 1:
-                is_valid = True
-                answers["nombre"] = message_text
-                next_status = "SURVEY_STEP_2_CITY"
-                response_text = (
-                    "Mucho gusto. ¿En qué ciudad te encuentras ubicado?"
-                )
 
         elif status == "SURVEY_STEP_2_CITY":
             # Validation: Non-empty
@@ -187,7 +189,12 @@ class SurveyService:
                 logger.info(f"⚠️ Survey Strike 1 for {phone} at {status}")
                 await self._update_session(db_client, phone, {"retry_count": 1})
                 
-                if status == "SURVEY_STEP_0_AUTH":
+                if status == "SURVEY_STEP_0_NAME":
+                    return (
+                        "No pude procesar tu respuesta. 😅 ¿Podrías decirme tu **nombre completo** para empezar?"
+                    )
+                
+                if status == "SURVEY_STEP_1_AUTH":
                     return (
                         "No pude procesar tu respuesta. 😅 "
                         "Para continuar, ¿autorizas el tratamiento de tus datos personales? "

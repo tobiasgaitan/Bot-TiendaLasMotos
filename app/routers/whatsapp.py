@@ -452,8 +452,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             if active_survey_step:
                 # Map technical step ID to the actual human question
                 SURVEY_STEPS_MAP = {
-                    "SURVEY_STEP_0_AUTH": "¿Autorizas el tratamiento de tus datos personales para realizar tu estudio de crédito?",
-                    "SURVEY_STEP_1_NAME": "¿Cuál es tu nombre completo?",
+                    "SURVEY_STEP_0_NAME": "¿Cuál es tu nombre completo?",
+                    "SURVEY_STEP_1_AUTH": "¿Autorizas el tratamiento de tus datos personales para realizar tu estudio de crédito?",
                     "SURVEY_STEP_2_CITY": "¿En qué ciudad te encuentras ubicado?",
                     "SURVEY_STEP_3_LABOR": "3️⃣ ¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)",
                     "SURVEY_STEP_4_INCOME": "4️⃣ ¿Cuáles son tus ingresos mensuales totales? (Escribe solo el número)",
@@ -489,12 +489,10 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     is_answering_survey = True
                     survey_just_triggered = True
                     # Initialize session for SurveyService
-                    status = "SURVEY_STEP_0_AUTH"
+                    status = "SURVEY_STEP_0_NAME"
                     session = {"status": status, "answers": {}, "retry_count": 0}
                     # Force response to first question
-                    first_q = "¡Claro que sí! 🤩 Vamos a realizar un estudio rápido para ver tus opciones de crédito y financiación.\n\n"
-                    first_q += "Antes de empezar, por motivos legales, ¿autorizas el tratamiento de tus datos personales para este estudio de crédito? Consulta nuestra política aquí: https://tiendalasmotos.com/politica-de-privacidad (Responde Sí o No)"
-                    response_text = first_q
+                    response_text = "¡Hola! Qué bueno tenerte por aquí. 🤩 Para empezar, ¿cuál es tu nombre completo?"
                     # Synchronize persistence
                     if memory_service_module.memory_service:
                         memory_service_module.memory_service.save_survey_state(user_phone, "financial_capture", status, {})
@@ -531,12 +529,10 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     is_answering_survey = True
                     survey_just_triggered = True
                     # Re-route to SurveyService immediately
-                    status = "SURVEY_STEP_0_AUTH"
+                    status = "SURVEY_STEP_0_NAME"
                     session = {"status": status, "answers": {}, "retry_count": 0}
                     # Force response to first question
-                    first_q = "¡Excelente! 🤩 Para ayudarte con tu financiación, necesito tu autorización legal para procesar tus datos.\n\n"
-                    first_q += "¿Autorizas el tratamiento de tus datos personales para realizar este estudio de crédito? Consulta nuestra política aquí: https://tiendalasmotos.com/politica-de-privacidad (Responde Sí o No)"
-                    response_text = first_q
+                    response_text = "¡Hola! Qué bueno tenerte por aquí. 🤩 Para empezar, ¿cuál es tu nombre completo?"
                     # Synchronize persistence
                     if memory_service_module.memory_service:
                         memory_service_module.memory_service.save_survey_state(user_phone, "financial_capture", status, {})
