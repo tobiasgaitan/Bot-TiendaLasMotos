@@ -331,8 +331,15 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                         # 3.1 Nuclear Delete in Survey Service (handles fields + IDs + subcollections)
                         await survey_service.delete_session(db, pid)
                         
-                        # 3.2 Verification for the requested legacy path
+                        # 3.2 Verification for the requested legacy path + Historial purge
                         legacy_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
+                        
+                        # NUCLEAR HISTORY PURGE (Subcollection Orphan Cleanup)
+                        history_ref = legacy_ref.collection("historial")
+                        for doc in history_ref.stream():
+                            doc.reference.delete()
+                            deleted_count += 1
+                        
                         exists_after = legacy_ref.get().exists
                         logger.info(f"🔥 Hard Purge verification for {pid}. Exists now: {exists_after}")
                         
@@ -548,20 +555,17 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 typing_delay = 0
             else:
                 import random
-                # 1. Indicador de estado "Escribiendo..."
-                await _send_typing_indicator(user_phone)
                 
-                # 2. Simulación y Naturalidad
+                # 1. Simulación y Naturalidad
                 base_delay = len(str(response_text)) / 35.0
                 jitter = random.uniform(0.5, 1.5)
                 calculated_delay = base_delay + jitter
                 
-                # 3. Límite de seguridad
+                # 2. Límite de seguridad
                 typing_delay = min(8.0, calculated_delay)
                 logger.info(f"⏳ Human Latency: len={len(str(response_text))}, delay={typing_delay:.2f}s")
 
             if typing_delay > 0:
-                # await _send_typing_indicator(user_phone) # Optional if implemented
                 await asyncio.sleep(typing_delay)
             
         elif msg_type == "audio":
@@ -710,34 +714,6 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
             
     except Exception as e:
         logger.error(f"Error sending message: {e}")
-
-async def _send_typing_indicator(to_phone: str) -> None:
-    """Send WhatsApp typing indicator (typing_on) via Cloud API."""
-    try:
-        phone_number_id = settings.phone_number_id
-        if not phone_number_id or not settings.whatsapp_token:
-            return
-
-        from app.core.utils import PhoneNormalizer
-        to_phone_intl = PhoneNormalizer.to_international(to_phone)
-
-        url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
-        headers = {
-            "Authorization": f"Bearer {settings.whatsapp_token}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": to_phone_intl,
-            "sender_action": "typing_on",
-        }
-        
-        async with httpx.AsyncClient() as client:
-            await client.post(url, json=payload, headers=headers, timeout=5.0)
-            
-    except Exception as e:
-        logger.error(f"Error sending typing indicator: {e}")
 
 async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "") -> bool:
     """Send WhatsApp image via Cloud API with optional caption."""
