@@ -83,17 +83,21 @@ class CatalogService:
                 # Category: categoria -> category -> machine_name -> 'general'
                 category = data.get("categoria") or data.get("category") or data.get("machine_name") or "general"
                 
-                # Image: FORCE Firebase Storage fields (imagen/foto/image)
-                # ULTIMATUM: Hard-delete imagenUrl fallback. Only allow Firebase Storage links.
-                image_val = data.get("imagen") or data.get("foto") or data.get("image")
+                # Image Selection: Prioritize imagenUrl, then fallback to others
+                # ULTIMATUM: Only allow Firebase Storage links. Block media.autecomobility.com.
                 image_url = ""
+                potential_fields = ["imagenUrl", "imagen", "foto", "image"]
                 
-                if image_val:
-                    raw_url = self._get_first_image(image_val)
-                    if "firebasestorage.googleapis.com" in raw_url:
-                        image_url = raw_url
-                    else:
-                        logger.warning(f"⚠️ Filtering out non-Firebase image URL for {ref}: {raw_url}")
+                for field in potential_fields:
+                    val = data.get(field)
+                    if val:
+                        raw = self._get_first_image(val)
+                        if "firebasestorage.googleapis.com" in raw and "media.autecomobility.com" not in raw:
+                            image_url = raw
+                            break # Found our valid Firebase link
+                
+                if not image_url and any(data.get(f) for f in potential_fields):
+                    logger.warning(f"⚠️ No valid Firebase link found for {ref} in {potential_fields}")
 
                 # Search Tags: searchBy (list)
                 search_tags = data.get("searchBy", [])
@@ -103,11 +107,13 @@ class CatalogService:
                 # Normalize tags
                 search_tags = [str(t).lower().strip() for t in search_tags if t]
                 
-                # Active Status: active -> activo -> is_active -> True (default)
+                # Active Status: active -> activo -> is_active -> isVisible -> onStock
                 is_active = data.get("active", data.get("activo", data.get("is_active", True)))
+                is_visible = data.get("isVisible", True)
+                on_stock = data.get("onStock", True)
                 
-                # Relaxed active check
-                if str(is_active).lower() == 'false': 
+                # Rigid filtering for catalog hygiene
+                if str(is_active).lower() == 'false' or not is_visible or not on_stock: 
                     continue
 
                 # Link: external_url -> url -> link
