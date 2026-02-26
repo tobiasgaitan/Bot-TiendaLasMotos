@@ -105,8 +105,12 @@ class CatalogService:
                 if str(is_active).lower() == 'false': 
                     continue
 
-                # Link: url -> link
-                link = data.get("url") or data.get("link") or ""
+                # Link: external_url -> url -> link
+                link = data.get("external_url") or data.get("url") or data.get("link") or ""
+
+                # Specs: fichatecnica -> ficha_tecnica -> specs
+                raw_specs = data.get("fichatecnica") or data.get("ficha_tecnica") or data.get("specs")
+                specs = self._parse_specs(raw_specs)
 
                 # Create standardized item
                 mapped_item = {
@@ -118,7 +122,7 @@ class CatalogService:
                     "image_url": image_url,
                     "active": True,
                     "description": data.get("descripcion", data.get("description", "")),
-                    "specs": data.get("ficha_tecnica", data.get("specs", "")),
+                    "specs": specs,
                     "link": link,
                     "search_tags": search_tags 
                 }
@@ -142,6 +146,28 @@ class CatalogService:
             self._items = []
             self._items_by_id = {}
             self._items_by_category = {}
+
+    def _parse_specs(self, specs_input: Any) -> str:
+        """
+        Parse technical specifications into a single formatted string.
+        Handles both dictionaries and plain strings.
+        """
+        if not specs_input:
+            return ""
+        
+        if isinstance(specs_input, dict):
+            # Parse dict into a key: value list
+            lines = []
+            for k, v in specs_input.items():
+                if v and str(v).strip():
+                    key_formatted = str(k).replace("_", " ").title()
+                    lines.append(f"- {key_formatted}: {str(v).strip()}")
+            return "\n".join(lines)
+            
+        elif isinstance(specs_input, str):
+            return specs_input.strip()
+            
+        return str(specs_input)
 
     def _parse_price(self, price_input: Any) -> int:
         """

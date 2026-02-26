@@ -11,9 +11,8 @@ google-cloud-bigquery>=3.13.0
 firebase-admin>=6.5.0
 google-auth>=2.29.0
 
-# HTTP Client / Scraping
+# HTTP Client
 httpx
-beautifulsoup4>=4.12.3
 
 # Data Validation and Settings
 pydantic>=2.9.0
