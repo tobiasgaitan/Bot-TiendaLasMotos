@@ -733,18 +733,7 @@ async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "")
         from app.core.utils import PhoneNormalizer
         to_phone_intl = PhoneNormalizer.to_international(to_phone)
         
-        # URL SANITIZATION (CRITICAL for Firebase Tokens)
-        # Ensure URL is stripped and any special chars are properly handled.
-        image_url = image_url.strip()
-        
-        # Diagnostic Log
-        logger.info(f"📸 WHATSAPP IMAGE DISPATCH: Sending to {to_phone_intl} | URL: {image_url}")
-        
-        # Meta requirements check
-        if "firebasestorage.googleapis.com" in image_url:
-            if "alt=media" not in image_url:
-                image_url += ("&" if "?" in image_url else "?") + "alt=media"
-            logger.info(f"✅ Firebase URL Sanitized: {image_url}")
+
 
         url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
         headers = {
