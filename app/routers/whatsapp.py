@@ -599,11 +599,11 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 if images_found:
                     image_url = images_found[0] # Take the first image
                     
-                    # FORCE STRATEGY B (Split) for all motorcycle images
-                    # This avoids Meta's caption reliability issues.
-                    logger.info(f"📸 Native Image Strategy B (Split - FORCED): url={image_url}")
+                    # FORCE STRATEGY B+ (Split) for all motorcycle images
+                    # Increased delay to 3.0s to allow Meta CDN to fetch/cache from Firebase.
+                    logger.info(f"📸 Strategy B+ (Split - FORCED): url={image_url}")
                     await _send_whatsapp_image(user_phone, image_url, caption="")
-                    await asyncio.sleep(1.0) # Natural delay
+                    await asyncio.sleep(3.0) 
                     await _send_whatsapp_message(user_phone, cleaned_response_text)
                         
                     response_text = cleaned_response_text 
@@ -718,15 +718,18 @@ async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "")
         from app.core.utils import PhoneNormalizer
         to_phone_intl = PhoneNormalizer.to_international(to_phone)
         
-        # Trim whitespace to prevent Meta API parsing errors
+        # URL SANITIZATION (CRITICAL for Firebase Tokens)
+        # Ensure URL is stripped and any special chars are properly handled.
         image_url = image_url.strip()
         
-        # Diagnostic Log: Ensure the URL is valid and accessible
+        # Diagnostic Log
         logger.info(f"📸 WHATSAPP IMAGE DISPATCH: Sending to {to_phone_intl} | URL: {image_url}")
         
-        # Meta expects a publicly accessible URL. If this is a internal storage link, it will fail delivery even with 200 OK.
-        if "firebasestorage.googleapis.com" in image_url and "alt=media" not in image_url:
-             logger.warning(f"⚠️ Potential invalid Firebase URL (missing alt=media): {image_url}")
+        # Meta requirements check
+        if "firebasestorage.googleapis.com" in image_url:
+            if "alt=media" not in image_url:
+                image_url += ("&" if "?" in image_url else "?") + "alt=media"
+            logger.info(f"✅ Firebase URL Sanitized: {image_url}")
 
         url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
         headers = {

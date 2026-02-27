@@ -83,21 +83,29 @@ class CatalogService:
                 # Category: categoria -> category -> machine_name -> 'general'
                 category = data.get("categoria") or data.get("category") or data.get("machine_name") or "general"
                 
-                # Image Selection: Prioritize imagenUrl, then fallback to others
-                # ULTIMATUM: Only allow Firebase Storage links. Block media.autecomobility.com.
+                # Image Selection: Prioritize imagenUrl (where real Firebase links are stored)
+                # ULTIMATUM: Only allow Firebase Storage links. Block all others including media.autecomobility.com.
                 image_url = ""
                 potential_fields = ["imagenUrl", "imagen", "foto", "image"]
                 
                 for field in potential_fields:
                     val = data.get(field)
                     if val:
-                        raw = self._get_first_image(val)
-                        if "firebasestorage.googleapis.com" in raw and "media.autecomobility.com" not in raw:
+                        raw = str(val).strip()
+                        # If its a list or dict, extract first string
+                        if isinstance(val, list) and len(val) > 0:
+                            raw = str(val[0]).strip()
+                        elif isinstance(val, dict):
+                            raw = str(next(iter(val.values()))).strip()
+                            
+                        if "firebasestorage.googleapis.com" in raw:
+                            # Sanity check: Ensure it's a valid Firebase link
                             image_url = raw
-                            break # Found our valid Firebase link
+                            logger.info(f"✅ Image Found for {ref} in {field}: {image_url}")
+                            break 
                 
-                if not image_url and any(data.get(f) for f in potential_fields):
-                    logger.warning(f"⚠️ No valid Firebase link found for {ref} in {potential_fields}")
+                if not image_url:
+                    logger.warning(f"⚠️ No valid Firebase link found for {ref}. Checked: {potential_fields}")
 
                 # Search Tags: searchBy (list)
                 search_tags = data.get("searchBy", [])
