@@ -595,16 +595,31 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 # Remove all image tags from the text
                 cleaned_response_text = re.sub(image_pattern, '', response_text).strip()
                 
-                # If images found, send them using Strategy B (Split)
+                # If images found, send them using Strategy A (Caption) for better .webp compatibility
                 if images_found:
                     image_url = images_found[0] # Take the first image
                     
-                    # FORCE STRATEGY B+ (Split) for all motorcycle images
-                    # Increased delay to 3.0s to allow Meta CDN to fetch/cache from Firebase.
-                    logger.info(f"📸 Strategy B+ (Split - FORCED): url={image_url}")
-                    await _send_whatsapp_image(user_phone, image_url, caption="")
-                    await asyncio.sleep(3.0) 
-                    await _send_whatsapp_message(user_phone, cleaned_response_text)
+                    # STRATEGY A (Caption): Single payload for better .webp compatibility
+                    # WhatsApp Caption Limit: 1024 characters
+                    MAX_CAPTION = 1024
+                    
+                    caption = cleaned_response_text
+                    overflow_text = ""
+                    
+                    if len(caption) > MAX_CAPTION:
+                        logger.warning(f"⚠️ Caption too long ({len(caption)} chars). Splitting...")
+                        # Find last space within limit to avoid cutting words
+                        split_idx = caption.rfind(' ', 0, MAX_CAPTION)
+                        if split_idx == -1: split_idx = MAX_CAPTION
+                        overflow_text = caption[split_idx:].strip()
+                        caption = caption[:split_idx].strip()
+                    
+                    logger.info(f"📸 Strategy A (Caption): url={image_url}")
+                    await _send_whatsapp_image(user_phone, image_url, caption=caption)
+                    
+                    if overflow_text:
+                        logger.info(f"📤 Sending overflow text ({len(overflow_text)} chars)")
+                        await _send_whatsapp_message(user_phone, overflow_text)
                         
                     response_text = cleaned_response_text 
                 else:
