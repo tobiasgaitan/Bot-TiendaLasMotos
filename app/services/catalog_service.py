@@ -83,10 +83,10 @@ class CatalogService:
                 # Category: categoria -> category -> machine_name -> 'general'
                 category = data.get("categoria") or data.get("category") or data.get("machine_name") or "general"
                 
-                # Image Selection: Prioritize imagenUrl (where real Firebase links are stored)
+                # Image Selection: Prioritize imagen_url (the designated CMS field)
                 # ULTIMATUM: Only allow Firebase Storage links. Block all others including media.autecomobility.com.
                 image_url = ""
-                potential_fields = ["imagenUrl", "imagen", "foto", "image"]
+                potential_fields = ["imagen_url", "imagenUrl", "imagen", "foto", "image"]
                 
                 for field in potential_fields:
                     val = data.get(field)
