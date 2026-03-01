@@ -225,17 +225,17 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     image_bytes = await _download_media(media_id)
                     if image_bytes:
                         vision_response = await vision_service.analyze_image(image_bytes, mime_type, user_phone, caption=caption)
-                        response_text = f"🏍️ **Catálogo Auteco Las Motos**\n\n{vision_response}" if vision_response else None
-                        logger.info(f"🧠 Vision response: {response_text}")
+                        logger.info(f"🧠 Raw Vision response: {vision_response}")
                         
-                        if response_text:
-                            if response_text.startswith("🏍️ **Catálogo Auteco Las Motos**\n\nMOTO_DETECTADA:"):
+                        if vision_response:
+                            # 1. Handle Moto Detection
+                            if vision_response.startswith("MOTO_DETECTADA:"):
                                 logger.info("🧠 Moto detected. Routing to CerebroIA for cross-selling...")
                                 _ensure_services()
                                 cerebro_ia = CerebroIA(config_loader, catalog_service_local)
                                 cerebro_ia.motor_financiero = motor_financiero
                                 
-                                vision_description = response_text.replace("MOTO_DETECTADA:", "").strip()
+                                vision_description = vision_response.replace("MOTO_DETECTADA:", "").strip()
                                 
                                 prospect_data = None
                                 current_history = []
@@ -266,6 +266,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                         final_response = "¡Qué buena máquina, parcero! Esa no la manejo, pero tengo opciones equivalentes en nuestro catálogo. ¿Te gustaría que busquemos una parecida?"
                                         logger.warning(f"⚠️ CerebroIA returned empty response for moto image. Injected fallback.")
                                     
+                                    # ONLY in this case do we prepend the Catalog header to the AI's final response if desired, or let the AI speak natively. Focus on letting the AI speak.
                                     await _send_whatsapp_message(user_phone, final_response)
                                     
                                     # Save to History
@@ -281,7 +282,9 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                 else:
                                     logger.warning("⚠️ Memory Service is NOT initialized. Cannot route image properly.")
                                     await _send_whatsapp_message(user_phone, "No pude conectar con mi cerebro para buscar esta moto. 😢")
-                            elif response_text.startswith("[System Note:"):
+                            
+                            # 2. Handle Sentiment / Memes / Stickers / General System Notes
+                            elif vision_response.startswith("[System Note:"):
                                 logger.info("🧠 General image/meme/sticker detected. Forwarding note to CerebroIA...")
                                 _ensure_services()
                                 cerebro_ia = CerebroIA(config_loader, catalog_service_local)
@@ -305,7 +308,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                     
                                     # Forward the system note as if the user sent it, so the AI knows they sent an image
                                     final_response = cerebro_ia.pensar_respuesta(
-                                        response_text,
+                                        vision_response,
                                         context="", 
                                         prospect_data=prospect_data,
                                         history=current_history,
@@ -319,20 +322,25 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                     await _send_whatsapp_message(user_phone, final_response)
                                     
                                     # Save to History
-                                    await ms.save_message(user_phone, "user", response_text)
+                                    await ms.save_message(user_phone, "user", vision_response)
                                     await ms.save_message(user_phone, "model", final_response)
                                     
                                     # Update Summary
                                     try:
-                                        summary_data = cerebro_ia.generate_summary(f"User: {response_text}\nBot: {final_response}")
+                                        summary_data = cerebro_ia.generate_summary(f"User: {vision_response}\nBot: {final_response}")
                                         await ms.update_prospect_summary(user_phone, summary_data.get("summary", ""), summary_data.get("extracted", {}))
                                     except Exception as e:
                                         pass
                                 else:
-                                    # Fallback
+                                    # Fallback if no memory service
                                     await _send_whatsapp_message(user_phone, "No pude procesar bien esa imagen ahora mismo. 😅")
+                            
+                            # 3. Handle literal fallback text from old vision routines (if any)
                             else:
+                                logger.info("🧠 Fallback text returned from Vision AI, passing directly to user...")
+                                response_text = f"🏍️ **Catálogo Auteco Las Motos**\n\n{vision_response}"
                                 await _send_whatsapp_message(user_phone, response_text)
+                        
                         else:
                             await _send_whatsapp_message(user_phone, "¡Uff! Pero no alcanzo a ver bien los detalles. ¿Me cuentas qué es?")
                     else:
