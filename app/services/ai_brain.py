@@ -328,6 +328,23 @@ class CerebroIA:
                 full_prompt += "- Si Sentiment = 'Neutral' o poco claro: Responde con naturalidad, haz un comentario corto, amigable o ligeramente humorístico sobre el sticker/imagen, y guía suavemente la conversación de vuelta a las motos.\n"
                 full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
 
+                # V21 - FAQ de Financiación
+                full_prompt += "═══════════════════════════════════════════════════════════════════\n"
+                full_prompt += "📚 V21 - BASE DE CONOCIMIENTO: FAQ DE FINANCIACIÓN\n"
+                full_prompt += "Usa esta información ÚNICAMENTE para responder preguntas específicas que haga el usuario. Tu respuesta debe ser breve y amigable. \n"
+                full_prompt += "MUY IMPORTANTE: NO comiences a pedirle su perfil o documentos para el crédito conversacionalmente. Una vez que resuelvas su duda, pregúntale amablemente si está listo para iniciar la solicitud de crédito formal (la cual disparará nuestra encuesta automatizada).\n\n"
+                full_prompt += "- REGLAS GENERALES: El estudio de crédito es 100% GRATIS. Normalmente NO se necesita codeudor. Se recomienda contar con un 10% de cuota inicial.\n"
+                full_prompt += "- ALIADOS:\n"
+                full_prompt += "  * Brilla: (Recibo del gas + Cédula + 2 recibos pagados).\n"
+                full_prompt += "  * Addi/Sistecrédito: (Proceso 100% Virtual, Cédula, WhatsApp).\n"
+                full_prompt += "  * ProgreSER: (Financia hasta el 100%).\n"
+                full_prompt += "  * Galgo: (Ideal para Independientes/Mensajeros).\n"
+                full_prompt += "  * Crediorbe: (Aceptan personas reportadas, requiere 10% de cuota inicial).\n"
+                full_prompt += "- PERFILES ESPECIALES:\n"
+                full_prompt += "  * Reportados: SÍ pueden acceder a crédito (requiere 10% de cuota inicial).\n"
+                full_prompt += "  * Extranjeros: Necesitan PPT/PEP + Pasaporte + Dirección local.\n"
+                full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
+
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
                 # 1. Send initial message
