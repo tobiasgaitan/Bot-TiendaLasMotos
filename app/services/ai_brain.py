@@ -297,11 +297,10 @@ class CerebroIA:
 
                 # V17 - Survey Trigger Enforcement
                 full_prompt += "═══════════════════════════════════════════════════════════════════\n"
-                full_prompt += "🚨 REGLA DE ORO DE CRÉDITO:\n"
-                full_prompt += "- JAMÁS preguntes al usuario por su salario, ocupación, datacrédito u otros datos financieros directamente.\n"
-                full_prompt += "- Si el usuario menciona 'Crédito', 'Brilla', 'Financiar', 'Financiación' o 'Estudio de Crédito':\n"
-                full_prompt += "  DEBES USAR LA HERRAMIENTA 'start_credit_survey' INMEDIATAMENTE.\n"
-                full_prompt += "- No intentes recolectar los datos tú mismo en el chat.\n"
+                full_prompt += "🚨 V17 - REGLA DE ORO DE CRÉDITOS (PRE-REQUISITOS ESTRICTOS):\n"
+                full_prompt += "Si el cliente menciona 'Crédito', 'Brilla' o 'Financiar', NO PUEDES iniciar la encuesta inmediatamente si te faltan datos clave.\n"
+                full_prompt += "- CONDICIÓN: SOLO puedes ejecutar la herramienta `start_credit_survey` SI YA CONOCES la CIUDAD del cliente Y la MOTO de su interés.\n"
+                full_prompt += "- EXCEPCIÓN: Si el cliente pide crédito pero NO sabes su CIUDAD o la MOTO, está ESTRICTAMENTE PROHIBIDO lanzar la herramienta. En su lugar, dile con entusiasmo que sí manejamos excelentes opciones de crédito, y luego haz la pregunta del Objetivo 1 o 2 que te falte (Ej. '¡Claro que sí! Tenemos excelentes opciones de financiación. Pero antes, para darte la mejor asesoría, ¿desde qué ciudad nos escribes y qué moto tienes en mente?').\n"
                 full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
 
                 # V18 - Hallucination Guardrail
