@@ -297,6 +297,10 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                     ms.update_last_interaction(user_phone)
                                     prospect_data = ms.get_prospect_data(user_phone)
                                     
+                                    if prospect_data and prospect_data.get('human_help_requested', False):
+                                        logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
+                                        return
+                                    
                                     current_history = await ms.get_chat_history(user_phone, limit=10)
                                     
                                     # Forward the system note as if the user sent it, so the AI knows they sent an image
@@ -308,18 +312,22 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                         skip_greeting=skip_greeting
                                     )
                                     
-                                    if final_response:
-                                        await _send_whatsapp_message(user_phone, final_response)
-                                        # Save to History
-                                        await ms.save_message(user_phone, "user", response_text)
-                                        await ms.save_message(user_phone, "model", final_response)
-                                        
-                                        # Update Summary
-                                        try:
-                                            summary_data = cerebro_ia.generate_summary(f"User: {response_text}\nBot: {final_response}")
-                                            await ms.update_prospect_summary(user_phone, summary_data.get("summary", ""), summary_data.get("extracted", {}))
-                                        except Exception as e:
-                                            pass
+                                    if not final_response or not str(final_response).strip():
+                                        final_response = "¡Estuvo bueno! 😅 Pero cuéntame, ¿en qué moto estabas pensando?"
+                                        logger.warning(f"⚠️ CerebroIA returned empty response for sticker/meme. Injected fallback.")
+                                    
+                                    await _send_whatsapp_message(user_phone, final_response)
+                                    
+                                    # Save to History
+                                    await ms.save_message(user_phone, "user", response_text)
+                                    await ms.save_message(user_phone, "model", final_response)
+                                    
+                                    # Update Summary
+                                    try:
+                                        summary_data = cerebro_ia.generate_summary(f"User: {response_text}\nBot: {final_response}")
+                                        await ms.update_prospect_summary(user_phone, summary_data.get("summary", ""), summary_data.get("extracted", {}))
+                                    except Exception as e:
+                                        pass
                                 else:
                                     # Fallback
                                     await _send_whatsapp_message(user_phone, "No pude procesar bien esa imagen ahora mismo. 😅")

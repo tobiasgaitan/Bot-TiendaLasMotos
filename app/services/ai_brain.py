@@ -325,6 +325,7 @@ class CerebroIA:
                 full_prompt += "- Si el usuario envía una imagen o sticker, recibirás un `[System Note: ... Sentiment: ...]`. ¡NO lo ignores ni lo repitas al usuario!\n"
                 full_prompt += "- Si Sentiment = 'Sad' o 'Frustrated': Empatiza profundamente con el cliente y ofrécele INMEDIATAMENTE alternativas de financiación o pago a cuotas como 'Crédito Brilla' o 'Codeudor'.\n"
                 full_prompt += "- Si Sentiment = 'Happy' o 'Excited': ¡Celebra su alegría con mucho entusiasmo! Y procede a intentar cerrar la venta ofreciendo el enlace de pago seguro inmediatamente.\n"
+                full_prompt += "- Si Sentiment = 'Neutral' o poco claro: Responde con naturalidad, haz un comentario corto, amigable o ligeramente humorístico sobre el sticker/imagen, y guía suavemente la conversación de vuelta a las motos.\n"
                 full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
 
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
