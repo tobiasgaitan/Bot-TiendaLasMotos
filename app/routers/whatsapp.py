@@ -189,7 +189,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     return # Should not happen if logic is correct
             # --- DEBOUNCE LOGIC END ---
             
-        elif msg_type in ["image", "document"]:
+        elif msg_type in ["image", "document", "sticker"]:
             logger.info(f"📸 Media detected from {user_phone} (Type: {msg_type}). Processing immediately...")
             await _mark_message_as_read(msg_data["id"])
             
@@ -198,12 +198,14 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 try:
                     vision_service = VisionService(db)
                     
-                    # Robust extraction for Image OR Document
+                    # Robust extraction for Image, Document OR Sticker
                     media_data = {}
                     if msg_type == "image":
                         media_data = msg_data.get("image", {})
                     elif msg_type == "document":
                         media_data = msg_data.get("document", {})
+                    elif msg_type == "sticker":
+                        media_data = msg_data.get("sticker", {})
                     
                     # Fallback to root keys
                     media_id = media_data.get("id") or msg_data.get("media_id")
@@ -279,10 +281,52 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                 else:
                                     logger.warning("⚠️ Memory Service is NOT initialized. Cannot route image properly.")
                                     await _send_whatsapp_message(user_phone, "No pude conectar con mi cerebro para buscar esta moto. 😢")
+                            elif response_text.startswith("[System Note:"):
+                                logger.info("🧠 General image/meme/sticker detected. Forwarding note to CerebroIA...")
+                                _ensure_services()
+                                cerebro_ia = CerebroIA(config_loader, catalog_service_local)
+                                cerebro_ia.motor_financiero = motor_financiero
+                                
+                                prospect_data = None
+                                current_history = []
+                                skip_greeting = True
+                                
+                                if memory_service_module.memory_service:
+                                    ms = memory_service_module.memory_service
+                                    ms.create_prospect_if_missing(user_phone)
+                                    ms.update_last_interaction(user_phone)
+                                    prospect_data = ms.get_prospect_data(user_phone)
+                                    
+                                    current_history = await ms.get_chat_history(user_phone, limit=10)
+                                    
+                                    # Forward the system note as if the user sent it, so the AI knows they sent an image
+                                    final_response = cerebro_ia.pensar_respuesta(
+                                        response_text,
+                                        context="", 
+                                        prospect_data=prospect_data,
+                                        history=current_history,
+                                        skip_greeting=skip_greeting
+                                    )
+                                    
+                                    if final_response:
+                                        await _send_whatsapp_message(user_phone, final_response)
+                                        # Save to History
+                                        await ms.save_message(user_phone, "user", response_text)
+                                        await ms.save_message(user_phone, "model", final_response)
+                                        
+                                        # Update Summary
+                                        try:
+                                            summary_data = cerebro_ia.generate_summary(f"User: {response_text}\nBot: {final_response}")
+                                            await ms.update_prospect_summary(user_phone, summary_data.get("summary", ""), summary_data.get("extracted", {}))
+                                        except Exception as e:
+                                            pass
+                                else:
+                                    # Fallback
+                                    await _send_whatsapp_message(user_phone, "No pude procesar bien esa imagen ahora mismo. 😅")
                             else:
                                 await _send_whatsapp_message(user_phone, response_text)
                         else:
-                            await _send_whatsapp_message(user_phone, "¡Uff, qué nave! 🏍️ Pero no alcanzo a ver bien los detalles. ¿Me cuentas qué modelo es?")
+                            await _send_whatsapp_message(user_phone, "¡Uff! Pero no alcanzo a ver bien los detalles. ¿Me cuentas qué es?")
                     else:
                         await _send_whatsapp_message(user_phone, "No pude descargar el archivo. Intenta de nuevo.")
                 except Exception as e:
@@ -688,6 +732,11 @@ def _extract_message_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         elif msg_type == "audio":
             data["media_id"] = msg["audio"]["id"]
             data["mime_type"] = msg["audio"]["mime_type"]
+        elif msg_type == "sticker":
+            sticker_obj = msg["sticker"]
+            data["sticker"] = sticker_obj
+            data["media_id"] = sticker_obj.get("id")
+            data["mime_type"] = sticker_obj.get("mime_type")
         return data
     except:
         return None

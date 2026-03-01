@@ -41,7 +41,13 @@ class VisionService:
     async def analyze_image(self, image_bytes: bytes, mime_type: str, phone: str, caption: str = "") -> str:
         """
         General analysis of an image sent by user.
-        Routes to specific logic (OCR vs Bike ID) based on content.
+        Routes to specific logic (OCR vs Bike ID vs General Sentiment) based on content.
+        
+        @param image_bytes Binary media payload from Meta.
+        @param mime_type MIME type of the uploaded media.
+        @param phone Phone number for routing/logs.
+        @param caption Optional user caption sent along with media.
+        @returns A string intended for either direct output or AI Brain injection.
         """
         if not self._model:
             return "Lo siento, no puedo ver la imagen en este momento. 🙈"
@@ -72,7 +78,7 @@ class VisionService:
                 return await self._process_moto(image_part, result_json.get("description", ""))
             
             else:
-                return "Parcero, veo la imagen, pero no logro identificar que sea una moto, tu cédula o el recibo del gas. ¿Me ayudas confirmando qué es? 🤔"
+                return await self._process_general_image_sentiment(image_part)
 
         except Exception as e:
             logger.error(f"❌ Error analyzing image: {e}")
@@ -115,6 +121,26 @@ class VisionService:
         MOTO_DETECTADA: [Your description of brand, model, and category]
         
         No conversational text, no questions. ONLY the prefix and the details.
+        """
+        response = self._model.generate_content([image_part, prompt])
+        return response.text.strip()
+
+    async def _process_general_image_sentiment(self, image_part: Part) -> str:
+        """
+        Extracts sentiment from general images/memes/stickers for dynamic business routing.
+        
+        Security & Business Logic (QA Baseline):
+        - Why: Intercepting random media lets us gauge user frustration or excitement without breaking flow.
+        - Flow Control: Returns a `[System Note: ...]` which is injected directly into the user history array,
+          never exposing this raw text to the end-user. CerebroIA reacts accordingly based on prompt engineering.
+        """
+        prompt = """
+        Analyze this image, meme, or sticker. 
+        Briefly describe what is happening in the image.
+        Explicitly state the inferred sentiment of the user sending this explicitly as one of: (Happy, Sad, Frustrated, Excited, Neutral).
+        
+        OUTPUT FORMAT:
+        [System Note: User sent an image/sticker. Vision analysis: <your brief description>. Sentiment: <Sentiment>]
         """
         response = self._model.generate_content([image_part, prompt])
         return response.text.strip()

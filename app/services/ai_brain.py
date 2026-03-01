@@ -319,6 +319,14 @@ class CerebroIA:
                 full_prompt += "- Solo incluye esta etiqueta UNA VEZ por recomendación de moto para no saturar el chat.\n"
                 full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
 
+                # V20 - Protocolo de Memes/Stickers
+                full_prompt += "═══════════════════════════════════════════════════════════════════\n"
+                full_prompt += "🎭 PROTOCOLO DE MEMES/STICKERS (VISIÓN AI):\n"
+                full_prompt += "- Si el usuario envía una imagen o sticker, recibirás un `[System Note: ... Sentiment: ...]`. ¡NO lo ignores ni lo repitas al usuario!\n"
+                full_prompt += "- Si Sentiment = 'Sad' o 'Frustrated': Empatiza profundamente con el cliente y ofrécele INMEDIATAMENTE alternativas de financiación o pago a cuotas como 'Crédito Brilla' o 'Codeudor'.\n"
+                full_prompt += "- Si Sentiment = 'Happy' o 'Excited': ¡Celebra su alegría con mucho entusiasmo! Y procede a intentar cerrar la venta ofreciendo el enlace de pago seguro inmediatamente.\n"
+                full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
+
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
                 # 1. Send initial message
