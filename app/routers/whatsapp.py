@@ -383,11 +383,11 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                         
                         # NUCLEAR HISTORY PURGE
                         history_ref = legacy_ref.collection("historial")
-                        async for doc in history_ref.stream(): # Use async for
-                            await doc.reference.delete()
+                        for doc in history_ref.stream(): # Use sync for
+                            doc.reference.delete()
                             deleted_count += 1
                         
-                        await legacy_ref.delete()
+                        legacy_ref.delete()
                         deleted_count += 1
                     except Exception as e: 
                         logger.error(f"❌ Error during hard purge for {pid}: {e}")
