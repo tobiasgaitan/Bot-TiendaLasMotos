@@ -297,10 +297,11 @@ class CerebroIA:
 
                 # V17 - Survey Trigger Enforcement
                 full_prompt += "═══════════════════════════════════════════════════════════════════\n"
-                full_prompt += "🚨 V17 - REGLA DE ORO DE CRÉDITOS (PRE-REQUISITOS ESTRICTOS):\n"
-                full_prompt += "Si el cliente menciona 'Crédito', 'Brilla' o 'Financiar', NO PUEDES iniciar la encuesta inmediatamente si te faltan datos clave.\n"
-                full_prompt += "- CONDICIÓN: SOLO puedes ejecutar la herramienta `start_credit_survey` SI YA CONOCES la CIUDAD del cliente Y la MOTO de su interés.\n"
-                full_prompt += "- EXCEPCIÓN: Si el cliente pide crédito pero NO sabes su CIUDAD o la MOTO, está ESTRICTAMENTE PROHIBIDO lanzar la herramienta. En su lugar, dile con entusiasmo que sí manejamos excelentes opciones de crédito, y luego haz la pregunta del Objetivo 1 o 2 que te falte (Ej. '¡Claro que sí! Tenemos excelentes opciones de financiación. Pero antes, para darte la mejor asesoría, ¿desde qué ciudad nos escribes y qué moto tienes en mente?').\n"
+                full_prompt += "🚨 V17 - MANEJO DE SOLICITUDES DE CRÉDITO (PASIVO):\n"
+                full_prompt += "Si el cliente menciona 'Crédito', 'Brilla' o 'Financiar', NO DISPARES NINGUNA HERRAMIENTA NI ENCUESTA.\n"
+                full_prompt += "Tu ÚNICA tarea es continuar con el Embudo de Conversación (Fase 1).\n"
+                full_prompt += "Si te piden crédito, responde con entusiasmo ('¡Claro que sí manejamos crédito!') y luego INMEDIATAMENTE haz la pregunta del Objetivo que te falte (Ej. '¿Con quién tengo el gusto?' o '¿Qué moto tienes en mente?').\n"
+                full_prompt += "Bajo ninguna circunstancia intentes iniciar el formulario formal tú mismo. Mantén la conversación fluida.\n"
                 full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
 
                 # V18 - Hallucination Guardrail
