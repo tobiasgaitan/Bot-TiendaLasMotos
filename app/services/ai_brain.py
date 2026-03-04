@@ -526,7 +526,7 @@ Responde en formato JSON:
   "summary": "resumen aquí",
   "extracted": {{
     "name": "nombre si se mencionó",
-    "moto_interest": "modelo de moto si se mencionó"
+    "moto_interest": "Extrae ÚNICAMENTE referencias, marcas o estilos reales de motos (ej. Boxer, Pulsar, NKD, Scooter, Deportiva). IGNORA y NUNCA extraigas términos financieros, formas de pago, ni palabras como 'crédito', 'contado', 'brilla' o 'financiar'."
   }}
 }}
 """

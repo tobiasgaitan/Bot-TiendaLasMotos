@@ -548,20 +548,20 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                         # We route to AI Brain, but we'll pass the question to re-ask it later
             
             # --- V17: DETERMINISTIC SURVEY TRIGGER (Init Logic) ---
-            if status == "IDLE" and not active_survey_step:
-                financial_keywords = ["brilla", "financiar", "crédito", "financiamiento", "estudio de crédito", "cuotas"]
-                if any(k in message_body.lower() for k in financial_keywords):
-                    logger.info(f"🎯 Deterministic Trigger! Financial keyword detected in '{message_body}'. Starting survey...")
-                    is_answering_survey = True
-                    survey_just_triggered = True
-                    # Initialize session for SurveyService
-                    status = "SURVEY_STEP_0_NAME"
-                    session = {"status": status, "answers": {}, "retry_count": 0}
-                    # Force response to first question
-                    response_text = "¡Hola! Qué bueno tenerte por aquí. 🤩 Para empezar, ¿cuál es tu nombre completo?"
-                    # Synchronize persistence
-                    if memory_service_module.memory_service:
-                        memory_service_module.memory_service.save_survey_state(user_phone, "financial_capture", status, {})
+            # if status == "IDLE" and not active_survey_step:
+            #     financial_keywords = ["brilla", "financiar", "crédito", "financiamiento", "estudio de crédito", "cuotas"]
+            #     if any(k in message_body.lower() for k in financial_keywords):
+            #         logger.info(f"🎯 Deterministic Trigger! Financial keyword detected in '{message_body}'. Starting survey...")
+            #         is_answering_survey = True
+            #         survey_just_triggered = True
+            #         # Initialize session for SurveyService
+            #         status = "SURVEY_STEP_0_NAME"
+            #         session = {"status": status, "answers": {}, "retry_count": 0}
+            #         # Force response to first question
+            #         response_text = "¡Hola! Qué bueno tenerte por aquí. 🤩 Para empezar, ¿cuál es tu nombre completo?"
+            #         # Synchronize persistence
+            #         if memory_service_module.memory_service:
+            #             memory_service_module.memory_service.save_survey_state(user_phone, "financial_capture", status, {})
             # --------------------------------------------------------
 
 
