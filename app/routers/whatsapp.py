@@ -405,6 +405,19 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             await _send_whatsapp_message(user_phone, confirm_msg)
             return
 
+        # --- UPDATE CATALOG CACHE ---
+        if msg_type == "text" and message_body.strip() in ["/update", "/refresh_catalog"]:
+            logger.warning(f"🔄 CATALOG REFRESH TRIGGERED by {user_phone}")
+            try:
+                catalog_service_local.refresh()
+                confirm_msg = "✅ Catálogo actualizado en memoria exitosamente."
+            except Exception as e:
+                logger.error(f"❌ Error refreshing catalog: {e}")
+                confirm_msg = f"❌ Error al actualizar el catálogo: {str(e)}"
+                
+            await _send_whatsapp_message(user_phone, confirm_msg)
+            return
+
         # 2. Gestión de Sesión
         # 2. Gestión de Sesión & Servicios
         logger.info(f"⚙️ Starting Session Management for {user_phone}...")
