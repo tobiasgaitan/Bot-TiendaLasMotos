@@ -204,23 +204,7 @@ class CerebroIA:
                 }
             )
 
-            # Define survey initiation function
-            start_survey_function = FunctionDeclaration(
-                name="start_credit_survey",
-                description="Initiates the formal step-by-step credit application and financial evaluation process. Use this when the user says they want to finance, get a credit, or check their Brilla cupo.",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "intent": {
-                            "type": "string",
-                            "description": "The user's specific financing intent (e.g., 'brilla', 'generic_credit')"
-                        }
-                    },
-                    "required": ["intent"]
-                }
-            )
-
-            return Tool(function_declarations=[handoff_function, catalog_function, credit_function, start_survey_function])
+            return Tool(function_declarations=[handoff_function, catalog_function, credit_function])
         except Exception as e:
             logger.error(f"❌ Error creating tools: {str(e)}", exc_info=True)
             return None
