@@ -457,10 +457,12 @@ class MemoryService:
         """
         Nuclear deletion of all prospect documents matching the phone (ID or field).
         Used in /reset command. Ensures timestamps and cached data are truly gone.
+        Also explicitly purges survey_state and motoInteres from any matched doc to guarantee fresh state.
         """
         deleted = 0
         try:
             from app.core.utils import PhoneNormalizer
+            from google.cloud import firestore
             clean_phone = PhoneNormalizer.normalize(phone_number)
             
             # Variations for deep sweep
@@ -474,6 +476,13 @@ class MemoryService:
                 # 1. Delete by ID
                 doc_ref = self._db.collection("prospectos").document(variant)
                 if doc_ref.get().exists:
+                    # Strip fields explicitly first just in case deletion has propagation delay
+                    doc_ref.update({
+                        "survey_state": firestore.DELETE_FIELD,
+                        "survey_current_step": firestore.DELETE_FIELD,
+                        "motoInteres": firestore.DELETE_FIELD
+                    })
+                    
                     # ULTIMATUM: Physically delete subcollections (Firestore doesn't do this auto)
                     history_ref = doc_ref.collection("historial")
                     batch = self._db.batch()
@@ -490,6 +499,12 @@ class MemoryService:
                 # 2. Delete by 'celular' field
                 docs = self._db.collection("prospectos").where("celular", "==", variant).stream()
                 for doc in docs:
+                    doc.reference.update({
+                        "survey_state": firestore.DELETE_FIELD,
+                        "survey_current_step": firestore.DELETE_FIELD,
+                        "motoInteres": firestore.DELETE_FIELD
+                    })
+                    
                     # Same nuclear subcollection purge
                     h_ref = doc.reference.collection("historial")
                     b = self._db.batch()
@@ -504,7 +519,7 @@ class MemoryService:
             
             return deleted
         except Exception as e:
-            logger.error(f"❌ Error in nuclear prospect delete for {phone_number}: {e}")
+            logger.error(f"❌ Error in nuclear prospect delete for {phone_number}: {e}", exc_info=True)
             return deleted
 
     async def save_message(self, phone_number: str, role: str, content: str) -> None:
