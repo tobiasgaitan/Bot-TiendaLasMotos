@@ -59,6 +59,7 @@ class MemoryService:
                     "name": data.get("nombre"),
                     "ciudad": data.get("ciudad"),
                     "moto_interest": data.get("motoInteres"),
+                    "payment_method": data.get("forma_pago"),
                     "summary": data.get("ai_summary"),
                     "human_help_requested": data.get("human_help_requested", False),
                     "survey_state": data.get("survey_state"),
@@ -84,6 +85,7 @@ class MemoryService:
                     "name": data.get("nombre"),
                     "ciudad": data.get("ciudad"),
                     "moto_interest": data.get("motoInteres"),
+                    "payment_method": data.get("forma_pago"),
                     "summary": data.get("ai_summary"),
                     "human_help_requested": data.get("human_help_requested", False),
                     "survey_state": data.get("survey_state"),
@@ -95,6 +97,7 @@ class MemoryService:
                 "name": None,
                 "ciudad": None,
                 "moto_interest": None,
+                "payment_method": None,
                 "summary": None,
                 "human_help_requested": False,
                 "survey_state": None,
@@ -107,6 +110,7 @@ class MemoryService:
                 "name": None,
                 "ciudad": None,
                 "moto_interest": None,
+                "payment_method": None,
                 "summary": None,
                 "human_help_requested": False,
                 "survey_state": None,
@@ -170,6 +174,9 @@ class MemoryService:
                 update_data["chatbot_status"] = "ACTIVE"
                 logger.info(f"🟢 Activating chatbot status for {clean_phone}")
 
+            # POR QUÉ: Mantener sincronización viva entre la charla de IA y los campos duros de la BD.
+            # LÓGICA DE NEGOCIO: Si el LLM detecta que el cliente mencionó su ciudad o método de pago
+            # orgánicamente, persistimos esto para que el motor determinista del embudo pueda avanzar.
             if extracted_data:
                 if extracted_data.get("name"):
                     update_data["nombre"] = extracted_data["name"]
@@ -177,6 +184,12 @@ class MemoryService:
                 if extracted_data.get("moto_interest"):
                     update_data["motoInteres"] = extracted_data["moto_interest"]
                     logger.info(f"🏍️ Updating motoInteres: {extracted_data['moto_interest']}")
+                if extracted_data.get("city"):
+                    update_data["ciudad"] = extracted_data["city"]
+                    logger.info(f"🌆 Updating ciudad: {extracted_data['city']}")
+                if extracted_data.get("payment_method"):
+                    update_data["forma_pago"] = extracted_data["payment_method"]
+                    logger.info(f"💳 Updating forma_pago: {extracted_data['payment_method']}")
 
             doc_ref.update(update_data)
             logger.info(f"✅ Successfully updated prospect summary for {clean_phone}")

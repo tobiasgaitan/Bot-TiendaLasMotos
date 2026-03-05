@@ -224,6 +224,23 @@ class CerebroIA:
         for attempt in range(max_retries):
             try:
                 chat = self._model.start_chat()
+
+                # -- EVALUACION DETERMINISTA DEL EMBUDO DE VENTAS --
+                # POR QUÉ: Los LLM estocásticos fallan evaluando la instrucción condicional (ej. "pregunte A si falta A, sino B").
+                # LÓGICA DE NEGOCIO: Retiramos la ponderación lógica de Gemini y computamos matemáticamente la siguiente
+                # pregunta de cierre obligatoria basándonos íntegramente en los datos en duro extraídos (prospect_data).
+                funnel_instruction = ""
+                if prospect_data:
+                    p_name = prospect_data.get("name")
+                    p_ciudad = prospect_data.get("ciudad")
+                    p_payment = prospect_data.get("payment_method")
+                    
+                    if not p_name:
+                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que aún no sabemos el nombre del cliente. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: 'Por cierto, ¿con quién tengo el gusto?' o algo muy similar.]"
+                    elif not p_ciudad:
+                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que no sabemos la ciudad del cliente. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: '¿Desde qué ciudad nos escribes?' o algo muy similar.]"
+                    elif not p_payment:
+                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que no sabemos cómo planea pagar. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: '¿Tienes pensado comprarla de contado o prefieres a crédito?']"
                 
                 full_prompt = f"{self._system_instruction}\n\n"
                 
@@ -329,6 +346,9 @@ class CerebroIA:
                 full_prompt += "  * Extranjeros: Necesitan PPT/PEP + Pasaporte + Dirección local.\n"
                 full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
 
+                if funnel_instruction:
+                    full_prompt += funnel_instruction + "\n\n"
+                    
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
                 # 1. Send initial message
@@ -394,8 +414,7 @@ class CerebroIA:
                                 search_results = "Tuve un problema consultando el catálogo momentáneamente. ¿Me podrías preguntar de nuevo?"
                             
                             # -- RECENCY BIAS FIX PARA EL EMBUDO --
-                            funnel_anchor = "\n\n[SISTEMA: RECUERDA APLICAR TU <REGLA_DE_CIERRE_OBLIGATORIA> SEGÚN LOS DATOS DEL PROSPECTO AL FINALIZAR TU RESPUESTA. ESTO ES CRÍTICO.]"
-                            search_results += funnel_anchor
+                            search_results += funnel_instruction
                             
                             logger.info(f"📤 Preparing tool response for '{query}'...") 
                             
@@ -448,8 +467,7 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
                                 credit_result = "Error calculando el crédito. Intenta de nuevo."
                             
                             # -- RECENCY BIAS FIX PARA EL EMBUDO --
-                            funnel_anchor = "\n\n[SISTEMA: RECUERDA APLICAR TU <REGLA_DE_CIERRE_OBLIGATORIA> SEGÚN LOS DATOS DEL PROSPECTO AL FINALIZAR TU RESPUESTA. ESTO ES CRÍTICO.]"
-                            credit_result += funnel_anchor
+                            credit_result += funnel_instruction
 
                             tool_response_part = Part.from_function_response(
                                 name=function_name,
@@ -543,7 +561,9 @@ Responde en formato JSON:
   "summary": "resumen aquí",
   "extracted": {{
     "name": "nombre si se mencionó",
-    "moto_interest": "Extrae ÚNICAMENTE referencias, marcas o estilos reales de motos (ej. Boxer, Pulsar, NKD, Scooter, Deportiva). IGNORA y NUNCA extraigas términos financieros, formas de pago, ni palabras como 'crédito', 'contado', 'brilla' o 'financiar'."
+    "city": "ciudad si se mencionó (ej. Bogotá, Medellín)",
+    "payment_method": "método de pago si se mencionó (ej. crédito, contado, brilla, no sé)",
+    "moto_interest": "Extrae ÚNICAMENTE referencias, marcas o estilos reales de motos (ej. Boxer, Pulsar, NKD, Scooter, Deportiva). IGNORA y NUNCA extraigas términos financieros o de pago aquí."
   }}
 }}
 """
