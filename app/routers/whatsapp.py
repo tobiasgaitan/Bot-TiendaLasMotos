@@ -670,8 +670,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 if transcription:
                     logger.info(f"🎤 Audio Transcribed: '{transcription}'")
                     # Send transcription to main AI Pipeline
-                    response_text, _ = await ai_brain_module.ai_brain.pensar_respuesta(
-                        user_message=transcription,
+                    response_text = cerebro_ia.pensar_respuesta(
+                        transcription,
                         context=context, 
                         prospect_data=prospect_data,
                         history=current_history,
