@@ -664,7 +664,22 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 current_history = await ms.get_chat_history(user_phone, limit=10)
                 
             if audio_bytes:
-                response_text = await audio_service.process_audio(audio_bytes, mime_type, history=current_history)
+                # Transcribe Audio
+                transcription = await audio_service.transcribe_audio(audio_bytes, mime_type)
+                
+                if transcription:
+                    logger.info(f"🎤 Audio Transcribed: '{transcription}'")
+                    # Send transcription to main AI Pipeline
+                    response_text, _ = await ai_brain_module.ai_brain.pensar_respuesta(
+                        user_message=transcription,
+                        context=context, 
+                        prospect_data=prospect_data,
+                        history=current_history,
+                        skip_greeting=True, # Audios usually happen mid-conversation
+                        pending_survey_question=survey_pending_question
+                    )
+                else:
+                    response_text = "Escuché el audio pero no entendí bien. ¿Me repites? 😅"
             else:
                 response_text = "No pude descargar el audio. 😢"
             

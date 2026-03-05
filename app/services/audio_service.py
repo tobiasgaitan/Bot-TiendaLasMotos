@@ -40,9 +40,9 @@ class AudioService:
             except Exception as e:
                 logger.error(f"❌ AudioService init error: {e}")
 
-    async def process_audio(self, audio_bytes: bytes, mime_type: str, history: list = None) -> str:
+    async def transcribe_audio(self, audio_bytes: bytes, mime_type: str) -> str:
         """
-        Process incoming audio: Transcode -> AI Understand -> Response.
+        Process incoming audio: Transcode -> AI Transcription.
         """
         if not self._model:
             return "Lo siento, no puedo escuchar audios en este momento. 🙉"
@@ -59,36 +59,24 @@ class AudioService:
             
             audio_part = Part.from_data(data=audio_data, mime_type="audio/wav")
             
-            # 3. Generate Response
-            system_prompt = self._get_system_prompt()
-            
-            contents = [system_prompt]
-            
-            if history:
-                history_text = "Previous conversation context:\n"
-                for msg in history:
-                    role = "User" if msg.get("role") == "user" else "Assistant"
-                    text = msg.get("text", "")
-                    history_text += f"{role}: {text}\n"
-                contents.append(history_text)
-                
-            contents.extend([
-                "The user sent this audio message. Respond appropriately in character.",
+            # 3. Request Transcription Only
+            contents = [
+                "Por favor, transcribe exactamente lo que dice este audio en español. No respondas a las preguntas ni asumas un rol, solo devuelve el texto hablado paso a paso de lo que escuches sin añadir comentarios tuyos.",
                 audio_part
-            ])
+            ]
             
             response = self._model.generate_content(contents)
             
             text_out = response.text.strip()
             if not text_out:
-                logger.warning("⚠️  Gemini returned empty text for audio.")
-                return "Escuché el audio, pero no supe qué decir. ¿Podrías escribirlo? 😅"
+                logger.warning("⚠️  Gemini returned empty text for audio transcription.")
+                return ""
                 
             return text_out
             
         except Exception as e:
-            logger.error(f"❌ Error processing audio AI: {e}")
-            return "Escuché el audio pero no entendí bien. ¿Me repites? 😅"
+            logger.error(f"❌ Error transcribing audio with AI: {e}")
+            return ""
         finally:
             # Cleanup
             if mp3_path and os.path.exists(mp3_path):
