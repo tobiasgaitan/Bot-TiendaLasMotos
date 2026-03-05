@@ -393,6 +393,10 @@ class CerebroIA:
                                 logger.error(f"❌ Tool Execution Error (Catalog): {e}", exc_info=True)
                                 search_results = "Tuve un problema consultando el catálogo momentáneamente. ¿Me podrías preguntar de nuevo?"
                             
+                            # -- RECENCY BIAS FIX PARA EL EMBUDO --
+                            funnel_anchor = "\n\n[SISTEMA: RECUERDA APLICAR TU <REGLA_DE_CIERRE_OBLIGATORIA> SEGÚN LOS DATOS DEL PROSPECTO AL FINALIZAR TU RESPUESTA. ESTO ES CRÍTICO.]"
+                            search_results += funnel_anchor
+                            
                             logger.info(f"📤 Preparing tool response for '{query}'...") 
                             
                             tool_response_part = Part.from_function_response(
@@ -443,6 +447,10 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
                                 logger.error(f"❌ Tool Execution Error (Credit): {e}", exc_info=True)
                                 credit_result = "Error calculando el crédito. Intenta de nuevo."
                             
+                            # -- RECENCY BIAS FIX PARA EL EMBUDO --
+                            funnel_anchor = "\n\n[SISTEMA: RECUERDA APLICAR TU <REGLA_DE_CIERRE_OBLIGATORIA> SEGÚN LOS DATOS DEL PROSPECTO AL FINALIZAR TU RESPUESTA. ESTO ES CRÍTICO.]"
+                            credit_result += funnel_anchor
+
                             tool_response_part = Part.from_function_response(
                                 name=function_name,
                                 response={
