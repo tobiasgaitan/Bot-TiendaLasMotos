@@ -143,7 +143,7 @@ class CerebroIA:
             # Define catalog search function
             catalog_function = FunctionDeclaration(
                 name="search_catalog",
-                description="Search for motorcycles in the catalog using a query string. Use this to find prices, specs, and models.",
+                description="Search for motorcycles in the catalog using a query string. Use this to find prices, specs, and models. CRITICAL POST-TOOL RULE: If the user asked for a competitor brand (Boxer, NKD, Pulsar), you MUST explicitly state 'No manejamos [Brand], pero te ofrezco [Our Bike]'. SECOND CRITICAL RULE: You MUST end your response by asking the user for their Name, City, or Payment method to advance the funnel. DO NOT end with generic questions.",
                 parameters={
                     "type": "object",
                     "properties": {

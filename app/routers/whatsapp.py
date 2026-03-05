@@ -355,9 +355,12 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         await _mark_message_as_read(msg_data["id"]) 
 
         # 1.5 Save User Message to History (PERSISTENCE FIX)
-        if memory_service_module.memory_service and msg_type == "text":
-            # Optimistic save (don't block too long)
-            await memory_service_module.memory_service.save_message(user_phone, "user", message_body)
+        if memory_service_module.memory_service:
+            if msg_type == "text" and message_body:
+                # Optimistic save (don't block too long)
+                await memory_service_module.memory_service.save_message(user_phone, "user", message_body)
+            elif msg_type == "audio":
+                await memory_service_module.memory_service.save_message(user_phone, "user", "[Mensaje de Voz]")
 
         # --- RESET NUCLEAR ---
         if msg_type == "text" and message_body.strip() == "/reset":
@@ -644,8 +647,23 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             media_id = msg_data.get("media_id")
             mime_type = msg_data.get("mime_type")
             audio_bytes = await _download_media(media_id)
+            
+            # GET HISTORY BEFORE AI
+            current_history = []
+            if memory_service_module.memory_service:
+                ms = memory_service_module.memory_service
+                ms.create_prospect_if_missing(user_phone) # Good practice
+                ms.update_last_interaction(user_phone)
+                
+                # Check for Human Handoff status
+                if ms.get_human_help_status(user_phone):
+                     logger.info(f"👤 User {user_phone} is assigned to Human. Ignoring AI.")
+                     return
+                
+                current_history = await ms.get_chat_history(user_phone, limit=10)
+                
             if audio_bytes:
-                response_text = await audio_service.process_audio(audio_bytes, mime_type)
+                response_text = await audio_service.process_audio(audio_bytes, mime_type, history=current_history)
             else:
                 response_text = "No pude descargar el audio. 😢"
             

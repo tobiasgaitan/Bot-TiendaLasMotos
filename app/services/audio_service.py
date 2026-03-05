@@ -40,7 +40,7 @@ class AudioService:
             except Exception as e:
                 logger.error(f"❌ AudioService init error: {e}")
 
-    async def process_audio(self, audio_bytes: bytes, mime_type: str) -> str:
+    async def process_audio(self, audio_bytes: bytes, mime_type: str, history: list = None) -> str:
         """
         Process incoming audio: Transcode -> AI Understand -> Response.
         """
@@ -62,11 +62,22 @@ class AudioService:
             # 3. Generate Response
             system_prompt = self._get_system_prompt()
             
-            response = self._model.generate_content([
-                system_prompt,
+            contents = [system_prompt]
+            
+            if history:
+                history_text = "Previous conversation context:\n"
+                for msg in history:
+                    role = "User" if msg.get("role") == "user" else "Assistant"
+                    text = msg.get("text", "")
+                    history_text += f"{role}: {text}\n"
+                contents.append(history_text)
+                
+            contents.extend([
                 "The user sent this audio message. Respond appropriately in character.",
                 audio_part
             ])
+            
+            response = self._model.generate_content(contents)
             
             text_out = response.text.strip()
             if not text_out:
