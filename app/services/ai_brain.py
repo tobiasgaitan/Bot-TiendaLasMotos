@@ -143,7 +143,7 @@ class CerebroIA:
             # Define catalog search function
             catalog_function = FunctionDeclaration(
                 name="search_catalog",
-                description="Search for motorcycles in the catalog using a query string. Use this to find prices, specs, and models. CRITICAL POST-TOOL RULE: If the user asked for a competitor brand (Boxer, NKD, Pulsar), you MUST explicitly state 'No manejamos [Brand], pero te ofrezco [Our Bike]'. SECOND CRITICAL RULE: You MUST end your response by asking the user for their Name, City, or Payment method to advance the funnel. DO NOT end with generic questions.",
+                description="Search for motorcycles in the catalog using a query string. Use this to find prices, specs, and models. REGLA DE ORO INQUEBRANTABLE: NUNCA asumas el inventario ni ofrezcas motos basándote en tu conocimiento general de internet. Si el usuario menciona CUALQUIER marca, modelo o estilo de moto, ESTÁS OBLIGADO a usar la herramienta search_catalog antes de responder. PROHIBIDO ofrecer motos de la competencia que no estén en los resultados de la herramienta. SECUENCIA DE CIERRE OBLIGATORIA (Evalúa los datos actuales del cliente): Paso 1: Si el campo [Nombre] está vacío o es desconocido, tu ÚNICA pregunta final debe ser pedir su nombre. Paso 2: Si YA sabes el nombre, pero la [Ciudad] está vacía, pregunta de qué ciudad nos escribe. Paso 3: SOLO si ya sabes el Nombre y la Ciudad, puedes preguntar por el método de pago (Contado o Crédito). NUNCA te saltes un paso de esta secuencia.",
                 parameters={
                     "type": "object",
                     "properties": {
