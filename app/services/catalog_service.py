@@ -256,10 +256,16 @@ class CatalogService:
         if not query:
             return []
 
-        scored_results = []
+        # Sanitize query by removing conversational filler words
+        stop_words = {"quiero", "una", "un", "moto", "busco", "la", "el", "de", "las", "los"}
+        raw_tokens = query.split()
+        query_tokens = [t for t in raw_tokens if t not in stop_words]
+        query = " ".join(query_tokens)
         
-        # Pre-compute query tokens
-        query_tokens = query.split()
+        if not query:
+            return []
+
+        scored_results = []
         
         logger.info(f"🔎 DEBUG SEARCH: Query='{query}' Tokens={query_tokens}")
         
