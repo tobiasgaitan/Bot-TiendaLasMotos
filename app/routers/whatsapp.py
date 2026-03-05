@@ -656,7 +656,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 ms.update_last_interaction(user_phone)
                 
                 # Check for Human Handoff status
-                if ms.get_human_help_status(user_phone):
+                prospect_data = ms.get_prospect(user_phone)
+                if prospect_data and prospect_data.get("human_help_requested", False):
                      logger.info(f"👤 User {user_phone} is assigned to Human. Ignoring AI.")
                      return
                 
