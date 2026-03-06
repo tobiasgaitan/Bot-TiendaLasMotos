@@ -28,6 +28,19 @@ class CatalogService:
         self._items_by_id: Dict[str, Dict[str, Any]] = {}
         self._items_by_category: Dict[str, List[Dict[str, Any]]] = {}
         self._db: Optional[firestore.Client] = None
+        
+        # --- SEMANTIC SEARCH DICTIONARY ---
+        # Maps strict Firebase categories to common user synonyms
+        self._category_aliases = {
+            "todoterreno": ["doble proposito", "enduro", "trocha", "cross", "trochera", "off road", "rural"],
+            "automatica": ["scooter", "señoritera", "facil de manejar"],
+            "semiautomatica": ["underbone", "moped", "cub", "sin embrague"],
+            "deportiva": ["sport", "pistera", "carreras", "naked", "calle"],
+            "trabajo": ["mensajeria", "economica", "para camellar", "repartidor", "domicilio"],
+            "urbana": ["ciudad", "calle"],
+            "motocarro": ["motocarguero", "tricargo", "tres llantas", "carga"],
+            "electrica": ["bateria", "eco", "ecologica", "recargable"]
+        }
     
     def initialize(self, db: firestore.Client) -> None:
         """
@@ -141,6 +154,14 @@ class CatalogService:
                 categories_arr = data.get("categories", [])
                 if isinstance(categories_arr, list):
                     corpus_parts.extend([str(c) for c in categories_arr])
+                    
+                # --- APPLY FUZZY ALIASES (Semantic Expansion) ---
+                # Inject synonyms directly into the search index so strict token matching
+                # natively catches semantic intents like "doble proposito"
+                for cat in [str(category)] + [str(c) for c in categories_arr]:
+                    clean_cat = str(cat).lower().strip()
+                    if clean_cat in self._category_aliases:
+                        corpus_parts.extend(self._category_aliases[clean_cat])
                 
                 if isinstance(raw_specs, dict):
                     for spec_key in ["cilindraje", "transmision", "potencia", "torque", "frenos"]:
