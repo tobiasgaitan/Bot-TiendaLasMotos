@@ -560,7 +560,7 @@ Responde en formato JSON:
 {{
   "summary": "resumen aquí",
   "extracted": {{
-    "name": "nombre si se mencionó",
+    "name": "nombre si se mencionó. IGNORA el nombre 'Juan Pablo', 'Auteco' o cualquier referencia al asesor/bot. SOLO extrae el nombre si el usuario se presenta a sí mismo (ej. 'Soy Tobias', 'Mi nombre es...').",
     "city": "ciudad si se mencionó (ej. Bogotá, Medellín)",
     "payment_method": "método de pago si se mencionó (ej. crédito, contado, brilla, no sé)",
     "moto_interest": "Extrae ÚNICAMENTE referencias, marcas o estilos reales de motos (ej. Boxer, Pulsar, NKD, Scooter, Deportiva). IGNORA y NUNCA extraigas términos financieros o de pago aquí."
