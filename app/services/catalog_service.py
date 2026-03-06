@@ -5,6 +5,8 @@ Provides in-memory access to catalog items with category filtering.
 """
 
 import logging
+import re
+import unicodedata
 from typing import List, Dict, Any, Optional, Union
 
 from google.cloud import firestore
@@ -131,6 +133,35 @@ class CatalogService:
                 raw_specs = data.get("fichatecnica") or data.get("ficha_tecnica") or data.get("specs")
                 specs = self._parse_specs(raw_specs)
 
+                # --- Build Rich Searchable Corpus ---
+                # Why: Concatenating categories, tech specs, tags, and promotional data 
+                # resolving the "search blindness" issue for non-name queries (like displacement)
+                corpus_parts = [name, str(category)]
+                
+                categories_arr = data.get("categories", [])
+                if isinstance(categories_arr, list):
+                    corpus_parts.extend([str(c) for c in categories_arr])
+                
+                if isinstance(raw_specs, dict):
+                    for spec_key in ["cilindraje", "transmision", "potencia", "torque", "frenos"]:
+                        if spec_val := raw_specs.get(spec_key):
+                            corpus_parts.append(str(spec_val))
+                
+                try:
+                    if int(data.get("bonusAmount", 0)) > 0:
+                        corpus_parts.append("bono descuento promocion")
+                except (ValueError, TypeError):
+                    pass
+                
+                corpus_parts.extend(search_tags)
+                keywords_arr = data.get("keywords", [])
+                if isinstance(keywords_arr, list):
+                    corpus_parts.extend([str(k) for k in keywords_arr])
+                
+                raw_corpus = " ".join(corpus_parts)
+                item_search_tokens = self._tokenize(raw_corpus)
+                item_search_text = " ".join(item_search_tokens)
+
                 # Create standardized item
                 mapped_item = {
                     "id": doc.id,
@@ -143,7 +174,9 @@ class CatalogService:
                     "description": data.get("descripcion", data.get("description", "")),
                     "specs": specs,
                     "link": link,
-                    "search_tags": search_tags 
+                    "search_tags": search_tags,
+                    "search_tokens": item_search_tokens,
+                    "search_text": item_search_text
                 }
 
                 self._items.append(mapped_item)
@@ -165,6 +198,33 @@ class CatalogService:
             self._items = []
             self._items_by_id = {}
             self._items_by_category = {}
+
+    def _tokenize(self, text: str) -> List[str]:
+        """
+        Cleans and tokenizes text for search indexing.
+        Why: Standardizing both the catalog text and user query by removing accents, special 
+        characters (like Y/O), and casing ensures that AI search logic is highly tolerant 
+        of typos and variations in input. This boosts search recall.
+        """
+        if not text:
+            return []
+        
+        # Lowercase
+        text = str(text).lower()
+        
+        # Remove accents
+        text = ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
+        
+        # Replace y/o with space
+        text = text.replace('y/o', ' ')
+        
+        # Replace all non-alphanumeric (including slashes) with space
+        text = re.sub(r'[^a-z0-9\s]', ' ', text)
+        
+        # Tokenize and remove stop words
+        tokens = text.split()
+        stop_words = {"quiero", "una", "un", "moto", "motos", "busco", "la", "el", "de", "las", "los", "con", "en", "para", "y", "o"}
+        return [t for t in tokens if t not in stop_words]
 
     def _parse_specs(self, specs_input: Any) -> str:
         """
@@ -247,76 +307,50 @@ class CatalogService:
     
     def search_items(self, query: str) -> List[Dict[str, Any]]:
         """
-        Search for items using fuzzy matching, token tolerance, and tags.
-        Returns top results sorted by implementation score.
+        Search for items using rich search index, fuzzy matching, and token tolerance.
+        Why: Replacing naive substring matching with full-corpus token evaluation allows 
+        queries like "moto automatica 125cc" to match against deeply nested technical specs,
+        dramatically improving conversion and accuracy.
         """
         import difflib
         
-        query = query.lower().strip()
-        if not query:
+        query_tokens = self._tokenize(query)
+        if not query_tokens:
             return []
 
-        # Sanitize query by removing conversational filler words
-        stop_words = {"quiero", "una", "un", "moto", "busco", "la", "el", "de", "las", "los"}
-        raw_tokens = query.split()
-        query_tokens = [t for t in raw_tokens if t not in stop_words]
-        query = " ".join(query_tokens)
-        
-        if not query:
-            return []
-
+        clean_query = " ".join(query_tokens)
         scored_results = []
         
-        logger.info(f"🔎 DEBUG SEARCH: Query='{query}' Tokens={query_tokens}")
+        logger.info(f"🔎 DEBUG SEARCH: Original='{query}' Clean='{clean_query}' Tokens={query_tokens}")
         
         for item in self._items:
             score = 0
             
-            # Fields to search
             name = item.get("name", "").lower()
-            category = item.get("category", "").lower()
-            tags = item.get("search_tags", [])
+            name_clean = " ".join(self._tokenize(name))
+            item_tokens = item.get("search_tokens", [])
+            item_search_text = item.get("search_text", "")
             
-            # 1. Exact Substring in Name (Highest Confidence)
-            if query in name:
+            # 1. Exact Substring (Highest Confidence)
+            if clean_query in name_clean:
                 score += 100
+            elif clean_query in item_search_text:
+                score += 85  # Exact substring in other fields (category/specs/tags)
             
-            # 2. Check Search Tags (High Confidence)
-            # If query matches a tag exactly or if all query tokens are present in tags
-            for tag in tags:
-                if query == tag:
-                    score += 95
-                elif query in tag:
-                    score += 80
-            
-            # 3. Token Match (e.g. "TVS 125" -> "TVS" + "125" in "TVS Raider 125")
-            # Checks if ALL query tokens exist in the item's name/category/tags
+            # 2. Token Match
+            # Checks if query tokens exist in the rich searchable corpus (item_tokens)
             if len(query_tokens) > 0:
-                # Combine all text sources
-                item_text = f"{name} {category} {' '.join(tags)}"
-                
                 matches = 0
                 for t in query_tokens:
-                    if t in item_text:
+                    if t in item_tokens:
                         matches += 1
                     else:
-                        # Fuzzy matches for tokens? "Raidr" -> "Raider"
-                        # Check against name words and tags
+                        # Fuzzy matches for tokens (e.g., "raidr" -> "raider")
                         fuzzy_hit = False
-                        
-                        # Check name words
-                        for word in name.split():
-                            if difflib.SequenceMatcher(None, t, word).ratio() > 0.8:
+                        for target_token in set(item_tokens):
+                            if difflib.SequenceMatcher(None, t, target_token).ratio() > 0.8:
                                 fuzzy_hit = True
                                 break
-                        
-                        # Check tags
-                        if not fuzzy_hit:
-                            for tag in tags:
-                                if difflib.SequenceMatcher(None, t, tag).ratio() > 0.8:
-                                    fuzzy_hit = True
-                                    break
-                                    
                         if fuzzy_hit:
                             matches += 0.8 # Slightly less than exact token match
 
@@ -325,8 +359,8 @@ class CatalogService:
                 elif matches > 0:
                     score += (matches / len(query_tokens)) * 70
 
-            # 4. Fuzzy Overall Name Match (Typos: "Raidr" -> "Raider")
-            ratio = difflib.SequenceMatcher(None, query, name).ratio()
+            # 3. Fuzzy Overall Name Match (Typos: "Raidr" -> "Raider")
+            ratio = difflib.SequenceMatcher(None, clean_query, name_clean).ratio()
             if ratio > 0.6: # Reasonable similarity threshold
                 score += ratio * 60
 
