@@ -267,7 +267,8 @@ class ConfigLoader:
         return {
             "items": [],
             "last_updated": None,
-            "auto_sync_enabled": False
+            "auto_sync_enabled": False,
+            "category_aliases": {} # Fallback to prevent crash if field is missing in Firestore
         }
         
     @staticmethod

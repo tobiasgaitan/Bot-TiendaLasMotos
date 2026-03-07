@@ -28,19 +28,7 @@ class CatalogService:
         self._items_by_id: Dict[str, Dict[str, Any]] = {}
         self._items_by_category: Dict[str, List[Dict[str, Any]]] = {}
         self._db: Optional[firestore.Client] = None
-        
-        # --- SEMANTIC SEARCH DICTIONARY ---
-        # Maps strict Firebase categories to common user synonyms
-        self._category_aliases = {
-            "todoterreno": ["doble proposito", "enduro", "trocha", "cross", "trochera", "off road", "rural"],
-            "automatica": ["scooter", "señoritera", "facil de manejar"],
-            "semiautomatica": ["underbone", "moped", "cub", "sin embrague"],
-            "deportiva": ["sport", "pistera", "carreras", "naked", "calle"],
-            "trabajo": ["mensajeria", "economica", "para camellar", "repartidor", "domicilio"],
-            "urbana": ["ciudad", "calle"],
-            "motocarro": ["motocarguero", "tricargo", "tres llantas", "carga"],
-            "electrica": ["bateria", "eco", "ecologica", "recargable"]
-        }
+        self._category_aliases: Dict[str, List[str]] = {}
     
     def initialize(self, db: firestore.Client) -> None:
         """
@@ -66,6 +54,14 @@ class CatalogService:
             if not self._db:
                 logger.warning("⚠️ Firestore client not initialized in CatalogService")
                 return
+                
+            # Initialize or retrieve dynamic config for aliases
+            # Mantenibilidad: Se inyectan dinámicamente desde Firestore para 
+            # permitir actualizaciones sin redespliegues (QA Baseline).
+            from app.core.config_loader import ConfigLoader
+            config_loader = ConfigLoader()
+            catalog_config = config_loader.get_catalog_config()
+            self._category_aliases = catalog_config.get("category_aliases", {})
 
             # Query all items from sub-collection 'pagina/catalogo/items'
             items_ref = self._db.collection("pagina").document("catalogo").collection("items")
