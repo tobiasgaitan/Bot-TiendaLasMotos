@@ -155,7 +155,10 @@ class CatalogService:
                 # Inject synonyms directly into the search index so strict token matching
                 # natively catches semantic intents like "doble proposito"
                 for cat in [str(category)] + [str(c) for c in categories_arr]:
-                    clean_cat = str(cat).lower().strip()
+                    # Mantenibilidad: Replace '/' with '_' because Firebase Console UI restricts 
+                    # the use of forward slashes ('/') in Map keys, ensuring admins can safely 
+                    # create keys like "urbana y_o trabajo" instead of failing.
+                    clean_cat = str(cat).lower().strip().replace('/', '_')
                     if clean_cat in self._category_aliases:
                         corpus_parts.extend(self._category_aliases[clean_cat])
                 
