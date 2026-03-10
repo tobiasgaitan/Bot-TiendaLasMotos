@@ -601,11 +601,23 @@ Conversación a analizar:
                             },
                             "vivienda": {
                                 "type": "STRING",
-                                "description": "Tipo de vivienda o situación de gastos de vivienda si se mencionó (ej. Arriendo, Familiar, Propia)."
+                                "description": "Tipo de vivienda si vive con familiares, arrendado o es propia. (ej. Arriendo, Familiar, Propia)."
                             },
-                            "servicios_publicos": {
+                            "ingresos": {
                                 "type": "STRING",
-                                "description": "Si tiene servicios públicos como Gas Natural a su nombre o plan de celular si se mencionó."
+                                "description": "Ingresos mensuales demostrables (ej. 1300000, un minimo, 2 millones)."
+                            },
+                            "gastos": {
+                                "type": "STRING",
+                                "description": "Gastos mensuales fijos, como arriendo o cuotas (ej. 500mil, 1 millon)."
+                            },
+                            "gas_natural": {
+                                "type": "STRING",
+                                "description": "Si la persona afirma tener o pagar recibo de gas natural a su nombre (ej. Si, No, a nombre de mi mama)."
+                            },
+                            "plan_celular": {
+                                "type": "STRING",
+                                "description": "Tipo de plan de telefonia movil (ej. Prepago, Postpago)."
                             }
                         }
                     }

@@ -201,9 +201,21 @@ class MemoryService:
                 if extracted_data.get("vivienda"):
                     update_data["vivienda"] = extracted_data["vivienda"]
                     logger.info(f"🏠 Updating vivienda: {extracted_data['vivienda']}")
-                if extracted_data.get("servicios_publicos"):
-                    update_data["servicios_publicos"] = extracted_data["servicios_publicos"]
-                    logger.info(f"⚡ Updating servicios_publicos: {extracted_data['servicios_publicos']}")
+                
+                # Modificación QA Baseline: Extracción atómica de perfil crediticio para evitar "Data Collision"
+                # (Alineado con Matriz Scoring Excel de negocio)
+                if extracted_data.get("ingresos"):
+                    update_data["ingresos"] = extracted_data["ingresos"]
+                    logger.info(f"💵 Updating ingresos: {extracted_data['ingresos']}")
+                if extracted_data.get("gastos"):
+                    update_data["gastos"] = extracted_data["gastos"]
+                    logger.info(f"💸 Updating gastos: {extracted_data['gastos']}")
+                if extracted_data.get("gas_natural"):
+                    update_data["gas_natural"] = extracted_data["gas_natural"]
+                    logger.info(f"🔥 Updating gas_natural: {extracted_data['gas_natural']}")
+                if extracted_data.get("plan_celular"):
+                    update_data["plan_celular"] = extracted_data["plan_celular"]
+                    logger.info(f"📱 Updating plan_celular: {extracted_data['plan_celular']}")
 
             doc_ref.update(update_data)
             logger.info(f"✅ Successfully updated prospect summary for {clean_phone}")
