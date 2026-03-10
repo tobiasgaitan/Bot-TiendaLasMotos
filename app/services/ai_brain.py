@@ -141,9 +141,13 @@ class CerebroIA:
             )
 
             # Define catalog search function
+            # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
+            # Por qué se hace: Asegura que el modelo no genere respuestas alucinadas sobre el 
+            # inventario en la primera interacción (Fresh Start) y refuerza que DEBE buscar 
+            # antes de intentar saludar o responder.
             catalog_function = FunctionDeclaration(
                 name="search_catalog",
-                description="Search for motorcycles in the catalog using a query string. Use this to find prices, specs, and models. REGLA DE ORO INQUEBRANTABLE: NUNCA asumas el inventario ni ofrezcas motos basándote en tu conocimiento general de internet. Si el usuario menciona CUALQUIER marca, modelo o estilo de moto, ESTÁS OBLIGADO a usar la herramienta search_catalog antes de responder. PROHIBIDO ofrecer motos de la competencia que no estén en los resultados de la herramienta.",
+                description="Search for motorcycles in the catalog using a query string. Use this to find prices, specs, and models. REGLA DE ORO INQUEBRANTABLE: NUNCA asumas el inventario ni ofrezcas motos basándote en tu conocimiento general de internet. Si el usuario menciona CUALQUIER marca, modelo o estilo de moto, ESTÁS OBLIGADO a usar la herramienta search_catalog antes de responder (INCLUSO en tu primer mensaje de saludo). PROHIBIDO ofrecer motos de la competencia que no estén en los resultados de la herramienta.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -281,7 +285,11 @@ class CerebroIA:
                 if skip_greeting:
                     full_prompt += "\n[SYSTEM: STRICT RULE: DO NOT under any circumstance start your response with 'Hola', 'Buenos días', or any greeting. The conversation is ongoing. Jump straight into your answer.]\n"
                 else:
-                    full_prompt += "\n[SYSTEM: MANDATORY WARMTH: Preséntate de forma cálida y profesional como Juan Pablo, asesor de Auteco Las Motos. No seas parco ni directo; usa un tono de bienvenida y menciona la marca Auteco Las Motos.]\n"
+                    # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
+                    # Por qué se hace: La instrucción de saludo solía anular las llamadas a herramientas 
+                    # porque el LLM priorizaba escribir el texto del saludo. Esta modificación obliga
+                    # al modelo a ejecutar primero search_catalog antes de generar su respuesta final.
+                    full_prompt += "\n[SYSTEM: MANDATORY WARMTH: Preséntate de forma cálida y profesional como Juan Pablo, asesor de Auteco Las Motos. No seas parco ni directo. CRÍTICO: Si el usuario menciona una moto en este primer mensaje, DEBES usar la herramienta 'search_catalog' ANTES de generar tu saludo final.]\n"
 
                 # V16 - Context Switching (Interruption handling)
                 if pending_survey_question:
