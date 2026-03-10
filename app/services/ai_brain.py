@@ -634,10 +634,15 @@ Conversación a analizar:
             }
 
             from vertexai.generative_models import GenerationConfig
+            
+            # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
+            # Exigimos explícitamente max_output_tokens=500 para prevenir el error "Finish reason: 2 (Max Tokens)"
+            # garantizando que haya suficiente margen lógico y se eviten interrupciones en el resumen de cierre.
             response = chat.send_message(
                 prompt,
                 generation_config=GenerationConfig(
                     temperature=0.1,
+                    max_output_tokens=500,
                     response_mime_type="application/json",
                     response_schema=extraction_schema
                 )
@@ -714,7 +719,18 @@ Question: "¿Cuanto ganas?" | Msg: "Donde estan ubicados?" -> FALSE|None
 Respond ONLY with STATUS|VALUE.
 """
             # Zero-shot bridge evaluation
-            response = self._model.generate_content(prompt)
+            from vertexai.generative_models import GenerationConfig
+            
+            # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
+            # Limitamos los tokens preventivamente a 500 para una evaluación rápida (STATUS|VALUE)
+            # mitigando vulnerabilidades de Token Exhaustion durante validaciones transaccionales.
+            response = self._model.generate_content(
+                prompt,
+                generation_config=GenerationConfig(
+                    temperature=0.1,
+                    max_output_tokens=500
+                )
+            )
             
             if not response or not hasattr(response, 'text') or not response.text:
                 logger.warning("⚠️ Intent Evaluator returned NO text.")
