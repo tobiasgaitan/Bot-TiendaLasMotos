@@ -538,7 +538,15 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
 
     def generate_summary(self, conversation_text: str) -> Dict[str, Any]:
         """
-        Summarize the conversation and extract structured data.
+        Summarize the conversation and extract structured prospect data.
+        
+        MANTENIBILIDAD & SEGURIDAD (QA Baseline):
+        - Por qué se hace: Utililzamos `response_schema` nativo (Structured Outputs) para
+          forzar al modelo de Gemini a generar un JSON garantizado y determinista, en lugar 
+          de Prompt Engineering + Regex (que era frágil e inseguro ante alucinaciones).
+        - Impacto: Asegura que campos críticos del negocio como el perfil de crédito 
+          (ocupación, datacrédito) no se pierdan o malformen, permitiendo que `memory_service` 
+          los guarde correctamente en Firestore.
         """
         if not self._model:
             return {"summary": "", "extracted": {}}
@@ -549,34 +557,74 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
 Eres Juan Pablo, el asistente virtual experto de Auteco Las Motos.
 Tu misión es resumir la conversación con el cliente y extraer datos clave.
 
-Analiza esta conversación y genera:
-1. Un resumen conciso (1-2 oraciones) del tema principal y datos clave
-2. Extrae información estructurada si está presente
+Analiza esta conversación y extrae la información indicada en el esquema JSON proporcionado.
+Extrae ÚNICAMENTE información que el cliente haya mencionado explícitamente en la conversación.
 
-Conversación:
+Conversación a analizar:
+---
 {conversation_text}
-
-Responde en formato JSON:
-{{
-  "summary": "resumen aquí",
-  "extracted": {{
-    "name": "nombre si se mencionó. IGNORA el nombre 'Juan Pablo', 'Auteco' o cualquier referencia al asesor/bot. SOLO extrae el nombre si el usuario se presenta a sí mismo (ej. 'Soy Tobias', 'Mi nombre es...').",
-    "city": "ciudad si se mencionó (ej. Bogotá, Medellín)",
-    "payment_method": "método de pago si se mencionó (ej. crédito, contado, brilla, no sé)",
-    "moto_interest": "Extrae ÚNICAMENTE referencias, marcas o estilos reales de motos (ej. Boxer, Pulsar, NKD, Scooter, Deportiva). IGNORA y NUNCA extraigas términos financieros o de pago aquí."
-  }}
-}}
+---
 """
-            response = chat.send_message(prompt)
-            response_text = response.text.strip()
+            extraction_schema = {
+                "type": "OBJECT",
+                "properties": {
+                    "summary": {
+                        "type": "STRING",
+                        "description": "Un resumen conciso (1-2 oraciones) del tema principal y datos clave de la conversación."
+                    },
+                    "extracted": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "name": {
+                                "type": "STRING",
+                                "description": "Nombre si se mencionó. IGNORA el nombre 'Juan Pablo', 'Auteco' o referencias al bot. SOLO extrae si el usuario se presenta a sí mismo."
+                            },
+                            "city": {
+                                "type": "STRING",
+                                "description": "Ciudad si se mencionó (ej. Bogotá, Medellín)."
+                            },
+                            "payment_method": {
+                                "type": "STRING",
+                                "description": "Método de pago si se mencionó (ej. crédito, contado, brilla, no sé)."
+                            },
+                            "moto_interest": {
+                                "type": "STRING",
+                                "description": "ÚNICAMENTE referencias, marcas o estilos reales de motos (ej. Boxer, Pulsar, NKD, Scooter, Deportiva). IGNORA términos financieros."
+                            },
+                            "ocupacion": {
+                                "type": "STRING",
+                                "description": "Ocupación o tipo de contrato laboral si se mencionó (ej. Empleado, Independiente, Estudiante, Pensionado)."
+                            },
+                            "datacredito": {
+                                "type": "STRING",
+                                "description": "Estado o historial en Datacrédito si se mencionó (ej. Al día, Reportado, Sin experiencia, Castigado)."
+                            },
+                            "vivienda": {
+                                "type": "STRING",
+                                "description": "Tipo de vivienda o situación de gastos de vivienda si se mencionó (ej. Arriendo, Familiar, Propia)."
+                            },
+                            "servicios_publicos": {
+                                "type": "STRING",
+                                "description": "Si tiene servicios públicos como Gas Natural a su nombre o plan de celular si se mencionó."
+                            }
+                        }
+                    }
+                },
+                "required": ["summary", "extracted"]
+            }
+
+            from vertexai.generative_models import GenerationConfig
+            response = chat.send_message(
+                prompt,
+                generation_config=GenerationConfig(
+                    temperature=0.1,
+                    response_mime_type="application/json",
+                    response_schema=extraction_schema
+                )
+            )
             
             import json
-            import re
-            json_match = re.search(r'```(?:json)?\s*({.*?})\s*```', response_text, re.DOTALL)
-            if json_match:
-                response_text = json_match.group(1)
-            
-            result = json.loads(response_text)
+            result = json.loads(response.text.strip())
             
             if "summary" not in result: result["summary"] = ""
             if "extracted" not in result: result["extracted"] = {}

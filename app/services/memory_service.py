@@ -190,6 +190,20 @@ class MemoryService:
                 if extracted_data.get("payment_method"):
                     update_data["forma_pago"] = extracted_data["payment_method"]
                     logger.info(f"💳 Updating forma_pago: {extracted_data['payment_method']}")
+                    
+                # New credit-profile variables from Structured Outputs
+                if extracted_data.get("ocupacion"):
+                    update_data["ocupacion"] = extracted_data["ocupacion"]
+                    logger.info(f"💼 Updating ocupacion: {extracted_data['ocupacion']}")
+                if extracted_data.get("datacredito"):
+                    update_data["datacredito"] = extracted_data["datacredito"]
+                    logger.info(f"🏦 Updating datacredito: {extracted_data['datacredito']}")
+                if extracted_data.get("vivienda"):
+                    update_data["vivienda"] = extracted_data["vivienda"]
+                    logger.info(f"🏠 Updating vivienda: {extracted_data['vivienda']}")
+                if extracted_data.get("servicios_publicos"):
+                    update_data["servicios_publicos"] = extracted_data["servicios_publicos"]
+                    logger.info(f"⚡ Updating servicios_publicos: {extracted_data['servicios_publicos']}")
 
             doc_ref.update(update_data)
             logger.info(f"✅ Successfully updated prospect summary for {clean_phone}")
