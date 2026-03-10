@@ -235,14 +235,14 @@ class CerebroIA:
                 # pregunta de cierre obligatoria basándonos íntegramente en los datos en duro extraídos (prospect_data).
                 funnel_instruction = ""
                 if prospect_data:
+                    # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
+                    # Se retiró 'p_ciudad' de la lógica del embudo para prevenir repeticiones
+                    # y cumplir con la política estricta de no pedir la ciudad de origen (Problema B).
                     p_name = prospect_data.get("name")
-                    p_ciudad = prospect_data.get("ciudad")
                     p_payment = prospect_data.get("payment_method")
                     
                     if not p_name:
                         funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que aún no sabemos el nombre del cliente. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: 'Por cierto, ¿con quién tengo el gusto?' o algo muy similar.]"
-                    elif not p_ciudad:
-                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que no sabemos la ciudad del cliente. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: '¿Desde qué ciudad nos escribes?' o algo muy similar.]"
                     elif not p_payment:
                         funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que no sabemos cómo planea pagar. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: '¿Tienes pensado comprarla de contado o prefieres a crédito?']"
                 
@@ -263,9 +263,13 @@ class CerebroIA:
                     if prospect_data.get("summary"):
                         full_prompt += f"- Resumen previo: {prospect_data['summary']}\n"
                     
+                    # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
+                    # Se remueve la heurística de "Señor/Señora" para erradicar el "Parrot Effect".
+                    # Se prohíbe explícitamente la repetición del nombre de usuario para preservar la UX (Problema A).
                     full_prompt += f"\n⚠️ INSTRUCCIÓN DE IDENTIDAD: El nombre del usuario es {user_name if user_name else 'desconocido'}.\n"
-                    full_prompt += "Siempre dirígete a ellos con respeto usando 'Señor [Nombre]' o 'Señora [Nombre]' según corresponda (Heurística: nombre terminado en 'a' suele ser Señora).\n"
-                    full_prompt += "Ejemplo: '¡Hola Señor Juan!' o 'Dígame Señora Maria...'\n"
+                    full_prompt += "PROHIBIDO usar formalismos como 'Señor' o 'Señora'.\n"
+                    full_prompt += "PROHIBIDO repetir el nombre del usuario de forma constante o en cada mensaje.\n"
+                    full_prompt += "Comunícate de manera natural, humana, directa y empática.\n"
                     full_prompt += "Verifica cortésmente si la información sigue vigente si lo consideras necesario.\n"
                     full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
                 
@@ -586,10 +590,6 @@ Conversación a analizar:
                             "name": {
                                 "type": "STRING",
                                 "description": "Nombre si se mencionó. IGNORA el nombre 'Juan Pablo', 'Auteco' o referencias al bot. SOLO extrae si el usuario se presenta a sí mismo."
-                            },
-                            "city": {
-                                "type": "STRING",
-                                "description": "Ciudad si se mencionó (ej. Bogotá, Medellín)."
                             },
                             "payment_method": {
                                 "type": "STRING",
