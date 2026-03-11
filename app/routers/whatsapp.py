@@ -177,6 +177,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 logger.info(f"⏭️ Ignoring non-actionable reaction '{emoji}'")
                 return # Exit early for actionable reactions
             
+        if msg_type == "text":
             # --- DEBOUNCE LOGIC START ---
             if message_buffer:
                 # Add to buffer
@@ -608,9 +609,19 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                         db, user_phone, message_body, session, motor_financiero
                     )
             else:
+                # ALTERNATIVE C: Pre-processing Message Enrichment (Anchor)
+                enriched_message = message_body
+                if prospect_data and prospect_data.get("moto_interest"):
+                    moto_interes = prospect_data.get("moto_interest")
+                    # Enriquecer el mensaje solo si es relativamente corto y asumiendo que el usuario está preguntando
+                    # sobre la moto que ya tiene instanciada en memoria, evitando que el AI olvide el contexto.
+                    if len(message_body) < 60 and not any(m in message_body.lower() for m in ["otra", "cambiar", "no la"]):
+                        enriched_message = f"[Contexto CRM: Hablando sobre {moto_interes}]\nMensaje: {message_body}"
+                        logger.info(f"💉 Enriched user message with Moto Anchor: {moto_interes}")
+
                 logger.info(f"🧠 Calling CerebroIA.pensar_respuesta... (Skip Greeting: {skip_greeting}, Pending: {survey_pending_question})")
                 response_text = cerebro_ia.pensar_respuesta(
-                    message_body, 
+                    enriched_message, 
                     context=context, 
                     prospect_data=prospect_data,
                     history=current_history,

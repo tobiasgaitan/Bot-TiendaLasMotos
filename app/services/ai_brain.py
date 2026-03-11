@@ -111,7 +111,15 @@ class CerebroIA:
     
     def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, pending_survey_question: Optional[str] = None) -> str:
         """
-        Generate an intelligent response using Gemini AI with Retry Logic.
+        Main entry point for AI logic.
+        Combines deterministic checks (Funnel) + generative AI.
+        
+        QA Security Baseline: 
+        - Context Injection: Inyecta datos extraidos del CRM directamente en el prompt (como 'Ocupacion', 
+          'Ingresos', 'Datacredito', etc.) para evitar que la IA repita preguntas ya contestadas en la encuesta.
+        - Deterministic Funnel: Obliga matemáticamente a la IA a pedir el Nombre y Ciudad antes de avanzar.
+        - Fail-Closed: Si se detecta una instruccion obligatoria (funnel_instruction), se anexa al final de 
+          los resultados de las herramientas para forzar a la IA a cerrar con esa pregunta.
         """
         return self._generate_with_retry(texto, context, prospect_data, history, skip_greeting, pending_survey_question)
 
@@ -243,10 +251,13 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                     # Se retiró 'p_ciudad' de la lógica del embudo para prevenir repeticiones
                     # y cumplir con la política estricta de no pedir la ciudad de origen (Problema B).
                     p_name = prospect_data.get("name")
+                    p_ciudad = prospect_data.get("ciudad")
                     p_payment = prospect_data.get("payment_method")
                     
                     if not p_name:
                         funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que aún no sabemos el nombre del cliente. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: 'Por cierto, ¿con quién tengo el gusto?' o algo muy similar.]"
+                    elif not p_ciudad:
+                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que no sabemos en qué ciudad se encuentra el cliente. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: '¿Desde qué ciudad nos escribes?' o algo muy similar.]"
                     elif not p_payment:
                         funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que no sabemos cómo planea pagar. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: '¿Tienes pensado comprarla de contado o prefieres a crédito?']"
                 
@@ -262,6 +273,8 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                     full_prompt += "INFORMACIÓN DEL PROSPECTO (CRM):\n"
                     if user_name:
                         full_prompt += f"- Nombre: {user_name}\n"
+                    if prospect_data.get("ciudad"):
+                        full_prompt += f"- Ciudad: {prospect_data['ciudad']}\n"
                     if prospect_data.get("moto_interest"):
                         full_prompt += f"- Interés en moto: {prospect_data['moto_interest']}\n"
                     if prospect_data.get("summary"):
@@ -627,6 +640,10 @@ Conversación a analizar:
                             "payment_method": {
                                 "type": "STRING",
                                 "description": "Método de pago si se mencionó (ej. crédito, contado, brilla, no sé)."
+                            },
+                            "city": {
+                                "type": "STRING",
+                                "description": "Ciudad de residencia o ubicación si el cliente la menciona."
                             },
                             "moto_interest": {
                                 "type": "STRING",
