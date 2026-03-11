@@ -169,31 +169,31 @@ class CerebroIA:
                     "properties": {
                         "ocupacion_y_contrato": {
                             "type": "string",
-                            "description": "Ocupación y tipo de contrato (e.g., 'Empleado fijo', 'Independiente', 'Pensionado')"
+                            "description": "Ocupación y tipo de contrato. Mapeo estricto: Si dice 'informal', 'rebusque', 'cuenta propia', o 'negocio', MÁPEALO a 'Independiente'. Si dice 'empleado', 'trabajo en', 'mensajero' (con empresa), MÁPEALO a 'Empleado fijo'. De lo contrario, extrae la intención más cercana."
                         },
                         "ingresos_demostrables": {
                             "type": "string",
-                            "description": "Nivel de ingresos (e.g., 'Minimo', '1750905')"
+                            "description": "Nivel de ingresos. Mapeo estricto: Si dice 'el mínimo', 'lo básico', MÁPEALO a '1300000' (valor numérico). Si no da valor exacto pero afirma trabajar, infiere el mínimo legal. No envíes texto como 'el mínimo'."
                         },
                         "historial_datacredito": {
                             "type": "string",
-                            "description": "Estado en Datacrédito (e.g., 'Al dia', 'Reportado', 'Sin experiencia')"
+                            "description": "Estado en Datacrédito. Mapeo estricto: Si dice 'nunca he sacado nada', 'no sé', MÁPEALO a 'Sin experiencia'. Si dice 'bien', 'pagando cuenta', MÁPEALO a 'Al dia'. Si menciona 'atrasado', 'castigado', MÁPEALO a 'Reportado'."
                         },
                         "mora_y_paz_salvo": {
                             "type": "string",
-                            "description": "Detalles de mora (>30 días) y Paz y Salvo. Opciones: 'Sin mora', 'Con mora y paz y salvo', 'Con mora sin paz y salvo'"
+                            "description": "Detalles de mora (>30 días). Mapeo estricto: Si historial_datacredito no es Reportado, MÁPEALO siempre a 'Sin mora'. Si está reportado pero pagó, MÁPEALO a 'Con mora y paz y salvo'. Si sigue debiendo, MÁPEALO a 'Con mora sin paz y salvo'."
                         },
                         "gastos_vivienda": {
                             "type": "string",
-                            "description": "Gastos de vivienda (e.g., 'Familiar', 'Arriendo 500k')"
+                            "description": "Gastos de vivienda. Mapeo estricto: Si dice 'con mis papás', 'casa de un familiar', MÁPEALO a 'Familiar'. Si paga arriendo o renta, MÁPEALO a 'Arriendo'. Si es dueño, MÁPEALO a 'Propia'."
                         },
                         "tiene_gas_natural": {
                             "type": "boolean",
-                            "description": "Indica si tiene recibo de Gas Natural a su nombre (true o false)"
+                            "description": "Indica si tiene recibo de Gas Natural a su nombre (true o false). Si dice 'no sé', 'a nombre de mi mamá', asume 'false'."
                         },
                         "plan_celular": {
                             "type": "string",
-                            "description": "Tipo de plan de celular (e.g., 'Postpago', 'Prepago')"
+                            "description": "Tipo de plan de celular. Mapeo estricto: Si indica 'no tengo plan', 'recargo', 'tarjeta', MÁPEALO a 'Prepago'. Si paga factura o abono fijo mensual, MÁPEALO a 'Postpago'."
                         }
                     },
                     "required": [
@@ -356,6 +356,15 @@ class CerebroIA:
                 full_prompt += "- PERFILES ESPECIALES:\n"
                 full_prompt += "  * Reportados: SÍ pueden acceder a crédito (requiere 10% de cuota inicial).\n"
                 full_prompt += "  * Extranjeros: Necesitan PPT/PEP + Pasaporte + Dirección local.\n"
+                full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
+
+                # V22 - Tool Calling Strict Guardrail
+                full_prompt += "═══════════════════════════════════════════════════════════════════\n"
+                full_prompt += "🛡️ V22 - REGLAS ESTRICTAS DE HERRAMIENTAS (ANTI-HALLUCINATION):\n"
+                full_prompt += "1. Estás integrado a un sistema automatizado. NUNCA debes generar código fuente en Python ni intentar imprimir comandos en consola.\n"
+                full_prompt += "2. PROHIBIDO estrictamente generar respuestas en bruto como: `print(default_api.trigger_human_handoff(...))`.\n"
+                full_prompt += "3. Si necesitas invocar 'trigger_human_handoff', hazlo mediante la llamada nativa a la herramienta (JSON/Function Call framework), pero NUNCA como texto plano o código Python.\n"
+                full_prompt += "4. Si durante el formulario de crédito el usuario da una respuesta ambigua, INFIERE razonablemente el valor más cercano para la herramienta 'calculate_credit_score' basándote en el mapeo estricto, en lugar de intentar escalar con humanos o fallar.\n"
                 full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
 
                 if funnel_instruction:
