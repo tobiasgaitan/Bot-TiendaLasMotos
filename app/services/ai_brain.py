@@ -274,6 +274,9 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                     full_prompt += "PROHIBIDO usar formalismos como 'Señor' o 'Señora'.\n"
                     full_prompt += "PROHIBIDO repetir el nombre del usuario de forma constante o en cada mensaje.\n"
                     full_prompt += "Comunícate de manera natural, humana, directa y empática.\n"
+                    
+                    full_prompt += "\n🚨 REGLA DE AMNESIA PARCIAL (NUEVO INTERÉS): Si el usuario menciona explícitamente una moto diferente a la que aparece guardada arriba en 'Interés en moto', IGNORA COMPLETAMENTE el historial del CRM. Su mensaje actual tiene prioridad ABSOLUTA. Si esto pasa, ejecuta 'search_catalog' usando ÚNICAMENTE el nombre de la nueva moto mencionada en su último mensaje, nunca la del CRM.\n"
+                    
                     full_prompt += "Verifica cortésmente si la información sigue vigente si lo consideras necesario.\n"
                     full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
                 
