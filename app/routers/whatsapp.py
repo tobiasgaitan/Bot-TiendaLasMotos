@@ -162,6 +162,20 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         
         if msg_type == "text":
             message_body = msg_data.get("text", "").strip()
+        elif msg_type == "reaction":
+            emoji = msg_data.get("emoji", "")
+            message_id = msg_data.get("message_id", "")
+            logger.info(f"👍 User reacted with '{emoji}' to message '{message_id}'")
+            
+            # Translate positive reactions to keep the funnel active
+            positive_emojis = ["👍", "❤️", "💯", "🔥", "✅", "👌", "😊", "🥰", "😍"]
+            if emoji in positive_emojis:
+                logger.info(f"🔄 Translating positive reaction '{emoji}' into text 'Sí'")
+                message_body = "Sí"
+                msg_type = "text" # Treat it as text from here on to continue the funnel
+            else:
+                logger.info(f"⏭️ Ignoring non-actionable reaction '{emoji}'")
+                return # Exit early for actionable reactions
             
             # --- DEBOUNCE LOGIC START ---
             if message_buffer:
@@ -800,6 +814,11 @@ def _extract_message_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             data["sticker"] = sticker_obj
             data["media_id"] = sticker_obj.get("id")
             data["mime_type"] = sticker_obj.get("mime_type")
+        elif msg_type == "reaction":
+            reaction_obj = msg["reaction"]
+            data["reaction"] = reaction_obj
+            data["message_id"] = reaction_obj.get("message_id")
+            data["emoji"] = reaction_obj.get("emoji")
         return data
     except:
         return None

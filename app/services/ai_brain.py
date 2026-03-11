@@ -267,6 +267,23 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                     if prospect_data.get("summary"):
                         full_prompt += f"- Resumen previo: {prospect_data['summary']}\n"
                     
+                    # INYECCIÓN DE PERFIL CUALITATIVO (Previene Loops en la Encuesta)
+                    # Exponemos las variables extraídas para que el LLM no vuelva a preguntarlas.
+                    if prospect_data.get('ocupacion'):
+                        full_prompt += f"- Ocupación/Contrato: {prospect_data['ocupacion']}\n"
+                    if prospect_data.get('ingresos'):
+                        full_prompt += f"- Ingresos: {prospect_data['ingresos']}\n"
+                    if prospect_data.get('datacredito'):
+                        full_prompt += f"- Datacrédito: {prospect_data['datacredito']}\n"
+                    if prospect_data.get('vivienda'):
+                        full_prompt += f"- Tipo de Vivienda: {prospect_data['vivienda']}\n"
+                    if prospect_data.get('gas_natural'):
+                        full_prompt += f"- ¿Tiene recibo de Gas Natural?: {prospect_data['gas_natural']}\n"
+                    if prospect_data.get('plan_celular'):
+                        full_prompt += f"- Plan de Celular: {prospect_data['plan_celular']}\n"
+                    if prospect_data.get('gastos'):
+                        full_prompt += f"- Gastos Mensuales: {prospect_data['gastos']}\n"
+                    
                     # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
                     # Se remueve la heurística de "Señor/Señora" para erradicar el "Parrot Effect".
                     # Se prohíbe explícitamente la repetición del nombre de usuario para preservar la UX (Problema A).
