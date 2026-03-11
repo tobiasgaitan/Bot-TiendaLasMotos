@@ -147,13 +147,17 @@ class CerebroIA:
             # antes de intentar saludar o responder.
             catalog_function = FunctionDeclaration(
                 name="search_catalog",
-                description="Search for motorcycles in the catalog using a query string. Use this to find prices, specs, and models. REGLA DE ORO INQUEBRANTABLE: NUNCA asumas el inventario ni ofrezcas motos basándote en tu conocimiento general de internet. Si el usuario menciona CUALQUIER marca, modelo o estilo de moto, ESTÁS OBLIGADO a usar la herramienta search_catalog antes de responder (INCLUSO en tu primer mensaje de saludo). PROHIBIDO ofrecer motos de la competencia que no estén en los resultados de la herramienta.",
+                description="""Search for motorcycles in the catalog using a query string. 
+REGLA DE ORO: NUNCA asumas el inventario. Si el usuario menciona CUALQUIER moto o necesidad, ESTÁS OBLIGADO a usar esta herramienta ANTES de responder. 
+IMPORTANTE: Lee las instrucciones del parámetro 'query' para saber cómo formular la búsqueda dependiendo de si es un modelo específico o una búsqueda amplia.""",
                 parameters={
                     "type": "object",
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "Search query (e.g., 'NKD 125', 'motos deportivas', 'precio de la Victory')"
+                            "description": """Término de búsqueda a ingresar en el sistema. Debes evaluar la frase del usuario y aplicar UNA de estas dos reglas:
+REGLA 1 (Modelos Específicos/Sniper): Si el usuario nombra una marca o modelo exacto (ej. 'Raider', 'NKD', 'Sport'), tu query DEBE ser EXACTAMENTE esa palabra (ej. 'Raider'). PROHIBIDO abstraer o agrupar en segmentos como 'motos street'.
+REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad u oración larga (ej. 'motos para ir a la finca', 'para camellar', 'automática de mujer'), tu deber es EXTRAER SOLO EL CONCEPTO CLAVE de una o dos palabras (ej. 'enduro', 'trabajo', 'scooter'). NUNCA pases oraciones largas ni preposiciones al query."""
                         }
                     },
                     "required": ["query"]
