@@ -379,7 +379,7 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                 # 1. Send initial message
                 response = chat.send_message(
                     full_prompt,
-                    generation_config=GenerationConfig(temperature=0.2, max_output_tokens=1000)
+                    generation_config=GenerationConfig(temperature=0.2, max_output_tokens=8192)
                 )
                 
                 # 2. Check for Function Call(s)
