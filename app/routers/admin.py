@@ -264,6 +264,82 @@ async def sync_prompts(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/refresh-config")
+async def refresh_config(
+    x_admin_api_key: Optional[str] = Header(None, alias="X-Admin-API-Key")
+):
+    """
+    Force-reload the in-memory ConfigLoader cache from Firestore.
+
+    SECURITY: Protected by X-Admin-API-Key header (same as all admin endpoints).
+    
+    WHY THIS EXISTS:
+    ConfigLoader is a Singleton that caches all config (system_instruction,
+    routing_rules, catalog_config) in memory at startup. In a horizontally
+    scaled Cloud Run environment, warm instances keep stale config in memory
+    even after the Firestore document is patched.
+    
+    Hitting this endpoint forces the running instance to drop its cache and
+    re-read all configuration from Firestore, without requiring a full redeploy.
+
+    USAGE (after running scripts/patch_prompt.py):
+        curl -X POST https://<your-service-url>/api/admin/refresh-config \\
+             -H "X-Admin-API-Key: moto_master_2026"
+
+    Returns:
+        200: Config reloaded successfully, with a summary of what was loaded.
+        401: Invalid or missing API key.
+        500: ConfigLoader unavailable or Firestore read failed.
+    """
+    # ========================================================================
+    # AUTHENTICATION (fail-closed — reject all without valid key)
+    # ========================================================================
+    if not x_admin_api_key:
+        logger.warning("🔒 Unauthorized refresh-config attempt: missing API key")
+        raise HTTPException(status_code=401, detail="Missing API key. Provide X-Admin-API-Key header.")
+    
+    if x_admin_api_key != ADMIN_API_KEY:
+        logger.warning(f"🔒 Unauthorized refresh-config attempt: invalid key")
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    # ========================================================================
+    # CACHE INVALIDATION
+    # ========================================================================
+    try:
+        from app.core.config_loader import ConfigLoader
+
+        # Retrieve the existing Singleton instance (no args = reuse existing)
+        # If the Singleton was never initialized (edge case), this will raise —
+        # which is correct: we can't refresh a cache that was never populated.
+        config_loader = ConfigLoader()
+
+        logger.info("🔄 Admin API: Force-refreshing ConfigLoader Singleton cache from Firestore...")
+        config_loader.refresh()
+
+        # Build a summary of what was reloaded for the operator
+        personality = config_loader.get_juan_pablo_personality()
+        instruction_preview = personality.get("system_instruction", "")[:120] + "..."
+
+        logger.info("✅ Admin API: ConfigLoader cache successfully refreshed")
+
+        return {
+            "status": "success",
+            "message": "ConfigLoader cache reloaded from Firestore. This instance is now serving the latest configuration.",
+            "reloaded": {
+                "model_version": personality.get("model_version"),
+                "instruction_preview": instruction_preview,
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Admin API: Failed to refresh ConfigLoader: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to refresh config: {str(e)}"
+        )
+
+
+
 @router.get("/health")
 async def admin_health_check():
     """

@@ -649,7 +649,11 @@ Conversación a analizar:
                             },
                             "moto_interest": {
                                 "type": "STRING",
-                                "description": "ÚNICAMENTE referencias, marcas o estilos reales de motos (ej. Boxer, Pulsar, NKD, Scooter, Deportiva). IGNORA términos financieros."
+                                # WHY: LLM was mapping geographic proper nouns (e.g. "Orihueca", "Medellín") to this
+                                # field because the only exclusion rule was "financial terms". Adding an exhaustive
+                                # exclusion list for geographic entities prevents location answers (city question)
+                                # from overwriting the user's actual motorcycle interest stored in the CRM.
+                                "description": "ÚNICAMENTE marcas o modelos ESPECÍFICOS de motos (ej. Boxer, Pulsar, NKD, MRX, Victory, Raider, Scooter, Deportiva). REGLAS ESTRICTAS DE EXCLUSIÓN: (1) NUNCA extraigas nombres de ciudades, municipios, corregimientos, departamentos, barrios ni ninguna entidad geográfica. (2) NUNCA extraigas términos financieros (crédito, cuota, banco). (3) Si el usuario está respondiendo a una pregunta sobre su ciudad o dirección, IGNORA completamente ese valor para este campo. EN CASO DE DUDA, deja este campo vacío."
                             },
                             "ocupacion": {
                                 "type": "STRING",
