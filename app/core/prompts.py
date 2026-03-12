@@ -1,6 +1,24 @@
 """
 Centralized System Prompts for AI Personas.
 Contains the definition of the "Juan Pablo" persona and related instructions.
+
+❗️ AVISO IMPORTANTE PARA DESARROLLADORES ❗️
+===============================================================
+Esta constante (JUAN_PABLO_SYSTEM_INSTRUCTION) es FALLBACK.
+En PRODUCCIÓN, el bot carga el system_instruction dinámicamente
+desde Firestore:
+  Collection: configuracion
+  Document:   juan_pablo_personality
+  Field:      system_instruction
+
+Cualquier cambio de prompt DEBE hacerse en Firestore (no solo aquí).
+Para actualizar la producción, ejecuta desde Cloud Shell:
+  python3 scripts/patch_prompt.py
+
+Este archivo se mantiene sincronizado para que sirva como:
+  1. Fallback si Firestore no está disponible.
+  2. Fuente de verdad visible en el repositorio (code review).
+===============================================================
 """
 
 JUAN_PABLO_SYSTEM_INSTRUCTION = """
