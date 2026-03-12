@@ -254,10 +254,12 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                     p_ciudad = prospect_data.get("ciudad")
                     p_payment = prospect_data.get("payment_method")
                     
-                    if not p_name:
-                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que aún no sabemos el nombre del cliente. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: 'Por cierto, ¿con quién tengo el gusto?' o algo muy similar.]"
+                    if not p_name and not p_ciudad:
+                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM requiere el Nombre y la Ciudad. Cierra tu mensaje preguntando el Nombre ('¿con quién tengo el gusto?'). IMPORTANTE: Si el usuario te acaba de dar su nombre en este mismo mensaje, entonces pregunta por la Ciudad ('¿desde qué ciudad nos escribes?'). Nunca preguntes ambos en el mismo mensaje.]"
+                    elif not p_name:
+                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que aún no sabemos el nombre del cliente. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: 'Por cierto, ¿con quién tengo el gusto?' o algo muy similar. Si el usuario acaba de dar su nombre, omite esto.]"
                     elif not p_ciudad:
-                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que no sabemos en qué ciudad se encuentra el cliente. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: '¿Desde qué ciudad nos escribes?' o algo muy similar.]"
+                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que no sabemos en qué ciudad se encuentra el cliente. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: '¿Desde qué ciudad nos escribes?' o algo muy similar. Si el usuario acaba de dar su ciudad, omite esto.]"
                     elif not p_payment:
                         funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que no sabemos cómo planea pagar. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: '¿Tienes pensado comprarla de contado o prefieres a crédito?']"
                 
@@ -692,7 +694,7 @@ Conversación a analizar:
                 prompt,
                 generation_config=GenerationConfig(
                     temperature=0.1,
-                    max_output_tokens=500,
+                    max_output_tokens=1024,
                     response_mime_type="application/json",
                     response_schema=extraction_schema
                 )
