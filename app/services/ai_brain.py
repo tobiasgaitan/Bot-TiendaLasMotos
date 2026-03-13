@@ -133,15 +133,28 @@ class CerebroIA:
         
         try:
             # Define human handoff function
+            # SECURITY (QA Baseline): This tool is intentionally locked to ONLY fire on
+            # explicit user requests. Permitting 'complex_query' or 'technical_question'
+            # caused the LLM to escape answering FAQs (credit requirements, pricing)
+            # by routing them to a human, breaking the automated sales funnel.
             handoff_function = FunctionDeclaration(
                 name="trigger_human_handoff",
-                description="Escalate conversation to a human agent when user requests human assistance or query is too complex",
+                description="""Escala la conversación a un agente humano ÚNICAMENTE si el usuario EXPLÍCITAMENTE solicita hablar con una persona.
+
+REGLAS ESTRICTAS DE USO:
+- SOLO úsala si el usuario dice frases como: 'quiero hablar con un asesor', 'necesito una persona', 'hablar con alguien', 'quiero ayuda humana'.
+- PROHIBIDO ABSOLUTO usarla para: preguntas sobre requisitos de crédito, precios, características de motos, FAQs, o cualquier consulta que puedas responder con tu conocimiento.
+- PROHIBIDO usarla porque la pregunta te parece 'compleja' o 'técnica'. Tú eres el experto. Respóndela.
+- Si tienes duda, NO la uses. Responde directamente.""",
                 parameters={
                     "type": "object",
                     "properties": {
                         "reason": {
                             "type": "string",
-                            "description": "Reason for handoff (e.g., 'user_request', 'complex_query', 'technical_question')"
+                            # WHY: Removing 'complex_query' and 'technical_question' as valid
+                            # values removes the LLM's escape hatch for answering hard questions.
+                            # The only valid value is 'user_explicit_request'.
+                            "description": "Razón del handoff. ÚNICO valor válido: 'user_explicit_request'. NUNCA uses 'complex_query', 'technical_question' ni ninguna razón autogenerada."
                         }
                     },
                     "required": ["reason"]
@@ -347,14 +360,13 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                     full_prompt += "Ejemplo: 'Claro que sí, [respuesta]. Por cierto, para seguir con tu crédito, ¿me recordabas [pregunta pendiente]?'\n"
                     full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
 
-                # V17 - Survey Trigger Enforcement
-                full_prompt += "═══════════════════════════════════════════════════════════════════\n"
-                full_prompt += "🚨 V17 - MANEJO DE SOLICITUDES DE CRÉDITO (PASIVO):\n"
-                full_prompt += "Si el cliente menciona 'Crédito', 'Brilla' o 'Financiar', NO DISPARES NINGUNA HERRAMIENTA NI ENCUESTA.\n"
-                full_prompt += "Tu ÚNICA tarea es continuar con el Embudo de Conversación (Fase 1).\n"
-                full_prompt += "Si te piden crédito, responde con entusiasmo ('¡Claro que sí manejamos crédito!') y luego INMEDIATAMENTE haz la pregunta del Objetivo que te falte (Ej. '¿Con quién tengo el gusto?' o '¿Qué moto tienes en mente?').\n"
-                full_prompt += "Bajo ninguna circunstancia intentes iniciar el formulario formal tú mismo. Mantén la conversación fluida.\n"
-                full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
+                # V17 REMOVED — 2026-03-12
+                # WHY REMOVED: This block hardcoded '¡Claro que sí manejamos crédito!'
+                # and explicitly told the LLM to NOT trigger Phase 2 (Data Policy).
+                # It completely overrode the Firestore guardrail — a legal and business blocker.
+                # Phase 2 and Phase 3 logic is now handled exclusively by the Firestore
+                # system_instruction (configuracion/juan_pablo_personality). No hardcoded
+                # credit transitions should exist in Python.
 
                 # V18 - Hallucination Guardrail
                 full_prompt += "═══════════════════════════════════════════════════════════════════\n"
