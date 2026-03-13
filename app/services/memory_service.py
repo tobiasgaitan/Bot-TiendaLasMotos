@@ -192,6 +192,14 @@ class MemoryService:
                     update_data["motoInteres"] = extracted_data["moto_interest"]
                     logger.info(f"🏍️ Updating motoInteres: {extracted_data['moto_interest']}")
                 
+                if is_valid(extracted_data.get("moto_competidor")):
+                    update_data["moto_competidor"] = extracted_data["moto_competidor"]
+                    logger.info(f"🏎️ Updating moto_competidor: {extracted_data['moto_competidor']}")
+
+                if is_valid(extracted_data.get("moto_auteco")):
+                    update_data["moto_auteco"] = extracted_data["moto_auteco"]
+                    logger.info(f"🛵 Updating moto_auteco: {extracted_data['moto_auteco']}")
+                
                 if is_valid(extracted_data.get("city")):
                     update_data["ciudad"] = extracted_data["city"]
                     logger.info(f"🌆 Updating ciudad: {extracted_data['city']}")

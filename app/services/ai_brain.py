@@ -717,13 +717,20 @@ Conversación a analizar:
                                 # both fields from absorbing each other's entity type.
                                 "description": "Ciudad de residencia o ubicación si el cliente la menciona. EXCLUSIÓN: NUNCA extraigas marcas ni modelos de motos (ej. Boxer, Pulsar, MRX, Raider) como ciudad. Solo valores geográficos válidos."
                             },
+                            "moto_competidor": {
+                                "type": "STRING",
+                                "description": "Marcas o modelos de la COMPETENCIA mencionados por el usuario (ej. Boxer, NKD, Pulsar, Yamaha, AKT). Si el usuario inicialmente mostró interés en una marca que no manejamos, extráela aquí."
+                            },
+                            "moto_auteco": {
+                                "type": "STRING",
+                                "description": "Marcas o modelos de AUTECO (TVS, Victory, Kymco, KTM) mencionados, buscados o RECOMENDADOS por el bot durante un pivote (ej. MRX 150, Raider, Black). Si el bot sugirió una alternativa de nuestro catálogo, extráela aquí."
+                            },
                             "moto_interest": {
                                 "type": "STRING",
-                                # WHY: LLM was mapping geographic proper nouns (e.g. "Orihueca", "Medellín") to this
-                                # field because the only exclusion rule was "financial terms". Adding an exhaustive
-                                # exclusion list for geographic entities prevents location answers (city question)
-                                # from overwriting the user's actual motorcycle interest stored in the CRM.
-                                "description": "ÚNICAMENTE marcas o modelos ESPECÍFICOS de motos (ej. Boxer, Pulsar, NKD, MRX, Victory, Raider, Scooter, Deportiva). REGLAS ESTRICTAS DE EXCLUSIÓN: (1) NUNCA extraigas nombres de ciudades, municipios, corregimientos, departamentos, barrios ni ninguna entidad geográfica. (2) NUNCA extraigas términos financieros (crédito, cuota, banco). (3) Si el usuario está respondiendo a una pregunta sobre su ciudad o dirección, IGNORA completamente ese valor para este campo. EN CASO DE DUDA, deja este campo vacío."
+                                # WHY: Summary field for the CRM dashboard.
+                                # LÓGICA: Si hay una moto de Auteco identificada o recomendada, ponla aquí. 
+                                # Si no, pon la de la competencia. IGNORA ciudades y términos financieros.
+                                "description": "Modelo de moto principal para el interés del cliente. Prioriza el modelo de Auteco si ya hubo un pivote o recomendación clara. REGLAS: IGNORA ciudades y términos financieros."
                             },
                             "ocupacion": {
                                 "type": "STRING",
