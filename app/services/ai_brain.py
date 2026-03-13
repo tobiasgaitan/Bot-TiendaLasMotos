@@ -158,10 +158,14 @@ REGLAS ESTRICTAS DE USO:
                     "properties": {
                         "reason": {
                             "type": "string",
-                            # WHY: Removing 'complex_query' and 'technical_question' as valid
-                            # values removes the LLM's escape hatch for answering hard questions.
-                            # The only valid value is 'user_explicit_request'.
-                            "description": "Razón del handoff. ÚNICO valor válido: 'user_explicit_request'. NUNCA uses 'complex_query', 'technical_question' ni ninguna razón autogenerada."
+                            # AUDIT P2 (3.3): Added structural enum enforcement.
+                            # WHY: Even with a clear description, free-text string fields
+                            # still allow the LLM to hallucinate values like 'usuario_solicito'
+                            # or 'complex_need'. Vertex AI honors `enum` in FunctionDeclaration,
+                            # making it IMPOSSIBLE for the LLM to submit any value other than
+                            # 'user_explicit_request'. This removes the escape-hatch permanently.
+                            "enum": ["user_explicit_request"],
+                            "description": "Razón del handoff. Único valor válido: 'user_explicit_request'. NUNCA uses 'complex_query', 'technical_question' ni ninguna razón autogenerada."
                         }
                     },
                     "required": ["reason"]
@@ -334,13 +338,36 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                     full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
                 
                 # Inject Chat History (Recent Context)
+                # AUDIT P2 (4.1 — Level 1 Truncation): Cap injected history at 2,000 chars.
+                # WHY: No hard-cap meant a 10-message history of long messages could easily
+                # exceed 5,000 tokens, risking an InvalidArgument (400) on long conversations.
+                # We truncate OLDEST messages first (keep newest) to preserve recent context.
+                # The config_loader TTL cache means no performance penalty from the dynamic load.
                 if history:
-                    full_prompt += "📜 HISTORIAL RECIENTE (Últimos mensajes):\n"
+                    history_lines = []
                     for msg in history:
                         role_label = "Usuario" if msg['role'] == 'user' else "Juan Pablo"
                         content_safe = str(msg.get('content', '')).replace('\n', ' ')
-                        full_prompt += f"- {role_label}: {content_safe}\n"
+                        history_lines.append(f"- {role_label}: {content_safe}")
+
+                    # Build from newest backwards until we hit the char cap
+                    MAX_HISTORY_CHARS = 2000
+                    selected_lines = []
+                    running_chars = 0
+                    for line in reversed(history_lines):
+                        if running_chars + len(line) + 1 > MAX_HISTORY_CHARS:
+                            break
+                        selected_lines.insert(0, line)
+                        running_chars += len(line) + 1
+
+                    truncated = len(history_lines) - len(selected_lines)
+                    if truncated:
+                        logger.info(f"✏️ History truncated: kept {len(selected_lines)}/{len(history_lines)} messages ({running_chars} chars)")
+
+                    full_prompt += "📜 HISTORIAL RECIENTE (Últimos mensajes):\n"
+                    full_prompt += "\n".join(selected_lines) + "\n"
                     full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
+
 
                 if context:
                     full_prompt += f"RESUMEN CONVERSACIÓN ANTERIOR (Largo Plazo):\n{context}\n\n"
@@ -611,30 +638,53 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
         except:
             return "NEUTRAL"
 
-    def generate_summary(self, conversation_text: str) -> Dict[str, Any]:
+    def generate_summary(self, conversation_text: str, last_bot_question: str = "") -> Dict[str, Any]:
         """
         Summarize the conversation and extract structured prospect data.
-        
+
+        Args:
+            conversation_text: The raw conversation string to analyze.
+            last_bot_question: AUDIT P2 (3.2 — Context Injection) — The last question the bot
+                asked before the user's current reply. Injecting this anchors the extractor:
+                when the only context is 'User: Orihueca' without knowing the bot asked about
+                city, the LLM has no anchor to know which field that answer belongs to.
+                Example: If last_bot_question='desde qué ciudad', the extractor correctly
+                maps 'Orihueca' -> city instead of moto_interest.
+
         MANTENIBILIDAD & SEGURIDAD (QA Baseline):
-        - Por qué se hace: Utililzamos `response_schema` nativo (Structured Outputs) para
-          forzar al modelo de Gemini a generar un JSON garantizado y determinista, en lugar 
+        - Por qué se hace: Utilizamos `response_schema` nativo (Structured Outputs) para
+          forzar al modelo de Gemini a generar un JSON garantizado y determinista, en lugar
           de Prompt Engineering + Regex (que era frágil e inseguro ante alucinaciones).
-        - Impacto: Asegura que campos críticos del negocio como el perfil de crédito 
-          (ocupación, datacrédito) no se pierdan o malformen, permitiendo que `memory_service` 
+        - Impacto: Asegura que campos críticos del negocio como el perfil de crédito
+          (ocupación, datacrédito) no se pierdan o malformen, permitiendo que `memory_service`
           los guarde correctamente en Firestore.
         """
         if not self._model:
             return {"summary": "", "extracted": {}}
+
         
         try:
-            chat = self._model.start_chat()
+            # AUDIT P2 (3.2): Inject last bot question as an anchor for field attribution.
+            # Without this anchor, a user replying 'Orihueca' to 'desde qué ciudad' could be
+            # mapped to moto_interest because the extractor reads the conversation linearly
+            # without knowing which question triggered the response.
+            question_context = ""
+            if last_bot_question:
+                question_context = f"""
+⚠️ CONTEXTO CRÍTICO DE EXTRACCIÓN:
+La Última pregunta que hizo el bot fue: "{last_bot_question}"
+USA ESTE CONTEXTO para determinar a qué campo pertenece la respuesta más reciente del usuario.
+Si la respuesta del usuario es claramente una ubicación geográfica y el bot acaba de preguntar
+por la ciudad, mápeala a `city` y NO a `moto_interest`.
+"""
+
             prompt = f"""
 Eres Juan Pablo, el asistente virtual experto de Auteco Las Motos.
 Tu misión es resumir la conversación con el cliente y extraer datos clave.
 
 Analiza esta conversación y extrae la información indicada en el esquema JSON proporcionado.
 Extrae ÚNICAMENTE información que el cliente haya mencionado explícitamente en la conversación.
-
+{question_context}
 Conversación a analizar:
 ---
 {conversation_text}
@@ -660,7 +710,12 @@ Conversación a analizar:
                             },
                             "city": {
                                 "type": "STRING",
-                                "description": "Ciudad de residencia o ubicación si el cliente la menciona."
+                                # AUDIT P2 (3.1 — Cross-Protection): Added moto exclusion.
+                                # WHY: The inverse of the moto_interest bug. If the user answered
+                                # a moto question with a model name, the extractor could store
+                                # 'MRX' or 'Boxer' in the city field. Explicit exclusion prevents
+                                # both fields from absorbing each other's entity type.
+                                "description": "Ciudad de residencia o ubicación si el cliente la menciona. EXCLUSIÓN: NUNCA extraigas marcas ni modelos de motos (ej. Boxer, Pulsar, MRX, Raider) como ciudad. Solo valores geográficos válidos."
                             },
                             "moto_interest": {
                                 "type": "STRING",
@@ -691,8 +746,14 @@ Conversación a analizar:
                                 "description": "Gastos mensuales fijos, como arriendo o cuotas (ej. 500mil, 1 millon)."
                             },
                             "gas_natural": {
-                                "type": "STRING",
-                                "description": "Si la persona afirma tener o pagar recibo de gas natural a su nombre (ej. Si, No, a nombre de mi mama)."
+                                # AUDIT P2 (3.1 — Type Mismatch Fix): Changed STRING -> BOOLEAN.
+                                # WHY: calculate_credit_score uses gas_natural as a boolean flag
+                                # in the financial scoring matrix. Storing it as a STRING ('Si'/'No')
+                                # meant memory_service had to guess-convert the value, introducing
+                                # a silent data-quality risk. Using BOOLEAN at extraction time
+                                # ensures the downstream credit tool gets a clean true/false.
+                                "type": "BOOLEAN",
+                                "description": "true si la persona tiene o paga recibo de gas natural a su nombre. false si no. Solo extrae si se menciona explícitamente."
                             },
                             "plan_celular": {
                                 "type": "STRING",

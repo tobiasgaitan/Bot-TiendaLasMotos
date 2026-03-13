@@ -290,7 +290,17 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                     
                                     # Update Summary
                                     try:
-                                        summary_data = cerebro_ia.generate_summary(f"User: {simulated_user_msg}\nBot: {final_response}")
+                                        # P2: Context Injection for extraction
+                                        last_bot_q = ""
+                                        for m in reversed(current_history or []):
+                                            if m.get("role") == "model":
+                                                last_bot_q = m.get("content", "")
+                                                break
+                                                
+                                        summary_data = cerebro_ia.generate_summary(
+                                            f"User: {simulated_user_msg}\nBot: {final_response}",
+                                            last_bot_question=last_bot_q
+                                        )
                                         await ms.update_prospect_summary(user_phone, summary_data.get("summary", ""), summary_data.get("extracted", {}))
                                     except Exception as e:
                                         logger.warning(f"Failed to update summary: {e}")
@@ -342,7 +352,17 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                     
                                     # Update Summary
                                     try:
-                                        summary_data = cerebro_ia.generate_summary(f"User: {vision_response}\nBot: {final_response}")
+                                        # P2: Context Injection for extraction
+                                        last_bot_q = ""
+                                        for m in reversed(current_history or []):
+                                            if m.get("role") == "model":
+                                                last_bot_q = m.get("content", "")
+                                                break
+
+                                        summary_data = cerebro_ia.generate_summary(
+                                            f"User: {vision_response}\nBot: {final_response}",
+                                            last_bot_question=last_bot_q
+                                        )
                                         await ms.update_prospect_summary(user_phone, summary_data.get("summary", ""), summary_data.get("extracted", {}))
                                     except Exception as e:
                                         pass
@@ -663,8 +683,15 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 # Update Summary
                 if msg_type == "text" and memory_service_module.memory_service:
                     try:
+                        # P2: Context Injection for extraction
+                        last_bot_q = ""
+                        for m in reversed(current_history or []):
+                            if m.get("role") == "model":
+                                last_bot_q = m.get("content", "")
+                                break
+
                         conversation = f"User: {message_body}\nBot: {response_text}"
-                        summary_data = cerebro_ia.generate_summary(conversation)
+                        summary_data = cerebro_ia.generate_summary(conversation, last_bot_question=last_bot_q)
                         await memory_service_module.memory_service.update_prospect_summary(
                             user_phone, 
                             summary_data.get("summary", ""), 
