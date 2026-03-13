@@ -6,6 +6,7 @@ Handles prospect data retrieval and conversation summary updates in Firestore.
 import logging
 from typing import Dict, Any, Optional
 from google.cloud import firestore
+from app.core.utils import PhoneNormalizer
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,37 @@ class MemoryService:
         self._db = db
         logger.info("🧠 MemoryService initialized")
 
+    def _find_prospect_ref(self, phone_number: str) -> Optional[firestore.DocumentReference]:
+        """
+        Private helper to find a prospect reference by ID or legacy celular field.
+        
+        Logic:
+        1. Normalize phone.
+        2. Check if a document with that ID exists.
+        3. If not, query by 'celular' field.
+        
+        Returns: DocumentReference if found, else None.
+        """
+        try:
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            prospectos_ref = self._db.collection("prospectos")
+            
+            # 1. Try by ID
+            doc_ref = prospectos_ref.document(clean_phone)
+            if doc_ref.get().exists:
+                return doc_ref
+            
+            # 2. Try by field query
+            query = prospectos_ref.where("celular", "==", clean_phone).limit(1)
+            docs = query.get()
+            if docs:
+                return docs[0].reference
+                
+            return None
+        except Exception as e:
+            logger.error(f"❌ Error in _find_prospect_ref for {phone_number}: {e}")
+            return None
+
     def get_prospect_data(self, phone_number: str) -> Dict[str, Any]:
         """
         Retrieve prospect data from Firestore by document ID (normalized phone).
@@ -45,15 +77,10 @@ class MemoryService:
             Dictionary with prospect data or empty context on error
         """
         try:
-            from app.core.utils import PhoneNormalizer
+            doc_ref = self._find_prospect_ref(phone_number)
             
-            normalized_phone = PhoneNormalizer.normalize(phone_number)
-            logger.info(f"🔍 Buscando prospecto | Input: {phone_number} | Normalizado (ID): {normalized_phone}")
-
-            prospectos_ref = self._db.collection("prospectos")
-            doc = prospectos_ref.document(normalized_phone).get()
-
-            if doc.exists:
+            if doc_ref:
+                doc = doc_ref.get()
                 data = doc.to_dict()
                 prospect_data = {
                     "name": data.get("nombre"),
@@ -72,49 +99,19 @@ class MemoryService:
                 )
                 return prospect_data
 
-            # Fallback legacy check: Try querying by 'celular' field in case ID migration isn't done
-            # This is a safe fallback during transition but the ID lookup is primary
-            logger.info("⚠️ No found by ID, checking legacy 'celular' field...")
-            query = prospectos_ref.where("celular", "==", normalized_phone).limit(1)
-            docs = query.get()
-            
-            if docs:
-                data = docs[0].to_dict()
-                logger.info(f"✅ Found via legacy field query (ID mismatch): {docs[0].id}")
-                return {
-                    "name": data.get("nombre"),
-                    "ciudad": data.get("ciudad"),
-                    "moto_interest": data.get("motoInteres"),
-                    "payment_method": data.get("forma_pago"),
-                    "summary": data.get("ai_summary"),
-                    "human_help_requested": data.get("human_help_requested", False),
-                    "survey_state": data.get("survey_state"),
-                    "exists": True
-                }
-
-            logger.info(f"📭 Prospecto no encontrado para {normalized_phone}")
+            logger.info(f"📭 Prospecto no encontrado para {phone_number}")
             return {
-                "name": None,
-                "ciudad": None,
-                "moto_interest": None,
-                "payment_method": None,
-                "summary": None,
-                "human_help_requested": False,
-                "survey_state": None,
-                "exists": False
+                "name": None, "ciudad": None, "moto_interest": None,
+                "payment_method": None, "summary": None,
+                "human_help_requested": False, "survey_state": None, "exists": False
             }
 
         except Exception as e:
             logger.error(f"❌ Error al recuperar datos del prospecto {phone_number}: {str(e)}", exc_info=True)
             return {
-                "name": None,
-                "ciudad": None,
-                "moto_interest": None,
-                "payment_method": None,
-                "summary": None,
-                "human_help_requested": False,
-                "survey_state": None,
-                "exists": False
+                "name": None, "ciudad": None, "moto_interest": None,
+                "payment_method": None, "summary": None,
+                "human_help_requested": False, "survey_state": None, "exists": False
             }
 
     async def update_prospect_summary(
@@ -132,26 +129,14 @@ class MemoryService:
             extracted_data: Optional dict with extracted fields
         """
         try:
-            from app.core.utils import PhoneNormalizer
-            clean_phone = PhoneNormalizer.normalize(phone_number)
+            logger.info(f"💾 Updating prospect summary for {phone_number}")
 
-            logger.info(f"💾 Updating prospect summary for {clean_phone}")
-
-            prospectos_ref = self._db.collection("prospectos")
-            # First try by ID
-            doc_ref = prospectos_ref.document(clean_phone)
-            doc = doc_ref.get()
+            doc_ref = self._find_prospect_ref(phone_number)
             
-            if doc.exists:
-                docs = [doc]
-            else:
-                 # Fallback query
-                 query = prospectos_ref.where("celular", "==", clean_phone).limit(1)
-                 docs = query.get()
-
-            if not docs:
+            if not doc_ref:
+                clean_phone = PhoneNormalizer.normalize(phone_number)
                 logger.warning(f"⚠️ No prospect found to update for {clean_phone}")
-                new_doc_ref = prospectos_ref.document()
+                new_doc_ref = self._db.collection("prospectos").document(clean_phone)
                 new_doc_ref.set({
                     "celular": clean_phone,
                     "ai_summary": summary_text,
@@ -162,8 +147,8 @@ class MemoryService:
                 logger.info(f"✅ Created new prospect document for {clean_phone}")
                 return
 
-            doc_ref = docs[0].reference
-            current_data = docs[0].to_dict()
+            doc = doc_ref.get()
+            current_data = doc.to_dict()
 
             update_data = {
                 "ai_summary": summary_text,
@@ -259,21 +244,10 @@ class MemoryService:
             phone_number: Phone number to update
         """
         try:
-            from app.core.utils import PhoneNormalizer
-            clean_phone = PhoneNormalizer.normalize(phone_number)
-            
-            # FIX: Uses self._db and hardcoded "prospectos" — matches working production code
-            # Try ID first
-            doc_ref = self._db.collection("prospectos").document(clean_phone)
-            if doc_ref.get().exists:
+            doc_ref = self._find_prospect_ref(phone_number)
+            if doc_ref:
                 doc_ref.update({"fecha": firestore.SERVER_TIMESTAMP})
-                logger.info(f"✅ TIMESTAMP UPDATED for {clean_phone} (ID)")
-            else:
-                # Fallback query
-                docs = self._db.collection("prospectos").where("celular", "==", clean_phone).stream()
-                for doc in docs:
-                    doc.reference.update({"fecha": firestore.SERVER_TIMESTAMP})
-                    logger.info(f"✅ TIMESTAMP UPDATED for {clean_phone} (Query)")
+                logger.info(f"✅ TIMESTAMP UPDATED for {phone_number}")
         except Exception as e:
             logger.error(f"❌ Error updating timestamp: {e}", exc_info=True)
 
@@ -289,45 +263,23 @@ class MemoryService:
             status: True to mute bot, False to resume bot
         """
         try:
-            from app.core.utils import PhoneNormalizer
-            normalized_phone = PhoneNormalizer.normalize(phone_number)
-            
-            logger.info(
-                f"🔧 Setting human_help_requested={status} | "
-                f"Input: {phone_number} | Normalizado (ID): {normalized_phone}"
-            )
+            logger.info(f"🔧 Setting human_help_requested={status} for {phone_number}")
 
-            prospectos_ref = self._db.collection("prospectos")
-
-            # ATTEMPT 1: Direct document ID lookup
-            doc_ref = prospectos_ref.document(normalized_phone)
-            doc = doc_ref.get()
+            doc_ref = self._find_prospect_ref(phone_number)
             
-            if doc.exists:
+            if doc_ref:
                 doc_ref.update({
                     "human_help_requested": status,
                     "updated_at": firestore.SERVER_TIMESTAMP,
                     "fecha": firestore.SERVER_TIMESTAMP
                 })
-                logger.info(f"✅ Updated human_help_requested={status} for {normalized_phone}")
+                logger.info(f"✅ Updated human_help_requested={status} for {phone_number}")
                 return
 
-            # Fallback: Query by field
-            query = prospectos_ref.where("celular", "==", normalized_phone).limit(1)
-            docs = query.get()
-            
-            if docs:
-                 docs[0].reference.update({
-                    "human_help_requested": status,
-                    "updated_at": firestore.SERVER_TIMESTAMP,
-                    "fecha": firestore.SERVER_TIMESTAMP
-                })
-                 logger.info(f"✅ Updated human_help_requested={status} for {normalized_phone} (Legacy Query)")
-                 return
-
             # No existing document found - create new one
+            normalized_phone = PhoneNormalizer.normalize(phone_number)
             logger.warning(f"⚠️ No existing prospect found for {phone_number}, creating new document")
-            new_doc_ref = prospectos_ref.document(normalized_phone)
+            new_doc_ref = self._db.collection("prospectos").document(normalized_phone)
             new_doc_ref.set({
                 "celular": normalized_phone,
                 "human_help_requested": status,
@@ -365,9 +317,7 @@ class MemoryService:
             bool: True if created, False if already existed
         """
         try:
-            from app.core.utils import PhoneNormalizer
             clean_phone = PhoneNormalizer.normalize(phone_number)
-            
             logger.info(f"💾 Ensuring prospect existence for {clean_phone}...")
             
             prospectos_ref = self._db.collection("prospectos")
@@ -422,16 +372,8 @@ class MemoryService:
 
 
 
-    def delete_prospect_completely(self, phone_number: str) -> int:
-        """
-        Nuclear deletion of all prospect documents matching the phone (ID or field).
-        Used in /reset command. Ensures timestamps and cached data are truly gone.
-        Also explicitly purges survey_state and motoInteres from any matched doc to guarantee fresh state.
-        """
-        deleted = 0
         try:
-            from app.core.utils import PhoneNormalizer
-            from google.cloud import firestore
+            deleted = 0
             clean_phone = PhoneNormalizer.normalize(phone_number)
             
             # Variations for deep sweep
