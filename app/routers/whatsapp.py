@@ -685,12 +685,21 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     try:
                         # P2: Context Injection for extraction
                         last_bot_q = ""
+                        history_context = ""
+                        
+                        # Get last 3 turns (6 messages) for context
+                        context_messages = (current_history or [])[-6:]
+                        for m in context_messages:
+                            role = "User" if m.get("role") == "user" else "Bot"
+                            history_context += f"{role}: {m.get('content', '')}\n"
+                        
+                        # Identify last bot question for anchoring
                         for m in reversed(current_history or []):
                             if m.get("role") == "model":
                                 last_bot_q = m.get("content", "")
                                 break
 
-                        conversation = f"User: {message_body}\nBot: {response_text}"
+                        conversation = f"{history_context}User: {message_body}\nBot: {response_text}"
                         summary_data = cerebro_ia.generate_summary(conversation, last_bot_question=last_bot_q)
                         await memory_service_module.memory_service.update_prospect_summary(
                             user_phone, 

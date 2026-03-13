@@ -178,42 +178,55 @@ class MemoryService:
             # LÓGICA DE NEGOCIO: Si el LLM detecta que el cliente mencionó su ciudad o método de pago
             # orgánicamente, persistimos esto para que el motor determinista del embudo pueda avanzar.
             if extracted_data:
-                if extracted_data.get("name"):
+                # REGLA DE SEGURIDAD (QA Baseline): No permitir que valores nulos o vacíos sobrescriban datos válidos.
+                def is_valid(val):
+                    if val is None: return False
+                    s_val = str(val).strip().lower()
+                    return s_val not in ["", "null", "none", "n/a", "undefined"]
+
+                if is_valid(extracted_data.get("name")):
                     update_data["nombre"] = extracted_data["name"]
                     logger.info(f"📝 Updating nombre: {extracted_data['name']}")
-                if extracted_data.get("moto_interest"):
+                
+                if is_valid(extracted_data.get("moto_interest")):
                     update_data["motoInteres"] = extracted_data["moto_interest"]
                     logger.info(f"🏍️ Updating motoInteres: {extracted_data['moto_interest']}")
-                if extracted_data.get("city"):
+                
+                if is_valid(extracted_data.get("city")):
                     update_data["ciudad"] = extracted_data["city"]
                     logger.info(f"🌆 Updating ciudad: {extracted_data['city']}")
-                if extracted_data.get("payment_method"):
+                
+                if is_valid(extracted_data.get("payment_method")):
                     update_data["forma_pago"] = extracted_data["payment_method"]
                     logger.info(f"💳 Updating forma_pago: {extracted_data['payment_method']}")
                     
-                # New credit-profile variables from Structured Outputs
-                if extracted_data.get("ocupacion"):
+                if is_valid(extracted_data.get("ocupacion")):
                     update_data["ocupacion"] = extracted_data["ocupacion"]
                     logger.info(f"💼 Updating ocupacion: {extracted_data['ocupacion']}")
-                if extracted_data.get("datacredito"):
+                
+                if is_valid(extracted_data.get("datacredito")):
                     update_data["datacredito"] = extracted_data["datacredito"]
                     logger.info(f"🏦 Updating datacredito: {extracted_data['datacredito']}")
-                if extracted_data.get("vivienda"):
+                
+                if is_valid(extracted_data.get("vivienda")):
                     update_data["vivienda"] = extracted_data["vivienda"]
                     logger.info(f"🏠 Updating vivienda: {extracted_data['vivienda']}")
                 
-                # Modificación QA Baseline: Extracción atómica de perfil crediticio para evitar "Data Collision"
-                # (Alineado con Matriz Scoring Excel de negocio)
-                if extracted_data.get("ingresos"):
+                if is_valid(extracted_data.get("ingresos")):
                     update_data["ingresos"] = extracted_data["ingresos"]
                     logger.info(f"💵 Updating ingresos: {extracted_data['ingresos']}")
-                if extracted_data.get("gastos"):
+                
+                if is_valid(extracted_data.get("gastos")):
                     update_data["gastos"] = extracted_data["gastos"]
                     logger.info(f"💸 Updating gastos: {extracted_data['gastos']}")
-                if extracted_data.get("gas_natural"):
-                    update_data["gas_natural"] = extracted_data["gas_natural"]
-                    logger.info(f"🔥 Updating gas_natural: {extracted_data['gas_natural']}")
-                if extracted_data.get("plan_celular"):
+                
+                if is_valid(extracted_data.get("gas_natural")):
+                    # For boolean, we just need to make sure it's not None
+                    if extracted_data.get("gas_natural") is not None:
+                        update_data["gas_natural"] = extracted_data["gas_natural"]
+                        logger.info(f"🔥 Updating gas_natural: {extracted_data['gas_natural']}")
+                
+                if is_valid(extracted_data.get("plan_celular")):
                     update_data["plan_celular"] = extracted_data["plan_celular"]
                     logger.info(f"📱 Updating plan_celular: {extracted_data['plan_celular']}")
 
