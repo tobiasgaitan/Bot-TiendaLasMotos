@@ -536,8 +536,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 context=context,
                 prospect_data=prospect_data,
                 history=current_history,
-                skip_greeting=skip_greeting,
-                pending_survey_question=None
+                skip_greeting=skip_greeting
             )
 
             # TRIGGER_SURVEY interception REMOVED — 2026-03-12

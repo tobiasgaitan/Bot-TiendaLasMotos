@@ -284,11 +284,9 @@ class SurveyService:
             from app.core.utils import PhoneNormalizer
             clean_phone = PhoneNormalizer.normalize(phone)
             
-            # 1. Clear persistent state (PROSPECT)
-            import app.services.memory_service as memory_service_module
-            if memory_service_module.memory_service:
-                memory_service_module.memory_service.clear_survey_state(phone)
-                logger.info(f"🧹 Persistent state cleared for {phone}")
+            # clear_survey_state() REMOVED (Sprint 1) — SurveyService methods are gone.
+            # Survey state is no longer tracked in MemoryService.
+
 
             # 2. DELETE BY ID VARIANTS
             variants = list(set([phone, clean_phone, phone.replace("57", "", 1)]))
@@ -341,23 +339,10 @@ class SurveyService:
             data["last_interaction"] = datetime.now(timezone.utc)
             doc_ref.set(data, merge=True)
 
-            # 2. Update Prospect Document (V16 Persistence/Context Switch Sync)
-            import app.services.memory_service as memory_service_module
-            if memory_service_module.memory_service:
-                ms = memory_service_module.memory_service
-                status = data.get("status", "IDLE")
-                
-                if status == "IDLE":
-                    ms.clear_survey_state(phone)
-                    logger.info(f"🧹 Prospect survey_state cleared for {phone}")
-                elif status.startswith("SURVEY_STEP_"):
-                    ms.save_survey_state(
-                        phone_number=phone,
-                        survey_id="financial_capture",
-                        current_step=status,
-                        collected_data=data.get("answers", {})
-                    )
-                    logger.info(f"💾 Prospect survey_state updated for {phone} step {status}")
+            # Survey state sync REMOVED (Sprint 1) — save_survey_state/clear_survey_state
+            # were deleted from MemoryService when SurveyService was removed.
+            # The LLM now handles all Phase 3 state via Firestore prompt context.
+
         except Exception as e:
             logger.error(f"Error updating session/prospect state: {e}")
 
