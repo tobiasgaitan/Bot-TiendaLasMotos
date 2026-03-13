@@ -406,8 +406,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             if msg_type == "text" and message_body:
                 # Optimistic save (don't block too long)
                 await memory_service_module.memory_service.save_message(user_phone, "user", message_body)
-            elif msg_type == "audio":
-                await memory_service_module.memory_service.save_message(user_phone, "user", "[Mensaje de Voz]")
+            # AUDIO: [Mensaje de Voz] removed here to avoid blinding the extractor.
+            # It will be saved with the actual transcription inside the audio block.
 
         # --- RESET NUCLEAR ---
         if msg_type == "text" and message_body.strip() == "/reset":
@@ -625,6 +625,11 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 
                 if transcription:
                     logger.info(f"🎤 Audio Transcribed: '{transcription}'")
+                    
+                    # 1. Save actual transcription to history (blinding fix)
+                    if memory_service_module.memory_service:
+                        await ms.save_message(user_phone, "user", transcription)
+                    
                     # Send transcription to main AI Pipeline
                     response_text = cerebro_ia.pensar_respuesta(
                         transcription,
@@ -633,6 +638,34 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                         history=current_history,
                         skip_greeting=True # Audios usually happen mid-conversation
                     )
+                    
+                    # 2. Update Summary for Audio (Amnesia Fix)
+                    if memory_service_module.memory_service:
+                        try:
+                            # P2: Context Injection for extraction
+                            last_bot_q = ""
+                            history_context = ""
+                            
+                            # Get last 3 turns (6 messages) for context
+                            context_messages = (current_history or [])[-6:]
+                            for m in context_messages:
+                                role = "User" if m.get("role") == "user" else "Bot"
+                                history_context += f"{role}: {m.get('content', '')}\n"
+                            
+                            for m in reversed(current_history or []):
+                                if m.get("role") == "model":
+                                    last_bot_q = m.get("content", "")
+                                    break
+
+                            conversation = f"{history_context}User: {transcription}\nBot: {response_text}"
+                            summary_data = cerebro_ia.generate_summary(conversation, last_bot_question=last_bot_q)
+                            await ms.update_prospect_summary(
+                                user_phone, 
+                                summary_data.get("summary", ""), 
+                                summary_data.get("extracted", {})
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to update audio summary: {e}")
                 else:
                     response_text = "Escuché el audio pero no entendí bien. ¿Me repites? 😅"
             else:
