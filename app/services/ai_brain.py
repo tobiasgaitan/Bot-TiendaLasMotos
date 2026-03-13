@@ -44,17 +44,21 @@ class CerebroIA:
             catalog_service: Optional CatalogService instance for tool use
         """
         self.config_loader = config_loader
-        self.catalog_service = catalog_service 
-        self.motor_financiero = None # Will be injected
+        self.catalog_service = catalog_service
+        self.motor_financiero = None  # Will be injected
         self._model = None
-        self._system_instruction = self._get_system_instruction()
+        # HOT-RELOAD FIX (Audit P1, 4.3):
+        # _system_instruction is intentionally NOT cached here.
+        # _get_current_instruction() reads from config_loader on every request,
+        # so /admin/refresh-config takes effect immediately without a Cloud Run restart.
         self.tools = self._create_tools()
         
         # Initialize Vertex AI if available
         if VERTEX_AI_AVAILABLE:
             try:
                 vertexai.init(project="tiendalasmotos", location="us-central1")
-                # Initialize model WITH tools
+                # Model is initialized WITHOUT a system_instruction here.
+                # The instruction is injected dynamically per-request via _get_current_instruction().
                 self._model = GenerativeModel(
                     "gemini-2.5-flash",
                     tools=[self.tools] if self.tools else []
@@ -66,19 +70,23 @@ class CerebroIA:
         else:
             logger.warning("⚠️  CerebroIA running in fallback mode (no AI)")
     
-    def _get_system_instruction(self) -> str:
+    def _get_current_instruction(self) -> str:
         """
-        Get system instruction with fallback strategy:
-        1. Firestore Config (via ConfigLoader) - Dynamic
-        2. Local JSON file - Robust Fallback
-        3. Code Constant - Last Resort
+        HOT-RELOAD AWARE prompt loader (Audit P1, Finding 4.3).
+
+        WHY: Caching the system_instruction in __init__ meant that patching Firestore
+        via /admin/refresh-config had no effect until the Cloud Run process restarted.
+        Now we read from config_loader on every request. The config_loader has its own
+        TTL-based cache so there is no meaningful performance penalty.
+
+        Fallback strategy:
+        1. Firestore via ConfigLoader (dynamic, cache-busted by /admin/refresh-config)
+        2. Local personality.json (robust offline fallback)
+        3. Code constant in prompts.py (last resort)
         """
-        instruction = ""
-        
-        # 1. Try ConfigLoader (Firestore)
+        # 1. ConfigLoader (Firestore)
         if self.config_loader:
             try:
-                # FIX: Correct method name and dictionary access
                 personality = self.config_loader.get_juan_pablo_personality()
                 instruction = personality.get("system_instruction", "")
                 if instruction:
@@ -87,7 +95,7 @@ class CerebroIA:
             except Exception as e:
                 logger.warning(f"⚠️ Failed to load prompt from ConfigLoader: {e}")
 
-        # 2. Try JSON File
+        # 2. JSON File fallback
         try:
             import json
             json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "core", "personality.json")
@@ -101,27 +109,26 @@ class CerebroIA:
         except Exception as e:
             logger.warning(f"⚠️ Failed to load prompt from JSON: {e}")
 
-        # 3. Fallback to constant
+        # 3. Code constant fallback
         from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
         logger.info("🧠 Loaded system instruction from code constant (Fallback)")
         return JUAN_PABLO_SYSTEM_INSTRUCTION
-
-    def _default_instruction(self) -> str:
-        return self._get_system_instruction()
     
-    def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, pending_survey_question: Optional[str] = None) -> str:
+    def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
         """
         Main entry point for AI logic.
-        Combines deterministic checks (Funnel) + generative AI.
-        
-        QA Security Baseline: 
-        - Context Injection: Inyecta datos extraidos del CRM directamente en el prompt (como 'Ocupacion', 
-          'Ingresos', 'Datacredito', etc.) para evitar que la IA repita preguntas ya contestadas en la encuesta.
-        - Deterministic Funnel: Obliga matemáticamente a la IA a pedir el Nombre y Ciudad antes de avanzar.
-        - Fail-Closed: Si se detecta una instruccion obligatoria (funnel_instruction), se anexa al final de 
-          los resultados de las herramientas para forzar a la IA a cerrar con esa pregunta.
+        Combines deterministic funnel checks + generative AI (Gemini).
+
+        QA Security Baseline:
+        - Context Injection: CRM fields (ocupacion, datacredito, etc.) are injected into the
+          prompt so the LLM never re-asks questions already answered in the survey.
+        - Deterministic Funnel: Mathematically enforces name/city capture before advancing.
+        - Fail-Closed: If a funnel_instruction is set, it is appended to tool results to
+          force the LLM to close with the required question.
+        - Hot-Reload: System prompt is fetched from config_loader on every call, so
+          /admin/refresh-config takes effect immediately.
         """
-        return self._generate_with_retry(texto, context, prospect_data, history, skip_greeting, pending_survey_question)
+        return self._generate_with_retry(texto, context, prospect_data, history, skip_greeting)
 
     def _create_tools(self) -> Optional[Tool]:
         """
@@ -238,7 +245,7 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
             logger.error(f"❌ Error creating tools: {str(e)}", exc_info=True)
             return None
 
-    def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, pending_survey_question: Optional[str] = None) -> str:
+    def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
         """
         Internal generation with exponential backoff.
         """
@@ -276,7 +283,8 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                     elif not p_payment:
                         funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que no sabemos cómo planea pagar. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: '¿Tienes pensado comprarla de contado o prefieres a crédito?']"
                 
-                full_prompt = f"{self._system_instruction}\n\n"
+                # HOT-RELOAD: read prompt dynamically on every request (P1 fix)
+                full_prompt = f"{self._get_current_instruction()}\n\n"
                 
                 # Identity Guard
                 full_prompt += "Your name is Juan Pablo. NEVER address the user as Juan Pablo.\n"
@@ -347,18 +355,13 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                     # al modelo a ejecutar primero search_catalog antes de generar su respuesta final.
                     full_prompt += "\n[SYSTEM: MANDATORY WARMTH: Preséntate de forma cálida y profesional como Juan Pablo, asesor de Auteco Las Motos. No seas parco ni directo. CRÍTICO: Si el usuario menciona una moto en este primer mensaje, DEBES usar la herramienta 'search_catalog' ANTES de generar tu saludo final.]\n"
 
-                # V16 - Context Switching (Interruption handling)
-                if pending_survey_question:
-                    full_prompt += "═══════════════════════════════════════════════════════════════════\n"
-                    full_prompt += "⚠️ CONTEXTO DE INTERRUPCIÓN (ENCUESTA EN CURSO):\n"
-                    full_prompt += f"El usuario estaba respondiendo a esta pregunta: '{pending_survey_question}'\n"
-                    full_prompt += "pero ahora acaba de enviar un mensaje diferente o aleatorio.\n\n"
-                    full_prompt += "INSTRUCCIONES CRÍTICAS:\n"
-                    full_prompt += "1. Tienes HERRAMIENTAS (Tools) disponibles. Úsalas normalmente para obtener datos PRIMERO si es necesario.\n"
-                    full_prompt += "2. Solo cuando estés redactando tu respuesta de texto FINAL al usuario, debes retomar el hilo.\n"
-                    full_prompt += f"3. Al FINAL de tu mensaje de texto definitivo, debes volver a preguntar EXACTAMENTE: '{pending_survey_question}'\n"
-                    full_prompt += "Ejemplo: 'Claro que sí, [respuesta]. Por cierto, para seguir con tu crédito, ¿me recordabas [pregunta pendiente]?'\n"
-                    full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
+                # V16 REMOVED — Sprint 1 (2026-03-13)
+                # WHY REMOVED: SurveyService (the only caller of evaluate_survey_intent and
+                # pending_survey_question) was deleted. The V16 interruption block became
+                # unreachable dead code that could confuse future developers into re-activating
+                # the old Python-level survey state machine.
+                # Phase 3 context-switching is now handled entirely by the Firestore prompt
+                # and the LLM's natural conversation management.
 
                 # V17 REMOVED — 2026-03-12
                 # WHY REMOVED: This block hardcoded '¡Claro que sí manejamos crédito!'
@@ -739,92 +742,10 @@ Conversación a analizar:
         """
         return "¡Qué pena! Se me quedó colgado el sistema del concesionario un segundo y no me cargó tu mensaje. 😅 ¿Me lo repites para seguir ayudándote?"
 
-    def evaluate_survey_intent(self, user_message: str, pending_question: str) -> Dict[str, Any]:
-        """
-        (V16 - Context Switching)
-        Fast, deterministic AI function that evaluates if the user's message is answering 
-        the current survey question OR asking an unrelated question (Context Switch).
-        
-        Security & Continuity (QA Baseline):
-        Implements a strict Fail-Closed paradigm. If the model fails (timeout, quota, 
-        malformed JSON), it defaults to `is_answering_survey: True`. This prevents 
-        a temporary API failure from incorrectly booting the user out of the survey flow.
-        
-        Args:
-            user_message: The message received from the user
-            pending_question: The specific survey question they should be answering
-            
-        Returns:
-            Dict containing 'is_answering_survey' (bool) and 'reasoning' (str).
-        """
-        default_fallback = {
-            "is_answering_survey": True,
-            "reasoning": "Fallback due to AI evaluation failure (Fail-Closed)"
-        }
-        
-        if not self._model:
-            logger.warning("⚠️ Cannot evaluate survey intent (AI unavailable), returning Fail-Closed fallback")
-            return default_fallback
-            
-        try:
-            prompt = f"""
-You are an Intent Evaluator and Data Sanitizer.
-Analyze the user's message relative to the pending survey question.
-
-PENDING QUESTION: "{pending_question}"
-USER MESSAGE: "{user_message}"
-
-MISSION:
-1. Determine if they are answering the question (TRUE) or asking something else (FALSE).
-2. If TRUE, extract and sanitize the value (e.g. "Gano el minimo" -> "1300000", "estudio" -> "Estudiante").
-3. Return ONLY the format: STATUS|VALUE
-
-EXAMPLES:
-Question: "¿Cuanto ganas?" | Msg: "El minimo" -> TRUE|1300000
-Question: "¿A que te dedicas?" | Msg: "Trabajo en una oficina" -> TRUE|Empleado
-Question: "¿Cuanto ganas?" | Msg: "Donde estan ubicados?" -> FALSE|None
-
-Respond ONLY with STATUS|VALUE.
-"""
-            # Zero-shot bridge evaluation
-            from vertexai.generative_models import GenerationConfig
-            
-            # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
-            # Limitamos los tokens preventivamente a 500 para una evaluación rápida (STATUS|VALUE)
-            # mitigando vulnerabilidades de Token Exhaustion durante validaciones transaccionales.
-            response = self._model.generate_content(
-                prompt,
-                generation_config=GenerationConfig(
-                    temperature=0.1,
-                    max_output_tokens=500
-                )
-            )
-            
-            if not response or not hasattr(response, 'text') or not response.text:
-                logger.warning("⚠️ Intent Evaluator returned NO text.")
-                return default_fallback
-                
-            response_text = response.text.strip()
-            
-            # Bridge Parsing (STATUS|VALUE)
-            if "|" in response_text:
-                status_part, value_part = response_text.split("|", 1)
-                is_answering = "TRUE" in status_part.upper()
-                sanitized_value = value_part.strip()
-            else:
-                is_answering = "TRUE" in response_text.upper()
-                sanitized_value = user_message # Fallback to original
-            
-            logger.info(f"🧠 Intent Bridge Result: {is_answering} | Sanitized: {sanitized_value}")
-            
-            return {
-                "is_answering_survey": is_answering,
-                "sanitized_value": sanitized_value,
-                "reasoning": "Intent Bridge Sanitization"
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Error during Intent Evaluation: {e}. Defaulting to Fail-Closed (True).", exc_info=True)
-            return default_fallback
-
+    # evaluate_survey_intent() REMOVED — Sprint 1 (2026-03-13)
+    # WHY: SurveyService (the Python-level state machine) was deleted in a previous sprint.
+    # evaluate_survey_intent() was its sole caller and is now unreachable dead code.
+    # The LLM handles survey context-switching naturally via the Firestore system prompt.
+    # Leaving this function was a liability: it could be accidentally re-activated and
+    # would re-introduce the Python-bypasses-LLM antipattern we just fixed.
 
