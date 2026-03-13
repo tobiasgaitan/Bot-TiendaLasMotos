@@ -549,12 +549,12 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
                             )
                             response_parts.append(tool_response_part)
 
-                        # D) Start Credit Survey
-                        elif function_name == "start_credit_survey":
-                            intent = function_call.args.get("intent", "generic_credit")
-                            logger.info(f"📋 AI triggering formal survey initiation. Intent: {intent}")
-                            # This special flag will be caught by the router to transition to SurveyService
-                            return f"TRIGGER_SURVEY:financial_capture"
+                        # start_credit_survey REMOVED — 2026-03-12
+                        # WHY: This handler intercepted the LLM's tool call and returned a
+                        # TRIGGER_SURVEY: flag string to whatsapp.py, which then replaced the
+                        # LLM's response with hardcoded survey text. The LLM now handles Phase 3
+                        # credit survey transitions conversationally via the Firestore prompt.
+                        # No Python-level survey trigger is needed or permitted.
                     
                     # Send ALL responses back to the model in a single turn
                     if response_parts:

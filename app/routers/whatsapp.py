@@ -509,141 +509,41 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         else:
             logger.warning("⚠️ Memory Service is NOT initialized. Skipping persistence.")
 
-        # --- V16: CONTEXT SWITCHING & SURVEY INTERCEPTION (Orchestration) ---
-        survey_pending_question = None
-        is_answering_survey = False
-        survey_just_triggered = False
-        session = {}
-
-        if msg_type == "text" and db:
-            # 1. Check for active survey status (Transient Session)
-            session = await _get_session(db, user_phone)
-            status = session.get("status", "IDLE")
-            
-            # 2. Check for Persistent Survey State (Source of Truth for Context Switching)
-            persistent_survey = None
-            if memory_service_module.memory_service:
-                persistent_survey = memory_service_module.memory_service.get_survey_state(user_phone)
-
-            # 3. Decision Logic: Is there a survey active?
-            active_survey_step = None
-            
-            if status.startswith("SURVEY_STEP_"):
-                active_survey_step = status
-                logger.info(f"📋 Survey active in SESSION for {user_phone}: {status}")
-            elif persistent_survey and persistent_survey.get("is_active"):
-                active_survey_step = persistent_survey.get("current_step")
-                logger.info(f"📋 Survey active in PROSPECT for {user_phone}: {active_survey_step}")
-                # Synchronize session if missing
-                if not status.startswith("SURVEY_STEP_"):
-                    status = active_survey_step
-                    session = {
-                        "status": status,
-                        "answers": persistent_survey.get("collected_data", {}),
-                        "retry_count": 0
-                    }
-                    await _get_session(db, user_phone) # Dummy read? No, we should update.
-                    # Actually, we just populate the variables for the flow below
-                    logger.info(f"🔄 Synchronized transient session from persistent state for {user_phone}")
-
-            if active_survey_step:
-                # Map technical step ID to the actual human question
-                SURVEY_STEPS_MAP = {
-                    "SURVEY_STEP_0_NAME": "¿Cuál es tu nombre completo?",
-                    "SURVEY_STEP_1_AUTH": "¿Autorizas el tratamiento de tus datos personales para realizar tu estudio de crédito?",
-                    "SURVEY_STEP_2_CITY": "¿En qué ciudad te encuentras ubicado?",
-                    "SURVEY_STEP_3_LABOR": "3️⃣ ¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)",
-                    "SURVEY_STEP_4_INCOME": "4️⃣ ¿Cuáles son tus ingresos mensuales totales? (Escribe solo el número)",
-                    "SURVEY_STEP_5_HISTORY": "5️⃣ ¿Cómo ha sido tu comportamiento con créditos anteriores? (Ej: Excelente, Reportado)",
-                    "SURVEY_STEP_6_GAS": "6️⃣ ¿Tienes servicio de Gas Natural a tu nombre? (Responde Sí o No)",
-                    "SURVEY_STEP_7_MOBILE": "7️⃣ ¿Tienes un plan de celular Postpago? (Responde Sí o No)"
-                }
-                survey_pending_question = SURVEY_STEPS_MAP.get(active_survey_step)
-
-                
-                if survey_pending_question:
-                    logger.info(f"📋 Survey Active ({status}). Evaluating intent...")
-                    intent_eval = cerebro_ia.evaluate_survey_intent(message_body, survey_pending_question)
-                    
-                    if intent_eval.get("is_answering_survey"):
-                        logger.info("✅ Intent: Answering survey. Routing to SurveyService.")
-                        is_answering_survey = True
-                        # --- INTENT BRIDGE: Data Sanitization ---
-                        # If the AI sanitized the user message (e.g. "minimo" -> "1300000"), we use that
-                        sanitized = intent_eval.get("sanitized_value")
-                        if sanitized and str(sanitized).lower() != "none" and str(sanitized) != message_body:
-                            logger.info(f"🌉 Intent Bridge: Sanitizing input '{message_body}' -> '{sanitized}'")
-                            message_body = str(sanitized)
-                    else:
-                        logger.info(f"🔄 Intent: Context Switch! Reasoning: {intent_eval.get('reasoning')}")
-                        # We route to AI Brain, but we'll pass the question to re-ask it later
-            
-            # --- V17: DETERMINISTIC SURVEY TRIGGER (Init Logic) ---
-            # if status == "IDLE" and not active_survey_step:
-            #     financial_keywords = ["brilla", "financiar", "crédito", "financiamiento", "estudio de crédito", "cuotas"]
-            #     if any(k in message_body.lower() for k in financial_keywords):
-            #         logger.info(f"🎯 Deterministic Trigger! Financial keyword detected in '{message_body}'. Starting survey...")
-            #         is_answering_survey = True
-            #         survey_just_triggered = True
-            #         # Initialize session for SurveyService
-            #         status = "SURVEY_STEP_0_NAME"
-            #         session = {"status": status, "answers": {}, "retry_count": 0}
-            #         # Force response to first question
-            #         response_text = "¡Hola! Qué bueno tenerte por aquí. 🤩 Para empezar, ¿cuál es tu nombre completo?"
-            #         # Synchronize persistence
-            #         if memory_service_module.memory_service:
-            #             memory_service_module.memory_service.save_survey_state(user_phone, "financial_capture", status, {})
-            # --------------------------------------------------------
-
+        # SurveyService state machine REMOVED — 2026-03-12
+        # WHY: The deterministic branch (is_answering_survey) completely bypassed pensar_respuesta
+        # when a survey session was active. It returned hardcoded survey questions directly from
+        # Python, so the LLM never ran and Phase 2/3 Firestore guardrails were never evaluated.
+        # The LLM now handles the full credit survey flow organically via the Firestore prompt.
+        # The background generate_summary still extracts answers and saves them to Firestore.
 
         # --- END CONTEXT SWITCHING LOGIC ---
 
-        # 3. Generar Respuesta (AI o Audio o Encuesta)
+        # 3. Generar Respuesta (LLM exclusivo — pensar_respuesta)
         if msg_type == "text":
-            if is_answering_survey:
-                if survey_just_triggered:
-                    logger.info(f"⏩ Survey just triggered for {user_phone}. Skipping handle_survey_step execution for this turn.")
-                else:
-                    logger.info(f"📝 Executing survey step for {user_phone}...")
-                    response_text = await survey_service.handle_survey_step(
-                        db, user_phone, message_body, session, motor_financiero
-                    )
-            else:
-                # ALTERNATIVE C: Pre-processing Message Enrichment (Anchor)
-                enriched_message = message_body
-                if prospect_data and prospect_data.get("moto_interest"):
-                    moto_interes = prospect_data.get("moto_interest")
-                    # Enriquecer el mensaje solo si es relativamente corto y asumiendo que el usuario está preguntando
-                    # sobre la moto que ya tiene instanciada en memoria, evitando que el AI olvide el contexto.
-                    if len(message_body) < 60 and not any(m in message_body.lower() for m in ["otra", "cambiar", "no la"]):
-                        enriched_message = f"[Contexto CRM: Hablando sobre {moto_interes}]\nMensaje: {message_body}"
-                        logger.info(f"💉 Enriched user message with Moto Anchor: {moto_interes}")
+            # ALTERNATIVE C: Pre-processing Message Enrichment (Anchor)
+            enriched_message = message_body
+            if prospect_data and prospect_data.get("moto_interest"):
+                moto_interes = prospect_data.get("moto_interest")
+                # Enriquecer el mensaje solo si es relativamente corto y asumiendo que el usuario está preguntando
+                # sobre la moto que ya tiene instanciada en memoria, evitando que el AI olvide el contexto.
+                if len(message_body) < 60 and not any(m in message_body.lower() for m in ["otra", "cambiar", "no la"]):
+                    enriched_message = f"[Contexto CRM: Hablando sobre {moto_interes}]\nMensaje: {message_body}"
+                    logger.info(f"💉 Enriched user message with Moto Anchor: {moto_interes}")
 
-                logger.info(f"🧠 Calling CerebroIA.pensar_respuesta... (Skip Greeting: {skip_greeting}, Pending: {survey_pending_question})")
-                response_text = cerebro_ia.pensar_respuesta(
-                    enriched_message, 
-                    context=context, 
-                    prospect_data=prospect_data,
-                    history=current_history,
-                    skip_greeting=skip_greeting,
-                    pending_survey_question=survey_pending_question
-                )
+            logger.info(f"🧠 Calling CerebroIA.pensar_respuesta... (Skip Greeting: {skip_greeting})")
+            response_text = cerebro_ia.pensar_respuesta(
+                enriched_message,
+                context=context,
+                prospect_data=prospect_data,
+                history=current_history,
+                skip_greeting=skip_greeting,
+                pending_survey_question=None
+            )
 
-                # --- V17: AI-DRIVEN SURVEY TRIGGER (Flag check) ---
-                if str(response_text).startswith("TRIGGER_SURVEY:"):
-                    survey_id = str(response_text).split(":")[1]
-                    logger.info(f"🎯 AI-Driven Trigger! Initiating survey '{survey_id}' for {user_phone}")
-                    is_answering_survey = True
-                    survey_just_triggered = True
-                    # Re-route to SurveyService immediately
-                    status = "SURVEY_STEP_0_NAME"
-                    session = {"status": status, "answers": {}, "retry_count": 0}
-                    # Force response to first question
-                    response_text = "¡Hola! Qué bueno tenerte por aquí. 🤩 Para empezar, ¿cuál es tu nombre completo?"
-                    # Synchronize persistence
-                    if memory_service_module.memory_service:
-                        memory_service_module.memory_service.save_survey_state(user_phone, "financial_capture", status, {})
-                # ----------------------------------------------------
+            # TRIGGER_SURVEY interception REMOVED — 2026-03-12
+            # WHY: This block replaced the LLM's natural response with hardcoded survey
+            # text whenever start_credit_survey was called. The LLM now handles all
+            # Phase 3 credit questions organically via the Firestore prompt.
 
             logger.info(f"🧠 Response determined: '{str(response_text)[:50]}...'")
             
