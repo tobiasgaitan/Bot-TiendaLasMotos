@@ -367,16 +367,38 @@ class MemoryService:
     #      Python state machine was replaced by LLM-driven Phase 3 (Firestore prompt).
     #      The `survey_state` field in Firestore prospect documents is now inert legacy data.
     #      A one-time Firestore migration script can clean those fields if desired.
-
-
-
-
-
+    def delete_prospect_completely(self, phone_number: str) -> int:
+        """
+        Nuclear wipe of a prospect and their history.
+        Used by the /reset command to allow a fresh start.
+        
+        Args:
+            phone_number: Raw phone number to wipe
+            
+        Returns:
+            int: Number of items deleted (prospect doc + variants)
+        """
         try:
             deleted = 0
             clean_phone = PhoneNormalizer.normalize(phone_number)
             
-            # Variations for deep sweep
+            # 1. Targeted Delete using Centralized Helper
+            doc_ref = self._find_prospect_ref(phone_number)
+            if doc_ref:
+                # Nuclear subcollection purge
+                history_ref = doc_ref.collection("historial")
+                batch = self._db.batch()
+                msgs = history_ref.stream()
+                for m in msgs:
+                    batch.delete(m.reference)
+                batch.commit()
+                
+                # Delete the doc itself
+                doc_ref.delete()
+                deleted += 1
+                logger.info(f"🗑️ Nuclear delete: prospect doc and history for {phone_number}")
+
+            # 2. Variant Cleanup (Safety sweep for variants not caught by helper)
             variants = [
                 clean_phone,                         # International: 573...
                 clean_phone.replace("57", "", 1),   # National: 3...
@@ -384,49 +406,33 @@ class MemoryService:
             ]
             
             for variant in variants:
-                # 1. Delete by ID
-                doc_ref = self._db.collection("prospectos").document(variant)
-                if doc_ref.get().exists:
-                    # Strip fields explicitly first just in case deletion has propagation delay
-                    doc_ref.update({
-                        "survey_state": firestore.DELETE_FIELD,
-                        "survey_current_step": firestore.DELETE_FIELD,
-                        "motoInteres": firestore.DELETE_FIELD
-                    })
-                    
-                    # ULTIMATUM: Physically delete subcollections (Firestore doesn't do this auto)
-                    history_ref = doc_ref.collection("historial")
-                    batch = self._db.batch()
-                    msgs = history_ref.stream()
-                    for m in msgs:
-                        batch.delete(m.reference)
-                    batch.commit()
-                    
-                    # Delete the doc itself
-                    doc_ref.delete()
+                # Delete by ID variants
+                v_ref = self._db.collection("prospectos").document(variant)
+                v_doc = v_ref.get()
+                if v_doc.exists:
+                    # History purge
+                    h_ref = v_ref.collection("historial")
+                    b = self._db.batch()
+                    for m in h_ref.stream():
+                        b.delete(m.reference)
+                    b.commit()
+                    v_ref.delete()
                     deleted += 1
-                    logger.info(f"🗑️ Nuclear delete: prospect doc and history for {variant}")
+                    logger.info(f"🗑️ Nuclear delete: variant ID {variant}")
                 
-                # 2. Delete by 'celular' field
+                # Delete by 'celular' field variants
                 docs = self._db.collection("prospectos").where("celular", "==", variant).stream()
                 for doc in docs:
-                    doc.reference.update({
-                        "survey_state": firestore.DELETE_FIELD,
-                        "survey_current_step": firestore.DELETE_FIELD,
-                        "motoInteres": firestore.DELETE_FIELD
-                    })
-                    
-                    # Same nuclear subcollection purge
+                    # Nuclear subcollection purge
                     h_ref = doc.reference.collection("historial")
                     b = self._db.batch()
-                    m_docs = h_ref.stream()
-                    for m in m_docs:
+                    for m in h_ref.stream():
                         b.delete(m.reference)
                     b.commit()
                     
                     doc.reference.delete()
                     deleted += 1
-                    logger.info(f"🗑️ Nuclear delete: prospect by field {doc.id}")
+                    logger.info(f"🗑️ Nuclear delete: variant field match {doc.id}")
             
             return deleted
         except Exception as e:
