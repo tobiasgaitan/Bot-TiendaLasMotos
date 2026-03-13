@@ -1,0 +1,244 @@
+diff --git a/app/routers/whatsapp.py b/app/routers/whatsapp.py
+index 206f78f..26c32d1 100644
+--- a/app/routers/whatsapp.py
++++ b/app/routers/whatsapp.py
+@@ -222,12 +222,12 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
+ 
+                     image_bytes = await _download_media(media_id)
+                     if image_bytes:
+-                        logger.info(f"📥 Media downloaded ({len(image_bytes)} bytes). Analyzing with caption: '{caption}'...")
+-                        response_text = await vision_service.analyze_image(image_bytes, mime_type, user_phone, caption=caption)
++                        vision_response = await vision_service.analyze_image(image_bytes, mime_type, user_phone, caption=caption)
++                        response_text = f"🏍️ **Catálogo Auteco Las Motos**\n\n{vision_response}" if vision_response else None
+                         logger.info(f"🧠 Vision response: {response_text}")
+                         
+                         if response_text:
+-                            if response_text.startswith("MOTO_DETECTADA:"):
++                            if response_text.startswith("🏍️ **Catálogo Auteco Las Motos**\n\nMOTO_DETECTADA:"):
+                                 logger.info("🧠 Moto detected. Routing to CerebroIA for cross-selling...")
+                                 _ensure_services()
+                                 cerebro_ia = CerebroIA(config_loader, catalog_service_local)
+@@ -299,8 +299,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
+             # Optimistic save (don't block too long)
+             await memory_service_module.memory_service.save_message(user_phone, "user", message_body)
+ 
+-        # --- LÓGICA DE RESET NUCLEAR (PRIORIDAD 0) ---
+-        # FIX: Ensure it is strict text match
++        # --- RESET NUCLEAR ---
+         if msg_type == "text" and message_body.strip() == "/reset":
+             logger.warning(f"☢️ NUCLEAR RESET TRIGGERED for {user_phone}")
+             
+@@ -308,14 +307,13 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
+             ids_to_purge = list(set([user_phone, raw_phone, user_phone.replace("57", "", 1)]))
+             deleted_count = 0
+             
+-            collections_to_check = ["sessions", "prospectos"]
+-            
+             if db:
+                 # 1. NUCLEAR PROSPECT WIPE (IDs and Auto-generated IDs)
+                 if memory_service_module.memory_service:
+                     ms = memory_service_module.memory_service
++                    # THE FIX: Not only delete the doc but ensure all variations are gone
+                     p_deleted = ms.delete_prospect_completely(user_phone)
+-                    logger.info(f"🧹 Nuclear Prospect Wipe for {user_phone}. Docs deleted: {p_deleted}")
++                    logger.info(f"Sweep for {user_phone}. Docs deleted: {p_deleted}")
+ 
+                 for pid in ids_to_purge:
+                     # 2. Main Sessions Collection (ROOT)
+@@ -326,26 +324,26 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
+                             logger.info(f"🗑️ Deleted ROOT session document {pid}")
+                     except Exception: pass
+                     
+-                    # 3. Deep Wipe of Global Session State (Absolute Purge)
++                    # 3. Deep Wipe of Global Session State
+                     try:
+-                        # 3.1 Nuclear Delete in Survey Service (handles fields + IDs + subcollections)
+                         await survey_service.delete_session(db, pid)
+-                        
+-                        # 3.2 Verification for the requested legacy path
+                         legacy_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
+-                        exists_after = legacy_ref.get().exists
+-                        logger.info(f"🔥 Hard Purge verification for {pid}. Exists now: {exists_after}")
+                         
+-                        if not exists_after:
++                        # NUCLEAR HISTORY PURGE
++                        history_ref = legacy_ref.collection("historial")
++                        async for doc in history_ref.stream(): # Use async for
++                            await doc.reference.delete()
+                             deleted_count += 1
++                        
++                        await legacy_ref.delete()
++                        deleted_count += 1
+                     except Exception as e: 
+                         logger.error(f"❌ Error during hard purge for {pid}: {e}")
+ 
+             # Always send confirmation
+-            confirm_msg = f"☢️ RESET COMPLETADO. Memoria limpia. ({deleted_count} registros purgados). Escribe 'Hola' para iniciar."
++            confirm_msg = "☢️ RESET COMPLETADO. Memoria limpia. Escribe 'Hola' para iniciar la nueva experiencia Auteco Las Motos."
+             await _send_whatsapp_message(user_phone, confirm_msg)
+             return
+-        # --- FIN RESET NUCLEAR ---
+ 
+         # 2. Gestión de Sesión
+         # 2. Gestión de Sesión & Servicios
+@@ -364,27 +362,24 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
+         
+         if memory_service_module.memory_service:
+             ms = memory_service_module.memory_service
+-            # Create if missing (ensure prospect exists)
+-            ms.create_prospect_if_missing(user_phone)
+-            # Update timestamp
+-            ms.update_last_interaction(user_phone)
+-            # Get data
++            
++            # 1. Get existing data FIRST to decide on greeting
+             prospect_data = ms.get_prospect_data(user_phone)
+-            logger.info(f"👤 Prospect Data Loaded: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
++            newly_created = not (prospect_data and prospect_data.get("exists", False))
+             
+-            # Human Gatekeeper Check
+-            if prospect_data and prospect_data.get('human_help_requested', False):
+-                logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
+-                return
+-
+-            # LOAD HISTORY for Context (CONTEXT FIX)
++            # 2. LOAD HISTORY for Context
+             logger.info(f"📜 Loading chat history for {user_phone}...")
+             current_history = await ms.get_chat_history(user_phone, limit=10)
+             
+             # GREETING BYPASS LOGIC (Time-Based)
+-            if current_history:
+-                last_msg = current_history[-1]
+-                last_ts = last_msg.get("timestamp")
++            # ULTIMATUM: If it's a new prospect or history is empty, skip_greeting MUST be False.
++            if len(current_history) <= 1 or newly_created:
++                skip_greeting = False
++                logger.info(f"🆕 Fresh start detected (Newly created: {newly_created}). Full greeting enabled.")
++            else:
++                # Check the second to last message (the previous interaction)
++                prev_msg = current_history[-2]
++                last_ts = prev_msg.get("timestamp")
+                 
+                 # Normalize timestamp to datetime
+                 last_time = None
+@@ -398,7 +393,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
+                     except: pass
+                 
+                 if last_time:
+-                    # Calculate duration since last message
++                    # Calculate duration since previous message
+                     now = datetime.now(timezone.utc)
+                     if last_time.tzinfo is None:
+                         last_time = last_time.replace(tzinfo=timezone.utc)
+@@ -406,9 +401,20 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
+                     delta = now - last_time
+                     diff_seconds = delta.total_seconds()
+                     
+-                    if diff_seconds < 7200:
++                    if diff_seconds < 43200: # 12 hours
+                         skip_greeting = True
+                         logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
++
++            # 3. NOW update/create timestamps AFTER decision is made
++            ms.create_prospect_if_missing(user_phone)
++            ms.update_last_interaction(user_phone)
++            
++            logger.info(f"👤 Prospect Data Processed: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
++            
++            # Human Gatekeeper Check (Mantenibilidad)
++            if prospect_data and prospect_data.get('human_help_requested', False):
++                logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
++                return
+         else:
+             logger.warning("⚠️ Memory Service is NOT initialized. Skipping persistence.")
+ 
+@@ -547,11 +553,18 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
+                 logger.info("🚀 Smart Latency: New session detected. Skipping typing delay (0s).")
+                 typing_delay = 0
+             else:
+-                typing_delay = min(5.0, len(str(response_text)) * 0.03) # 0.03s per char, max 5s
+-                logger.info(f"⏳ Smart Latency: Specific delay applied: {typing_delay:.2f}s")
++                import random
++                
++                # 1. Simulación y Naturalidad
++                base_delay = len(str(response_text)) / 35.0
++                jitter = random.uniform(0.5, 1.5)
++                calculated_delay = base_delay + jitter
++                
++                # 2. Límite de seguridad
++                typing_delay = min(8.0, calculated_delay)
++                logger.info(f"⏳ Human Latency: len={len(str(response_text))}, delay={typing_delay:.2f}s")
+ 
+             if typing_delay > 0:
+-                # await _send_typing_indicator(user_phone) # Optional if implemented
+                 await asyncio.sleep(typing_delay)
+             
+         elif msg_type == "audio":
+@@ -582,24 +595,33 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
+                 # Remove all image tags from the text
+                 cleaned_response_text = re.sub(image_pattern, '', response_text).strip()
+                 
+-                # If images found, send the first one natively
++                # If images found, send them using Strategy A (Caption) for better .webp compatibility
+                 if images_found:
+                     image_url = images_found[0] # Take the first image
+                     
+-                    if len(cleaned_response_text) < 1024:
+-                        # Strategy A: Caption (Max 1024 chars in Meta API)
+-                        logger.info(f"📸 Native Image Strategy A (Caption): text len={len(cleaned_response_text)}")
+-                        success = await _send_whatsapp_image(user_phone, image_url, caption=cleaned_response_text)
+-                        if not success:
+-                            logger.warning(f"⚠️ Failed to send image natively, falling back to text only.")
+-                            await _send_whatsapp_message(user_phone, cleaned_response_text)
+-                    else:
+-                        # Strategy B: Image then Text
+-                        logger.info(f"📸 Native Image Strategy B (Split): text len={len(cleaned_response_text)} > 1024")
+-                        await _send_whatsapp_image(user_phone, image_url, caption="")
+-                        await _send_whatsapp_message(user_phone, cleaned_response_text)
++                    # STRATEGY A (Caption): Single payload for better .webp compatibility
++                    # WhatsApp Caption Limit: 1024 characters
++                    MAX_CAPTION = 1024
++                    
++                    caption = cleaned_response_text
++                    overflow_text = ""
++                    
++                    if len(caption) > MAX_CAPTION:
++                        logger.warning(f"⚠️ Caption too long ({len(caption)} chars). Splitting...")
++                        # Find last space within limit to avoid cutting words
++                        split_idx = caption.rfind(' ', 0, MAX_CAPTION)
++                        if split_idx == -1: split_idx = MAX_CAPTION
++                        overflow_text = caption[split_idx:].strip()
++                        caption = caption[:split_idx].strip()
++                    
++                    logger.info(f"📸 Strategy A (Caption): url={image_url}")
++                    await _send_whatsapp_image(user_phone, image_url, caption=caption)
++                    
++                    if overflow_text:
++                        logger.info(f"📤 Sending overflow text ({len(overflow_text)} chars)")
++                        await _send_whatsapp_message(user_phone, overflow_text)
+                         
+-                    response_text = cleaned_response_text # Update for history saving (hide tags from history)
++                    response_text = cleaned_response_text 
+                 else:
+                     await _send_whatsapp_message(user_phone, response_text)
+                 
+@@ -710,6 +732,19 @@ async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "")
+ 
+         from app.core.utils import PhoneNormalizer
+         to_phone_intl = PhoneNormalizer.to_international(to_phone)
++        
++        # URL SANITIZATION (CRITICAL for Firebase Tokens)
++        # Ensure URL is stripped and any special chars are properly handled.
++        image_url = image_url.strip()
++        
++        # Diagnostic Log
++        logger.info(f"📸 WHATSAPP IMAGE DISPATCH: Sending to {to_phone_intl} | URL: {image_url}")
++        
++        # Meta requirements check
++        if "firebasestorage.googleapis.com" in image_url:
++            if "alt=media" not in image_url:
++                image_url += ("&" if "?" in image_url else "?") + "alt=media"
++            logger.info(f"✅ Firebase URL Sanitized: {image_url}")
+ 
+         url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
+         headers = {

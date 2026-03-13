@@ -162,22 +162,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         
         if msg_type == "text":
             message_body = msg_data.get("text", "").strip()
-        elif msg_type == "reaction":
-            emoji = msg_data.get("emoji", "")
-            message_id = msg_data.get("message_id", "")
-            logger.info(f"👍 User reacted with '{emoji}' to message '{message_id}'")
             
-            # Translate positive reactions to keep the funnel active
-            positive_emojis = ["👍", "❤️", "💯", "🔥", "✅", "👌", "😊", "🥰", "😍"]
-            if emoji in positive_emojis:
-                logger.info(f"🔄 Translating positive reaction '{emoji}' into text 'Sí'")
-                message_body = "Sí"
-                msg_type = "text" # Treat it as text from here on to continue the funnel
-            else:
-                logger.info(f"⏭️ Ignoring non-actionable reaction '{emoji}'")
-                return # Exit early for actionable reactions
-            
-        if msg_type == "text":
             # --- DEBOUNCE LOGIC START ---
             if message_buffer:
                 # Add to buffer
@@ -204,7 +189,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     return # Should not happen if logic is correct
             # --- DEBOUNCE LOGIC END ---
             
-        elif msg_type in ["image", "document", "sticker"]:
+        elif msg_type in ["image", "document"]:
             logger.info(f"📸 Media detected from {user_phone} (Type: {msg_type}). Processing immediately...")
             await _mark_message_as_read(msg_data["id"])
             
@@ -213,14 +198,12 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 try:
                     vision_service = VisionService(db)
                     
-                    # Robust extraction for Image, Document OR Sticker
+                    # Robust extraction for Image OR Document
                     media_data = {}
                     if msg_type == "image":
                         media_data = msg_data.get("image", {})
                     elif msg_type == "document":
                         media_data = msg_data.get("document", {})
-                    elif msg_type == "sticker":
-                        media_data = msg_data.get("sticker", {})
                     
                     # Fallback to root keys
                     media_id = media_data.get("id") or msg_data.get("media_id")
@@ -239,18 +222,18 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
 
                     image_bytes = await _download_media(media_id)
                     if image_bytes:
-                        vision_response = await vision_service.analyze_image(image_bytes, mime_type, user_phone, caption=caption)
-                        logger.info(f"🧠 Raw Vision response: {vision_response}")
+                        logger.info(f"📥 Media downloaded ({len(image_bytes)} bytes). Analyzing with caption: '{caption}'...")
+                        response_text = await vision_service.analyze_image(image_bytes, mime_type, user_phone, caption=caption)
+                        logger.info(f"🧠 Vision response: {response_text}")
                         
-                        if vision_response:
-                            # 1. Handle Moto Detection
-                            if vision_response.startswith("MOTO_DETECTADA:"):
+                        if response_text:
+                            if response_text.startswith("MOTO_DETECTADA:"):
                                 logger.info("🧠 Moto detected. Routing to CerebroIA for cross-selling...")
                                 _ensure_services()
                                 cerebro_ia = CerebroIA(config_loader, catalog_service_local)
                                 cerebro_ia.motor_financiero = motor_financiero
                                 
-                                vision_description = vision_response.replace("MOTO_DETECTADA:", "").strip()
+                                vision_description = response_text.replace("MOTO_DETECTADA:", "").strip()
                                 
                                 prospect_data = None
                                 current_history = []
@@ -281,7 +264,6 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                         final_response = "¡Qué buena máquina, parcero! Esa no la manejo, pero tengo opciones equivalentes en nuestro catálogo. ¿Te gustaría que busquemos una parecida?"
                                         logger.warning(f"⚠️ CerebroIA returned empty response for moto image. Injected fallback.")
                                     
-                                    # ONLY in this case do we prepend the Catalog header to the AI's final response if desired, or let the AI speak natively. Focus on letting the AI speak.
                                     await _send_whatsapp_message(user_phone, final_response)
                                     
                                     # Save to History
@@ -290,106 +272,17 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                     
                                     # Update Summary
                                     try:
-                                        # P2: Context Injection for extraction
-                                        last_bot_q = ""
-                                        history_context = ""
-                                        
-                                        # Get last 3 turns (6 messages) for context
-                                        context_messages = (current_history or [])[-6:]
-                                        for m in context_messages:
-                                            role = "User" if m.get("role") == "user" else "Bot"
-                                            history_context += f"{role}: {m.get('content', '')}\n"
-                                        
-                                        for m in reversed(current_history or []):
-                                            if m.get("role") == "model":
-                                                last_bot_q = m.get("content", "")
-                                                break
-                                                
-                                        conversation = f"{history_context}User: {simulated_user_msg}\nBot: {final_response}"
-                                        summary_data = cerebro_ia.generate_summary(conversation, last_bot_question=last_bot_q)
+                                        summary_data = cerebro_ia.generate_summary(f"User: {simulated_user_msg}\nBot: {final_response}")
                                         await ms.update_prospect_summary(user_phone, summary_data.get("summary", ""), summary_data.get("extracted", {}))
                                     except Exception as e:
                                         logger.warning(f"Failed to update summary: {e}")
                                 else:
                                     logger.warning("⚠️ Memory Service is NOT initialized. Cannot route image properly.")
                                     await _send_whatsapp_message(user_phone, "No pude conectar con mi cerebro para buscar esta moto. 😢")
-                            
-                            # 2. Handle Sentiment / Memes / Stickers / General System Notes
-                            elif vision_response.startswith("[System Note:"):
-                                logger.info("🧠 General image/meme/sticker detected. Forwarding note to CerebroIA...")
-                                _ensure_services()
-                                cerebro_ia = CerebroIA(config_loader, catalog_service_local)
-                                cerebro_ia.motor_financiero = motor_financiero
-                                
-                                prospect_data = None
-                                current_history = []
-                                skip_greeting = True
-                                
-                                if memory_service_module.memory_service:
-                                    ms = memory_service_module.memory_service
-                                    ms.create_prospect_if_missing(user_phone)
-                                    ms.update_last_interaction(user_phone)
-                                    prospect_data = ms.get_prospect_data(user_phone)
-                                    
-                                    if prospect_data and prospect_data.get('human_help_requested', False):
-                                        logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
-                                        return
-                                    
-                                    current_history = await ms.get_chat_history(user_phone, limit=10)
-                                    
-                                    # Forward the system note as if the user sent it, so the AI knows they sent an image
-                                    final_response = cerebro_ia.pensar_respuesta(
-                                        vision_response,
-                                        context="", 
-                                        prospect_data=prospect_data,
-                                        history=current_history,
-                                        skip_greeting=skip_greeting
-                                    )
-                                    
-                                    if not final_response or not str(final_response).strip():
-                                        final_response = "¡Estuvo bueno! 😅 Pero cuéntame, ¿en qué moto estabas pensando?"
-                                        logger.warning(f"⚠️ CerebroIA returned empty response for sticker/meme. Injected fallback.")
-                                    
-                                    await _send_whatsapp_message(user_phone, final_response)
-                                    
-                                    # Save to History
-                                    await ms.save_message(user_phone, "user", vision_response)
-                                    await ms.save_message(user_phone, "model", final_response)
-                                    
-                                    # Update Summary
-                                    try:
-                                        # P2: Context Injection for extraction
-                                        last_bot_q = ""
-                                        history_context = ""
-                                        
-                                        # Get last 3 turns (6 messages) for context
-                                        context_messages = (current_history or [])[-6:]
-                                        for m in context_messages:
-                                            role = "User" if m.get("role") == "user" else "Bot"
-                                            history_context += f"{role}: {m.get('content', '')}\n"
-                                        
-                                        for m in reversed(current_history or []):
-                                            if m.get("role") == "model":
-                                                last_bot_q = m.get("content", "")
-                                                break
-
-                                        conversation = f"{history_context}User: {vision_response}\nBot: {final_response}"
-                                        summary_data = cerebro_ia.generate_summary(conversation, last_bot_question=last_bot_q)
-                                        await ms.update_prospect_summary(user_phone, summary_data.get("summary", ""), summary_data.get("extracted", {}))
-                                    except Exception as e:
-                                        pass
-                                else:
-                                    # Fallback if no memory service
-                                    await _send_whatsapp_message(user_phone, "No pude procesar bien esa imagen ahora mismo. 😅")
-                            
-                            # 3. Handle literal fallback text from old vision routines (if any)
                             else:
-                                logger.info("🧠 Fallback text returned from Vision AI, passing directly to user...")
-                                response_text = f"🏍️ **Catálogo Auteco Las Motos**\n\n{vision_response}"
                                 await _send_whatsapp_message(user_phone, response_text)
-                        
                         else:
-                            await _send_whatsapp_message(user_phone, "¡Uff! Pero no alcanzo a ver bien los detalles. ¿Me cuentas qué es?")
+                            await _send_whatsapp_message(user_phone, "¡Uff, qué nave! 🏍️ Pero no alcanzo a ver bien los detalles. ¿Me cuentas qué modelo es?")
                     else:
                         await _send_whatsapp_message(user_phone, "No pude descargar el archivo. Intenta de nuevo.")
                 except Exception as e:
@@ -402,14 +295,12 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         await _mark_message_as_read(msg_data["id"]) 
 
         # 1.5 Save User Message to History (PERSISTENCE FIX)
-        if memory_service_module.memory_service:
-            if msg_type == "text" and message_body:
-                # Optimistic save (don't block too long)
-                await memory_service_module.memory_service.save_message(user_phone, "user", message_body)
-            elif msg_type == "audio":
-                await memory_service_module.memory_service.save_message(user_phone, "user", "[Mensaje de Voz]")
+        if memory_service_module.memory_service and msg_type == "text":
+            # Optimistic save (don't block too long)
+            await memory_service_module.memory_service.save_message(user_phone, "user", message_body)
 
-        # --- RESET NUCLEAR ---
+        # --- LÓGICA DE RESET NUCLEAR (PRIORIDAD 0) ---
+        # FIX: Ensure it is strict text match
         if msg_type == "text" and message_body.strip() == "/reset":
             logger.warning(f"☢️ NUCLEAR RESET TRIGGERED for {user_phone}")
             
@@ -417,13 +308,14 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             ids_to_purge = list(set([user_phone, raw_phone, user_phone.replace("57", "", 1)]))
             deleted_count = 0
             
+            collections_to_check = ["sessions", "prospectos"]
+            
             if db:
                 # 1. NUCLEAR PROSPECT WIPE (IDs and Auto-generated IDs)
                 if memory_service_module.memory_service:
                     ms = memory_service_module.memory_service
-                    # THE FIX: Not only delete the doc but ensure all variations are gone
                     p_deleted = ms.delete_prospect_completely(user_phone)
-                    logger.info(f"Sweep for {user_phone}. Docs deleted: {p_deleted}")
+                    logger.info(f"🧹 Nuclear Prospect Wipe for {user_phone}. Docs deleted: {p_deleted}")
 
                 for pid in ids_to_purge:
                     # 2. Main Sessions Collection (ROOT)
@@ -434,39 +326,26 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                             logger.info(f"🗑️ Deleted ROOT session document {pid}")
                     except Exception: pass
                     
-                    # 3. Deep Wipe of Global Session State
+                    # 3. Deep Wipe of Global Session State (Absolute Purge)
                     try:
+                        # 3.1 Nuclear Delete in Survey Service (handles fields + IDs + subcollections)
                         await survey_service.delete_session(db, pid)
+                        
+                        # 3.2 Verification for the requested legacy path
                         legacy_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
+                        exists_after = legacy_ref.get().exists
+                        logger.info(f"🔥 Hard Purge verification for {pid}. Exists now: {exists_after}")
                         
-                        # NUCLEAR HISTORY PURGE
-                        history_ref = legacy_ref.collection("historial")
-                        for doc in history_ref.stream(): # Use sync for
-                            doc.reference.delete()
+                        if not exists_after:
                             deleted_count += 1
-                        
-                        legacy_ref.delete()
-                        deleted_count += 1
                     except Exception as e: 
                         logger.error(f"❌ Error during hard purge for {pid}: {e}")
 
             # Always send confirmation
-            confirm_msg = "☢️ RESET COMPLETADO. Memoria limpia. Escribe 'Hola' para iniciar la nueva experiencia Auteco Las Motos."
+            confirm_msg = f"☢️ RESET COMPLETADO. Memoria limpia. ({deleted_count} registros purgados). Escribe 'Hola' para iniciar."
             await _send_whatsapp_message(user_phone, confirm_msg)
             return
-
-        # --- UPDATE CATALOG CACHE ---
-        if msg_type == "text" and message_body.strip() in ["/update", "/refresh_catalog"]:
-            logger.warning(f"🔄 CATALOG REFRESH TRIGGERED by {user_phone}")
-            try:
-                catalog_service_local.refresh()
-                confirm_msg = "✅ Catálogo actualizado en memoria exitosamente."
-            except Exception as e:
-                logger.error(f"❌ Error refreshing catalog: {e}")
-                confirm_msg = f"❌ Error al actualizar el catálogo: {str(e)}"
-                
-            await _send_whatsapp_message(user_phone, confirm_msg)
-            return
+        # --- FIN RESET NUCLEAR ---
 
         # 2. Gestión de Sesión
         # 2. Gestión de Sesión & Servicios
@@ -485,24 +364,27 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         
         if memory_service_module.memory_service:
             ms = memory_service_module.memory_service
-            
-            # 1. Get existing data FIRST to decide on greeting
+            # Create if missing (ensure prospect exists)
+            ms.create_prospect_if_missing(user_phone)
+            # Update timestamp
+            ms.update_last_interaction(user_phone)
+            # Get data
             prospect_data = ms.get_prospect_data(user_phone)
-            newly_created = not (prospect_data and prospect_data.get("exists", False))
+            logger.info(f"👤 Prospect Data Loaded: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
             
-            # 2. LOAD HISTORY for Context
+            # Human Gatekeeper Check
+            if prospect_data and prospect_data.get('human_help_requested', False):
+                logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
+                return
+
+            # LOAD HISTORY for Context (CONTEXT FIX)
             logger.info(f"📜 Loading chat history for {user_phone}...")
             current_history = await ms.get_chat_history(user_phone, limit=10)
             
             # GREETING BYPASS LOGIC (Time-Based)
-            # ULTIMATUM: If it's a new prospect or history is empty, skip_greeting MUST be False.
-            if len(current_history) <= 1 or newly_created:
-                skip_greeting = False
-                logger.info(f"🆕 Fresh start detected (Newly created: {newly_created}). Full greeting enabled.")
-            else:
-                # Check the second to last message (the previous interaction)
-                prev_msg = current_history[-2]
-                last_ts = prev_msg.get("timestamp")
+            if current_history:
+                last_msg = current_history[-1]
+                last_ts = last_msg.get("timestamp")
                 
                 # Normalize timestamp to datetime
                 last_time = None
@@ -516,7 +398,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     except: pass
                 
                 if last_time:
-                    # Calculate duration since previous message
+                    # Calculate duration since last message
                     now = datetime.now(timezone.utc)
                     if last_time.tzinfo is None:
                         last_time = last_time.replace(tzinfo=timezone.utc)
@@ -524,57 +406,137 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     delta = now - last_time
                     diff_seconds = delta.total_seconds()
                     
-                    if diff_seconds < 43200: # 12 hours
+                    if diff_seconds < 7200:
                         skip_greeting = True
                         logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
-
-            # 3. NOW update/create timestamps AFTER decision is made
-            ms.create_prospect_if_missing(user_phone)
-            ms.update_last_interaction(user_phone)
-            
-            logger.info(f"👤 Prospect Data Processed: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
-            
-            # Human Gatekeeper Check (Mantenibilidad)
-            if prospect_data and prospect_data.get('human_help_requested', False):
-                logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
-                return
         else:
             logger.warning("⚠️ Memory Service is NOT initialized. Skipping persistence.")
 
-        # SurveyService state machine REMOVED — 2026-03-12
-        # WHY: The deterministic branch (is_answering_survey) completely bypassed pensar_respuesta
-        # when a survey session was active. It returned hardcoded survey questions directly from
-        # Python, so the LLM never ran and Phase 2/3 Firestore guardrails were never evaluated.
-        # The LLM now handles the full credit survey flow organically via the Firestore prompt.
-        # The background generate_summary still extracts answers and saves them to Firestore.
+        # --- V16: CONTEXT SWITCHING & SURVEY INTERCEPTION (Orchestration) ---
+        survey_pending_question = None
+        is_answering_survey = False
+        survey_just_triggered = False
+        session = {}
+
+        if msg_type == "text" and db:
+            # 1. Check for active survey status (Transient Session)
+            session = await _get_session(db, user_phone)
+            status = session.get("status", "IDLE")
+            
+            # 2. Check for Persistent Survey State (Source of Truth for Context Switching)
+            persistent_survey = None
+            if memory_service_module.memory_service:
+                persistent_survey = memory_service_module.memory_service.get_survey_state(user_phone)
+
+            # 3. Decision Logic: Is there a survey active?
+            active_survey_step = None
+            
+            if status.startswith("SURVEY_STEP_"):
+                active_survey_step = status
+                logger.info(f"📋 Survey active in SESSION for {user_phone}: {status}")
+            elif persistent_survey and persistent_survey.get("is_active"):
+                active_survey_step = persistent_survey.get("current_step")
+                logger.info(f"📋 Survey active in PROSPECT for {user_phone}: {active_survey_step}")
+                # Synchronize session if missing
+                if not status.startswith("SURVEY_STEP_"):
+                    status = active_survey_step
+                    session = {
+                        "status": status,
+                        "answers": persistent_survey.get("collected_data", {}),
+                        "retry_count": 0
+                    }
+                    await _get_session(db, user_phone) # Dummy read? No, we should update.
+                    # Actually, we just populate the variables for the flow below
+                    logger.info(f"🔄 Synchronized transient session from persistent state for {user_phone}")
+
+            if active_survey_step:
+                # Map technical step ID to the actual human question
+                SURVEY_STEPS_MAP = {
+                    "SURVEY_STEP_0_NAME": "¿Cuál es tu nombre completo?",
+                    "SURVEY_STEP_1_AUTH": "¿Autorizas el tratamiento de tus datos personales para realizar tu estudio de crédito?",
+                    "SURVEY_STEP_2_CITY": "¿En qué ciudad te encuentras ubicado?",
+                    "SURVEY_STEP_3_LABOR": "3️⃣ ¿A qué te dedicas actualmente? (Tipo de contrato u ocupación)",
+                    "SURVEY_STEP_4_INCOME": "4️⃣ ¿Cuáles son tus ingresos mensuales totales? (Escribe solo el número)",
+                    "SURVEY_STEP_5_HISTORY": "5️⃣ ¿Cómo ha sido tu comportamiento con créditos anteriores? (Ej: Excelente, Reportado)",
+                    "SURVEY_STEP_6_GAS": "6️⃣ ¿Tienes servicio de Gas Natural a tu nombre? (Responde Sí o No)",
+                    "SURVEY_STEP_7_MOBILE": "7️⃣ ¿Tienes un plan de celular Postpago? (Responde Sí o No)"
+                }
+                survey_pending_question = SURVEY_STEPS_MAP.get(active_survey_step)
+
+                
+                if survey_pending_question:
+                    logger.info(f"📋 Survey Active ({status}). Evaluating intent...")
+                    intent_eval = cerebro_ia.evaluate_survey_intent(message_body, survey_pending_question)
+                    
+                    if intent_eval.get("is_answering_survey"):
+                        logger.info("✅ Intent: Answering survey. Routing to SurveyService.")
+                        is_answering_survey = True
+                        # --- INTENT BRIDGE: Data Sanitization ---
+                        # If the AI sanitized the user message (e.g. "minimo" -> "1300000"), we use that
+                        sanitized = intent_eval.get("sanitized_value")
+                        if sanitized and str(sanitized).lower() != "none" and str(sanitized) != message_body:
+                            logger.info(f"🌉 Intent Bridge: Sanitizing input '{message_body}' -> '{sanitized}'")
+                            message_body = str(sanitized)
+                    else:
+                        logger.info(f"🔄 Intent: Context Switch! Reasoning: {intent_eval.get('reasoning')}")
+                        # We route to AI Brain, but we'll pass the question to re-ask it later
+            
+            # --- V17: DETERMINISTIC SURVEY TRIGGER (Init Logic) ---
+            if status == "IDLE" and not active_survey_step:
+                financial_keywords = ["brilla", "financiar", "crédito", "financiamiento", "estudio de crédito", "cuotas"]
+                if any(k in message_body.lower() for k in financial_keywords):
+                    logger.info(f"🎯 Deterministic Trigger! Financial keyword detected in '{message_body}'. Starting survey...")
+                    is_answering_survey = True
+                    survey_just_triggered = True
+                    # Initialize session for SurveyService
+                    status = "SURVEY_STEP_0_NAME"
+                    session = {"status": status, "answers": {}, "retry_count": 0}
+                    # Force response to first question
+                    response_text = "¡Hola! Qué bueno tenerte por aquí. 🤩 Para empezar, ¿cuál es tu nombre completo?"
+                    # Synchronize persistence
+                    if memory_service_module.memory_service:
+                        memory_service_module.memory_service.save_survey_state(user_phone, "financial_capture", status, {})
+            # --------------------------------------------------------
+
 
         # --- END CONTEXT SWITCHING LOGIC ---
 
-        # 3. Generar Respuesta (LLM exclusivo — pensar_respuesta)
+        # 3. Generar Respuesta (AI o Audio o Encuesta)
         if msg_type == "text":
-            # ALTERNATIVE C: Pre-processing Message Enrichment (Anchor)
-            enriched_message = message_body
-            if prospect_data and prospect_data.get("moto_interest"):
-                moto_interes = prospect_data.get("moto_interest")
-                # Enriquecer el mensaje solo si es relativamente corto y asumiendo que el usuario está preguntando
-                # sobre la moto que ya tiene instanciada en memoria, evitando que el AI olvide el contexto.
-                if len(message_body) < 60 and not any(m in message_body.lower() for m in ["otra", "cambiar", "no la"]):
-                    enriched_message = f"[Contexto CRM: Hablando sobre {moto_interes}]\nMensaje: {message_body}"
-                    logger.info(f"💉 Enriched user message with Moto Anchor: {moto_interes}")
+            if is_answering_survey:
+                if survey_just_triggered:
+                    logger.info(f"⏩ Survey just triggered for {user_phone}. Skipping handle_survey_step execution for this turn.")
+                else:
+                    logger.info(f"📝 Executing survey step for {user_phone}...")
+                    response_text = await survey_service.handle_survey_step(
+                        db, user_phone, message_body, session, motor_financiero
+                    )
+            else:
+                logger.info(f"🧠 Calling CerebroIA.pensar_respuesta... (Skip Greeting: {skip_greeting}, Pending: {survey_pending_question})")
+                response_text = cerebro_ia.pensar_respuesta(
+                    message_body, 
+                    context=context, 
+                    prospect_data=prospect_data,
+                    history=current_history,
+                    skip_greeting=skip_greeting,
+                    pending_survey_question=survey_pending_question
+                )
 
-            logger.info(f"🧠 Calling CerebroIA.pensar_respuesta... (Skip Greeting: {skip_greeting})")
-            response_text = cerebro_ia.pensar_respuesta(
-                enriched_message,
-                context=context,
-                prospect_data=prospect_data,
-                history=current_history,
-                skip_greeting=skip_greeting
-            )
-
-            # TRIGGER_SURVEY interception REMOVED — 2026-03-12
-            # WHY: This block replaced the LLM's natural response with hardcoded survey
-            # text whenever start_credit_survey was called. The LLM now handles all
-            # Phase 3 credit questions organically via the Firestore prompt.
+                # --- V17: AI-DRIVEN SURVEY TRIGGER (Flag check) ---
+                if str(response_text).startswith("TRIGGER_SURVEY:"):
+                    survey_id = str(response_text).split(":")[1]
+                    logger.info(f"🎯 AI-Driven Trigger! Initiating survey '{survey_id}' for {user_phone}")
+                    is_answering_survey = True
+                    survey_just_triggered = True
+                    # Re-route to SurveyService immediately
+                    status = "SURVEY_STEP_0_NAME"
+                    session = {"status": status, "answers": {}, "retry_count": 0}
+                    # Force response to first question
+                    response_text = "¡Hola! Qué bueno tenerte por aquí. 🤩 Para empezar, ¿cuál es tu nombre completo?"
+                    # Synchronize persistence
+                    if memory_service_module.memory_service:
+                        memory_service_module.memory_service.save_survey_state(user_phone, "financial_capture", status, {})
+                # ----------------------------------------------------
 
             logger.info(f"🧠 Response determined: '{str(response_text)[:50]}...'")
             
@@ -585,56 +547,19 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 logger.info("🚀 Smart Latency: New session detected. Skipping typing delay (0s).")
                 typing_delay = 0
             else:
-                import random
-                
-                # 1. Simulación y Naturalidad
-                base_delay = len(str(response_text)) / 35.0
-                jitter = random.uniform(0.5, 1.5)
-                calculated_delay = base_delay + jitter
-                
-                # 2. Límite de seguridad
-                typing_delay = min(8.0, calculated_delay)
-                logger.info(f"⏳ Human Latency: len={len(str(response_text))}, delay={typing_delay:.2f}s")
+                typing_delay = min(5.0, len(str(response_text)) * 0.03) # 0.03s per char, max 5s
+                logger.info(f"⏳ Smart Latency: Specific delay applied: {typing_delay:.2f}s")
 
             if typing_delay > 0:
+                # await _send_typing_indicator(user_phone) # Optional if implemented
                 await asyncio.sleep(typing_delay)
             
         elif msg_type == "audio":
             media_id = msg_data.get("media_id")
             mime_type = msg_data.get("mime_type")
             audio_bytes = await _download_media(media_id)
-            
-            # GET HISTORY BEFORE AI
-            current_history = []
-            if memory_service_module.memory_service:
-                ms = memory_service_module.memory_service
-                ms.create_prospect_if_missing(user_phone) # Good practice
-                ms.update_last_interaction(user_phone)
-                
-                # Check for Human Handoff status
-                prospect_data = ms.get_prospect_data(user_phone)
-                if prospect_data and prospect_data.get("human_help_requested", False):
-                     logger.info(f"👤 User {user_phone} is assigned to Human. Ignoring AI.")
-                     return
-                
-                current_history = await ms.get_chat_history(user_phone, limit=10)
-                
             if audio_bytes:
-                # Transcribe Audio
-                transcription = await audio_service.transcribe_audio(audio_bytes, mime_type)
-                
-                if transcription:
-                    logger.info(f"🎤 Audio Transcribed: '{transcription}'")
-                    # Send transcription to main AI Pipeline
-                    response_text = cerebro_ia.pensar_respuesta(
-                        transcription,
-                        context=context, 
-                        prospect_data=prospect_data,
-                        history=current_history,
-                        skip_greeting=True # Audios usually happen mid-conversation
-                    )
-                else:
-                    response_text = "Escuché el audio pero no entendí bien. ¿Me repites? 😅"
+                response_text = await audio_service.process_audio(audio_bytes, mime_type)
             else:
                 response_text = "No pude descargar el audio. 😢"
             
@@ -657,33 +582,24 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 # Remove all image tags from the text
                 cleaned_response_text = re.sub(image_pattern, '', response_text).strip()
                 
-                # If images found, send them using Strategy A (Caption) for better .webp compatibility
+                # If images found, send the first one natively
                 if images_found:
                     image_url = images_found[0] # Take the first image
                     
-                    # STRATEGY A (Caption): Single payload for better .webp compatibility
-                    # WhatsApp Caption Limit: 1024 characters
-                    MAX_CAPTION = 1024
-                    
-                    caption = cleaned_response_text
-                    overflow_text = ""
-                    
-                    if len(caption) > MAX_CAPTION:
-                        logger.warning(f"⚠️ Caption too long ({len(caption)} chars). Splitting...")
-                        # Find last space within limit to avoid cutting words
-                        split_idx = caption.rfind(' ', 0, MAX_CAPTION)
-                        if split_idx == -1: split_idx = MAX_CAPTION
-                        overflow_text = caption[split_idx:].strip()
-                        caption = caption[:split_idx].strip()
-                    
-                    logger.info(f"📸 Strategy A (Caption): url={image_url}")
-                    await _send_whatsapp_image(user_phone, image_url, caption=caption)
-                    
-                    if overflow_text:
-                        logger.info(f"📤 Sending overflow text ({len(overflow_text)} chars)")
-                        await _send_whatsapp_message(user_phone, overflow_text)
+                    if len(cleaned_response_text) < 1024:
+                        # Strategy A: Caption (Max 1024 chars in Meta API)
+                        logger.info(f"📸 Native Image Strategy A (Caption): text len={len(cleaned_response_text)}")
+                        success = await _send_whatsapp_image(user_phone, image_url, caption=cleaned_response_text)
+                        if not success:
+                            logger.warning(f"⚠️ Failed to send image natively, falling back to text only.")
+                            await _send_whatsapp_message(user_phone, cleaned_response_text)
+                    else:
+                        # Strategy B: Image then Text
+                        logger.info(f"📸 Native Image Strategy B (Split): text len={len(cleaned_response_text)} > 1024")
+                        await _send_whatsapp_image(user_phone, image_url, caption="")
+                        await _send_whatsapp_message(user_phone, cleaned_response_text)
                         
-                    response_text = cleaned_response_text 
+                    response_text = cleaned_response_text # Update for history saving (hide tags from history)
                 else:
                     await _send_whatsapp_message(user_phone, response_text)
                 
@@ -694,24 +610,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 # Update Summary
                 if msg_type == "text" and memory_service_module.memory_service:
                     try:
-                        # P2: Context Injection for extraction
-                        last_bot_q = ""
-                        history_context = ""
-                        
-                        # Get last 3 turns (6 messages) for context
-                        context_messages = (current_history or [])[-6:]
-                        for m in context_messages:
-                            role = "User" if m.get("role") == "user" else "Bot"
-                            history_context += f"{role}: {m.get('content', '')}\n"
-                        
-                        # Identify last bot question for anchoring
-                        for m in reversed(current_history or []):
-                            if m.get("role") == "model":
-                                last_bot_q = m.get("content", "")
-                                break
-
-                        conversation = f"{history_context}User: {message_body}\nBot: {response_text}"
-                        summary_data = cerebro_ia.generate_summary(conversation, last_bot_question=last_bot_q)
+                        conversation = f"User: {message_body}\nBot: {response_text}"
+                        summary_data = cerebro_ia.generate_summary(conversation)
                         await memory_service_module.memory_service.update_prospect_summary(
                             user_phone, 
                             summary_data.get("summary", ""), 
@@ -766,16 +666,6 @@ def _extract_message_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         elif msg_type == "audio":
             data["media_id"] = msg["audio"]["id"]
             data["mime_type"] = msg["audio"]["mime_type"]
-        elif msg_type == "sticker":
-            sticker_obj = msg["sticker"]
-            data["sticker"] = sticker_obj
-            data["media_id"] = sticker_obj.get("id")
-            data["mime_type"] = sticker_obj.get("mime_type")
-        elif msg_type == "reaction":
-            reaction_obj = msg["reaction"]
-            data["reaction"] = reaction_obj
-            data["message_id"] = reaction_obj.get("message_id")
-            data["emoji"] = reaction_obj.get("emoji")
         return data
     except:
         return None
@@ -820,8 +710,6 @@ async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "")
 
         from app.core.utils import PhoneNormalizer
         to_phone_intl = PhoneNormalizer.to_international(to_phone)
-        
-
 
         url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
         headers = {
