@@ -129,12 +129,12 @@ class MemoryService:
             extracted_data: Optional dict with extracted fields
         """
         try:
-            logger.info(f"💾 Updating prospect summary for {phone_number}")
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            logger.info(f"💾 Updating prospect summary for {clean_phone}")
 
             doc_ref = self._find_prospect_ref(phone_number)
             
             if not doc_ref:
-                clean_phone = PhoneNormalizer.normalize(phone_number)
                 logger.warning(f"⚠️ No prospect found to update for {clean_phone}")
                 new_doc_ref = self._db.collection("prospectos").document(clean_phone)
                 new_doc_ref.set({
