@@ -798,7 +798,32 @@ Conversación a analizar:
             )
             
             import json
-            result = json.loads(response.text.strip())
+            import re
+            
+            raw_response = response.text.strip()
+            
+            # Robust JSON Extraction Logic (QA Security & Stability Baseline)
+            # WHY: Gemini 2.5 occasionally returns unterminated strings or conversational markdown 
+            # even with application/json set. We use a multi-stage fallback to prevent crashes.
+            try:
+                # Stage 1: Standard JSON parse
+                result = json.loads(raw_response)
+            except json.JSONDecodeError:
+                logger.warning("⚠️ Native JSON parse failed, attempting extraction/repair.")
+                try:
+                    # Stage 2: Extract block using boundaries and repair truncation
+                    json_match = re.search(r"(\{.*\})", raw_response, re.DOTALL)
+                    if json_match:
+                        block = json_match.group(1)
+                        # Attempt to fix common "Unterminated string" error by closing quotes/braces
+                        if block.count('"') % 2 != 0: block += '"'
+                        if block.count('{') > block.count('}'): block += '}'
+                        result = json.loads(block)
+                    else:
+                        raise ValueError("No JSON block found")
+                except Exception as repair_err:
+                    logger.error(f"❌ JSON Repair failed: {repair_err}. Falling back to empty structure.")
+                    result = {"summary": "Error parsing AI response", "extracted": {}}
             
             if "summary" not in result: result["summary"] = ""
             if "extracted" not in result: result["extracted"] = {}
