@@ -210,7 +210,7 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                         },
                         "ingresos_demostrables": {
                             "type": "string",
-                            "description": "Nivel de ingresos. Mapeo estricto: Si dice 'el mínimo', 'lo básico', MÁPEALO a '1300000' (valor numérico). Si no da valor exacto pero afirma trabajar, infiere el mínimo legal. No envíes texto como 'el mínimo'."
+                            "description": "Nivel de ingresos. Mapeo estricto: Si dice 'el mínimo', 'lo básico', MÁPEALO a '1705905' (valor numérico). Si no da valor exacto pero afirma trabajar, infiere el mínimo legal ($1.705.905). No envíes texto como 'el mínimo'."
                         },
                         "historial_datacredito": {
                             "type": "string",
@@ -755,7 +755,7 @@ Conversación a analizar:
                             },
                             "ingresos": {
                                 "type": "STRING",
-                                "description": "Ingresos mensuales demostrables (ej. 1300000, un minimo, 2 millones)."
+                                "description": "Ingresos mensuales demostrables (ej. 1705905, un minimo, 2 millones)."
                             },
                             "gastos": {
                                 "type": "STRING",
