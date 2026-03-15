@@ -676,7 +676,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             if response_text.startswith("HANDOFF_TRIGGERED"):
                 if memory_service_module.memory_service:
                     memory_service_module.memory_service.set_human_help_status(user_phone, True)
-                await _send_whatsapp_message(user_phone, "Entendido. Buscando un humano... 🔍")
+                await _send_whatsapp_message(user_phone, "Te voy a transferir con un compañero para que te ayude con esto. Dame un momento...")
                 try:
                     from app.services.notification_service import notification_service
                     await notification_service.notify_human_handoff(user_phone, "ai_trigger")

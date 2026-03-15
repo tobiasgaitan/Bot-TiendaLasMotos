@@ -150,8 +150,9 @@ class CerebroIA:
 
 REGLAS ESTRICTAS DE USO:
 - SOLO úsala si el usuario dice frases como: 'quiero hablar con un asesor', 'necesito una persona', 'hablar con alguien', 'quiero ayuda humana'.
-- PROHIBIDO ABSOLUTO usarla para: preguntas sobre requisitos de crédito, precios, características de motos, FAQs, o cualquier consulta que puedas responder con tu conocimiento.
+- PROHIBIDO ABSOLUTO usarla para: visitas a la tienda (el usuario irá físicamente), preguntas sobre requisitos de crédito, precios, características de motos, FAQs, o cualquier consulta que puedas responder con tu conocimiento.
 - PROHIBIDO usarla porque la pregunta te parece 'compleja' o 'técnica'. Tú eres el experto. Respóndela.
+- Si el usuario dice que visitará una tienda, NO uses esta herramienta; simplemente despídete.
 - Si tienes duda, NO la uses. Responde directamente.""",
                 parameters={
                     "type": "object",
@@ -588,6 +589,14 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
                     
                     # Send ALL responses back to the model in a single turn
                     if response_parts:
+                        # CRITICAL FIX: Execution Loop Interception (Issue #3)
+                        # If trigger_human_handoff was called, we ABORT further text generation
+                        # and return the trigger string immediately.
+                        for part in response_parts:
+                            if hasattr(part, 'function_response') and part.function_response.name == "trigger_human_handoff":
+                                logger.warning("🛑 Handoff intercepted in CerebroIA loop. Aborting LLM text generation.")
+                                return "HANDOFF_TRIGGERED"
+
                         logger.info(f"📤 Sending {len(response_parts)} tool responses to AI...")
                         final_response = chat.send_message(response_parts)
                         return final_response.text.strip()
