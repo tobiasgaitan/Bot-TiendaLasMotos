@@ -200,7 +200,7 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
             # Define credit calculation function
             credit_function = FunctionDeclaration(
                 name="calculate_credit_score",
-                description="Calculate credit score and financing strategy based on user profile. Returns score, entity, and application link.",
+                description="ÚNICA herramienta autorizada para calcular el perfil crediticio. Úsala inmediatamente después del Paso 9. Proporciona el score, la entidad asignada y el link de aplicación.",
                 parameters={
                     "type": "object",
                     "properties": {
