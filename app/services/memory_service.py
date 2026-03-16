@@ -90,7 +90,9 @@ class MemoryService:
                     "summary": data.get("ai_summary"),
                     "human_help_requested": data.get("human_help_requested", False),
                     "survey_state": data.get("survey_state"),
-                    "exists": True
+                    "exists": True,
+                    "habeas_data_sent": data.get("habeas_data_sent", False),
+                    "habeas_data_accepted": data.get("habeas_data_accepted", False)
                 }
                 logger.info(
                     f"✅ Prospecto encontrado: {prospect_data['name']} | "
@@ -103,7 +105,8 @@ class MemoryService:
             return {
                 "name": None, "ciudad": None, "moto_interest": None,
                 "payment_method": None, "summary": None,
-                "human_help_requested": False, "survey_state": None, "exists": False
+                "human_help_requested": False, "survey_state": None, "exists": False,
+                "habeas_data_sent": False, "habeas_data_accepted": False
             }
 
         except Exception as e:
@@ -111,7 +114,8 @@ class MemoryService:
             return {
                 "name": None, "ciudad": None, "moto_interest": None,
                 "payment_method": None, "summary": None,
-                "human_help_requested": False, "survey_state": None, "exists": False
+                "human_help_requested": False, "survey_state": None, "exists": False,
+                "habeas_data_sent": False, "habeas_data_accepted": False
             }
 
     async def update_prospect_summary(
@@ -223,6 +227,14 @@ class MemoryService:
                     update_data["plan_celular"] = extracted_data["plan_celular"]
                     logger.info(f"📱 Updating plan_celular: {extracted_data['plan_celular']}")
 
+                if extracted_data.get("habeas_data_sent") is not None:
+                    update_data["habeas_data_sent"] = extracted_data["habeas_data_sent"]
+                    logger.info(f"📜 Updating habeas_data_sent: {extracted_data['habeas_data_sent']}")
+                
+                if extracted_data.get("habeas_data_accepted") is not None:
+                    update_data["habeas_data_accepted"] = extracted_data["habeas_data_accepted"]
+                    logger.info(f"✅ Updating habeas_data_accepted: {extracted_data['habeas_data_accepted']}")
+
             doc_ref.update(update_data)
             logger.info(f"✅ Successfully updated prospect summary for {clean_phone}")
 
@@ -295,8 +307,6 @@ class MemoryService:
                 exc_info=True
             )
 
-
-
     def create_prospect_if_missing(self, phone_number: str) -> bool:
         """
         Ensures a prospect document exists for the given phone number.
@@ -361,12 +371,6 @@ class MemoryService:
             logger.error(f"❌ Error creating prospect for {phone_number}: {e}", exc_info=True)
             return False
 
-    # save_survey_state(), get_survey_state(), clear_survey_state() REMOVED — Sprint 1 (2026-03-13)
-    # WHY: These methods persisted and retrieved Python-level survey state (step, collected answers).
-    #      They were exclusively called by SurveyService, which was deleted when the hardcoded
-    #      Python state machine was replaced by LLM-driven Phase 3 (Firestore prompt).
-    #      The `survey_state` field in Firestore prospect documents is now inert legacy data.
-    #      A one-time Firestore migration script can clean those fields if desired.
     def delete_prospect_completely(self, phone_number: str) -> int:
         """
         Nuclear wipe of a prospect and their history.

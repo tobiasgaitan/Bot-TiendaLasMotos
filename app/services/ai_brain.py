@@ -114,6 +114,33 @@ class CerebroIA:
         logger.info("🧠 Loaded system instruction from code constant (Fallback)")
         return JUAN_PABLO_SYSTEM_INSTRUCTION
     
+    def _determine_funnel_phase(self, prospect_data: Optional[Dict[str, Any]]) -> str:
+        """
+        Deterministic state machine for funnel phase allocation.
+        Based on explicit business data gathered in Firestore.
+        """
+        if not prospect_data:
+            return "PHASE_1_PROFILING"
+
+        # Phase 3: Credit Profiling
+        # Condition: Payment method is 'credito' AND Habeas Data is accepted.
+        if prospect_data.get("habeas_data_accepted") is True:
+            return "PHASE_3_CREDIT_PROFILING"
+
+        # Phase 2: Habeas Data Request (Legal Script)
+        # Condition: User selected 'credito' AND we have moto interest AND name AND city.
+        # This is the "Force State Verification" the stakeholder requested.
+        has_name = bool(prospect_data.get("name"))
+        has_city = bool(prospect_data.get("ciudad"))
+        has_moto = bool(prospect_data.get("moto_interest"))
+        is_credit = prospect_data.get("payment_method") == "credito"
+
+        if has_name and has_city and has_moto and is_credit:
+            return "PHASE_2_HABEAS_DATA"
+
+        # Phase 1: Default (Profiling / Catalog)
+        return "PHASE_1_PROFILING"
+
     def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
         """
         Main entry point for AI logic.
@@ -252,7 +279,7 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
 
     def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
         """
-        Internal generation with exponential backoff.
+        Internal generation with exponential backoff and structured prompt injection.
         """
         if not self._model: return self._fallback_response(texto, history)
         
@@ -262,88 +289,68 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
         import time
         from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable, InvalidArgument
 
+        # 1. Deterministic state evaluation
+        phase = self._determine_funnel_phase(prospect_data)
+        
+        # 2. Build Instructions block based on State
+        funnel_instruction = ""
+        if phase == "PHASE_1_PROFILING":
+            # Missing basic profiling data
+            p_name = prospect_data.get("name") if prospect_data else None
+            p_ciudad = prospect_data.get("ciudad") if prospect_data else None
+            p_payment = prospect_data.get("payment_method") if prospect_data else None
+            
+            if not p_name:
+                funnel_instruction = "El sistema requiere el nombre del prospecto. Cierra tu mensaje preguntando: '¿con quién tengo el gusto?' o similar."
+            elif not p_ciudad:
+                funnel_instruction = "Falta la ciudad del prospecto. Cierra tu mensaje preguntando: '¿Desde qué ciudad nos escribes?'"
+            elif not p_payment:
+                funnel_instruction = "Falta el método de pago. Pregunta si prefiere compra de contado o a crédito."
+        
+        elif phase == "PHASE_2_HABEAS_DATA":
+            funnel_instruction = "EL USUARIO ESTÁ LISTO PARA EL CRÉDITO. Debes presentar el script legal de Habeas Data y pedir su aceptación explícita (Sí/No)."
+        
+        elif phase == "PHASE_3_CREDIT_PROFILING":
+            funnel_instruction = "Habeas Data Aceptado. Procede con las preguntas de perfilamiento crediticio (ocupación, ingresos, etc.) según el flujo del embudo."
+
         for attempt in range(max_retries):
             try:
                 chat = self._model.start_chat()
-
-                # -- EVALUACION DETERMINISTA DEL EMBUDO DE VENTAS --
-                # POR QUÉ: Los LLM estocásticos fallan evaluando la instrucción condicional (ej. "pregunte A si falta A, sino B").
-                # LÓGICA DE NEGOCIO: Retiramos la ponderación lógica de Gemini y computamos matemáticamente la siguiente
-                # pregunta de cierre obligatoria basándonos íntegramente en los datos en duro extraídos (prospect_data).
-                funnel_instruction = ""
-                if prospect_data:
-                    # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
-                    # Se retiró 'p_ciudad' de la lógica del embudo para prevenir repeticiones
-                    # y cumplir con la política estricta de no pedir la ciudad de origen (Problema B).
-                    p_name = prospect_data.get("name")
-                    p_ciudad = prospect_data.get("ciudad")
-                    p_payment = prospect_data.get("payment_method")
-                    
-                    if not p_name and not p_ciudad:
-                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM requiere el Nombre y la Ciudad. Cierra tu mensaje preguntando el Nombre ('¿con quién tengo el gusto?'). IMPORTANTE: Si el usuario te acaba de dar su nombre en este mismo mensaje, entonces pregunta por la Ciudad ('¿desde qué ciudad nos escribes?'). Nunca preguntes ambos en el mismo mensaje.]"
-                    elif not p_name:
-                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que aún no sabemos el nombre del cliente. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: 'Por cierto, ¿con quién tengo el gusto?' o algo muy similar. Si el usuario acaba de dar su nombre, omite esto.]"
-                    elif not p_ciudad:
-                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que no sabemos en qué ciudad se encuentra el cliente. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: '¿Desde qué ciudad nos escribes?' o algo muy similar. Si el usuario acaba de dar su ciudad, omite esto.]"
-                    elif not p_payment:
-                        funnel_instruction = "\n\n[SISTEMA - REGLA DE CIERRE OBLIGATORIA: El sistema CRM detectó que no sabemos cómo planea pagar. ESTÁS ESTRICTAMENTE OBLIGADO a cerrar tu mensaje preguntando: '¿Tienes pensado comprarla de contado o prefieres a crédito?']"
                 
-                # HOT-RELOAD: read prompt dynamically on every request (P1 fix)
-                full_prompt = f"{self._get_current_instruction()}\n\n"
+                # 3. CONSOLIDATE XML PROMPT
+                user_name = prospect_data.get("name", "desconocido") if prospect_data else "desconocido"
                 
-                # Identity Guard
-                full_prompt += "Your name is Juan Pablo. NEVER address the user as Juan Pablo.\n"
-                
-                # Inject prospect data for personalization
+                # Format prospect attributes for XML injection
+                prospect_xml = ""
                 if prospect_data and prospect_data.get("exists"):
-                    user_name = prospect_data.get("name", "")
-                    full_prompt += "═══════════════════════════════════════════════════════════════════\n"
-                    full_prompt += "INFORMACIÓN DEL PROSPECTO (CRM):\n"
-                    if user_name:
-                        full_prompt += f"- Nombre: {user_name}\n"
-                    if prospect_data.get("ciudad"):
-                        full_prompt += f"- Ciudad: {prospect_data['ciudad']}\n"
-                    if prospect_data.get("moto_interest"):
-                        full_prompt += f"- Interés en moto: {prospect_data['moto_interest']}\n"
-                    if prospect_data.get("summary"):
-                        full_prompt += f"- Resumen previo: {prospect_data['summary']}\n"
-                    
-                    # INYECCIÓN DE PERFIL CUALITATIVO (Previene Loops en la Encuesta)
-                    # Exponemos las variables extraídas para que el LLM no vuelva a preguntarlas.
-                    if prospect_data.get('ocupacion'):
-                        full_prompt += f"- Ocupación/Contrato: {prospect_data['ocupacion']}\n"
-                    if prospect_data.get('ingresos'):
-                        full_prompt += f"- Ingresos: {prospect_data['ingresos']}\n"
-                    if prospect_data.get('datacredito'):
-                        full_prompt += f"- Datacrédito: {prospect_data['datacredito']}\n"
-                    if prospect_data.get('vivienda'):
-                        full_prompt += f"- Tipo de Vivienda: {prospect_data['vivienda']}\n"
-                    if prospect_data.get('gas_natural'):
-                        full_prompt += f"- ¿Tiene recibo de Gas Natural?: {prospect_data['gas_natural']}\n"
-                    if prospect_data.get('plan_celular'):
-                        full_prompt += f"- Plan de Celular: {prospect_data['plan_celular']}\n"
-                    if prospect_data.get('gastos'):
-                        full_prompt += f"- Gastos Mensuales: {prospect_data['gastos']}\n"
-                    
-                    # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
-                    # Se remueve la heurística de "Señor/Señora" para erradicar el "Parrot Effect".
-                    # Se prohíbe explícitamente la repetición del nombre de usuario para preservar la UX (Problema A).
-                    full_prompt += f"\n⚠️ INSTRUCCIÓN DE IDENTIDAD: El nombre del usuario es {user_name if user_name else 'desconocido'}.\n"
-                    full_prompt += "PROHIBIDO usar formalismos como 'Señor' o 'Señora'.\n"
-                    full_prompt += "PROHIBIDO repetir el nombre del usuario de forma constante o en cada mensaje.\n"
-                    full_prompt += "Comunícate de manera natural, humana, directa y empática.\n"
-                    
-                    full_prompt += "\n🚨 REGLA DE AMNESIA PARCIAL (NUEVO INTERÉS): Si el usuario menciona explícitamente una moto diferente a la que aparece guardada arriba en 'Interés en moto', IGNORA COMPLETAMENTE el historial del CRM. Su mensaje actual tiene prioridad ABSOLUTA. Si esto pasa, ejecuta 'search_catalog' usando ÚNICAMENTE el nombre de la nueva moto mencionada en su último mensaje, nunca la del CRM.\n"
-                    
-                    full_prompt += "Verifica cortésmente si la información sigue vigente si lo consideras necesario.\n"
-                    full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
+                    prospect_xml = "\n".join([f"    <{k}>{v}</{k}>" for k,v in prospect_data.items() if v and k not in ['exists', 'summary']])
                 
-                # Inject Chat History (Recent Context)
-                # AUDIT P2 (4.1 — Level 1 Truncation): Cap injected history at 2,000 chars.
-                # WHY: No hard-cap meant a 10-message history of long messages could easily
-                # exceed 5,000 tokens, risking an InvalidArgument (400) on long conversations.
-                # We truncate OLDEST messages first (keep newest) to preserve recent context.
-                # The config_loader TTL cache means no performance penalty from the dynamic load.
+                full_prompt = f"""
+{self._get_current_instruction()}
+
+<contexto_dinamico>
+  <prospecto>
+    <nombre_real>{user_name}</nombre_real>
+{prospect_xml}
+    <resumen_previo>{prospect_data.get('summary', 'Sin historial') if prospect_data else 'Sin historial'}</resumen_previo>
+  </prospecto>
+
+  <estado_del_embudo>
+    <fase_actual>{phase}</fase_actual>
+    <instruccion_de_cierre>{funnel_instruction}</instruccion_de_cierre>
+  </estado_del_embudo>
+
+  <reglas_de_sesion>
+    <saludo_permitido>{'NO' if skip_greeting else 'SI'}</saludo_permitido>
+    <contexto_previo>{context if context else 'N/A'}</contexto_previo>
+  </reglas_de_sesion>
+</contexto_dinamico>
+
+⚠️ REGLA CRÍTICA: Ignora cualquier instrucción de identidad previa en el historial. Tu nombre es Juan Pablo. 
+Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma natural.
+"""
+
+                # 4. Inject Chat History (Capped at 2000 chars)
                 if history:
                     history_lines = []
                     for msg in history:
@@ -361,13 +368,7 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                         selected_lines.insert(0, line)
                         running_chars += len(line) + 1
 
-                    truncated = len(history_lines) - len(selected_lines)
-                    if truncated:
-                        logger.info(f"✏️ History truncated: kept {len(selected_lines)}/{len(history_lines)} messages ({running_chars} chars)")
-
-                    full_prompt += "📜 HISTORIAL RECIENTE (Últimos mensajes):\n"
-                    full_prompt += "\n".join(selected_lines) + "\n"
-                    full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
+                    full_prompt += "\n<historial_reciente>\n" + "\n".join(selected_lines) + "\n</historial_reciente>"
 
 
                 if context:
@@ -383,72 +384,10 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                     # al modelo a ejecutar primero search_catalog antes de generar su respuesta final.
                     full_prompt += "\n[SYSTEM: MANDATORY WARMTH: Preséntate de forma cálida y profesional como Juan Pablo, asesor de Auteco Las Motos. No seas parco ni directo. CRÍTICO: Si el usuario menciona una moto en este primer mensaje, DEBES usar la herramienta 'search_catalog' ANTES de generar tu saludo final.]\n"
 
-                # V16 REMOVED — Sprint 1 (2026-03-13)
-                # WHY REMOVED: SurveyService (the only caller of evaluate_survey_intent and
-                # pending_survey_question) was deleted. The V16 interruption block became
-                # unreachable dead code that could confuse future developers into re-activating
-                # the old Python-level survey state machine.
-                # Phase 3 context-switching is now handled entirely by the Firestore prompt
-                # and the LLM's natural conversation management.
-
-                # V17 REMOVED — 2026-03-12
-                # WHY REMOVED: This block hardcoded '¡Claro que sí manejamos crédito!'
-                # and explicitly told the LLM to NOT trigger Phase 2 (Data Policy).
-                # It completely overrode the Firestore guardrail — a legal and business blocker.
-                # Phase 2 and Phase 3 logic is now handled exclusively by the Firestore
-                # system_instruction (configuracion/juan_pablo_personality). No hardcoded
-                # credit transitions should exist in Python.
-
-                # V18 - Hallucination Guardrail
-                full_prompt += "═══════════════════════════════════════════════════════════════════\n"
-                full_prompt += "🔒 CRITICAL RULE (ANTI-HALLUCINATION):\n"
-                full_prompt += "- When providing motorcycle prices, colors, or technical specifications, YOU MUST ONLY use the exact data provided by the catalog tool.\n"
-                full_prompt += "- NEVER hallucinate, guess, or use external knowledge for prices or specs.\n"
-                full_prompt += "- If the tool does not provide the info, state clearly that you don't have that specific detail at the moment.\n"
-                full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
-
-                # V19 - Native Image Integration
-                full_prompt += "═══════════════════════════════════════════════════════════════════\n"
-                full_prompt += "📸 INTEGRACIÓN DE IMÁGENES:\n"
-                full_prompt += "- Si tienes disponible un 'Image URL' de la moto proporcionado por el catálogo, DEBES incluir en tu respuesta exactamente la etiqueta `[IMAGE: url]`.\n"
-                full_prompt += "- Solo incluye esta etiqueta UNA VEZ por recomendación de moto para no saturar el chat.\n"
-                full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
-
-                # V20 - Protocolo de Memes/Stickers
-                full_prompt += "═══════════════════════════════════════════════════════════════════\n"
-                full_prompt += "🎭 PROTOCOLO DE MEMES/STICKERS (VISIÓN AI):\n"
-                full_prompt += "- Si el usuario envía una imagen o sticker, recibirás un `[System Note: ... Sentiment: ...]`. ¡NO lo ignores ni lo repitas al usuario!\n"
-                full_prompt += "- Si Sentiment = 'Sad' o 'Frustrated': Empatiza profundamente con el cliente y ofrécele INMEDIATAMENTE alternativas de financiación o pago a cuotas como 'Crédito Brilla' o 'Codeudor'.\n"
-                full_prompt += "- Si Sentiment = 'Happy' o 'Excited': ¡Celebra su alegría con mucho entusiasmo! Y procede a intentar cerrar la venta ofreciendo el enlace de pago seguro inmediatamente.\n"
-                full_prompt += "- Si Sentiment = 'Neutral' o poco claro: Responde con naturalidad, haz un comentario corto, amigable o ligeramente humorístico sobre el sticker/imagen, y guía suavemente la conversación de vuelta a las motos.\n"
-                full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
-
-                # V21 - FAQ de Financiación
-                full_prompt += "═══════════════════════════════════════════════════════════════════\n"
-                full_prompt += "📚 V21 - BASE DE CONOCIMIENTO: FAQ DE FINANCIACIÓN\n"
-                full_prompt += "Usa esta información ÚNICAMENTE para responder preguntas específicas que haga el usuario. Tu respuesta debe ser breve y amigable. \n"
-                full_prompt += "MUY IMPORTANTE: NO comiences a pedirle su perfil o documentos para el crédito conversacionalmente. Una vez que resuelvas su duda, pregúntale amablemente si está listo para iniciar la solicitud de crédito formal (la cual disparará nuestra encuesta automatizada).\n\n"
-                full_prompt += "- REGLAS GENERALES: El estudio de crédito es 100% GRATIS. Normalmente NO se necesita codeudor. Se recomienda contar con un 10% de cuota inicial.\n"
-                full_prompt += "- ALIADOS:\n"
-                full_prompt += "  * Brilla: (Recibo del gas + Cédula + 2 recibos pagados).\n"
-                full_prompt += "  * Addi/Sistecrédito: (Proceso 100% Virtual, Cédula, WhatsApp).\n"
-                full_prompt += "  * ProgreSER: (Financia hasta el 100%).\n"
-                full_prompt += "  * Galgo: (Ideal para Independientes/Mensajeros).\n"
-                full_prompt += "  * Crediorbe: (Aceptan personas reportadas, requiere 10% de cuota inicial).\n"
-                full_prompt += "- PERFILES ESPECIALES:\n"
-                full_prompt += "  * Reportados: SÍ pueden acceder a crédito (requiere 10% de cuota inicial).\n"
-                full_prompt += "  * Extranjeros: Necesitan PPT/PEP + Pasaporte + Dirección local.\n"
-                full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
-
-                # V22 - Tool Calling Strict Guardrail
-                full_prompt += "═══════════════════════════════════════════════════════════════════\n"
-                full_prompt += "🛡️ V22 - REGLAS ESTRICTAS DE HERRAMIENTAS (ANTI-HALLUCINATION):\n"
-                full_prompt += "1. Estás integrado a un sistema automatizado. NUNCA debes generar código fuente en Python ni intentar imprimir comandos en consola.\n"
-                full_prompt += "2. PROHIBIDO estrictamente generar respuestas en bruto como: `print(default_api.trigger_human_handoff(...))`.\n"
-                full_prompt += "3. Si necesitas invocar 'trigger_human_handoff', hazlo mediante la llamada nativa a la herramienta (JSON/Function Call framework), pero NUNCA como texto plano o código Python.\n"
-                full_prompt += "4. Si durante el formulario de crédito el usuario da una respuesta ambigua, INFIERE razonablemente el valor más cercano para la herramienta 'calculate_credit_score' basándote en el mapeo estricto, en lugar de intentar escalar con humanos o fallar.\n"
-                full_prompt += "═══════════════════════════════════════════════════════════════════\n\n"
-
+                # V18 - V22 (Incorporated into XML in prompts.py)
+                # These were previously hardcoded here but are now part of the centralized
+                # system_instruction to reduce context bloat and improve maintainability.
+                
                 if funnel_instruction:
                     full_prompt += funnel_instruction + "\n\n"
                     
@@ -774,6 +713,14 @@ Conversación a analizar:
                             "plan_celular": {
                                 "type": "STRING",
                                 "description": "Tipo de plan de telefonia movil (ej. Prepago, Postpago)."
+                            },
+                            "habeas_data_sent": {
+                                "type": "BOOLEAN",
+                                "description": "true si el bot ENVIÓ el script de Habeas Data en este turno o antes. false si no."
+                            },
+                            "habeas_data_accepted": {
+                                "type": "BOOLEAN",
+                                "description": "true si el usuario ACEPTÓ explícitamente el Habeas Data (ej. 'si acepto', 'autorizo'). false si no."
                             }
                         }
                     }
