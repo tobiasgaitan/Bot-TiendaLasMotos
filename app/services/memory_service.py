@@ -233,12 +233,26 @@ class MemoryService:
                     logger.info(f"📱 Updating plan_celular: {extracted_data['plan_celular']}")
 
                 if extracted_data.get("habeas_data_sent") is not None:
-                    update_data["habeas_data_sent"] = extracted_data["habeas_data_sent"]
-                    logger.info(f"📜 Updating habeas_data_sent: {extracted_data['habeas_data_sent']}")
+                    # REGLA DE SEGURIDAD: Latch de una sola vía. Si ya es True en la BD, no permitir que baje a False.
+                    new_val = extracted_data.get("habeas_data_sent")
+                    existing_val = current_data.get("habeas_data_sent", False)
+                    if existing_val and not new_val:
+                        logger.warning(f"🛡️ Preventing habeas_data_sent overwrite (True -> False) for {clean_phone}")
+                        update_data["habeas_data_sent"] = True
+                    else:
+                        update_data["habeas_data_sent"] = new_val
+                        logger.info(f"📜 Updating habeas_data_sent: {new_val}")
                 
                 if extracted_data.get("habeas_data_accepted") is not None:
-                    update_data["habeas_data_accepted"] = extracted_data["habeas_data_accepted"]
-                    logger.info(f"✅ Updating habeas_data_accepted: {extracted_data['habeas_data_accepted']}")
+                    # REGLA DE SEGURIDAD: Latch de una sola vía. Si ya es True en la BD, no permitir que baje a False.
+                    new_val = extracted_data.get("habeas_data_accepted")
+                    existing_val = current_data.get("habeas_data_accepted", False)
+                    if existing_val and not new_val:
+                        logger.warning(f"🛡️ Preventing habeas_data_accepted overwrite (True -> False) for {clean_phone}")
+                        update_data["habeas_data_accepted"] = True
+                    else:
+                        update_data["habeas_data_accepted"] = new_val
+                        logger.info(f"✅ Updating habeas_data_accepted: {new_val}")
 
             doc_ref.update(update_data)
             logger.info(f"✅ Successfully updated prospect summary for {clean_phone}")
