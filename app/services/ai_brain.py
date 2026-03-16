@@ -147,15 +147,51 @@ class CerebroIA:
         Combines deterministic funnel checks + generative AI (Gemini).
 
         QA Security Baseline:
-        - Context Injection: CRM fields (ocupacion, datacredito, etc.) are injected into the
+        - Context Injection: CRM fields (ocupacion, datacredito, etc.) are injected into the 
           prompt so the LLM never re-asks questions already answered in the survey.
         - Deterministic Funnel: Mathematically enforces name/city capture before advancing.
-        - Fail-Closed: If a funnel_instruction is set, it is appended to tool results to
-          force the LLM to close with the required question.
-        - Hot-Reload: System prompt is fetched from config_loader on every call, so
-          /admin/refresh-config takes effect immediately.
+        - Hardcoded Post-Processing: Uses Python-level sanitization to kill the "Parrot Effect".
+        - Tool Enforcement: Backend validation loop forces a retry if catalog search is bypassed.
         """
-        return self._generate_with_retry(texto, context, prospect_data, history, skip_greeting)
+        raw_response = self._generate_with_retry(texto, context, prospect_data, history, skip_greeting)
+        
+        # FINAL SANITIZATION: Hardcoded Parrot Effect Killer (No more prompt engineering reliance)
+        if raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
+             return self.clean_parrot_phrases(raw_response)
+        return raw_response
+
+    @staticmethod
+    def clean_parrot_phrases(text: str) -> str:
+        """
+        Hardcoded filter to remove forbidden filler words.
+        Ensures a professional tone regardless of LLM adherence to prompt constraints.
+        """
+        import re
+        forbidden = [
+            r"¡?Claro que sí!?",
+            r"Claro,",
+            r"¡?Claro!?",
+            r"¡?Excelente!?",
+            r"¡?Perfecto!?",
+            r"¡?Entendido!?",
+            r"¡?Qué bien!?",
+            r"¡?Buen día!?"
+        ]
+        
+        cleaned = text
+        # Match phrases at the start of the string followed by spaces or punctuation
+        for phrase in forbidden:
+            cleaned = re.sub(r"^\s*" + phrase + r"[\s,.]*", "", cleaned, flags=re.IGNORECASE).strip()
+            
+        # Optional: Secondary pass for mid-sentence occurrences that look like conversational fillers
+        # But keeping it safe to not break valid sentences if it happens mid-text.
+        # For now, stripping from the START solves the most visible regression.
+        
+        # Ensure capitalization if we stripped the first word
+        if cleaned and cleaned[0].islower():
+            cleaned = cleaned[0].upper() + cleaned[1:]
+            
+        return cleaned
 
     def _create_tools(self) -> Optional[Tool]:
         """
@@ -398,6 +434,24 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     full_prompt,
                     generation_config=GenerationConfig(temperature=0.2, max_output_tokens=8192)
                 )
+
+                # --- STRICT TOOL VALIDATION PASS (Audit Regression Fix) ---
+                # Check if user mentioned a motorcycle but the LLM bypassed search_catalog
+                motorcycle_keywords = ["moto", "raider", "sport", "victory", "tvs", "mrx", "trabajo", "trabajar", "mensajeria", "domicilio", "carga"]
+                user_mentions_motorcycle = any(kw in texto.lower() for kw in motorcycle_keywords)
+                
+                # Check parts for tool calls
+                candidate_parts = response.candidates[0].content.parts
+                has_catalog_call = any(p.function_call and p.function_call.name == "search_catalog" for p in candidate_parts)
+                
+                if user_mentions_motorcycle and not has_catalog_call:
+                    logger.warning(f"⚠️ AI bypassed catalog search for motorcycle query: '{texto}'. Forcing validation turn.")
+                    # Inject a hidden system instruction and force the turn
+                    response = chat.send_message(
+                        "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]",
+                        generation_config=GenerationConfig(temperature=0.1)
+                    )
+                # ----------------------------------------------------------
                 
                 # --- ROBUST TOOL EXECUTION LOOP ---
                 # handles multiple tool-call/response cycles (e.g., comparisons)
@@ -742,35 +796,14 @@ Conversación a analizar:
             
             raw_response = response.text.strip()
             
-            # Robust JSON Extraction Logic (QA Security & Stability Baseline)
-            # 1. Clean markdown artifacts (e.g., ```json ... ```)
-            raw_response = re.sub(r'```(?:json)?\s*', '', raw_response)
-            raw_response = re.sub(r'\s*```', '', raw_response).strip()
-            
+            # ATOMIC JSON EXTRACTION (Strict Native Mode)
+            # We trust Gemini's Structured Output (response_mime_type="application/json")
+            # All legacy regex fallback code has been removed per production architectural rigor.
             try:
-                # Stage 1: Standard JSON parse
                 result = json.loads(raw_response)
-            except json.JSONDecodeError:
-                logger.warning("⚠️ Native JSON parse failed, attempting extraction/repair.")
-                try:
-                    # Stage 2: Extract block using the first { and last } boundaries
-                    # This handles conversational prefixes or suffixes that Gemini might add.
-                    start_idx = raw_response.find('{')
-                    end_idx = raw_response.rfind('}')
-                    
-                    if start_idx != -1 and end_idx != -1:
-                        block = raw_response[start_idx:end_idx+1]
-                        # Attempt to fix common "Unterminated string" error by closing quotes
-                        if block.count('"') % 2 != 0: block += '"'
-                        # Ensure braces are balanced (basic repair)
-                        while block.count('{') > block.count('}'): block += '}'
-                        
-                        result = json.loads(block)
-                    else:
-                        raise ValueError("No matching JSON braces found in response")
-                except Exception as repair_err:
-                    logger.error(f"❌ JSON Repair failed: {repair_err}. Falling back to empty structure.")
-                    result = {"summary": "Error parsing AI response", "extracted": {}}
+            except json.JSONDecodeError as jde:
+                logger.error(f"❌ Native JSON parse failed: {jde}. Raw: {raw_response}")
+                result = {"summary": "Error parsing structured output", "extracted": {}}
             
             if "summary" not in result: result["summary"] = ""
             if "extracted" not in result: result["extracted"] = {}
