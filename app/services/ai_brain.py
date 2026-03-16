@@ -430,27 +430,46 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
                 # 1. Send initial message
-                response = chat.send_message(
-                    full_prompt,
-                    generation_config=GenerationConfig(temperature=0.2, max_output_tokens=8192)
-                )
+                try:
+                    response = chat.send_message(
+                        full_prompt,
+                        generation_config=GenerationConfig(temperature=0.2, max_output_tokens=8192)
+                    )
+                except Exception as e:
+                    logger.error(f"❌ API Error on initial message: {e}")
+                    return self._fallback_response(texto, history)
+
+                # --- SAFETY & CANDIDATE CHECK (Audit Crash Fix) ---
+                if not response.candidates:
+                    logger.error("⚠️ AI Safety Filter Triggered: No candidates returned.")
+                    return self._fallback_response(texto, history)
 
                 # --- STRICT TOOL VALIDATION PASS (Audit Regression Fix) ---
                 # Check if user mentioned a motorcycle but the LLM bypassed search_catalog
-                motorcycle_keywords = ["moto", "raider", "sport", "victory", "tvs", "mrx", "trabajo", "trabajar", "mensajeria", "domicilio", "carga"]
-                user_mentions_motorcycle = any(kw in texto.lower() for kw in motorcycle_keywords)
-                
-                # Check parts for tool calls
-                candidate_parts = response.candidates[0].content.parts
-                has_catalog_call = any(p.function_call and p.function_call.name == "search_catalog" for p in candidate_parts)
-                
-                if user_mentions_motorcycle and not has_catalog_call:
-                    logger.warning(f"⚠️ AI bypassed catalog search for motorcycle query: '{texto}'. Forcing validation turn.")
-                    # Inject a hidden system instruction and force the turn
-                    response = chat.send_message(
-                        "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]",
-                        generation_config=GenerationConfig(temperature=0.1)
-                    )
+                try:
+                    motorcycle_keywords = ["moto", "raider", "sport", "victory", "tvs", "mrx", "trabajo", "trabajar", "mensajeria", "domicilio", "carga"]
+                    user_mentions_motorcycle = any(kw in texto.lower() for kw in motorcycle_keywords)
+                    
+                    # Check parts for tool calls
+                    candidate_parts = response.candidates[0].content.parts
+                    has_any_tool_call = any(p.function_call for p in candidate_parts)
+                    has_catalog_call = any(p.function_call and p.function_call.name == "search_catalog" for p in candidate_parts)
+                    
+                    # TURN-SEQUENCE FIX: Only trigger "forced validation" if NO tool was called at all.
+                    # This prevents injecting instruction text when another tool (like credit) is already queued.
+                    if user_mentions_motorcycle and not has_catalog_call and not has_any_tool_call:
+                        logger.warning(f"⚠️ AI bypassed catalog search for motorcycle query: '{texto}'. Forcing validation turn.")
+                        response = chat.send_message(
+                            "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]",
+                            generation_config=GenerationConfig(temperature=0.1)
+                        )
+                        # Re-verify candidates after injection
+                        if not response.candidates:
+                            logger.error("⚠️ AI Safety Filter Triggered after forced turn.")
+                            return self._fallback_response(texto, history)
+                except Exception as e:
+                    logger.error(f"⚠️ Tool Validation Logic Error: {e}", exc_info=True)
+                    # We continue despite validation error to try and get a response
                 # ----------------------------------------------------------
                 
                 # --- ROBUST TOOL EXECUTION LOOP ---
@@ -459,12 +478,18 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 max_turns = 3
                 
                 while turns < max_turns:
+                    # ROBUSTNESS FIX: Check candidates again at each turn start
+                    if not response.candidates:
+                        logger.error(f"⚠️ Turn {turns+1}: No candidates returned (Safety/Timeout).")
+                        return self._fallback_response(texto, history)
+
                     candidate = response.candidates[0]
                     function_calls = [part.function_call for part in candidate.content.parts if part.function_call]
                     
                     if not function_calls:
                         # No more tool calls, return final text
                         try:
+                            # Use text property safely
                             ai_response = response.text.strip()
                             if not ai_response:
                                 logger.warning("⚠️ Empty AI response (valid text but no content)")
@@ -472,8 +497,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             logger.info(f"✅ AI response generated after {turns} turns ({len(ai_response)} chars)")
                             return ai_response
                         except Exception as e:
-                            logger.warning(f"⚠️ Empty reasoning response caught. Fallback injected. Error: {e}")
-                            return "Lo siento, tuve un problema procesando esa información. ¿Podrías repetirme qué buscas para darte la mejor asesoría?"
+                            logger.warning(f"⚠️ Error extracting final AI text: {e}")
+                            return self._fallback_response(texto, history)
 
                     logger.info(f"⚡ AI triggered {len(function_calls)} function call(s) (Turn {turns+1})")
                     response_parts = []
