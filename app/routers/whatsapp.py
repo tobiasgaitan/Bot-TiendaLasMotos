@@ -685,7 +685,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 # --- NATIVE IMAGE INTEGRATION ---
                 import re
                 # Support both Markdown ![alt](url) and legacy [IMAGE: url]
-                image_pattern = r'!\[.*?\]\((https?://[^\s\)]+)\)|\[IMAGE:\s*(https?://[^\s\]]+)\]'
+                # RESILIENCE FIX: Handle optional ! and spaces between ] and ( to catch degraded LLM formatting
+                image_pattern = r'!?\[.*?\]\s*\((https?://[^\s\)]+)\)|\[IMAGE:\s*(https?://[^\s\]]+)\]'
                 all_matches = re.findall(image_pattern, response_text)
                 
                 # Extract clean URLs from both groups

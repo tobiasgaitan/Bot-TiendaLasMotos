@@ -743,24 +743,31 @@ Conversación a analizar:
             raw_response = response.text.strip()
             
             # Robust JSON Extraction Logic (QA Security & Stability Baseline)
-            # WHY: Gemini 2.5 occasionally returns unterminated strings or conversational markdown 
-            # even with application/json set. We use a multi-stage fallback to prevent crashes.
+            # 1. Clean markdown artifacts (e.g., ```json ... ```)
+            raw_response = re.sub(r'```(?:json)?\s*', '', raw_response)
+            raw_response = re.sub(r'\s*```', '', raw_response).strip()
+            
             try:
                 # Stage 1: Standard JSON parse
                 result = json.loads(raw_response)
             except json.JSONDecodeError:
                 logger.warning("⚠️ Native JSON parse failed, attempting extraction/repair.")
                 try:
-                    # Stage 2: Extract block using boundaries and repair truncation
-                    json_match = re.search(r"(\{.*\})", raw_response, re.DOTALL)
-                    if json_match:
-                        block = json_match.group(1)
-                        # Attempt to fix common "Unterminated string" error by closing quotes/braces
+                    # Stage 2: Extract block using the first { and last } boundaries
+                    # This handles conversational prefixes or suffixes that Gemini might add.
+                    start_idx = raw_response.find('{')
+                    end_idx = raw_response.rfind('}')
+                    
+                    if start_idx != -1 and end_idx != -1:
+                        block = raw_response[start_idx:end_idx+1]
+                        # Attempt to fix common "Unterminated string" error by closing quotes
                         if block.count('"') % 2 != 0: block += '"'
-                        if block.count('{') > block.count('}'): block += '}'
+                        # Ensure braces are balanced (basic repair)
+                        while block.count('{') > block.count('}'): block += '}'
+                        
                         result = json.loads(block)
                     else:
-                        raise ValueError("No JSON block found")
+                        raise ValueError("No matching JSON braces found in response")
                 except Exception as repair_err:
                     logger.error(f"❌ JSON Repair failed: {repair_err}. Falling back to empty structure.")
                     result = {"summary": "Error parsing AI response", "extracted": {}}
