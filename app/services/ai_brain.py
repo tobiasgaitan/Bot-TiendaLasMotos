@@ -419,7 +419,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             return ai_response
                         except Exception as e:
                             logger.warning(f"⚠️ Empty reasoning response caught. Fallback injected. Error: {e}")
-                            return "¡Qué buena máquina, parcero! Esa no la manejo, pero tengo opciones equivalentes en nuestro catálogo. ¿Te gustaría que busquemos una parecida?"
+                            return "Lo siento, tuve un problema procesando esa información. ¿Podrías repetirme qué buscas para darte la mejor asesoría?"
 
                     logger.info(f"⚡ AI triggered {len(function_calls)} function call(s) (Turn {turns+1})")
                     response_parts = []

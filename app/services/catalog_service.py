@@ -147,6 +147,10 @@ class CatalogService:
                 # resolving the "search blindness" issue for non-name queries (like displacement)
                 corpus_parts = [name, str(category)]
                 
+                # Global Aliases Extension: Ensure "trabajo" always matches TVS Sport
+                if "tvs sport" in name.lower():
+                    corpus_parts.extend(["trabajo", "trabajar", "mensajeria", "domicilios", "carga"])
+                
                 categories_arr = data.get("categories", [])
                 if isinstance(categories_arr, list):
                     corpus_parts.extend([str(c) for c in categories_arr])

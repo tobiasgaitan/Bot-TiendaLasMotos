@@ -96,7 +96,7 @@ class VisionService:
         - Security: No hardcoded credentials are used here; relies on application ADC.
           Input validation is handled inherently by Vertex AI Part object processing.
         """
-        return "¡Documento validado, parcero! 🚀 Ya lo adjunté a tu expediente. ¿Me falta alguna otra foto (cédula o recibo) para radicar tu solicitud con Brilla?"
+        return "¡Documento validado! 🚀 Ya lo adjunté a tu expediente. ¿Me falta alguna otra foto (cédula o recibo) para radicar tu solicitud con Brilla?"
 
     async def _process_moto(self, image_part: Part, brief_desc: str) -> str:
         """

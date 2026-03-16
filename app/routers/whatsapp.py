@@ -278,7 +278,7 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                     )
                                     
                                     if not final_response or not str(final_response).strip():
-                                        final_response = "¡Qué buena máquina, parcero! Esa no la manejo, pero tengo opciones equivalentes en nuestro catálogo. ¿Te gustaría que busquemos una parecida?"
+                                        final_response = "Lo siento, tuve un problema procesando esa información. ¿Podrías repetirme qué buscas para darte la mejor asesoría?"
                                         logger.warning(f"⚠️ CerebroIA returned empty response for moto image. Injected fallback.")
                                     
                                     # ONLY in this case do we prepend the Catalog header to the AI's final response if desired, or let the AI speak natively. Focus on letting the AI speak.
