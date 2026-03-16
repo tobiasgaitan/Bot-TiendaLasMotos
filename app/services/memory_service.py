@@ -86,6 +86,7 @@ class MemoryService:
                     "name": data.get("nombre"),
                     "ciudad": data.get("ciudad"),
                     "moto_interest": data.get("motoInteres"),
+                    "moto_confirmada": data.get("moto_confirmada", False),
                     "payment_method": data.get("forma_pago"),
                     "summary": data.get("ai_summary"),
                     "human_help_requested": data.get("human_help_requested", False),
@@ -180,6 +181,10 @@ class MemoryService:
                 if is_valid(extracted_data.get("moto_interest")):
                     update_data["motoInteres"] = extracted_data["moto_interest"]
                     logger.info(f"🏍️ Updating motoInteres: {extracted_data['moto_interest']}")
+                
+                if extracted_data.get("moto_confirmada") is not None:
+                    update_data["moto_confirmada"] = extracted_data["moto_confirmada"]
+                    logger.info(f"✅ Updating moto_confirmada: {extracted_data['moto_confirmada']}")
                 
                 if is_valid(extracted_data.get("moto_competidor")):
                     update_data["moto_competidor"] = extracted_data["moto_competidor"]

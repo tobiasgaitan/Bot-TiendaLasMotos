@@ -128,14 +128,14 @@ class CerebroIA:
             return "PHASE_3_CREDIT_PROFILING"
 
         # Phase 2: Habeas Data Request (Legal Script)
-        # Condition: User selected 'credito' AND we have moto interest AND name AND city.
-        # This is the "Force State Verification" the stakeholder requested.
+        # Condition: User selected 'credito' AND we have name AND city AND moto_confirmada is True.
+        # CRITICAL FIX: Extraction of moto_interest is not enough; explicit confirmation is required.
         has_name = bool(prospect_data.get("name"))
         has_city = bool(prospect_data.get("ciudad"))
-        has_moto = bool(prospect_data.get("moto_interest"))
+        moto_confirmada = prospect_data.get("moto_confirmada") is True
         is_credit = prospect_data.get("payment_method") == "credito"
 
-        if has_name and has_city and has_moto and is_credit:
+        if has_name and has_city and moto_confirmada and is_credit:
             return "PHASE_2_HABEAS_DATA"
 
         # Phase 1: Default (Profiling / Catalog)
@@ -632,6 +632,12 @@ Tu misión es resumir la conversación con el cliente y extraer datos clave.
 
 Analiza esta conversación y extrae la información indicada en el esquema JSON proporcionado.
 Extrae ÚNICAMENTE información que el cliente haya mencionado explícitamente en la conversación.
+
+REGLA DE ORO DE ESTABILIDAD: 
+Si el mensaje del usuario es solo una reacción (ej: "👍", "Ok", "Vale", "Sí") o no contiene entidades nuevas para extraer, 
+DEBES DEVOLVER EXACTAMENTE un objeto JSON vacío para el campo 'extracted': {{"summary": "...", "extracted": {{}} }}.
+NUNCA devuelvas texto plano ni markdown fuera del JSON.
+
 {question_context}
 Conversación a analizar:
 ---
@@ -675,10 +681,11 @@ Conversación a analizar:
                             },
                             "moto_interest": {
                                 "type": "STRING",
-                                # WHY: Summary field for the CRM dashboard.
-                                # LÓGICA: Si hay una moto de Auteco identificada o recomendada, ponla aquí. 
-                                # Si no, pon la de la competencia. IGNORA ciudades y términos financieros.
                                 "description": "Modelo de moto principal para el interés del cliente. Prioriza el modelo de Auteco si ya hubo un pivote o recomendación clara. REGLAS: IGNORA ciudades y términos financieros."
+                            },
+                            "moto_confirmada": {
+                                "type": "BOOLEAN",
+                                "description": "true SOLO si el usuario confirma EXPLÍCITAMENTE que quiere esa moto o que quiere iniciar el crédito con ese modelo (ej. 'Quiero esta', 'Sí, esa me sirve', 'Iniciemos crédito con la Raider'). Si pide ver otras o solo pregunta pero no confirma, pon false."
                             },
                             "ocupacion": {
                                 "type": "STRING",
