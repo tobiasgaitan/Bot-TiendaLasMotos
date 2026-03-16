@@ -399,12 +399,29 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     generation_config=GenerationConfig(temperature=0.2, max_output_tokens=8192)
                 )
                 
-                # 2. Check for Function Call(s)
-                candidate = response.candidates[0]
-                function_calls = [part.function_call for part in candidate.content.parts if part.function_call]
+                # --- ROBUST TOOL EXECUTION LOOP ---
+                # handles multiple tool-call/response cycles (e.g., comparisons)
+                turns = 0
+                max_turns = 3
                 
-                if function_calls:
-                    logger.info(f"⚡ AI triggered {len(function_calls)} function call(s)")
+                while turns < max_turns:
+                    candidate = response.candidates[0]
+                    function_calls = [part.function_call for part in candidate.content.parts if part.function_call]
+                    
+                    if not function_calls:
+                        # No more tool calls, return final text
+                        try:
+                            ai_response = response.text.strip()
+                            if not ai_response:
+                                logger.warning("⚠️ Empty AI response (valid text but no content)")
+                                return self._fallback_response(texto, history)
+                            logger.info(f"✅ AI response generated after {turns} turns ({len(ai_response)} chars)")
+                            return ai_response
+                        except Exception as e:
+                            logger.warning(f"⚠️ Empty reasoning response caught. Fallback injected. Error: {e}")
+                            return "¡Qué buena máquina, parcero! Esa no la manejo, pero tengo opciones equivalentes en nuestro catálogo. ¿Te gustaría que busquemos una parecida?"
+
+                    logger.info(f"⚡ AI triggered {len(function_calls)} function call(s) (Turn {turns+1})")
                     response_parts = []
                     
                     for function_call in function_calls:
@@ -414,8 +431,6 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         if function_name == "trigger_human_handoff":
                             reason = function_call.args.get("reason", "unknown")
                             logger.warning(f"🚨 AI triggered human handoff | Reason: {reason}")
-                            # Special case: If handoff is triggered, we can stop immediately or process others.
-                            # For safety, we'll return immediately as this overrides other actions.
                             return f"HANDOFF_TRIGGERED:{reason}"
                         
                         # B) Catalog Search
@@ -456,20 +471,17 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 search_results = "Tuve un problema consultando el catálogo momentáneamente. ¿Me podrías preguntar de nuevo?"
                             
                             # -- RECENCY BIAS FIX PARA EL EMBUDO --
-                            search_results += funnel_instruction
-                            
-                            logger.info(f"📤 Preparing tool response for '{query}'...") 
+                            search_results += f"\n\n{funnel_instruction}"
                             
                             tool_response_part = Part.from_function_response(
                                 name=function_name,
-                                response={
-                                    "content": search_results 
-                                }
+                                response={"content": search_results}
                             )
                             response_parts.append(tool_response_part)
 
                         # C) Credit Calculation
                         elif function_name == "calculate_credit_score":
+                            # Extraction and scores
                             ocupacion = function_call.args.get("ocupacion_y_contrato", "")
                             ingresos = function_call.args.get("ingresos_demostrables", "")
                             datacredito = function_call.args.get("historial_datacredito", "")
@@ -478,7 +490,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             gas = function_call.args.get("tiene_gas_natural", False)
                             celular = function_call.args.get("plan_celular", "")
                             
-                            logger.info(f"💰 AI calculating credit score: Ocupacion={ocupacion}, Ingresos={ingresos}, Datacredito={datacredito}, Gas={gas}")
+                            logger.info(f"💰 AI calculating credit score: Ocupacion={ocupacion}")
                             
                             credit_result = "No disponible."
                             try:
@@ -506,55 +518,29 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
                                     credit_result = "Error: Motor financiero no conectado."
                             except Exception as e:
                                 logger.error(f"❌ Tool Execution Error (Credit): {e}", exc_info=True)
-                                credit_result = "Error calculando el crédito. Intenta de nuevo."
+                                credit_result = "Error calculando el crédito."
                             
-                            # -- RECENCY BIAS FIX PARA EL EMBUDO --
-                            credit_result += funnel_instruction
+                            credit_result += f"\n\n{funnel_instruction}"
 
                             tool_response_part = Part.from_function_response(
                                 name=function_name,
-                                response={
-                                    "content": credit_result
-                                }
+                                response={"content": credit_result}
                             )
                             response_parts.append(tool_response_part)
 
-                        # start_credit_survey REMOVED — 2026-03-12
-                        # WHY: This handler intercepted the LLM's tool call and returned a
-                        # TRIGGER_SURVEY: flag string to whatsapp.py, which then replaced the
-                        # LLM's response with hardcoded survey text. The LLM now handles Phase 3
-                        # credit survey transitions conversationally via the Firestore prompt.
-                        # No Python-level survey trigger is needed or permitted.
-                    
-                    # Send ALL responses back to the model in a single turn
+                    # Send responses back for next turn
                     if response_parts:
-                        # CRITICAL FIX: Execution Loop Interception (Issue #3)
-                        # If trigger_human_handoff was called, we ABORT further text generation
-                        # and return the trigger string immediately.
-                        for part in response_parts:
-                            if hasattr(part, 'function_response') and part.function_response.name == "trigger_human_handoff":
-                                logger.warning("🛑 Handoff intercepted in CerebroIA loop. Aborting LLM text generation.")
-                                return "HANDOFF_TRIGGERED"
+                        turns += 1
+                        try:
+                            response = chat.send_message(response_parts)
+                        except InvalidArgument as e:
+                            logger.error(f"❌ InvalidArgument in turn {turns}: {e}")
+                            return "Tuve un problema procesando esa consulta compleja. ¿Me podrías preguntar algo más específico? 😅"
+                    else:
+                        break # Safety
 
-                        logger.info(f"📤 Sending {len(response_parts)} tool responses to AI...")
-                        final_response = chat.send_message(response_parts)
-                        return final_response.text.strip()
-                
-                # Normal text response
-                try:
-                    ai_response = response.text.strip()
-                    if not ai_response:
-                        logger.warning("⚠️ Empty AI response (valid text but no content)")
-                        return self._fallback_response(texto, history)
-                except Exception as e:
-                    # Mantenibilidad & Seguridad (QA Baseline):
-                    # Handle Gemini reasoning engine edge case where thoughts_token_count > 0 
-                    # but text is empty, causing Vertex AI SDK to raise exceptions when accessing .text.
-                    logger.warning(f"⚠️ Empty reasoning response caught. Fallback injected. Error: {e}")
-                    return "¡Qué buena máquina, parcero! Esa no la manejo, pero tengo opciones equivalentes en nuestro catálogo. ¿Te gustaría que busquemos una parecida?"
-                        
-                logger.info(f"✅ AI response generated ({len(ai_response)} chars)")
-                return ai_response
+                # End of loop
+                return self._fallback_response(texto, history)
             
             except InvalidArgument as e:
                 logger.error(f"❌ Invalid Argument (400) in AI attempt {attempt+1}: {e}")

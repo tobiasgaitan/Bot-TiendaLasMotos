@@ -684,10 +684,14 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             else:
                 # --- NATIVE IMAGE INTEGRATION ---
                 import re
-                image_pattern = r'\[IMAGE:\s*(https?://[^\s\]]+)\]'
-                images_found = re.findall(image_pattern, response_text)
+                # Support both Markdown ![alt](url) and legacy [IMAGE: url]
+                image_pattern = r'!\[.*?\]\((https?://[^\s\)]+)\)|\[IMAGE:\s*(https?://[^\s\]]+)\]'
+                all_matches = re.findall(image_pattern, response_text)
                 
-                # Remove all image tags from the text
+                # Extract clean URLs from both groups
+                images_found = [m[0] or m[1] for m in all_matches if m[0] or m[1]]
+                
+                # Remove all image tags from the text to avoid showing raw markdown/tags to the user
                 cleaned_response_text = re.sub(image_pattern, '', response_text).strip()
                 
                 # If images found, send them using Strategy A (Caption) for better .webp compatibility
@@ -715,7 +719,8 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                     if overflow_text:
                         logger.info(f"📤 Sending overflow text ({len(overflow_text)} chars)")
                         await _send_whatsapp_message(user_phone, overflow_text)
-                        
+                    
+                    # Store the cleaned text for history to avoid raw markdown clutter
                     response_text = cleaned_response_text 
                 else:
                     await _send_whatsapp_message(user_phone, response_text)
