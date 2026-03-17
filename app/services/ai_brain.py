@@ -1,6 +1,6 @@
 """
-Cerebro IA - AI Brain Service (v2.3 - Hotfix 125)
-Estado: Certificado para Producción 2026
+Cerebro IA - AI Brain Service (v2.5 - Hotfix 126)
+Estado: ACTUALIZADO A GEMINI 2.5 FLASH (Soporte 2026)
 """
 
 import logging
@@ -33,13 +33,12 @@ class CerebroIA:
         if VERTEX_AI_AVAILABLE:
             try:
                 vertexai.init(project="tiendalasmotos", location="us-central1")
-                # CAMBIO CLAVE: Usamos el alias limpio 'gemini-1.5-flash'
-                # Google lo redirecciona automáticamente a la versión estable más reciente.
+                # CAMBIO MAESTRO: Usamos Gemini 2.5 Flash (El modelo vigente en marzo 2026)
                 self._model = GenerativeModel(
-                    "gemini-1.5-flash", 
+                    "gemini-2.5-flash", 
                     tools=[self.tools] if self.tools else []
                 )
-                logger.info("🧠 CerebroIA: Motor Gemini 1.5 Flash (Alias Estable) Online")
+                logger.info("🧠 CerebroIA: Motor Gemini 2.5 Flash Online (Validado 2026)")
             except Exception as e:
                 logger.error(f"❌ Error Init: {str(e)}")
                 self._model = None
@@ -79,13 +78,14 @@ class CerebroIA:
     def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
         if not self._model: return self._fallback_response(texto)
         
+        # STOP-GATE: Solo habilitamos crédito si la moto está confirmada
         moto_ok = prospect_data.get("moto_confirmada") is True if prospect_data else False
         allowed = ["search_catalog", "trigger_human_handoff"]
         if moto_ok: allowed.append("calculate_credit_score")
         
-        # AJUSTE DE MODO: Cambiamos de ANY a AUTO para evitar el rechazo de la API
+        # Usamos Mode.ANY para forzar el cumplimiento del Stop-Gate en el nuevo modelo 2.5
         t_conf = ToolConfig(function_calling_config=ToolConfig.FunctionCallingConfig(
-            mode=ToolConfig.FunctionCallingConfig.Mode.AUTO, 
+            mode=ToolConfig.FunctionCallingConfig.Mode.ANY, 
             allowed_function_names=allowed
         ))
 
@@ -121,12 +121,12 @@ class CerebroIA:
                     contents.append(Content(role="user", parts=r_parts))
                     res = self._model.generate_content(contents=contents, tool_config=t_conf)
             except Exception as e:
-                logger.error(f"❌ Error en Hotfix 125: {e}")
+                logger.error(f"❌ Error en Hotfix 126: {e}")
                 time.sleep(2**att)
         return self._fallback_response(texto)
 
     def generate_summary(self, conversation_text: str, **kwargs) -> Dict[str, Any]:
-        """Sigue funcionando porque no usa tool_config"""
+        """Corregido con **kwargs para evitar el error de session_id"""
         if not self._model: return {"summary": "", "extracted": {}}
         try:
             res = self._model.generate_content(f"Extrae JSON de: {conversation_text}", generation_config=GenerationConfig(response_mime_type="application/json"))
