@@ -419,16 +419,26 @@ class CatalogService:
     def _apply_scoring_adaptor(self, item: Dict[str, Any], query_tokens: List[str], current_score: float, is_identity_match: bool) -> float:
         """
         Independent adapter layer to apply intent-based bonuses.
-        Ensures 'trabajo' or 'economica' tags priority without degrading name searches.
+        IMPLEMENTS: business_logic.priority_model contract.
         """
+        item_name = item.get("name", "").lower()
+        
+        # 1. HARD-LOCK: "trabajo/domicilios" -> TVS Sport 100 priority force
+        work_keywords = ["trabajo", "domicilio", "domicilios", "mensajería", "mensajeria", "moto para cargar"]
+        is_work_intent = any(tk.lower() in work_keywords for tk in query_tokens)
+        
+        if is_work_intent and "tvs sport 100" in item_name:
+            # Absolute priority as per contract (id: work_bike_priority_lock)
+            new_score = current_score + 10000.0
+            logger.info(f"🚀 HARD-LOCK: Priority Boost for {item['name']} (Work Intent Detected)")
+            return new_score
+
         if is_identity_match:
-            # Identity search (exact name) should not be inflated by tags to avoid collisions
+            # Identity search should not be inflated by generic tags
             return current_score
 
-        # Check for intent overlap (tags/aliases)
+        # 2. Existing Semantic Bonus (1.5x)
         tags = item.get("search_tags", [])
-        # We also check if the query tokens match common intent keywords
-        # using a 1.5x multiplier as per contract.
         intent_match = any(token in tags for token in query_tokens)
         
         if intent_match:

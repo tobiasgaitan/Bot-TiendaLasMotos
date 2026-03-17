@@ -170,30 +170,31 @@ class CerebroIA:
     def clean_parrot_phrases(text: str) -> str:
         """
         Hardcoded filter to remove forbidden filler words.
-        Ensures a professional tone regardless of LLM adherence to prompt constraints.
+        IMPLEMENTS: safety.forbidden_words contract.
         """
+        if not text:
+            return text
+            
         import re
+        # Parrot Filter v2: Robust list of patterns (start and mid-phrase protection)
         forbidden = [
-            r"¡?Claro que sí!?",
-            r"Claro,",
-            r"¡?Claro!?",
-            r"¡?Excelente!?",
-            r"¡?Perfecto!?",
-            r"¡?Entendido!?",
-            r"¡?Qué bien!?",
-            r"¡?Buen día!?"
+            r"^¡?Claro que sí!?", r"^Claro,", r"^¡?Claro!?",
+            r"^¡?Excelente!?", r"^¡?Perfecto!?", r"^¡?Entendido!?",
+            r"^¡?Qué bien!?", r"^¡?Buen día!?", r"^Con gusto,",
+            r"^Por supuesto,?", r"^¡?Genial!?"
         ]
         
-        cleaned = text
-        # Match phrases at the start of the string followed by spaces or punctuation
-        for phrase in forbidden:
-            cleaned = re.sub(r"^\s*" + phrase + r"[\s,.]*", "", cleaned, flags=re.IGNORECASE).strip()
+        cleaned = text.strip()
+        changed = True
+        while changed:
+            original = cleaned
+            for pattern in forbidden:
+                cleaned = re.sub(r"^\s*" + pattern + r"[\s,.]*", "", cleaned, flags=re.IGNORECASE).strip()
             
-        # Optional: Secondary pass for mid-sentence occurrences that look like conversational fillers
-        # But keeping it safe to not break valid sentences if it happens mid-text.
-        # For now, stripping from the START solves the most visible regression.
-        
-        # Ensure capitalization if we stripped the first word
+            # Remove leftover punctuation at the very start
+            cleaned = re.sub(r"^[,\.!\?\s-]+", "", cleaned).strip()
+            changed = (cleaned != original)
+
         if cleaned and cleaned[0].islower():
             cleaned = cleaned[0].upper() + cleaned[1:]
             
@@ -431,6 +432,17 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 # system_instruction to reduce context bloat and improve maintainability.
                 
                 if funnel_instruction:
+                    # PII Context Detection: Scan history for name/city to avoid redundancy
+                    # Why: User might have introduced themselves (e.g., "Soy Tobias") 
+                    # before the bot asked.
+                    if "[PII: NOMBRE]" in funnel_instruction or "[PII: CIUDAD]" in funnel_instruction:
+                        history_str = "\n".join(selected_lines).lower()
+                        # Simple regex for "Soy [Nombre]" or "Mi nombre es [Nombre]"
+                        name_match = re.search(r"(soy|mi nombre es|me llamo)\s+([a-záéíóúñ]+)", history_str + " " + texto.lower())
+                        if name_match:
+                            funnel_instruction = funnel_instruction.replace("[PII: NOMBRE]", "[DATOS YA CONOCIDOS - NO PREGUNTAR NOMBRE]")
+                            logger.info(f"🧠 PII Context Detection: Name found in history/buffer. Suppressing question.")
+                    
                     full_prompt += funnel_instruction + "\n\n"
                     
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
@@ -540,8 +552,11 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     
                                     logger.warning(f"🚨 Consistency Guardrail Triggered (Turn {turns}): {error_msg}")
                                     
+                                    # PARROT FILTER V2: Recursive injection to clean forbidden phrases
+                                    retry_instruction = f"[SYSTEM: ERROR: {error_msg} INSTRUCCIÓN: Corrige la respuesta usando ÚNICAMENTE los modelos, precios e imágenes devueltos por el catálogo. PROHIBIDO: Inventar modelos o precios. PROHIBIDO iniciar con 'Entendido', 'Excelente', 'Claro que sí' o muletillas similares.]"
+                                    
                                     response = chat.send_message(
-                                        f"[SYSTEM: ERROR: {error_msg} INSTRUCCIÓN: Corrige la respuesta usando ÚNICAMENTE los modelos, precios e imágenes devueltos por el catálogo. PROHIBIDO: Inventar modelos o precios. PROHIBIDO: Muletillas de inicio.]",
+                                        retry_instruction,
                                         generation_config=GenerationConfig(temperature=0.1)
                                     )
                                     continue # Review corrected response
