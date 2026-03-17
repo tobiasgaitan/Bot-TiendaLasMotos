@@ -84,8 +84,7 @@ class SurveyService:
                 next_status = "SURVEY_STEP_1_AUTH"
                 response_text = (
                     f"Mucho gusto, {title} {first_name}. Para poder revisar tus opciones de financiamiento y continuar con la simulación, "
-                    "¿autorizas el tratamiento de tus datos personales? Puedes consultar nuestra política aquí: "
-                    "https://tiendalasmotos.com/politica-de-privacidad (Responde Sí o No)"
+                    "¿autorizas el tratamiento de tus datos personales? Puedes consultar nuestra política en el enlace que te enviaré a continuación. (Responde Sí o No)"
                 )
 
         elif status == "SURVEY_STEP_1_AUTH":
@@ -203,7 +202,7 @@ class SurveyService:
                     return (
                         "No pude procesar tu respuesta. 😅 "
                         "Para continuar, ¿autorizas el tratamiento de tus datos personales? "
-                        "Puedes consultar nuestra política aquí: https://tiendalasmotos.com/politica-de-privacidad (Responde Sí o No)"
+                        "Puedes consultar nuestra política en el enlace que te enviaré a continuación. (Responde Sí o No)"
                     )
                 return self.STRIKE_1_MSG
             else:

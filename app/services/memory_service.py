@@ -533,9 +533,38 @@ class MemoryService:
             return []
 
 
-# Singleton instance (will be initialized in main.py with db)
-memory_service: Optional[MemoryService] = None
+    async def clear_memory(self, phone_number: str) -> bool:
+        """
+        Nivel 5: Borrado total del historial de chat en mensajeria y memoria de IA.
+        
+        Args:
+            phone_number: User's phone to clear.
+        """
+        try:
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            history_ref = self._db.collection("mensajeria").document("whatsapp").collection("sesiones").document(clean_phone).collection("historial")
+            
+            # Batch delete
+            batch = self._db.batch()
+            docs = history_ref.stream()
+            count = 0
+            for doc in docs:
+                batch.delete(doc.reference)
+                count += 1
+                if count >= 400: # Firestore limit
+                    batch.commit()
+                    batch = self._db.batch()
+                    count = 0
+            batch.commit()
+            
+            logger.info(f"🧠 AI Memory cleared for {clean_phone}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Error clearing memory for {phone_number}: {e}")
+            return False
 
+# Singleton instance (will be initialized in main.py with db)
+memory_service: Optional["MemoryService"] = None
 
 def init_memory_service(db: firestore.Client) -> None:
     """
