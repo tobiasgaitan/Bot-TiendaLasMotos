@@ -417,49 +417,48 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
             # AUDIO: [Mensaje de Voz] removed here to avoid blinding the extractor.
             # It will be saved with the actual transcription inside the audio block.
 
-        # --- RESET NUCLEAR ---
+        # --- RESET NUCLEAR (5-Level Contract) ---
         if msg_type == "text" and message_body.strip() == "/reset":
             logger.warning(f"☢️ NUCLEAR RESET TRIGGERED for {user_phone}")
             
-            # Variantes de ID
             ids_to_purge = list(set([user_phone, raw_phone, user_phone.replace("57", "", 1)]))
-            deleted_count = 0
             
             if db:
-                # 1. NUCLEAR PROSPECT WIPE (IDs and Auto-generated IDs)
-                if memory_service_module.memory_service:
-                    ms = memory_service_module.memory_service
-                    # THE FIX: Not only delete the doc but ensure all variations are gone
-                    p_deleted = ms.delete_prospect_completely(user_phone)
-                    logger.info(f"Sweep for {user_phone}. Docs deleted: {p_deleted}")
-
                 for pid in ids_to_purge:
-                    # 2. Main Sessions Collection (ROOT)
                     try:
-                        doc_ref_session = db.collection("sessions").document(pid)
-                        if doc_ref_session.get().exists:
-                            doc_ref_session.delete()
-                            logger.info(f"🗑️ Deleted ROOT session document {pid}")
-                    except Exception: pass
-                    
-                    # 3. Deep Wipe of Global Session State
-                    try:
-                        await survey_service.delete_session(db, pid)
+                        # NIVEL 1: Prospectos (Wipe)
+                        if memory_service_module.memory_service:
+                            memory_service_module.memory_service.delete_prospect_completely(pid)
+                        
+                        # NIVEL 2: Sesiones (Wipe)
+                        db.collection("sessions").document(pid).delete()
                         legacy_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
                         
-                        # NUCLEAR HISTORY PURGE
+                        # NIVEL 3: Historial & Mensajería (Nuclear Purge)
                         history_ref = legacy_ref.collection("historial")
-                        for doc in history_ref.stream(): # Use sync for
+                        for doc in history_ref.stream():
                             doc.reference.delete()
-                            deleted_count += 1
                         
+                        # NIVEL 4: Metadatos WA & Sesión (Explicit collections)
                         legacy_ref.delete()
-                        deleted_count += 1
+                        db.collection("mensajeria").document(pid).delete() # Safety top-level delete
+                        
+                        # NIVEL 5: Chat IA / Memory Service (Reset)
+                        if memory_service_module.memory_service:
+                            await memory_service_module.memory_service.clear_memory(pid)
+                            
+                        logger.info(f"🗑️ Nuclear Reset successful for ID: {pid}")
                     except Exception as e: 
-                        logger.error(f"❌ Error during hard purge for {pid}: {e}")
+                        logger.error(f"❌ Error during nuclear purge for {pid}: {e}")
 
-            # Always send confirmation
-            confirm_msg = "☢️ RESET COMPLETADO. Memoria limpia. Escribe 'Hola' para iniciar la nueva experiencia Auteco Las Motos."
+            # Final Confirmation
+            confirm_msg = "☢️ RESET NUCLEAR COMPLETADO.\n\n" \
+                          "1. Prospecto: ELIMINADO\n" \
+                          "2. Sesión: ELIMINADA\n" \
+                          "3. Historial: PURGADO\n" \
+                          "4. Metadatos: LIMPIOS\n" \
+                          "5. Memoria IA: RESETEADA\n\n" \
+                          "Escribe 'Hola' para iniciar de cero."
             await _send_whatsapp_message(user_phone, confirm_msg)
             return
 

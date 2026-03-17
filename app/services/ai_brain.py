@@ -200,7 +200,7 @@ class CerebroIA:
             
         return cleaned
 
-    def _create_tools(self) -> Optional[Tool]:
+    def _create_tools(self, prospect_data: Optional[Dict[str, Any]] = None) -> Optional[Tool]:
         """
         Create tools for function calling (human handoff).
         Returns: Tool object with function declarations, or None if not available
@@ -315,7 +315,19 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                 }
             )
 
-            return Tool(function_declarations=[handoff_function, catalog_function, credit_function])
+            # --- STOP-GATE (Hotfix 128) ---
+            # Physical filtering of tools based on business state.
+            function_declarations = [handoff_function, catalog_function]
+            
+            # BUSINESS RULE: Moto must be confirmed (moto_ok/moto_confirmada) to trigger credit logic
+            moto_confirmada = prospect_data.get("moto_confirmada") is True if prospect_data else False
+            if moto_confirmada:
+                function_declarations.append(credit_function)
+                logger.info("🛠️ Toolset: [handoff, catalog, credit] (Stop-Gate Open: Moto OK)")
+            else:
+                logger.info("🛠️ Toolset: [handoff, catalog] (Stop-Gate Closed: No Moto confirmed)")
+
+            return Tool(function_declarations=function_declarations)
         except Exception as e:
             logger.error(f"❌ Error creating tools: {str(e)}", exc_info=True)
             return None
@@ -358,7 +370,15 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
 
         for attempt in range(max_retries):
             try:
-                chat = self._model.start_chat()
+                # DYNAMIC TOOLS (Hotfix 128 - Stop-Gate)
+                dynamic_tools = self._create_tools(prospect_data)
+                
+                # Re-initialize model/chat with dynamic tools for this specific request
+                model = GenerativeModel(
+                    "gemini-2.5-flash",
+                    tools=[dynamic_tools] if dynamic_tools else []
+                )
+                chat = model.start_chat()
                 
                 # 3. CONSOLIDATE XML PROMPT
                 user_name = prospect_data.get("name", "desconocido") if prospect_data else "desconocido"
