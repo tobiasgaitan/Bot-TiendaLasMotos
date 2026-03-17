@@ -1,6 +1,6 @@
 """
-Cerebro IA - AI Brain Service (v2.7 - Hotfix 127)
-Estado: GEMINI 2.5 FLASH + STOP-GATE AUTO-MODE
+Cerebro IA - AI Brain Service (v2.8 - Hotfix 128)
+Estado: GEMINI 2.5 FLASH + DYNAMIC TOOL FILTERING (Blindado contra Error 400)
 """
 
 import logging
@@ -28,20 +28,37 @@ class CerebroIA:
         self.catalog_service = catalog_service
         self.motor_financiero = None 
         self._model = None
-        self.tools = self._create_tools()
+        # Definimos las declaraciones de funciones por separado para usarlas dinámicamente
+        self.declarations = self._get_function_declarations()
         
         if VERTEX_AI_AVAILABLE:
             try:
                 vertexai.init(project="tiendalasmotos", location="us-central1")
-                # Confirmado: Gemini 2.5 Flash es el modelo vigente según tu documentación
-                self._model = GenerativeModel(
-                    "gemini-2.5-flash", 
-                    tools=[self.tools] if self.tools else []
-                )
-                logger.info("🧠 CerebroIA: Motor Gemini 2.5 Flash Online")
+                # Inicializamos el modelo base (se actualizará en cada llamada)
+                self._model_name = "gemini-2.5-flash"
+                logger.info(f"🧠 CerebroIA: Motor {self._model_name} configurado para 2026")
             except Exception as e:
                 logger.error(f"❌ Error Init: {str(e)}")
-                self._model = None
+
+    def _get_function_declarations(self) -> Dict[str, FunctionDeclaration]:
+        """Define todas las herramientas disponibles en el sistema."""
+        return {
+            "trigger_human_handoff": FunctionDeclaration(
+                name="trigger_human_handoff", 
+                description="Escala a humano si el usuario lo pide explícitamente.",
+                parameters={"type": "object", "properties": {"reason": {"type": "string", "enum": ["user_explicit_request"]}}}
+            ),
+            "search_catalog": FunctionDeclaration(
+                name="search_catalog", 
+                description="Busca motos en el catálogo de Auteco Las Motos.",
+                parameters={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}
+            ),
+            "calculate_credit_score": FunctionDeclaration(
+                name="calculate_credit_score", 
+                description="Inicia el estudio de crédito financiero.",
+                parameters={"type": "object", "properties": {"ocupacion": {"type": "string"}}, "required": ["ocupacion"]}
+            )
+        }
 
     def _get_current_instruction(self) -> str:
         if self.config_loader:
@@ -66,31 +83,30 @@ class CerebroIA:
         if c and c[0].islower(): c = c[0].upper() + c[1:]
         return c
 
-    def _create_tools(self) -> Optional[Tool]:
-        if not VERTEX_AI_AVAILABLE: return None
-        try:
-            h = FunctionDeclaration(name="trigger_human_handoff", description="Escala a humano", parameters={"type": "object", "properties": {"reason": {"type": "string", "enum": ["user_explicit_request"]}}})
-            cat = FunctionDeclaration(name="search_catalog", description="Busca motos en el catálogo de Auteco", parameters={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]})
-            cred = FunctionDeclaration(name="calculate_credit_score", description="Inicia estudio de crédito financiero", parameters={"type": "object", "properties": {"ocupacion": {"type": "string"}}, "required": ["ocupacion"]})
-            return Tool(function_declarations=[h, cat, cred])
-        except: return None
-
     def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
-        if not self._model: return self._fallback_response(texto)
+        if not VERTEX_AI_AVAILABLE: return self._fallback_response(texto)
         
-        # STOP-GATE DINÁMICO
+        # --- STOP-GATE DINÁMICO (LA SOLUCIÓN AL ERROR 400) ---
+        # En lugar de usar allowed_function_names, filtramos qué funciones le enviamos al modelo
         moto_ok = prospect_data.get("moto_confirmada") is True if prospect_data else False
-        allowed = ["search_catalog", "trigger_human_handoff"]
-        if moto_ok: allowed.append("calculate_credit_score")
         
-        # CAMBIO VITAL: Mode.AUTO permite que la IA responda texto cuando ya terminó de usar herramientas
+        active_declarations = [self.declarations["search_catalog"], self.declarations["trigger_human_handoff"]]
+        if moto_ok:
+            active_declarations.append(self.declarations["calculate_credit_score"])
+        
+        # Creamos el objeto Tool solo con las funciones permitidas
+        dynamic_tool = Tool(function_declarations=active_declarations)
+        
+        # Mode.AUTO ahora funcionará porque NO le pasamos allowed_function_names
         t_conf = ToolConfig(function_calling_config=ToolConfig.FunctionCallingConfig(
-            mode=ToolConfig.FunctionCallingConfig.Mode.AUTO, 
-            allowed_function_names=allowed
+            mode=ToolConfig.FunctionCallingConfig.Mode.AUTO
         ))
 
         instr = self._get_current_instruction()
         prompt = f"{instr}\n\nContexto: {context}\nUsuario: {texto}\nJuan Pablo:"
+
+        # Re-inicializamos el modelo para este request con las herramientas filtradas
+        model = GenerativeModel(self._model_name, tools=[dynamic_tool])
 
         for att in range(3):
             try:
@@ -100,15 +116,17 @@ class CerebroIA:
                     contents.append(Content(role=role, parts=[Part.from_text(str(m.get('content', '')))]))
                 contents.append(Content(role="user", parts=[Part.from_text(prompt)]))
 
-                res = self._model.generate_content(contents=contents, generation_config=GenerationConfig(temperature=0.2), tool_config=t_conf)
+                res = model.generate_content(
+                    contents=contents, 
+                    generation_config=GenerationConfig(temperature=0.2), 
+                    tool_config=t_conf
+                )
 
-                # Bucle de herramientas aumentado a 5 turnos para mayor fluidez
                 for _ in range(5):
                     if not res.candidates: break
                     can = res.candidates[0]
                     calls = [p.function_call for p in can.content.parts if p.function_call]
                     
-                    # Si ya no hay más llamadas, devolvemos el texto final
                     if not calls: 
                         if res.text: return res.text.strip()
                         break
@@ -120,31 +138,26 @@ class CerebroIA:
                         if fc.name == "search_catalog":
                             q = fc.args.get("query", texto)
                             items = self.catalog_service.search_items(q) if self.catalog_service else []
-                            # Respuesta más rica para que la IA no repita la búsqueda
-                            if items:
-                                txt = f"RESULTADOS CATÁLOGO: Encontré la {items[0]['name']} a {items[0]['formatted_price']}. Imagen: {items[0].get('image_url', 'N/A')}. Ficha: {items[0].get('specs', 'N/A')}"
-                            else:
-                                txt = "No encontré ese modelo exacto en el inventario actual."
+                            txt = f"RESULTADOS: Encontré la {items[0]['name']} a {items[0]['formatted_price']}." if items else "No hay stock."
                             r_parts.append(Part.from_function_response(name=fc.name, response={"content": txt}))
                     
                     contents.append(Content(role="user", parts=r_parts))
-                    res = self._model.generate_content(contents=contents, tool_config=t_conf)
+                    res = model.generate_content(contents=contents, tool_config=t_conf)
                 
-                # Si salimos del bucle y tenemos texto, lo enviamos
                 if res.text: return res.text.strip()
 
             except Exception as e:
-                logger.error(f"❌ Error en Hotfix 127: {e}")
+                logger.error(f"❌ Error en Hotfix 128: {e}")
                 time.sleep(1)
         return self._fallback_response(texto)
 
     def generate_summary(self, conversation_text: str, **kwargs) -> Dict[str, Any]:
-        """Resumen blindado contra argumentos extra"""
-        if not self._model: return {"summary": "", "extracted": {}}
+        if not VERTEX_AI_AVAILABLE: return {"summary": "", "extracted": {}}
         try:
-            res = self._model.generate_content(f"Resume y genera JSON: {conversation_text}", generation_config=GenerationConfig(response_mime_type="application/json"))
+            model = GenerativeModel(self._model_name)
+            res = model.generate_content(f"Extrae JSON de: {conversation_text}", generation_config=GenerationConfig(response_mime_type="application/json"))
             return json.loads(res.text)
-        except: return {"summary": "Charla en curso", "extracted": {}}
+        except: return {"summary": "Charla activa", "extracted": {}}
 
     def _fallback_response(self, texto: str, history: list = []) -> str:
-        return "¡Qué pena! Se me cruzaron los cables un segundo. 😅 ¿Me repites lo último para asesorarte bien?"
+        return "¡Qué pena! Se me cruzaron los cables un segundo. 😅 ¿Me repites lo último?"
