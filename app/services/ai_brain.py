@@ -5,7 +5,11 @@ Handles intelligent responses using Google Gemini AI for general inquiries.
 
 import logging
 import os
+import time
+import json
+import re
 from typing import Optional, Dict, Any
+from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable, InvalidArgument
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +23,7 @@ try:
         Content,
         Part,
         GenerationConfig,
-        ToolConfig # HOTFIX #121: Requerido para el Stop-Gate
+        ToolConfig
     )
     VERTEX_AI_AVAILABLE = True
 except ImportError:
@@ -28,10 +32,6 @@ except ImportError:
 
 
 class CerebroIA:
-    """
-    AI Brain for intelligent conversation handling.
-    """
-    
     def __init__(self, config_loader=None, catalog_service=None):
         self.config_loader = config_loader
         self.catalog_service = catalog_service
@@ -42,11 +42,12 @@ class CerebroIA:
         if VERTEX_AI_AVAILABLE:
             try:
                 vertexai.init(project="tiendalasmotos", location="us-central1")
+                # Cambiado a 'gemini-1.5-flash-002' para evitar el error 404 de versión
                 self._model = GenerativeModel(
-                    "gemini-1.5-flash", # Ajustado a 1.5 por estabilidad en Prod
+                    "gemini-1.5-flash-002", 
                     tools=[self.tools] if self.tools else []
                 )
-                logger.info(f"🧠 CerebroIA initialized with Gemini 1.5 Flash")
+                logger.info("🧠 CerebroIA initialized with Gemini 1.5 Flash (Stable)")
             except Exception as e:
                 logger.error(f"❌ Error initializing Vertex AI: {str(e)}")
                 self._model = None
@@ -55,9 +56,8 @@ class CerebroIA:
         if self.config_loader:
             try:
                 personality = self.config_loader.get_juan_pablo_personality()
-                instruction = personality.get("system_instruction", "")
-                if instruction: return instruction
-            except Exception: pass
+                return personality.get("system_instruction", "")
+            except: pass
         from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
         return JUAN_PABLO_SYSTEM_INSTRUCTION
     
@@ -82,8 +82,7 @@ class CerebroIA:
 
     @staticmethod
     def clean_parrot_phrases(text: str) -> str:
-        import re
-        forbidden = [r"¡?Claro que sí!?", r"Claro,", r"¡?Claro!?", r"¡?Excelente!?", r"¡?Perfecto!?", r"¡?Entendido!?", r"¡?Qué bien!?", r"¡?Buen día!?"]
+        forbidden = [r"¡?Claro que sí!?", r"Claro,", r"¡?Excelente!?", r"¡?Perfecto!?", r"¡?Entendido!?"]
         cleaned = text
         for phrase in forbidden:
             cleaned = re.sub(r"^\s*" + phrase + r"[\s,.]*", "", cleaned, flags=re.IGNORECASE).strip()
@@ -94,113 +93,85 @@ class CerebroIA:
     def _create_tools(self) -> Optional[Tool]:
         if not VERTEX_AI_AVAILABLE: return None
         try:
-            handoff_function = FunctionDeclaration(
-                name="trigger_human_handoff",
-                description="Escala a humano si el usuario lo pide explícitamente.",
-                parameters={"type": "object", "properties": {"reason": {"type": "string", "enum": ["user_explicit_request"]}}, "required": ["reason"]}
-            )
-            catalog_function = FunctionDeclaration(
-                name="search_catalog",
-                description="Busca motos en el catálogo. OBLIGATORIO si el usuario menciona una moto o necesidad.",
-                parameters={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}
-            )
-            credit_function = FunctionDeclaration(
-                name="calculate_credit_score",
-                description="Calcula el perfil crediticio. SOLO USAR si moto_confirmada es True.",
-                parameters={"type": "object", "properties": {"ingresos": {"type": "string"}}, "required": ["ingresos"]}
-            )
-            return Tool(function_declarations=[handoff_function, catalog_function, credit_function])
-        except Exception: return None
+            handoff = FunctionDeclaration(name="trigger_human_handoff", description="Escala a humano", parameters={"type": "object", "properties": {"reason": {"type": "string", "enum": ["user_explicit_request"]}}})
+            catalog = FunctionDeclaration(name="search_catalog", description="Busca motos", parameters={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]})
+            credit = FunctionDeclaration(name="calculate_credit_score", description="Estudio de crédito", parameters={"type": "object", "properties": {"ocupacion": {"type": "string"}}, "required": ["ocupacion"]})
+            return Tool(function_declarations=[handoff, catalog, credit])
+        except: return None
 
     def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
-        """
-        MODIFICACIÓN PUSH #121: Uso de generate_content + ToolConfig (Opción B)
-        """
-        if not self._model: return self._fallback_response(texto, history)
+        if not self._model: return self._fallback_response(texto)
         
-        import time
-        from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable, InvalidArgument
-
-        # --- [STOP-GATE LOGIC] ---
+        # --- STOP-GATE CONFIG ---
         moto_confirmada = prospect_data.get("moto_confirmada") is True if prospect_data else False
-        allowed_tools = ["search_catalog", "trigger_human_handoff"]
-        if moto_confirmada:
-            allowed_tools.append("calculate_credit_score")
+        allowed = ["search_catalog", "trigger_human_handoff"]
+        if moto_confirmada: allowed.append("calculate_credit_score")
         
-        # Este es el candado dinámico que fallaba en send_message
-        config_stop_gate = ToolConfig(
-            function_calling_config=ToolConfig.FunctionCallingConfig(
-                mode=ToolConfig.FunctionCallingConfig.Mode.ANY,
-                allowed_function_names=allowed_tools
-            )
-        )
+        t_config = ToolConfig(function_calling_config=ToolConfig.FunctionCallingConfig(
+            mode=ToolConfig.FunctionCallingConfig.Mode.ANY,
+            allowed_function_names=allowed
+        ))
 
         phase = self._determine_funnel_phase(prospect_data)
-        funnel_instruction = f"[FASE: {phase}] Prioriza confirmar el interés antes de pedir más datos."
+        instruction = self._get_current_instruction()
+        
+        prompt = f"{instruction}\n\nFase: {phase}\nContexto: {context}\nUsuario: {texto}\nJuan Pablo:"
 
         for attempt in range(3):
             try:
-                # Construimos el Prompt XML
-                user_name = prospect_data.get("name") or prospect_data.get("nombre") or "prospecto"
-                full_prompt = f"{self._get_current_instruction()}\n\nNombre Usuario: {user_name}\nContexto: {context}\nFase: {phase}\nUsuario: {texto}\nJuan Pablo:"
-
-                # Preparamos el historial en formato Content para generate_content
+                # Mapeo manual de historial
                 contents = []
-                for msg in history[-6:]: # Tomamos los últimos 6 mensajes para contexto
-                    role = "user" if msg['role'] == 'user' else "model"
-                    contents.append(Content(role=role, parts=[Part.from_text(str(msg.get('content', '')))]))
-                
-                # Añadimos el mensaje actual con el prompt enriquecido
-                contents.append(Content(role="user", parts=[Part.from_text(full_prompt)]))
+                for m in history[-6:]:
+                    role = "user" if m['role'] == 'user' else "model"
+                    contents.append(Content(role=role, parts=[Part.from_text(str(m.get('content', '')))]))
+                contents.append(Content(role="user", parts=[Part.from_text(prompt)]))
 
-                # --- LLAMADA CORREGIDA (Opción B) ---
+                # Generación con ToolConfig corregido
                 response = self._model.generate_content(
                     contents=contents,
                     generation_config=GenerationConfig(temperature=0.2),
-                    tool_config=config_stop_gate # Aquí ya no da error
+                    tool_config=t_config
                 )
 
-                # --- BUCLE DE HERRAMIENTAS ---
-                turns = 0
-                while turns < 3:
+                # Bucle de herramientas (Maneja múltiples llamadas)
+                for _ in range(3):
                     if not response.candidates: break
-                    
                     candidate = response.candidates[0]
-                    function_calls = [p.function_call for p in candidate.content.parts if p.function_call]
+                    calls = [p.function_call for p in candidate.content.parts if p.function_call]
                     
-                    if not function_calls:
-                        return response.text.strip() if response.text else self._fallback_response(texto, history)
+                    if not calls: return response.text.strip() if response.text else self._fallback_response(texto)
 
-                    # Si hay llamadas, las procesamos y respondemos al modelo
-                    contents.append(candidate.content) # Añadimos la intención del modelo
-                    response_parts = []
-
-                    for fc in function_calls:
+                    contents.append(candidate.content)
+                    res_parts = []
+                    for fc in calls:
                         if fc.name == "trigger_human_handoff": return "HANDOFF_TRIGGERED:user_request"
-                        
-                        # Ejecución de catálogo
                         if fc.name == "search_catalog":
                             q = fc.args.get("query", texto)
-                            res = "No encontré resultados."
-                            if self.catalog_service:
-                                matches = self.catalog_service.search_items(q)
-                                if matches:
-                                    res = f"Encontré: {matches[0]['name']} a {matches[0]['formatted_price']}. URL: {matches[0].get('image_url','')}"
-                            
-                            response_parts.append(Part.from_function_response(name=fc.name, response={"content": res}))
+                            items = self.catalog_service.search_items(q) if self.catalog_service else []
+                            txt = f"Encontré: {items[0]['name']} - {items[0]['formatted_price']}" if items else "No hay stock."
+                            res_parts.append(Part.from_function_response(name=fc.name, response={"content": txt}))
+                    
+                    contents.append(Content(role="user", parts=res_parts))
+                    response = self._model.generate_content(contents=contents, tool_config=t_config)
 
-                    # Enviamos los resultados de las herramientas de vuelta
-                    contents.append(Content(role="user", parts=response_parts))
-                    response = self._model.generate_content(contents=contents, tool_config=config_stop_gate)
-                    turns += 1
-
-            except (ResourceExhausted, ServiceUnavailable):
-                time.sleep(2 ** attempt)
+            except (ResourceExhausted, ServiceUnavailable): time.sleep(2**attempt)
             except Exception as e:
-                logger.error(f"❌ Error en Hotfix #121: {e}")
+                logger.error(f"❌ Error: {e}")
                 break
-        
-        return self._fallback_response(texto, history)
+        return self._fallback_response(texto)
+
+    def detect_sentiment(self, text: str) -> str:
+        return "NEUTRAL" # Simplificado para estabilidad
+
+    def generate_summary(self, conversation_text: str, last_bot_question: str = "") -> Dict[str, Any]:
+        """RESTAURADO: Extrae datos para Firestore"""
+        if not self._model: return {"summary": "", "extracted": {}}
+        try:
+            prompt = f"Resume y extrae JSON de: {conversation_text}"
+            res = self._model.generate_content(prompt, generation_config=GenerationConfig(response_mime_type="application/json"))
+            return json.loads(res.text)
+        except:
+            return {"summary": "Conversación en curso", "extracted": {}}
 
     def _fallback_response(self, texto: str, history: list = []) -> str:
-        return "¡Qué pena! Se me quedó colgado el sistema del concesionario un segundo y no me cargó tu mensaje. 😅 ¿Me lo repites para seguir ayudándote?"
+        return "¡Qué pena! Se me quedó colgado el sistema del concesionario un segundo. 😅 ¿Me lo repites?"
