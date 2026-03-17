@@ -476,6 +476,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 # handles multiple tool-call/response cycles (e.g., comparisons)
                 turns = 0
                 max_turns = 3
+                search_catalog_called = False
+                catalog_returned_results = False
                 
                 while turns < max_turns:
                     # ROBUSTNESS FIX: Check candidates again at each turn start
@@ -494,6 +496,25 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             if not ai_response:
                                 logger.warning("⚠️ Empty AI response (valid text but no content)")
                                 return self._fallback_response(texto, history)
+
+                            # --- PRICE CONSISTENCY CHECK (PCC) ---
+                            # AUDIT P1 (4.1/4.2)
+                            # If catalog was searched and returned products, but the AI forgot prices/images
+                            if search_catalog_called and catalog_returned_results and turns < max_turns:
+                                # Regex includes Price ($) OR Markdown Image ([...](...)) OR Legacy Image ([IMAGE: ...])
+                                pcc_regex = r"(?i)(\$\s?\d{1,3}(\.\d{3})*|!\[.*?\]\(https?://|\[IMAGE:\s?https?://)"
+                                import re
+                                if not re.search(pcc_regex, ai_response):
+                                    logger.warning("🚨 PCC Triggered: Catalog result found but AI response lacks price/image. Forcing retry.")
+                                    turns += 1
+                                    if turns < max_turns:
+                                        # Systematic error injection
+                                        response = chat.send_message(
+                                            "[SYSTEM: ERROR: Has ejecutado el catálogo pero tu respuesta final NO incluye el precio ($) o la imagen. INSTRUCCIÓN: Genera la respuesta de nuevo incluyendo obligatoriamente el precio y la imagen. PROHIBIDO: Empezar con 'Entendido', 'Claro', 'Aquí tienes' o similares. Ve directo al grano.]",
+                                            generation_config=GenerationConfig(temperature=0.1)
+                                        )
+                                        continue # Review next response
+                            
                             logger.info(f"✅ AI response generated after {turns} turns ({len(ai_response)} chars)")
                             return ai_response
                         except Exception as e:
@@ -514,6 +535,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         
                         # B) Catalog Search
                         elif function_name == "search_catalog":
+                            search_catalog_called = True
                             query = function_call.args.get("query", "")
                             logger.info(f"🔎 AI searching catalog for: '{query}'")
                             
@@ -522,6 +544,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 if self.catalog_service:
                                     matches = self.catalog_service.search_items(query)
                                     if matches:
+                                        catalog_returned_results = True
                                         search_results = f"Encontré {len(matches)} motos relacionadas:\n"
                                         for m in matches: 
                                             search_results += f"- {m['name']} ({m['category']}): {m['formatted_price']}\n"
