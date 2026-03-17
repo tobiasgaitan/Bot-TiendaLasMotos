@@ -306,7 +306,11 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                                 break
                                                 
                                         conversation = f"{history_context}User: {simulated_user_msg}\nBot: {final_response}"
-                                        summary_data = cerebro_ia.generate_summary(conversation, last_bot_question=last_bot_q)
+                                        summary_data = cerebro_ia.generate_summary(
+                                            conversation, 
+                                            last_bot_question=last_bot_q,
+                                            session_id=user_phone
+                                        )
                                         await ms.update_prospect_summary(user_phone, summary_data.get("summary", ""), summary_data.get("extracted", {}))
                                     except Exception as e:
                                         logger.warning(f"Failed to update summary: {e}")
@@ -374,7 +378,11 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                                 break
 
                                         conversation = f"{history_context}User: {vision_response}\nBot: {final_response}"
-                                        summary_data = cerebro_ia.generate_summary(conversation, last_bot_question=last_bot_q)
+                                        summary_data = cerebro_ia.generate_summary(
+                                            conversation, 
+                                            last_bot_question=last_bot_q,
+                                            session_id=user_phone
+                                        )
                                         await ms.update_prospect_summary(user_phone, summary_data.get("summary", ""), summary_data.get("extracted", {}))
                                     except Exception as e:
                                         pass
@@ -658,7 +666,11 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                     break
 
                             conversation = f"{history_context}User: {transcription}\nBot: {response_text}"
-                            summary_data = cerebro_ia.generate_summary(conversation, last_bot_question=last_bot_q)
+                            summary_data = cerebro_ia.generate_summary(
+                                conversation, 
+                                last_bot_question=last_bot_q,
+                                session_id=user_phone
+                            )
                             await ms.update_prospect_summary(
                                 user_phone, 
                                 summary_data.get("summary", ""), 
@@ -750,7 +762,11 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                                 break
 
                         conversation = f"{history_context}User: {message_body}\nBot: {response_text}"
-                        summary_data = cerebro_ia.generate_summary(conversation, last_bot_question=last_bot_q)
+                        summary_data = cerebro_ia.generate_summary(
+                            conversation, 
+                            last_bot_question=last_bot_q,
+                            session_id=user_phone
+                        )
                         await memory_service_module.memory_service.update_prospect_summary(
                             user_phone, 
                             summary_data.get("summary", ""), 
