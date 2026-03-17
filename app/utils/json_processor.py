@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-def clean_json_voorhees(text: str) -> Tuple[Dict[str, Any], bool]:
+def clean_json_voorhees(text: str, session_id: str = "unknown", last_intent: str = "unknown") -> Tuple[Dict[str, Any], bool]:
     """
     Main entry point for the JSON Voorhees protocol.
     Cleans, normalizes, and parses JSON text from LLM outputs.
@@ -20,7 +20,7 @@ def clean_json_voorhees(text: str) -> Tuple[Dict[str, Any], bool]:
         tuple: (parsed_dict, is_valid)
     """
     if not text or not isinstance(text, str):
-        return _get_fallback_state(), False
+        return _get_fallback_state(session_id, last_intent), False
 
     # 1. strip_markdown: Remove ```json and ``` wrappers
     cleaned = re.sub(r'```(?:json)?\s*([\s\S]*?)\s*```', r'\1', text).strip()
@@ -59,35 +59,40 @@ def clean_json_voorhees(text: str) -> Tuple[Dict[str, Any], bool]:
 
     except (json.JSONDecodeError, Exception) as e:
         logger.error(f"❌ JSON Voorhees Failure: {str(e)} | Raw: {text[:200]}...")
-        return _get_fallback_state(), False
+        return _get_fallback_state(session_id, last_intent), False
 
-def _sanitize_fields(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Sanitizes PII and trims fields to prevent injection or DB bloat."""
+def _sanitize_fields(data: Any) -> Any:
+    """Sanitizes PII and trims fields recursively to handle nested structures."""
+    if isinstance(data, list):
+        return [_sanitize_fields(item) for item in data]
+        
     if not isinstance(data, dict):
         return data
         
-    critical_fields = ["nombre", "name", "ciudad", "city", "motoInteres"]
+    critical_fields = ["nombre", "name", "ciudad", "city", "motoInteres", "fullName", "location"]
     
-    for field in critical_fields:
-        if field in data and isinstance(data[field], str):
-            val = data[field].strip()
-            # 5. sanitize_pii: Basic protection against injection or malformed strings
-            # Remove control characters and non-printable
+    for key, value in data.items():
+        if isinstance(value, (dict, list)):
+            data[key] = _sanitize_fields(value)
+        elif key in critical_fields and isinstance(value, str):
+            val = value.strip()
+            # Remove control characters
             val = "".join(ch for ch in val if unicodedata.category(ch)[0] != "C")
-            # Strict Regex Sanitization: Keep only letters, numbers, spaces, dots and dashes
-            # This implements the [^\w\s] requirement plus safe connectors
+            # Strict Regex Sanitization: keep alphanumeric, spaces, dots, dashes and accents
             val = re.sub(r'[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\.\-]', '', val)
             # Truncate to safe length (50 chars)
-            data[field] = val[:50]
+            data[key] = val[:50]
             
     return data
 
-def _get_fallback_state() -> Dict[str, Any]:
+def _get_fallback_state(session_id: str = "unknown", last_valid_intent: str = "unknown") -> Dict[str, Any]:
     """Returns the minimal state preserved during failure as per contract."""
     import datetime
     return {
-        "error": True,
-        "cleanup_status": "failed",
+        "session_id": session_id,
         "timestamp": datetime.datetime.now().isoformat(),
+        "last_valid_intent": last_valid_intent,
+        "cleanup_status": "failed",
+        "error": True,
         "preserved_minimal": True
     }

@@ -504,14 +504,14 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 logger.warning("⚠️ Empty AI response (valid text but no content)")
                                 return self._fallback_response(texto, history)
 
-                            # --- GUARDRAILS DE CONSISTENCIA E INMUTABILIDAD ---
+                            # --- GUARDRAILS DE CONSISTENCIA E INMUTABILIDAD (PCC Pro & Catalog Lock) ---
                             # AUDIT P1 (4.1/4.2)
                             if search_catalog_called and turns < max_turns:
                                 import re
                                 
-                                # 1. PCC PRO: Validar Precio ($) AND Imagen (![] o [IMAGE:])
-                                # Why: Ensure the bot doesn't forget vital dynamic data after tool execution.
-                                has_price = bool(re.search(r"\$\s?\d{1,3}(\.\d{3})*", ai_response))
+                                # 1. PCC PRO: Validar Precio ($ o 'precio:') AND Imagen (![] o [IMAGE:])
+                                # EXIGENCIA CONTRACTUAL: (\\$\\s?\\d{1,3}(\\.\\d{3})*)|(precio:)
+                                has_price = bool(re.search(r"(\$\s?\d{1,3}(\.\d{3})*)|(precio:)", ai_response, re.IGNORECASE))
                                 has_image = bool(re.search(r"!\[.*?\]\(https?://|\[IMAGE:\s?https?://", ai_response))
                                 
                                 # 2. CATALOG LOCK: Inmutabilidad de Modelos
@@ -524,6 +524,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     mentions = re.findall(r"\b(TVS|Victory|Boxer|NKD|Raider|Apache|Sport|Bomber|Life|Pulsar|Yamaha|Honda|Suzuki|AKT)\s+([A-Z0-9][a-zA-Z0-9]*)\b", ai_response)
                                     for brand, model in mentions:
                                         full_mention = f"{brand} {model}".lower()
+                                        # ACTION: BLOCK_RESPONSE_IF_MODEL_NOT_IN_LIST
                                         if not any(full_mention in m.lower() for m in catalog_models_found):
                                             hallucinated_model = f"{brand} {model}"
                                             break
@@ -533,14 +534,14 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     turns += 1
                                     error_msg = ""
                                     if not has_price or not has_image:
-                                        error_msg = "Has ejecutado el catálogo pero tu respuesta NO incluye el precio ($) o la imagen. "
+                                        error_msg = "Has ejecutado el catálogo pero tu respuesta final NO incluye el precio ($ o la palabra 'precio:') o la imagen. "
                                     if hallucinated_model:
-                                        error_msg += f"Has mencionado la moto '{hallucinated_model}' que NO aparece en los resultados del catálogo. "
+                                        error_msg += f"Has mencionado la moto '{hallucinated_model}' que NO aparece en los resultados locales del catálogo. "
                                     
                                     logger.warning(f"🚨 Consistency Guardrail Triggered (Turn {turns}): {error_msg}")
                                     
                                     response = chat.send_message(
-                                        f"[SYSTEM: ERROR: {error_msg} INSTRUCCIÓN: Corrige la respuesta usando ÚNICAMENTE los modelos, precios e imágenes devueltos por la herramienta. PROHIBIDO: Empezar con muletillas como 'Entendido' o 'Aquí tienes'.]",
+                                        f"[SYSTEM: ERROR: {error_msg} INSTRUCCIÓN: Corrige la respuesta usando ÚNICAMENTE los modelos, precios e imágenes devueltos por el catálogo. PROHIBIDO: Inventar modelos o precios. PROHIBIDO: Muletillas de inicio.]",
                                         generation_config=GenerationConfig(temperature=0.1)
                                     )
                                     continue # Review corrected response
@@ -705,7 +706,7 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
         except:
             return "NEUTRAL"
 
-    def generate_summary(self, conversation_text: str, last_bot_question: str = "") -> Dict[str, Any]:
+    def generate_summary(self, conversation_text: str, last_bot_question: str = "", session_id: str = "unknown") -> Dict[str, Any]:
         """
         Summarize the conversation and extract structured prospect data.
 
@@ -717,6 +718,7 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
                 city, the LLM has no anchor to know which field that answer belongs to.
                 Example: If last_bot_question='desde qué ciudad', the extractor correctly
                 maps 'Orihueca' -> city instead of moto_interest.
+            session_id: The session ID for error tracking and fallback state.
 
         MANTENIBILIDAD & SEGURIDAD (QA Baseline):
         - Por qué se hace: Utilizamos `response_schema` nativo (Structured Outputs) para
@@ -878,7 +880,11 @@ Conversación a analizar:
             # ATOMIC JSON EXTRACTION (Protocolo JSON Voorhees)
             # We process the raw output through clean_json_voorhees to ensure
             # it's healthy for Firestore persistence.
-            result, is_valid = clean_json_voorhees(raw_response)
+            result, is_valid = clean_json_voorhees(
+                raw_response, 
+                session_id=session_id, 
+                last_intent="summary_extraction"
+            )
             
             if not is_valid:
                 logger.error(f"❌ JSON Voorhees flagged invalid response. Raw: {raw_response[:200]}")
