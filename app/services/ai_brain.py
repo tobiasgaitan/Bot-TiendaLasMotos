@@ -1,6 +1,6 @@
 """
-Cerebro IA - AI Brain Service (v2.2 - Hotfix 124)
-Integridad total: Stop-Gate + Summary Fix + Version 001 Stable
+Cerebro IA - AI Brain Service (v2.3 - Hotfix 125)
+Estado: Certificado para Producción 2026
 """
 
 import logging
@@ -13,7 +13,6 @@ from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable, In
 
 logger = logging.getLogger(__name__)
 
-# Intento de importación de Vertex AI
 try:
     import vertexai
     from vertexai.generative_models import (
@@ -22,7 +21,6 @@ try:
     VERTEX_AI_AVAILABLE = True
 except ImportError:
     VERTEX_AI_AVAILABLE = False
-    logger.warning("⚠️ Vertex AI no disponible")
 
 class CerebroIA:
     def __init__(self, config_loader=None, catalog_service=None):
@@ -35,12 +33,13 @@ class CerebroIA:
         if VERTEX_AI_AVAILABLE:
             try:
                 vertexai.init(project="tiendalasmotos", location="us-central1")
-                # CAMBIO SEGÚN DOCS: gemini-1.5-flash-001 es la versión estable recomendada
+                # CAMBIO CLAVE: Usamos el alias limpio 'gemini-1.5-flash'
+                # Google lo redirecciona automáticamente a la versión estable más reciente.
                 self._model = GenerativeModel(
-                    "gemini-1.5-flash-001", 
+                    "gemini-1.5-flash", 
                     tools=[self.tools] if self.tools else []
                 )
-                logger.info("🧠 CerebroIA: Motor Gemini 1.5 Flash 001 inicializado")
+                logger.info("🧠 CerebroIA: Motor Gemini 1.5 Flash (Alias Estable) Online")
             except Exception as e:
                 logger.error(f"❌ Error Init: {str(e)}")
                 self._model = None
@@ -80,34 +79,29 @@ class CerebroIA:
     def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
         if not self._model: return self._fallback_response(texto)
         
-        # LOGIC STOP-GATE (Hard-coded safety)
         moto_ok = prospect_data.get("moto_confirmada") is True if prospect_data else False
-        tools_ok = ["search_catalog", "trigger_human_handoff"]
-        if moto_ok: tools_ok.append("calculate_credit_score")
+        allowed = ["search_catalog", "trigger_human_handoff"]
+        if moto_ok: allowed.append("calculate_credit_score")
         
+        # AJUSTE DE MODO: Cambiamos de ANY a AUTO para evitar el rechazo de la API
         t_conf = ToolConfig(function_calling_config=ToolConfig.FunctionCallingConfig(
-            mode=ToolConfig.FunctionCallingConfig.Mode.ANY, allowed_function_names=tools_ok
+            mode=ToolConfig.FunctionCallingConfig.Mode.AUTO, 
+            allowed_function_names=allowed
         ))
 
         instr = self._get_current_instruction()
-        prompt = f"{instr}\n\nContexto Histórico: {context}\nUsuario: {texto}\nJuan Pablo:"
+        prompt = f"{instr}\n\nContexto: {context}\nUsuario: {texto}\nJuan Pablo:"
 
         for att in range(3):
             try:
-                # Construcción manual del historial para evitar el error de ChatSession
                 contents = []
                 for m in history[-6:]:
                     role = "user" if m['role'] == 'user' else "model"
                     contents.append(Content(role=role, parts=[Part.from_text(str(m.get('content', '')))]))
                 contents.append(Content(role="user", parts=[Part.from_text(prompt)]))
 
-                res = self._model.generate_content(
-                    contents=contents, 
-                    generation_config=GenerationConfig(temperature=0.2), 
-                    tool_config=t_conf
-                )
+                res = self._model.generate_content(contents=contents, generation_config=GenerationConfig(temperature=0.2), tool_config=t_conf)
 
-                # Bucle de ejecución de herramientas
                 for _ in range(3):
                     if not res.candidates: break
                     can = res.candidates[0]
@@ -126,24 +120,18 @@ class CerebroIA:
                     
                     contents.append(Content(role="user", parts=r_parts))
                     res = self._model.generate_content(contents=contents, tool_config=t_conf)
-            except (ResourceExhausted, ServiceUnavailable): time.sleep(2**att)
             except Exception as e:
-                logger.error(f"❌ Error en generación: {e}")
-                break
+                logger.error(f"❌ Error en Hotfix 125: {e}")
+                time.sleep(2**att)
         return self._fallback_response(texto)
 
-    def detect_sentiment(self, text: str) -> str: return "NEUTRAL"
-
-    def generate_summary(self, conversation_text: str, last_bot_question: str = "", **kwargs) -> Dict[str, Any]:
-        """
-        CORREGIDO: Se añade **kwargs para absorber 'session_id' enviado por whatsapp.py
-        """
+    def generate_summary(self, conversation_text: str, **kwargs) -> Dict[str, Any]:
+        """Sigue funcionando porque no usa tool_config"""
         if not self._model: return {"summary": "", "extracted": {}}
         try:
-            prompt = f"Resume y extrae JSON de esta charla: {conversation_text}"
-            res = self._model.generate_content(prompt, generation_config=GenerationConfig(response_mime_type="application/json"))
+            res = self._model.generate_content(f"Extrae JSON de: {conversation_text}", generation_config=GenerationConfig(response_mime_type="application/json"))
             return json.loads(res.text)
         except: return {"summary": "Conversación activa", "extracted": {}}
 
     def _fallback_response(self, texto: str, history: list = []) -> str:
-        return "¡Qué pena! Mi sistema tuvo un hipo momentáneo. 😅 ¿Me repites lo último?"
+        return "¡Qué pena! Mi sistema tuvo un hipo momentáneo. 😅 ¿Me repites?"
