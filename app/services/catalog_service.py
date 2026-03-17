@@ -355,16 +355,20 @@ class CatalogService:
             item_tokens = item.get("search_tokens", [])
             item_search_text = item.get("search_text", "")
             
+            # Detect matches in different areas for the adaptor
+            name_match = clean_query in name_clean
+            corpus_match = clean_query in item_search_text
+            
             # 1. Exact Substring (Highest Confidence)
-            if clean_query in name_clean:
+            if name_match:
                 score += 100
-            elif clean_query in item_search_text:
+            elif corpus_match:
                 score += 85  # Exact substring in other fields (category/specs/tags)
             
             # 2. Token Match
             # Checks if query tokens exist in the rich searchable corpus (item_tokens)
+            matches = 0
             if len(query_tokens) > 0:
-                matches = 0
                 for t in query_tokens:
                     if t in item_tokens:
                         matches += 1
@@ -388,6 +392,11 @@ class CatalogService:
             if ratio > 0.6: # Reasonable similarity threshold
                 score += ratio * 60
 
+            # --- CAPA DE ADAPTADOR: Intent Scoring Bonus (1.5x) ---
+            # Why: Apply a 50% multiplier if the query matches category tags or aliases
+            # while protecting "identity" searches (exact name match).
+            score = self._apply_scoring_adaptor(item, query_tokens, score, name_match)
+
             if score > 30: # Lowered threshold as requested
                 scored_results.append((score, item))
         
@@ -406,6 +415,29 @@ class CatalogService:
                 seen_ids.add(item["id"])
                 
         return unique_results[:5]
+
+    def _apply_scoring_adaptor(self, item: Dict[str, Any], query_tokens: List[str], current_score: float, is_identity_match: bool) -> float:
+        """
+        Independent adapter layer to apply intent-based bonuses.
+        Ensures 'trabajo' or 'economica' tags priority without degrading name searches.
+        """
+        if is_identity_match:
+            # Identity search (exact name) should not be inflated by tags to avoid collisions
+            return current_score
+
+        # Check for intent overlap (tags/aliases)
+        tags = item.get("search_tags", [])
+        # We also check if the query tokens match common intent keywords
+        # using a 1.5x multiplier as per contract.
+        intent_match = any(token in tags for token in query_tokens)
+        
+        if intent_match:
+            # Apply the 50% Intent Bonus
+            new_score = current_score * 1.5
+            logger.debug(f"⚡ Intent Bonus Applied to {item['name']}: {current_score} -> {new_score}")
+            return new_score
+
+        return current_score
 
     def refresh(self) -> None:
         """Refresh catalog from Firestore."""

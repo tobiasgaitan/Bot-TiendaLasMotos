@@ -5,7 +5,13 @@ Handles intelligent responses using Google Gemini AI for general inquiries.
 
 import logging
 import os
-from typing import Optional, Dict, Any
+import re
+import json
+import time
+from typing import Optional, Dict, Any, List, Union
+from datetime import datetime
+
+from app.utils.json_processor import clean_json_voorhees
 
 logger = logging.getLogger(__name__)
 
@@ -478,6 +484,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 max_turns = 3
                 search_catalog_called = False
                 catalog_returned_results = False
+                catalog_models_found = [] # [IMMUTABILITY] IDs and names of models found
                 
                 while turns < max_turns:
                     # ROBUSTNESS FIX: Check candidates again at each turn start
@@ -497,23 +504,46 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 logger.warning("⚠️ Empty AI response (valid text but no content)")
                                 return self._fallback_response(texto, history)
 
-                            # --- PRICE CONSISTENCY CHECK (PCC) ---
+                            # --- GUARDRAILS DE CONSISTENCIA E INMUTABILIDAD ---
                             # AUDIT P1 (4.1/4.2)
-                            # If catalog was searched and returned products, but the AI forgot prices/images
-                            if search_catalog_called and catalog_returned_results and turns < max_turns:
-                                # Regex includes Price ($) OR Markdown Image ([...](...)) OR Legacy Image ([IMAGE: ...])
-                                pcc_regex = r"(?i)(\$\s?\d{1,3}(\.\d{3})*|!\[.*?\]\(https?://|\[IMAGE:\s?https?://)"
+                            if search_catalog_called and turns < max_turns:
                                 import re
-                                if not re.search(pcc_regex, ai_response):
-                                    logger.warning("🚨 PCC Triggered: Catalog result found but AI response lacks price/image. Forcing retry.")
+                                
+                                # 1. PCC PRO: Validar Precio ($) AND Imagen (![] o [IMAGE:])
+                                # Why: Ensure the bot doesn't forget vital dynamic data after tool execution.
+                                has_price = bool(re.search(r"\$\s?\d{1,3}(\.\d{3})*", ai_response))
+                                has_image = bool(re.search(r"!\[.*?\]\(https?://|\[IMAGE:\s?https?://", ai_response))
+                                
+                                # 2. CATALOG LOCK: Inmutabilidad de Modelos
+                                # Why: Prevent hallucinations of models that don't exist in the current search payload.
+                                hallucinated_model = None
+                                if catalog_returned_results:
+                                    # Extract potential model names from AI response (Capitalized words)
+                                    # This is a heuristic that we compare against catalog_models_found.
+                                    # We only enforce if the AI mentions a specific brand/model.
+                                    mentions = re.findall(r"\b(TVS|Victory|Boxer|NKD|Raider|Apache|Sport|Bomber|Life|Pulsar|Yamaha|Honda|Suzuki|AKT)\s+([A-Z0-9][a-zA-Z0-9]*)\b", ai_response)
+                                    for brand, model in mentions:
+                                        full_mention = f"{brand} {model}".lower()
+                                        if not any(full_mention in m.lower() for m in catalog_models_found):
+                                            hallucinated_model = f"{brand} {model}"
+                                            break
+
+                                # --- Trigger Re-try if Guardrails Fail ---
+                                if (catalog_returned_results and (not has_price or not has_image)) or hallucinated_model:
                                     turns += 1
-                                    if turns < max_turns:
-                                        # Systematic error injection
-                                        response = chat.send_message(
-                                            "[SYSTEM: ERROR: Has ejecutado el catálogo pero tu respuesta final NO incluye el precio ($) o la imagen. INSTRUCCIÓN: Genera la respuesta de nuevo incluyendo obligatoriamente el precio y la imagen. PROHIBIDO: Empezar con 'Entendido', 'Claro', 'Aquí tienes' o similares. Ve directo al grano.]",
-                                            generation_config=GenerationConfig(temperature=0.1)
-                                        )
-                                        continue # Review next response
+                                    error_msg = ""
+                                    if not has_price or not has_image:
+                                        error_msg = "Has ejecutado el catálogo pero tu respuesta NO incluye el precio ($) o la imagen. "
+                                    if hallucinated_model:
+                                        error_msg += f"Has mencionado la moto '{hallucinated_model}' que NO aparece en los resultados del catálogo. "
+                                    
+                                    logger.warning(f"🚨 Consistency Guardrail Triggered (Turn {turns}): {error_msg}")
+                                    
+                                    response = chat.send_message(
+                                        f"[SYSTEM: ERROR: {error_msg} INSTRUCCIÓN: Corrige la respuesta usando ÚNICAMENTE los modelos, precios e imágenes devueltos por la herramienta. PROHIBIDO: Empezar con muletillas como 'Entendido' o 'Aquí tienes'.]",
+                                        generation_config=GenerationConfig(temperature=0.1)
+                                    )
+                                    continue # Review corrected response
                             
                             logger.info(f"✅ AI response generated after {turns} turns ({len(ai_response)} chars)")
                             return ai_response
@@ -547,6 +577,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         catalog_returned_results = True
                                         search_results = f"Encontré {len(matches)} motos relacionadas:\n"
                                         for m in matches: 
+                                            catalog_models_found.append(m['name']) # Store for Immutability Guardrail
                                             search_results += f"- {m['name']} ({m['category']}): {m['formatted_price']}\n"
                                             if m.get('image_url'):
                                                 search_results += f"  Image URL: {m['image_url']}\n"
@@ -844,19 +875,18 @@ Conversación a analizar:
             
             raw_response = response.text.strip()
             
-            # ATOMIC JSON EXTRACTION (Strict Native Mode)
-            # We trust Gemini's Structured Output (response_mime_type="application/json")
-            # All legacy regex fallback code has been removed per production architectural rigor.
-            try:
-                result = json.loads(raw_response)
-            except json.JSONDecodeError as jde:
-                logger.error(f"❌ Native JSON parse failed: {jde}. Raw: {raw_response}")
-                result = {"summary": "Error parsing structured output", "extracted": {}}
+            # ATOMIC JSON EXTRACTION (Protocolo JSON Voorhees)
+            # We process the raw output through clean_json_voorhees to ensure
+            # it's healthy for Firestore persistence.
+            result, is_valid = clean_json_voorhees(raw_response)
             
-            if "summary" not in result: result["summary"] = ""
+            if not is_valid:
+                logger.error(f"❌ JSON Voorhees flagged invalid response. Raw: {raw_response[:200]}")
+            
+            if "summary" not in result: result["summary"] = "Error en procesamiento de resumen"
             if "extracted" not in result: result["extracted"] = {}
             
-            logger.info(f"📝 Generated summary with {len(result.get('extracted', {}))} extracted fields")
+            logger.info(f"📝 Generated summary (Voorhees Cleaned) with {len(result.get('extracted', {}))} fields | Valid: {is_valid}")
             return result
             
         except Exception as e:
