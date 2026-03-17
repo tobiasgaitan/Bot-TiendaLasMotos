@@ -337,8 +337,10 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
         
         # 2. Build Instructions block based on State
         funnel_instruction = ""
+        moto_confirmada = prospect_data.get("moto_confirmada") is True if prospect_data else False
+        
         if phase == "PHASE_1_PROFILING":
-            # Missing basic profiling data
+            # Missing basic profiling data or Confirmation
             p_name = prospect_data.get("name") if prospect_data else None
             p_ciudad = prospect_data.get("ciudad") if prospect_data else None
             p_payment = prospect_data.get("payment_method") if prospect_data else None
@@ -349,9 +351,13 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                 funnel_instruction = "Falta la ciudad del prospecto. Cierra tu mensaje preguntando: '¿Desde qué ciudad nos escribes?'"
             elif not p_payment:
                 funnel_instruction = "Falta el método de pago. Pregunta si prefiere compra de contado o a crédito."
+            elif not moto_confirmada:
+                # PHASE_1_PRIORITY: CONFIRM_INTEREST_ONLY
+                funnel_instruction = "EL USUARIO YA DIO SUS DATOS. Tu ÚNICA prioridad es confirmar si la moto ofrecida es de su interés. NO pidas más datos ni avances al crédito hasta que confirme con un 'Sí' o similar."
         
         elif phase == "PHASE_2_HABEAS_DATA":
-            funnel_instruction = "EL USUARIO ESTÁ LISTO PARA EL CRÉDITO. Debes presentar el script legal de Habeas Data y pedir su aceptación explícita (Sí/No)."
+            # PHASE_2_RESTRICTION: PROHIBIT_FINANCIAL_DATA_UNTIL_CONSENT
+            funnel_instruction = "EL USUARIO ESTÁ LISTO PARA EL CRÉDITO. Debes presentar el script legal de Habeas Data y pedir su aceptación explícita (Sí/No). PROHIBIDO pedir datos financieros (ingresos, ocupación) en este mensaje."
         
         elif phase == "PHASE_3_CREDIT_PROFILING":
             funnel_instruction = "Habeas Data Aceptado. Procede con las preguntas de perfilamiento crediticio (ocupación, ingresos, etc.) según el flujo del embudo."
@@ -448,9 +454,23 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
                 
                 # 1. Send initial message
+                # FUNNEL_STOP_GATE: DYNAMIC_TOOL_CONFIG_INJECTION
+                # We restrict tools based on moto_confirmada to prevent AI closed-loop hallucinations.
+                allowed_tools = ["search_catalog", "trigger_human_handoff"]
+                if moto_confirmada and phase != "PHASE_1_PROFILING":
+                    allowed_tools.append("calculate_credit_score")
+                
+                tool_config = {
+                    "function_calling_config": {
+                        "mode": "AUTO",
+                        "allowed_function_names": allowed_tools
+                    }
+                }
+
                 try:
                     response = chat.send_message(
                         full_prompt,
+                        tool_config=tool_config,
                         generation_config=GenerationConfig(temperature=0.2, max_output_tokens=8192)
                     )
                 except Exception as e:
