@@ -163,43 +163,9 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         if msg_type == "text":
             message_body = msg_data.get("text", "").strip()
 
-        # --- REGLA DE ORO: INTERCEPCIÓN TEMPRANA DE RESET ---
-        # POR QUÉ: Evitar que el comando de purga llegue a la IA o guarde mensajes de "reset" en Firestore.
-        if msg_type == "text" and message_body.lower() in ["reset", "/reset"]:
-            logger.warning(f"☢️ NUCLEAR RESET TRIGGERED (Early) for {user_phone}")
-            
-            ids_to_purge = list(set([user_phone, raw_phone, user_phone.replace("57", "", 1)]))
-            
-            if db:
-                for pid in ids_to_purge:
-                    try:
-                        # NIVEL 1: Prospectos (Wipe)
-                        if memory_service_module.memory_service:
-                            memory_service_module.memory_service.delete_prospect_completely(pid)
-                        
-                        # NIVEL 2: Sesiones (Wipe)
-                        db.collection("sessions").document(pid).delete()
-                        legacy_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
-                        
-                        # NIVEL 3: Historial & Mensajería (Nuclear Purge)
-                        history_ref = legacy_ref.collection("historial")
-                        for doc in history_ref.stream():
-                            doc.reference.delete()
-                        
-                        # NIVEL 4: Metadatos WA & Sesión (Explicit collections)
-                        legacy_ref.delete()
-                        db.collection("mensajeria").document(pid).delete()
-                        
-                        # NIVEL 5: Chat IA / Memory Service (Reset)
-                        if memory_service_module.memory_service:
-                            await memory_service_module.memory_service.clear_memory(pid)
-                            
-                        logger.info(f"🗑️ Nuclear Reset successful for ID: {pid}")
-                    except Exception as e:
-                        logger.error(f"❌ Error in nuclear purge for {pid}: {e}")
-                
-                await _send_whatsapp_message(user_phone, "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?")
-                return # EXIT EARLY: No AI processing for reset
+        # --- REGLA DE ORO: ELIMINACIÓN DE INTERCEPCIÓN TEMPRANA ---
+        # POR QUÉ: Ahora el reset se maneja dentro del message_buffer para aprovechar 
+        # el de-duplicador de msg_id y evitar la 'Doble Explosión'.
         elif msg_type == "reaction":
             emoji = msg_data.get("emoji", "")
             message_id = msg_data.get("message_id", "")
@@ -216,14 +182,37 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
                 return # Exit early for actionable reactions
             
         if msg_type == "text":
-            # --- DEBOUNCE LOGIC START ---
-            if message_buffer:
-                # Add to buffer
-                is_added = await message_buffer.add_message(user_phone, message_body, msg_id_unique)
-                if not is_added:
-                    logger.info(f"⏭️ Duplicate webhook ignored immediately for {msg_id_unique}")
-                    return
-                
+                # --- REPARACIÓN DE LA 'DOBLE EXPLOSIÓN' (Deduplicación de Comandos) ---
+                # Si el mensaje es un reset, lo procesamos aquí dentro para que
+                # el is_added (msg_id filtering) bloquee peticiones duplicadas de Meta.
+                if message_body.strip().lower() in ["reset", "/reset"]:
+                    logger.warning(f"☢️ NUCLEAR RESET TRIGGERED (Buffered) for {user_phone} | MsgID: {msg_id_unique}")
+                    
+                    ids_to_purge = list(set([user_phone, raw_phone, user_phone.replace("57", "", 1)]))
+                    if db:
+                        for pid in ids_to_purge:
+                            try:
+                                # Saneamiento Nuclear de 5 niveles
+                                if memory_service_module.memory_service:
+                                    memory_service_module.memory_service.delete_prospect_completely(pid)
+                                    await memory_service_module.memory_service.clear_memory(pid)
+                                
+                                db.collection("sessions").document(pid).delete()
+                                legacy_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
+                                history_ref = legacy_ref.collection("historial")
+                                for doc in history_ref.stream():
+                                    doc.reference.delete()
+                                legacy_ref.delete()
+                                db.collection("mensajeria").document(pid).delete()
+                                
+                                logger.info(f"🗑️ Nuclear Reset successful for ID: {pid}")
+                            except Exception as e:
+                                logger.error(f"❌ Error in nuclear purge for {pid}: {e}")
+                    
+                    await _send_whatsapp_message(user_phone, "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?")
+                    await message_buffer.clear_buffer(user_phone) # Limpiar buffer tras reset
+                    return # EXIT EARLY: Evita que el comando llegue al CerebroIA
+
                 # Wait for debounce window (3s)
                 await asyncio.sleep(message_buffer.debounce_seconds)
                 

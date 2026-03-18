@@ -161,7 +161,23 @@ class CerebroIA:
         """
         raw_response = self._generate_with_retry(texto, context, prospect_data, history, skip_greeting)
         
-        # FINAL SANITIZATION: Hardcoded Parrot Effect Killer (No more prompt engineering reliance)
+        # --- PHASE-GATE FÍSICO (Bypass de Habeas Data) ---
+        # AUDIT P1 (2.2): Interceptor de Respuesta.
+        # Si el usuario NO ha aceptado Habeas Data, bloqueamos cualquier pregunta de crédito.
+        habeas_data_accepted = prospect_data.get("habeas_data_accepted", False) if prospect_data else False
+        
+        if not habeas_data_accepted and raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
+            # Palabras clave del perfilamiento (Fase 3)
+            # EXIGENCIA CONTRACTUAL: ocupación, trabaja, ingresos, vivienda, empresa, cargo, salario
+            credit_keywords = ["ocupación", "trabaja", "ingresos", "vivienda", "empresa", "cargo", "salario", "negocio", "independiente", "pensionado", "contrato"]
+            if any(kw in raw_response.lower() for kw in credit_keywords):
+                logger.warning(f"🚨 PHASE-GATE TRIGGERED: AI attempted credit questions without Habeas Data. Re-generating...")
+                
+                # Forzamos el envío del PHASE 2 SCRIPT con instrucción punitiva
+                forced_instruction = "[CRITICAL: EL USUARIO NO HA ACEPTADO LA POLÍTICA DE DATOS. TIENES PROHIBIDO HACER PREGUNTAS DE CRÉDITO. SOLICITA AUTORIZACIÓN AHORA USANDO EL SCRIPT DE LA FASE 2.]"
+                raw_response = self._generate_with_retry(forced_instruction + " " + texto, context, prospect_data, history, skip_greeting)
+
+        # FINAL SANITIZATION: Hardcoded Parrot Effect Killer
         if raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
              return self.clean_parrot_phrases(raw_response)
         return raw_response
@@ -463,6 +479,11 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             funnel_instruction = funnel_instruction.replace("[PII: NOMBRE]", "[DATOS YA CONOCIDOS - NO PREGUNTAR NOMBRE]")
                             logger.info(f"🧠 PII Context Detection: Name found in history/buffer. Suppressing question.")
                     
+                    # [VIBE ENGINEERING] - Evitar Efecto Loro en el saludo tras reset
+                    if not skip_greeting and prospect_data and prospect_data.get("name"):
+                        # Si ya tenemos el nombre, instruimos a usarlo solo una vez de forma natural
+                        full_prompt += f"\n[SYSTEM: El nombre del usuario es {prospect_data.get('name')}. Salúdalo por su nombre de forma natural pero NO lo repitas más de una vez en toda la respuesta.]\n"
+
                     full_prompt += funnel_instruction + "\n\n"
                     
                 full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
