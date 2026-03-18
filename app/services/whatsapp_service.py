@@ -8,6 +8,7 @@ import logging
 import httpx
 from typing import Optional, Dict, Any
 from app.core.config import settings
+from app.core.utils import PhoneNormalizer
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,9 @@ class WhatsAppService:
         """
         Sends a text message to a WhatsApp user.
         """
+        # 1. Normalización Atómica (Protocolo Meta)
+        to = PhoneNormalizer.to_international(to)
+        
         url = f"{self.base_url}/messages"
         payload = {
             "messaging_product": "whatsapp",
@@ -42,14 +46,17 @@ class WhatsAppService:
             payload["context"] = {"message_id": reply_to_id}
 
         try:
+            logger.debug(f"📤 Enviando payload a Meta: {payload}")
             async with httpx.AsyncClient() as client:
                 response = await client.post(url, headers=self.headers, json=payload, timeout=10.0)
+                if response.status_code >= 400:
+                    logger.error(f"❌ Error Meta API ({response.status_code}): {response.text}")
                 response.raise_for_status()
                 data = response.json()
-                logger.info(f"📤 Text message sent to {to} | Message ID: {data.get('messages', [{}])[0].get('id')}")
+                logger.info(f"✅ Mensaje enviado a {to} | ID: {data.get('messages', [{}])[0].get('id')}")
                 return data
         except Exception as e:
-            logger.error(f"❌ Error sending text message to {to}: {e}")
+            logger.error(f"💥 Error crítico en send_text_message para {to}: {str(e)}")
             raise
 
     async def mark_as_read(self, msg_id: str) -> bool:
@@ -77,6 +84,9 @@ class WhatsAppService:
         """
         Sends an image message via URL.
         """
+        # 1. Normalización Atómica (Protocolo Meta)
+        to = PhoneNormalizer.to_international(to)
+        
         url = f"{self.base_url}/messages"
         payload = {
             "messaging_product": "whatsapp",
@@ -90,14 +100,17 @@ class WhatsAppService:
             payload["image"]["caption"] = caption
 
         try:
+            logger.debug(f"📤 Enviando imagen a Meta: {payload}")
             async with httpx.AsyncClient() as client:
                 response = await client.post(url, headers=self.headers, json=payload, timeout=10.0)
+                if response.status_code >= 400:
+                    logger.error(f"❌ Error Meta API Imagen ({response.status_code}): {response.text}")
                 response.raise_for_status()
                 data = response.json()
-                logger.info(f"📸 Image message sent to {to}")
+                logger.info(f"✅ Imagen enviada a {to}")
                 return data
         except Exception as e:
-            logger.error(f"❌ Error sending image message to {to}: {e}")
+            logger.error(f"💥 Error crítico en send_image_message para {to}: {str(e)}")
             raise
 
 # Singleton instance
