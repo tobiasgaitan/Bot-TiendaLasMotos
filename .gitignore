@@ -54,3 +54,4 @@ htmlcov/
 *.tmp
 *.bak
 bot-tiendalasmotos.zip
+deploy-key.json
