@@ -127,7 +127,7 @@ async def webhook_handler(
             return {"status": "ignored"}
 
         # Procesamiento en segundo plano
-        background_tasks.add_task(_handle_message_background, msg_data)
+        background_tasks.add_task(_handle_message_background, msg_data, background_tasks)
         return {"status": "received"}
         
     except Exception as e:
@@ -139,7 +139,7 @@ async def webhook_handler(
 # BACKGROUND LOGIC
 # ============================================================================
 
-async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
+async def _handle_message_background(msg_data: Dict[str, Any], background_tasks: BackgroundTasks) -> None:
     """Lógica principal del bot (Procesamiento Asíncrono)"""
     # Ensure services are initialized before proceeding
     _ensure_services()
@@ -151,84 +151,71 @@ async def _handle_message_background(msg_data: Dict[str, Any]) -> None:
         raw_phone = msg_data["from"]
         user_phone = PhoneNormalizer.normalize(raw_phone)
         msg_type = msg_data["type"].lower()
+        msg_id_unique = msg_data.get("id") or f"{user_phone}_{int(datetime.now().timestamp())}"
+
+        # --- PROTOCOLO READ-FIRST (PRIORIDAD 1) ---
+        # Marcamos como leído ANTES de cualquier lógica para evitar el 'check gris'
+        # y confirmar a Meta que el webhook fue recibido.
+        from app.services.whatsapp_service import whatsapp_service
+        await whatsapp_service.mark_as_read(msg_id_unique)
         
         # DEBUG LOG for Image Troubleshooting
-        logger.info(f"🕵️ DEBUG: Received message from {user_phone} | Type: '{msg_type}' | Keys: {list(msg_data.keys())}")
+        logger.info(f"🕵️ DEBUG: Received message {msg_id_unique} from {user_phone} | Type: '{msg_type}'")
         
         message_body = ""
-        response_text = None # FIX: Initialize to prevent UnboundLocalError
-        
-        msg_id_unique = msg_data.get("id") or f"{user_phone}_{int(datetime.now().timestamp())}"
+        response_text = None 
         
         if msg_type == "text":
             message_body = msg_data.get("text", "").strip()
 
-        # --- REGLA DE ORO: ELIMINACIÓN DE INTERCEPCIÓN TEMPRANA ---
-        # POR QUÉ: Ahora el reset se maneja dentro del message_buffer para aprovechar 
-        # el de-duplicador de msg_id y evitar la 'Doble Explosión'.
         elif msg_type == "reaction":
             emoji = msg_data.get("emoji", "")
             message_id = msg_data.get("message_id", "")
             logger.info(f"👍 User reacted with '{emoji}' to message '{message_id}'")
             
-            # Translate positive reactions to keep the funnel active
             positive_emojis = ["👍", "❤️", "💯", "🔥", "✅", "👌", "😊", "🥰", "😍"]
             if emoji in positive_emojis:
-                logger.info(f"🔄 Translating positive reaction '{emoji}' into text 'Sí'")
                 message_body = "Sí"
-                msg_type = "text" # Treat it as text from here on to continue the funnel
+                msg_type = "text"
             else:
-                logger.info(f"⏭️ Ignoring non-actionable reaction '{emoji}'")
-                return # Exit early for actionable reactions
-            
-        if msg_type == "text":
-                # --- REPARACIÓN DE LA 'DOBLE EXPLOSIÓN' (Deduplicación de Comandos) ---
-                # Si el mensaje es un reset, lo procesamos aquí dentro para que
-                # el is_added (msg_id filtering) bloquee peticiones duplicadas de Meta.
-                if message_body.strip().lower() in ["reset", "/reset"]:
-                    logger.warning(f"☢️ NUCLEAR RESET TRIGGERED (Buffered) for {user_phone} | MsgID: {msg_id_unique}")
-                    
-                    ids_to_purge = list(set([user_phone, raw_phone, user_phone.replace("57", "", 1)]))
-                    if db:
-                        for pid in ids_to_purge:
-                            try:
-                                # Saneamiento Nuclear de 5 niveles
-                                if memory_service_module.memory_service:
-                                    memory_service_module.memory_service.delete_prospect_completely(pid)
-                                    await memory_service_module.memory_service.clear_memory(pid)
-                                
-                                db.collection("sessions").document(pid).delete()
-                                legacy_ref = db.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
-                                history_ref = legacy_ref.collection("historial")
-                                for doc in history_ref.stream():
-                                    doc.reference.delete()
-                                legacy_ref.delete()
-                                db.collection("mensajeria").document(pid).delete()
-                                
-                                logger.info(f"🗑️ Nuclear Reset successful for ID: {pid}")
-                            except Exception as e:
-                                logger.error(f"❌ Error in nuclear purge for {pid}: {e}")
-                    
-                    await _send_whatsapp_message(user_phone, "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?")
-                    await message_buffer.clear_buffer(user_phone) # Limpiar buffer tras reset
-                    return # EXIT EARLY: Evita que el comando llegue al CerebroIA
+                return 
 
-                # Wait for debounce window (3s)
-                await asyncio.sleep(message_buffer.debounce_seconds)
+        # --- DEDUPLICACIÓN ESTRICTA Y BUFFERING ---
+        if msg_type == "text":
+            # Agregamos al buffer. Si retorna False, es un duplicado exacto de msg_id (vía Meta retry)
+            is_added = await message_buffer.add_message(user_phone, message_body, msg_id_unique)
+            if not is_added:
+                logger.warning(f"🔄 Duplicate msg_id ignored: {msg_id_unique}")
+                return
+
+            # --- RESET ASÍNCRONO (CONFIRMACIÓN FLASH) ---
+            if message_body.strip().lower() in ["reset", "/reset"]:
+                logger.warning(f"☢️ NUCLEAR RESET TRIGGERED (Async) for {user_phone}")
+                # 1. Respuesta instantánea
+                await _send_whatsapp_message(user_phone, "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?")
+                # 2. Purga en background (sin await)
+                if memory_service_module.memory_service:
+                    ms = memory_service_module.memory_service
+                    background_tasks.add_task(ms.delete_prospect_completely, user_phone)
                 
-                # Check if this task is still active (or superseded by newer message)
-                if not message_buffer.is_task_active(user_phone, msg_id_unique):
-                    logger.info(f"⏭️ Task {msg_id_unique} superseded. Skipping processing.")
-                    return
-                
-                # Get aggregated message
-                message_body = await message_buffer.get_aggregated_message(user_phone)
-                # Clear buffer immediately to prepare for next batch (or keep if we want strict window)
-                # But here we consume it, so we should clear.
                 await message_buffer.clear_buffer(user_phone)
-                
-                if not message_body:
-                    return # Should not happen if logic is correct
+                return 
+
+            # Wait for debounce window (3s)
+            await asyncio.sleep(message_buffer.debounce_seconds)
+            
+            # Check if this task is still active (superseded means another msg arrived)
+            if not message_buffer.is_task_active(user_phone, msg_id_unique):
+                logger.info(f"⏭️ Task {msg_id_unique} superseded. Aggregating...")
+                return
+            
+            # Get aggregated message
+            message_body = await message_buffer.get_aggregated_message(user_phone)
+            await message_buffer.clear_buffer(user_phone)
+            
+            if not message_body:
+                return
+
             # --- DEBOUNCE LOGIC END ---
             
         elif msg_type in ["image", "document", "sticker"]:
