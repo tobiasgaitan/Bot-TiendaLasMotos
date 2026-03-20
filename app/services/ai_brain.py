@@ -835,34 +835,17 @@ Conversación a analizar:
                                 "type": "STRING",
                                 "description": "Nombre si se mencionó. IGNORA el nombre 'Juan Pablo', 'Auteco' o referencias al bot. SOLO extrae si el usuario se presenta a sí mismo."
                             },
+                            "city": {
+                                "type": "STRING",
+                                "description": "Ciudad si se mencionó (ej. Bogotá, Medellín)."
+                            },
                             "payment_method": {
                                 "type": "STRING",
                                 "description": "Método de pago si se mencionó (ej. crédito, contado, brilla, no sé)."
                             },
-                            "city": {
-                                "type": "STRING",
-                                # AUDIT P2 (3.1 — Cross-Protection): Added moto exclusion.
-                                # WHY: The inverse of the moto_interest bug. If the user answered
-                                # a moto question with a model name, the extractor could store
-                                # 'MRX' or 'Boxer' in the city field. Explicit exclusion prevents
-                                # both fields from absorbing each other's entity type.
-                                "description": "Ciudad de residencia o ubicación si el cliente la menciona. EXCLUSIÓN: NUNCA extraigas marcas ni modelos de motos (ej. Boxer, Pulsar, MRX, Raider) como ciudad. Solo valores geográficos válidos."
-                            },
-                            "moto_competidor": {
-                                "type": "STRING",
-                                "description": "Marcas o modelos de la COMPETENCIA mencionados por el usuario (ej. Boxer, NKD, Pulsar, Yamaha, AKT). Si el usuario inicialmente mostró interés en una marca que no manejamos, extráela aquí."
-                            },
-                            "moto_auteco": {
-                                "type": "STRING",
-                                "description": "Marcas o modelos de AUTECO (TVS, Victory, Kymco, KTM) mencionados, buscados o RECOMENDADOS por el bot durante un pivote (ej. MRX 150, Raider, Black). Si el bot sugirió una alternativa de nuestro catálogo, extráela aquí."
-                            },
                             "moto_interest": {
                                 "type": "STRING",
-                                "description": "Modelo de moto principal para el interés del cliente. Prioriza el modelo de Auteco si ya hubo un pivote o recomendación clara. REGLAS: IGNORA ciudades y términos financieros."
-                            },
-                            "moto_confirmada": {
-                                "type": "BOOLEAN",
-                                "description": "true SOLO si el usuario confirma EXPLÍCITAMENTE que quiere esa moto o que quiere iniciar el crédito con ese modelo (ej. 'Quiero esta', 'Sí, esa me sirve', 'Iniciemos crédito con la Raider'). Si pide ver otras o solo pregunta pero no confirma, pon false."
+                                "description": "ÚNICAMENTE referencias, marcas o estilos reales de motos (ej. Boxer, Pulsar, NKD, Scooter, Deportiva). IGNORA términos financieros."
                             },
                             "ocupacion": {
                                 "type": "STRING",
@@ -874,37 +857,11 @@ Conversación a analizar:
                             },
                             "vivienda": {
                                 "type": "STRING",
-                                "description": "Tipo de vivienda si vive con familiares, arrendado o es propia. (ej. Arriendo, Familiar, Propia)."
+                                "description": "Tipo de vivienda o situación de gastos de vivienda si se mencionó (ej. Arriendo, Familiar, Propia)."
                             },
-                            "ingresos": {
+                            "servicios_publicos": {
                                 "type": "STRING",
-                                "description": "Ingresos mensuales demostrables (ej. 1705905, un minimo, 2 millones)."
-                            },
-                            "gastos": {
-                                "type": "STRING",
-                                "description": "Gastos mensuales fijos, como arriendo o cuotas (ej. 500mil, 1 millon)."
-                            },
-                            "gas_natural": {
-                                # AUDIT P2 (3.1 — Type Mismatch Fix): Changed STRING -> BOOLEAN.
-                                # WHY: calculate_credit_score uses gas_natural as a boolean flag
-                                # in the financial scoring matrix. Storing it as a STRING ('Si'/'No')
-                                # meant memory_service had to guess-convert the value, introducing
-                                # a silent data-quality risk. Using BOOLEAN at extraction time
-                                # ensures the downstream credit tool gets a clean true/false.
-                                "type": "BOOLEAN",
-                                "description": "true si la persona tiene o paga recibo de gas natural a su nombre. false si no. Solo extrae si se menciona explícitamente."
-                            },
-                            "plan_celular": {
-                                "type": "STRING",
-                                "description": "Tipo de plan de telefonia movil (ej. Prepago, Postpago)."
-                            },
-                            "habeas_data_sent": {
-                                "type": "BOOLEAN",
-                                "description": "true si el bot ENVIÓ el script de Habeas Data en este turno o antes. false si no."
-                            },
-                            "habeas_data_accepted": {
-                                "type": "BOOLEAN",
-                                "description": "true si el usuario ACEPTÓ explícitamente el Habeas Data (ej. 'si acepto', 'autorizo'). false si no."
+                                "description": "Si tiene servicios públicos como Gas Natural a su nombre o plan de celular si se mencionó."
                             }
                         }
                     }
