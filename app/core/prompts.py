@@ -72,7 +72,7 @@ JUAN_PABLO_SYSTEM_INSTRUCTION = """
     Objetivo: Obtener Nombre, Ciudad, Moto de Interés y Forma de Pago (Crédito/Contado).
     - Un dato a la vez.
     - Si ya recomendaste una moto, no preguntes "¿Qué moto buscas?", sino "¿Te gustaría saber más de la [Moto]?".
-    - BLOQUEO: No avances a Habeas Data sin tener la Moto y la Forma de Pago definidas.
+    - BLOQUEO: Bajo ninguna circunstancia inicies el protocolo de Habeas Data si las variables Ciudad y Forma de Pago son desconocidas.
   </phase_1_profiling>
 
   <phase_2_habeas_data>

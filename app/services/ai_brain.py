@@ -179,7 +179,15 @@ class CerebroIA:
 
         # FINAL SANITIZATION: Hardcoded Parrot Effect Killer
         if raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
-             return self.clean_parrot_phrases(raw_response)
+            final_text = self.clean_parrot_phrases(raw_response)
+            
+            # PHASE 2 / LEGAL INJECTION (JSON Voorhees v2.1.0 programmatic insertion)
+            if re.search(r'(?i)\b(autoriza|tratamiento de datos|habeas data|pol[íi]tica de privacidad|ley\s?1581|datos personales)\b', final_text):
+                if "tiendalasmotos.com/politica-de-privacidad" not in final_text:
+                    final_text += "\n\n📄 Conoce nuestra Política de Privacidad aquí: https://tiendalasmotos.com/politica-de-privacidad"
+            
+            return final_text
+            
         return raw_response
 
     @staticmethod
@@ -192,15 +200,18 @@ class CerebroIA:
             return text
             
         import re
-        # Parrot Filter v2: Robust list of patterns (start and mid-phrase protection)
+        
+        # 1. Hard-Kill Global (JSON Voorhees Safe)
+        cleaned = re.sub(r'(?i)(?<![\w\.])excelente(?![\w\.])[:;,.\!?]*\s*', '', text.strip())
+        
+        # 2. Parrot Filter v2: Robust list of patterns (start and mid-phrase protection)
         forbidden = [
             r"^¡?Claro que sí!?", r"^Claro,", r"^¡?Claro!?",
-            r"^¡?Excelente!?", r"^¡?Perfecto!?", r"^¡?Entendido!?",
+            r"^¡?Perfecto!?", r"^¡?Entendido!?",
             r"^¡?Qué bien!?", r"^¡?Buen día!?", r"^Con gusto,",
             r"^Por supuesto,?", r"^¡?Genial!?"
         ]
         
-        cleaned = text.strip()
         changed = True
         while changed:
             original = cleaned
