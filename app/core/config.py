@@ -23,6 +23,9 @@ class Settings:
         self.secret_name: str = os.getenv("FIREBASE_SECRET_NAME", "FIREBASE_CREDENTIALS")
         self.storage_bucket: str = os.getenv("STORAGE_BUCKET", "tiendalasmotos-documents")
         
+        # Admin API Key from Secret Manager
+        self.admin_api_key: str = os.getenv("ADMIN_API_KEY", "moto_master_2026")
+        
         # WhatsApp Configuration - CRITICAL for message sending
         self.whatsapp_token: str = os.getenv("WHATSAPP_TOKEN", "")
         self.phone_number_id: str = os.getenv("PHONE_NUMBER_ID", "")
@@ -52,6 +55,7 @@ class Settings:
         
         # Server
         print(f"Port: {self.port}")
+        print(f"Admin API Key: {'✅ SECURE' if self.admin_api_key != 'moto_master_2026' else '⚠️ DEFAULT/INSECURE'}")
         print("=" * 60)
         
         # Critical warnings for WhatsApp

@@ -13,14 +13,9 @@ from fastapi import APIRouter, HTTPException, Header, Body
 from pydantic import BaseModel
 from google.cloud import firestore
 
-logger = logging.getLogger(__name__)
+from app.core.config import settings
 
-# ============================================================================
-# SECURITY CONFIGURATION
-# ============================================================================
-# Simple API key authentication for admin operations
-# TODO: Move to environment variable for production
-ADMIN_API_KEY = "moto_master_2026"
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # REQUEST/RESPONSE MODELS
@@ -184,7 +179,7 @@ async def reset_handoff(
             detail="Missing API key. Provide X-Admin-API-Key header."
         )
     
-    if x_admin_api_key != ADMIN_API_KEY:
+    if x_admin_api_key != settings.admin_api_key:
         logger.warning(f"🔒 Admin API call with invalid API key: {x_admin_api_key[:10]}...")
         raise HTTPException(
             status_code=401,
@@ -226,42 +221,6 @@ async def reset_handoff(
             detail=f"Failed to update handoff status: {str(e)}"
         )
 
-@router.post("/sync-prompts")
-async def sync_prompts(
-    x_admin_api_key: Optional[str] = Header(None, alias="X-Admin-API-Key")
-):
-    """
-    Force synchronize the System Instruction from code to Firestore Config.
-    """
-    if not x_admin_api_key or x_admin_api_key != ADMIN_API_KEY:
-        logger.warning("🔒 Unauthorized attempt to sync prompts")
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    
-    try:
-        from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
-        from app.core.config import settings
-        
-        project_id = settings.gcp_project_id or "tiendalasmotos"
-        db = firestore.Client(project=project_id)
-        
-        logger.info(f"🔄 Syncing prompts to Firestore project: {project_id}")
-        
-        doc_ref = db.collection("configuracion").document("juan_pablo_personality")
-        doc_ref.set({
-            "system_instruction": JUAN_PABLO_SYSTEM_INSTRUCTION,
-            "updated_at": firestore.SERVER_TIMESTAMP,
-            "synced_by": "api_admin_final"
-        }, merge=True)
-        
-        return {
-            "status": "success", 
-            "message": "System Instruction synchronized to Firestore Config",
-            "project": project_id,
-            "branding": "Auteco Las Motos"
-        }
-    except Exception as e:
-        logger.error(f"❌ Error syncing prompts: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/refresh-config")
@@ -298,7 +257,7 @@ async def refresh_config(
         logger.warning("🔒 Unauthorized refresh-config attempt: missing API key")
         raise HTTPException(status_code=401, detail="Missing API key. Provide X-Admin-API-Key header.")
     
-    if x_admin_api_key != ADMIN_API_KEY:
+    if x_admin_api_key != settings.admin_api_key:
         logger.warning(f"🔒 Unauthorized refresh-config attempt: invalid key")
         raise HTTPException(status_code=401, detail="Invalid API key")
 
