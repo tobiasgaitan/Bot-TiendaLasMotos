@@ -899,13 +899,18 @@ Conversación a analizar:
                 "required": ["summary", "extracted"]
             }
 
-            from vertexai.generative_models import GenerationConfig
+            from vertexai.generative_models import GenerationConfig, GenerativeModel
+            
+            # TOOL STRIP (Aislamiento Quirúrgico):
+            # Instanciamos el modelo localmente SIN herramientas (tools=[]).
+            # El Tool Pollution causa que Vertex AI trunque el JSON en tareas stateless.
+            # Mantenemos gemini-2.5-flash según directriz del usuario.
+            extractor_model = GenerativeModel("gemini-2.5-flash")
             
             # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
             # Exigimos explícitamente max_output_tokens=2048 para prevenir interrupciones y permitir
             # que el modelo asuma el schema de extracción complejo sin truncamiento.
-            # Nota: Usamos generate_content porque el resumen es una tarea stateless.
-            response = self._model.generate_content(
+            response = extractor_model.generate_content(
                 prompt,
                 generation_config=GenerationConfig(
                     temperature=0.1,
