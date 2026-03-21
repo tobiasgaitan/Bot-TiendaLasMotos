@@ -546,7 +546,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         logger.warning(f"⚠️ AI bypassed catalog search for motorcycle query: '{texto}'. Forcing validation turn.")
                         response = chat.send_message(
                             "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]",
-                            generation_config=GenerationConfig(temperature=0.1)
+                            generation_config=GenerationConfig(temperature=0.1, max_output_tokens=2048)
                         )
                         # Re-verify candidates after injection
                         if not response.candidates:
@@ -624,7 +624,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     
                                     response = chat.send_message(
                                         retry_instruction,
-                                        generation_config=GenerationConfig(temperature=0.1)
+                                        generation_config=GenerationConfig(temperature=0.1, max_output_tokens=2048)
                                     )
                                     continue # Review corrected response
                             
@@ -748,7 +748,10 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
                     if response_parts:
                         turns += 1
                         try:
-                            response = chat.send_message(response_parts)
+                            response = chat.send_message(
+                                response_parts,
+                                generation_config=GenerationConfig(temperature=0.1, max_output_tokens=2048)
+                            )
                         except InvalidArgument as e:
                             logger.error(f"❌ InvalidArgument in turn {turns}: {e}")
                             return "Tuve un problema procesando esa consulta compleja. ¿Me podrías preguntar algo más específico? 😅"
@@ -903,14 +906,14 @@ Conversación a analizar:
             from vertexai.generative_models import GenerationConfig
             
             # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
-            # Exigimos explícitamente max_output_tokens=1024 para prevenir interrupciones y permitir
+            # Exigimos explícitamente max_output_tokens=2048 para prevenir interrupciones y permitir
             # que el modelo asuma el schema de extracción complejo sin truncamiento.
             # Nota: Usamos generate_content porque el resumen es una tarea stateless.
             response = self._model.generate_content(
                 prompt,
                 generation_config=GenerationConfig(
                     temperature=0.1,
-                    max_output_tokens=1024,
+                    max_output_tokens=2048,
                     response_mime_type="application/json",
                     response_schema=extraction_schema
                 )
