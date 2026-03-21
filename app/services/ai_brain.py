@@ -244,12 +244,12 @@ class CerebroIA:
             
         return cleaned
 
-    def _create_tools(self, prospect_data: Optional[Dict[str, Any]] = None) -> Optional[Tool]:
+    def _create_tools(self, prospect_data: Optional[Dict[str, Any]] = None) -> Optional[List[types.Tool]]:
         """
         Create tools for function calling (human handoff).
         Returns: Tool object with function declarations, or None if not available
         """
-        if not VERTEX_AI_AVAILABLE:
+        if not SDK_AVAILABLE:
             return None
         
         try:
@@ -258,7 +258,7 @@ class CerebroIA:
             # explicit user requests. Permitting 'complex_query' or 'technical_question'
             # caused the LLM to escape answering FAQs (credit requirements, pricing)
             # by routing them to a human, breaking the automated sales funnel.
-            handoff_function = FunctionDeclaration(
+            handoff_function = types.FunctionDeclaration(
                 name="trigger_human_handoff",
                 description="""Escala la conversación a un agente humano ÚNICAMENTE si el usuario EXPLÍCITAMENTE solicita hablar con una persona.
 
@@ -292,7 +292,7 @@ REGLAS ESTRICTAS DE USO:
             # Por qué se hace: Asegura que el modelo no genere respuestas alucinadas sobre el 
             # inventario en la primera interacción (Fresh Start) y refuerza que DEBE buscar 
             # antes de intentar saludar o responder.
-            catalog_function = FunctionDeclaration(
+            catalog_function = types.FunctionDeclaration(
                 name="search_catalog",
                 description="""Busca motocicletas en el catálogo usando un término clave. REGLA DE ORO: NUNCA asumas el inventario. Es OBLIGATORIO usar esta herramienta antes de recomendar cualquier moto.""",
                 parameters={
@@ -308,7 +308,7 @@ REGLAS ESTRICTAS DE USO:
             )
             
             # Define credit calculation function
-            credit_function = FunctionDeclaration(
+            credit_function = types.FunctionDeclaration(
                 name="calculate_credit_score",
                 description="ÚNICA herramienta autorizada para calcular el perfil crediticio. Úsala inmediatamente después del Paso 9. Proporciona el score, la entidad asignada y el link de aplicación.",
                 parameters={

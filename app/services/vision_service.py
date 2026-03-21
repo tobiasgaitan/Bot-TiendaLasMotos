@@ -116,7 +116,7 @@ class VisionService:
             logger.error(f"❌ Error analyzing image: {e}")
             return "Tuve un problema procesando la imagen. Intenta enviarla de nuevo."
 
-    async def _process_kyc_document(self, image_part: Part, phone: str) -> str:
+    async def _process_kyc_document(self, image_part: types.Part, phone: str) -> str:
         """
         Processes KYC documents (Identity cards or Utility bills) directly for the Brilla flow.
         
@@ -124,7 +124,7 @@ class VisionService:
         - Why: This streamlines the Brilla credit application by explicitly acknowledging
           the document receipt, preventing the AI from falling into the generic or motorcycle-specific flows.
         - Fail-Closed: We only return the validation string if the model confidently 
-          classified it as a 'kyc_document'. If unsure, it falls to the fallback.
+          classified it as 'kyc_document'. If unsure, it falls to the fallback.
         - Security: No hardcoded credentials are used here; relies on application ADC.
           Input validation is handled inherently by Vertex AI Part object processing.
         """
