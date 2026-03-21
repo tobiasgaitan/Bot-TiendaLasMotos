@@ -836,6 +836,11 @@ Tu misión es resumir la conversación con el cliente y extraer datos clave.
 Analiza esta conversación y extrae la información indicada en el esquema JSON proporcionado.
 Extrae ÚNICAMENTE información que el cliente haya mencionado explícitamente en la conversación.
 
+⚠️ PRIORIDAD DE EXTRACCIÓN (Anchor):
+Tu misión principal es capturar Nombres y Ciudades. 
+Si el usuario dice 'Hola, soy [X]' o 'Vivo en [Y]', extrae esos valores inmediatamente 
+hacia los campos 'name' y 'city', incluso si ya fueron mencionados antes.
+
 REGLA DE ORO DE ESTABILIDAD: 
 Si el mensaje del usuario es solo una reacción (ej: "👍", "Ok", "Vale", "Sí") o no contiene entidades nuevas para extraer, 
 DEBES DEVOLVER EXACTAMENTE un objeto JSON vacío para el campo 'extracted': {{"summary": "...", "extracted": {{}} }}.

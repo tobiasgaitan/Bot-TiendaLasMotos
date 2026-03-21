@@ -308,8 +308,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                         last_bot_q = ""
                                         history_context = ""
                                         
-                                        # Get last 3 turns (6 messages) for context
-                                        context_messages = (current_history or [])[-6:]
+                                        # Get last 6 turns (12 messages) for context
+                                        context_messages = (current_history or [])[-12:]
                                         for m in context_messages:
                                             role = "User" if m.get("role") == "user" else "Bot"
                                             history_context += f"{role}: {m.get('content', '')}\n"
@@ -380,8 +380,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                         last_bot_q = ""
                                         history_context = ""
                                         
-                                        # Get last 3 turns (6 messages) for context
-                                        context_messages = (current_history or [])[-6:]
+                                        # Get last 6 turns (12 messages) for context
+                                        context_messages = (current_history or [])[-12:]
                                         for m in context_messages:
                                             role = "User" if m.get("role") == "user" else "Bot"
                                             history_context += f"{role}: {m.get('content', '')}\n"
@@ -623,8 +623,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                             last_bot_q = ""
                             history_context = ""
                             
-                            # Get last 3 turns (6 messages) for context
-                            context_messages = (current_history or [])[-6:]
+                            # Get last 6 turns (12 messages) for context
+                            context_messages = (current_history or [])[-12:]
                             for m in context_messages:
                                 role = "User" if m.get("role") == "user" else "Bot"
                                 history_context += f"{role}: {m.get('content', '')}\n"
@@ -718,8 +718,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                         last_bot_q = ""
                         history_context = ""
                         
-                        # Get last 3 turns (6 messages) for context
-                        context_messages = (current_history or [])[-6:]
+                        # Get last 6 turns (12 messages) for context
+                        context_messages = (current_history or [])[-12:]
                         for m in context_messages:
                             role = "User" if m.get("role") == "user" else "Bot"
                             history_context += f"{role}: {m.get('content', '')}\n"
