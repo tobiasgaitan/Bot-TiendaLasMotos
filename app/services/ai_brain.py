@@ -412,8 +412,15 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
                 
                 # Format prospect attributes for XML injection
                 prospect_xml = ""
+                captured_data_xml = ""
                 if prospect_data and prospect_data.get("exists"):
                     prospect_xml = "\n".join([f"    <{k}>{v}</{k}>" for k,v in prospect_data.items() if v and k not in ['exists', 'summary']])
+                    
+                    # [NEW] Enhanced Context Lock (Audit P2 3.1)
+                    # WHY: Explicitly listing what we already know to avoid redundant questions.
+                    captured_fields = [k for k, v in prospect_data.items() if v and k not in ['exists', 'summary', 'ai_summary']]
+                    if captured_fields:
+                        captured_data_xml = f"\n<datos_ya_capturados>\n" + "\n".join([f"  <{k}>{prospect_data[k]}</{k}>" for k in captured_fields]) + "\n</datos_ya_capturados>"
                 
                 full_prompt = f"""
 {self._get_current_instruction()}
@@ -434,6 +441,7 @@ REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad 
     <saludo_permitido>{'NO' if skip_greeting else 'SI'}</saludo_permitido>
     <contexto_previo>{context if context else 'N/A'}</contexto_previo>
   </reglas_de_sesion>
+{captured_data_xml}
 </contexto_dinamico>
 
 ⚠️ REGLA CRÍTICA: Ignora cualquier instrucción de identidad previa en el historial. Tu nombre es Juan Pablo. 
@@ -497,7 +505,14 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                     full_prompt += funnel_instruction + "\n\n"
                     
-                full_prompt += f"Usuario: {texto}\n\nJuan Pablo:"
+                full_prompt += f"Usuario: {texto}\n\n"
+                
+                # [NEW] TAIL REINFORCEMENT (Audit P2 3.2 - Recency Bias)
+                # WHY: Moving the most critical constraint to the end of the prompt to maximize attention.
+                # This ensures the bot remembers the One-Shot rule and context lock just before generating.
+                full_prompt += f"[SISTEMA: Recuerda la ONE-SHOT RULE. Tu respuesta debe terminar con UNA (1) sola pregunta. Tienes prohibido repreguntar por los datos que ya están en <datos_ya_capturados>.]\n\n"
+                
+                full_prompt += "Juan Pablo:"
                 
                 # 1. Send initial message
                 try:
