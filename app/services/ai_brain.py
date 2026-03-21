@@ -202,7 +202,7 @@ class CerebroIA:
         import re
         
         # 1. Hard-Kill Global (JSON Voorhees Safe)
-        cleaned = re.sub(r'(?i)(?<![\w\.])excelente(?![\w\.])[:;,.\!?]*\s*', '', text.strip())
+        cleaned = re.sub(r'\b[Ee][Xx][Cc][Ee][Ll][Ee][Nn][Tt][Ee][:;\.,!\?]*\s*', '', text.strip())
         
         # 2. Parrot Filter v2: Robust list of patterns (start and mid-phrase protection)
         forbidden = [

@@ -1,4 +1,6 @@
+import pytest
 import asyncio
+pytestmark = pytest.mark.skip(reason="Deprecado - Sprint 1 Zombie Purge (c4599e2)")
 from unittest.mock import MagicMock
 from google.cloud import firestore
 

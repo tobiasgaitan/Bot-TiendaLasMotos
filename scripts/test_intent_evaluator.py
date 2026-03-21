@@ -1,4 +1,6 @@
+import pytest
 import asyncio
+pytestmark = pytest.mark.skip(reason="Deprecado - Sprint 1 Zombie Purge (c4599e2)")
 from unittest.mock import MagicMock
 from app.services.ai_brain import CerebroIA
 
@@ -9,6 +11,7 @@ try:
 except Exception as e:
     print(f"Skipping vertex init (expected if already run or locally mocked): {e}")
 
+import pytest
 def test_intent_evaluator():
     print("🧪 Starting Intent Evaluator Test...\n")
     

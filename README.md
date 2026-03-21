@@ -1,3 +1,14 @@
+## ⚠️ ADVERTENCIA DE ARQUITECTURA: Verdad Inmutable y Vibe Coding
+
+**ATENCIÓN DESARROLLADORES Y AGENTES DE IA:**
+El motor de IA de este repositorio (`bot-tiendalasmotos`) opera bajo restricciones estrictas de cumplimiento legal y diseño de embudo de ventas. 
+
+1. **PROHIBIDO EL "VIBE CODING":** Bajo NINGUNA circunstancia se autoriza modificar el tono de personalidad, las transiciones de venta, o los guiones definidos en la base de datos de Firestore (`configuracion/juan_pablo_personality`).
+2. **HABEAS DATA INAMOVIBLE:** El enlace a la política de privacidad y la "Regla de Bloqueo" de la Fase 1 (No avanzar sin Ciudad y Forma de Pago) son reglas legales críticas. Su alteración genera un riesgo de *Compliance*.
+3. **FILTRO PARROT:** El archivo `ai_brain.py` contiene expresiones regulares destructivas (`re.sub`) para erradicar muletillas comerciales ("excelente", "claro"). No intente suavizar ni eliminar estos filtros en el código.
+
+Cualquier alteración al prompt del sistema debe ser aprobada mediante un *Contrato JSON* estricto y validada por auditoría.
+
 # Tienda Las Motos - WhatsApp Bot Backend
 
 FastAPI backend for motorcycle sales automation via WhatsApp.

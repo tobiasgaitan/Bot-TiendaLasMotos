@@ -1,5 +1,7 @@
 import sys
 import os
+import pytest
+from unittest.mock import patch, MagicMock
 
 # Ensure the app module is in the path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -7,9 +9,19 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from app.services.catalog_service import CatalogService
 from google.cloud import firestore
 
-def test_search():
+@patch("google.cloud.firestore.Client")
+def test_search(mock_firestore_client):
     print("--- TESTING CATALOG SERVICE ---")
-    db = firestore.Client(project="tiendalasmotos")
+    db = mock_firestore_client.return_value
+    
+    # Simulate return from query
+    mock_collection = MagicMock()
+    mock_dbDocs = MagicMock()
+    mock_doc = MagicMock()
+    mock_doc.to_dict.return_value = {"name": "TVS Raider 125", "brand": "TVS", "referencia": "Raider", "categories": ["Urbanas"]}
+    
+    db.collection.return_value = mock_collection
+    
     catalog = CatalogService()
     catalog.initialize(db)
     
@@ -27,9 +39,24 @@ def test_search():
             print(f"  Category Aliases: {item.get('category_aliases', [])}")
             print("  ---")
 
-def test_firestore_state():
+@patch("google.cloud.firestore.Client")
+def test_firestore_state(mock_firestore_client):
     print("\n--- TESTING FIRESTORE STATE ---")
-    db = firestore.Client(project="tiendalasmotos")
+    db = mock_firestore_client.return_value
+    
+    # Mock documents iterator
+    mock_doc = MagicMock()
+    mock_doc.id = "doc123"
+    mock_doc.to_dict.return_value = {"nombre": "Raider", "marca": "TVS", "status": "active", "estado": "in_stock"}
+    
+    mock_collection = MagicMock()
+    mock_document = MagicMock()
+    mock_collection2 = MagicMock()
+    db.collection.return_value = mock_collection
+    mock_collection.document.return_value = mock_document
+    mock_document.collection.return_value = mock_collection2
+    mock_collection2.stream.return_value = [mock_doc]
+    
     docs = db.collection("pagina").document("catalogo").collection("items").stream()
     
     found_raider = False

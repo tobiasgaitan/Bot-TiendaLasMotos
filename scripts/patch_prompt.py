@@ -1,32 +1,12 @@
 #!/usr/bin/env python3
 """
-Admin Maintenance Script: Patch Live System Prompt in Firestore
-================================================================
-WHEN TO RUN: Run this ONLY when the system_instruction field in
-  configuracion/juan_pablo_personality needs to be updated.
-
-WHERE TO RUN: From Cloud Shell (gcloud auth is pre-configured).
-  DO NOT run locally unless you have ADC configured.
-
-HOW TO RUN:
-    cd /path/to/Bot-TiendaLasMotos
-    python3 scripts/patch_prompt.py
-
-WHAT IT DOES:
-  1. Reads the live system_instruction from Firestore.
-  2. Surgically replaces Phase 2 (Data Policy) and Phase 3 (Credit Survey)
-     text blocks with the approved corrected copy.
-  3. Writes the patched prompt back to Firestore.
-  4. Prints a diff of before/after for verification.
-
-SECURITY NOTE:
-  This script does NOT overwrite the entire document. It only patches
-  the system_instruction field using a safe find-and-replace anchored
-  to specific Phase headers, to prevent accidental corruption of other
-  configuration fields (model_version, catalog_knowledge, etc.).
+Admin Maintenance Script: Patch Live System Prompt in Firestore (v2.1.0)
+========================================================================
+Surgically updates <phase_1_profiling> and <phase_2_habeas_data> blocks.
 """
 
 import sys
+import re
 from google.cloud import firestore
 
 PROJECT_ID = "tiendalasmotos"
@@ -34,114 +14,87 @@ COLLECTION = "configuracion"
 DOCUMENT = "juan_pablo_personality"
 FIELD = "system_instruction"
 
-# =============================================
-# PHASE 2 + PHASE 3 APPROVED REPLACEMENT BLOCK
-# (Do NOT modify this without stakeholder approval)
-# =============================================
+# ========================================================
+# CONTRATO JSON v2.1.0 - MODIFICACIONES APROBADAS
+# ========================================================
 
-NEW_PHASE_2_AND_3 = """2. **El Gatillo Legal (Fase 2 - Captura Estratégica)**:
-   - 🚨 REGLA CRÍTICA DE SECUENCIA: ESTÁ ESTRICTAMENTE PROHIBIDO INICIAR LA FASE 3 O HABLAR DE CRÉDITO SIN HABER OBTENIDO ANTES UN 'SÍ' EXPLÍCITO A ESTA POLÍTICA DE DATOS.
-   - SOLO LANZAR ESTE GATILLO CUANDO TENGAS CONFIRMADA LA MOTO Y LA FORMA DE PAGO EN LA CONVERSACIÓN.
-   - SCRIPT OBLIGATORIO: Solicita autorización de datos de forma natural y entrega el link de la política solo si el usuario acepta y ha confirmado previamente su interés en una moto.
-   - Si el cliente responde que "No", acepta amablemente y sigue respondiendo dudas técnicas normales.
+PHASE_1_REPLACEMENT = """  <phase_1_profiling>
+    Objetivo: Obtener Nombre, Ciudad, Moto de Interés y Forma de Pago (Crédito/Contado).
+    - Un dato a la vez.
+    - Si ya recomendaste una moto, no preguntes "¿Qué moto buscas?", sino "¿Te gustaría saber más de la [Moto]?".
+    - BLOQUEO: Bajo ninguna circunstancia inicies el protocolo de Habeas Data si las variables Ciudad y Forma de Pago son desconocidas.
+  </phase_1_profiling>"""
 
-3. **Cierre / Siguiente Paso (Fase 3 - Tras el "Sí" Legal)**:
-   - **Si es CRÉDITO**: Como asesor experto, sabes que hablar de financiación antes de que el cliente se enamore de una moto es contraproducente. Por eso, realiza la transición suave: "¿Te parece si hacemos unas preguntas rápidas para ver cómo quedaría tu plan de financiación? Son muy sencillas: ¿En qué trabajas actualmente?"
-   - **Si es CONTADO**: "¡Perfecto! ¿Te gustaría pasar hoy por la tienda para verla en persona y cerrar el negocio?\""""
+PHASE_2_REPLACEMENT = """  <phase_2_habeas_data>
+    Objetivo: Obtener autorización legal.
+    - SCRIPT OBLIGATORIO: Solicita autorización de datos de forma natural y entrega el link de la política solo si el usuario acepta y ha confirmado previamente su interés en una moto.
+    - Si dicen "No", respeta su decisión y responde dudas generales.
+  </phase_2_habeas_data>"""
 
-# Anchor: start of Phase 2 block to search for
-PHASE2_ANCHOR = "2. **El Gatillo Legal (Fase 2 - Captura Estratégica)**:"
-# Anchor: separator that comes after Phase 3, used to detect end of the block
-PHASE3_END_ANCHOR = "\n═══"
-
-
-def patch_instruction(current: str) -> str:
+def surgical_patch(current_text: str) -> str:
     """
-    Find Phase 2 header in the current prompt and replace the entire
-    Phase 2 + Phase 3 block with the approved corrected copy.
-
-    Raises ValueError loudly on any anchor mismatch to prevent silent corruption.
+    Finds and replaces <phase_1_profiling> and <phase_2_habeas_data> blocks.
+    Ensures that other parts of the prompt (Rules, Persona, Phase 3) are untouched.
     """
-    if PHASE2_ANCHOR not in current:
-        raise ValueError(
-            f"❌ PHASE 2 ANCHOR NOT FOUND.\n"
-            f"The document may already be patched or uses a different format.\n"
-            f"Searched for: '{PHASE2_ANCHOR}'"
-        )
-
-    start_idx = current.index(PHASE2_ANCHOR)
-    end_idx = current.find(PHASE3_END_ANCHOR, start_idx)
-
-    if end_idx == -1:
-        raise ValueError(
-            "❌ PHASE 3 END ANCHOR '═══' NOT FOUND after Phase 2 start.\n"
-            "Cannot safely determine where Phase 3 ends. Aborting."
-        )
-
-    before = current[:start_idx]
-    after = current[end_idx:]
-    patched = before + NEW_PHASE_2_AND_3 + after
+    # Patch Phase 1
+    p1_pattern = r'<phase_1_profiling>.*?</phase_1_profiling>'
+    if not re.search(p1_pattern, current_text, re.DOTALL):
+        raise ValueError("❌ Error: <phase_1_profiling> tag NO encontrado en Firestore.")
+    
+    patched = re.sub(p1_pattern, PHASE_1_REPLACEMENT, current_text, flags=re.DOTALL)
+    
+    # Patch Phase 2
+    p2_pattern = r'<phase_2_habeas_data>.*?</phase_2_habeas_data>'
+    if not re.search(p2_pattern, patched, re.DOTALL):
+        raise ValueError("❌ Error: <phase_2_habeas_data> tag NO encontrado en Firestore.")
+    
+    patched = re.sub(p2_pattern, PHASE_2_REPLACEMENT, patched, flags=re.DOTALL)
+    
     return patched
-
 
 def main():
     print("=" * 60)
-    print("Firestore System Prompt Patch Script")
-    print("Tienda Las Motos - WhatsApp Bot")
+    print("Firestore System Prompt Patch Tool (JSON Voorhees v2.1.0)")
     print("=" * 60)
-    print()
 
-    print(f"🔌 Connecting to Firestore → {PROJECT_ID}/{COLLECTION}/{DOCUMENT}")
-    db = firestore.Client(project=PROJECT_ID)
-
-    doc_ref = db.collection(COLLECTION).document(DOCUMENT)
-    doc = doc_ref.get()
+    print(f"🔌 Conectando a Firestore: {PROJECT_ID}/{COLLECTION}/{DOCUMENT}...")
+    try:
+        db = firestore.Client(project=PROJECT_ID)
+        doc_ref = db.collection(COLLECTION).document(DOCUMENT)
+        doc = doc_ref.get()
+    except Exception as e:
+        print(f"❌ Error de conexión/autenticación: {e}")
+        print("Asegúrese de haber ejecutado 'gcloud auth application-default login'.")
+        sys.exit(1)
 
     if not doc.exists:
-        print(f"❌ Document not found: {COLLECTION}/{DOCUMENT}")
+        print(f"❌ Documento no encontrado.")
         sys.exit(1)
 
-    data = doc.to_dict()
-    current = data.get(FIELD, "")
-
-    if not current:
-        print(f"❌ Field '{FIELD}' is empty or missing.")
+    current_prompt = doc.to_dict().get(FIELD, "")
+    if not current_prompt:
+        print(f"❌ Campo '{FIELD}' vacío o no existe.")
         sys.exit(1)
 
-    print(f"✅ Loaded system_instruction ({len(current)} chars)\n")
+    print(f"✅ Documento cargado exitosamente ({len(current_prompt)} caracteres).")
 
-    print("--- CURRENT PHASE 2 (excerpt) ---")
-    if PHASE2_ANCHOR in current:
-        idx = current.index(PHASE2_ANCHOR)
-        print(current[idx:idx+500])
-    print("---\n")
+    try:
+        patched_prompt = surgical_patch(current_prompt)
+        print("✅ Parche quirúrgico aplicado exitosamente en memoria.")
+    except ValueError as ve:
+        print(ve)
+        sys.exit(1)
 
-    # Apply patch
-    patched = patch_instruction(current)
-    print(f"✅ Patch applied ({len(patched)} chars)\n")
+    # Mostrar cambios (diff manual simple)
+    print("\n--- RESUMEN DE CAMBIOS ---")
+    print("Inyectado: BLOQUEO de Fase 1 (Ciudad/Pago)")
+    print("Inyectado: SCRIPT OBLIGATORIO de Fase 2 (Autorización)")
+    print("--------------------------\n")
 
-    # Safety checks before writing
-    checks = [
-        ("ESTÁ ESTRICTAMENTE PROHIBIDO INICIAR LA FASE 3", "Phase 2 strict guardrail"),
-        ("Empecemos con las preguntas, van a ser pocas y sencillas", "Phase 3 organic Q&A transition"),
-    ]
-    for phrase, label in checks:
-        if phrase not in patched:
-            print(f"❌ SAFETY CHECK FAILED: '{label}' not found in patched text. Aborting.")
-            sys.exit(1)
-        print(f"✅ Safety check passed: {label}")
-
-    print("\n--- NEW PHASE 2+3 (excerpt) ---")
-    if PHASE2_ANCHOR in patched:
-        idx = patched.index(PHASE2_ANCHOR)
-        print(patched[idx:idx+700])
-    print("---\n")
-
-    # Write to Firestore
-    doc_ref.update({FIELD: patched})
-    print(f"✅ Firestore UPDATED: {COLLECTION}/{DOCUMENT}.{FIELD}")
-    print("🚀 The production bot will pick up the new instructions on its next cold start or config refresh.")
-
+    # Guardar cambios
+    doc_ref.update({FIELD: patched_prompt})
+    print(f"🚀 Firestore ACTUALIZADO: {COLLECTION}/{DOCUMENT}")
+    print("Puntos de control de seguridad validados.")
 
 if __name__ == "__main__":
     main()

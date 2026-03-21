@@ -1,3 +1,4 @@
+import pytest
 import asyncio
 import logging
 import sys
@@ -18,7 +19,7 @@ from app.services.audio_service import AudioService
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger("AudioTest")
 
-async def test_audio_pipeline():
+async def run_audio_pipeline():
     logger.info("🧪 Testing Audio Pipeline (V2.5 + WAV 16kHz)...")
     
     # Init Service
@@ -37,7 +38,7 @@ async def test_audio_pipeline():
         # Run
         # We need to mock open() since file doesn't exist
         with patch("builtins.open", MagicMock()):
-             res = await audio.process_audio(b"ogg_data", "audio/ogg")
+             res = await audio.transcribe_audio(b"ogg_data", "audio/ogg")
              
         # Assertions
         mock_transcode.assert_called_once()
@@ -50,9 +51,9 @@ async def test_audio_pipeline():
         assert res == "Entendido."
         logger.info("✅ Gemini 2.5 response received.")
 
-async def main():
-    await test_audio_pipeline()
+def test_audio_pipeline():
+    asyncio.run(run_audio_pipeline())
     logger.info("🎉 Audio V2.5 Verification Complete.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    test_audio_pipeline()
