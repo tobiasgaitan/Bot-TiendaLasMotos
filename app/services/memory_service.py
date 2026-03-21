@@ -404,8 +404,30 @@ class MemoryService:
         try:
             deleted = 0
             clean_phone = PhoneNormalizer.normalize(phone_number)
+
+            # --- 1. PURGE MENSAJERIA SESSIONS (AI History) ---
+            try:
+                session_ref = self._db.collection("mensajeria").document("whatsapp").collection("sesiones").document(clean_phone)
+                history_ref = session_ref.collection("historial")
+                
+                # Purge history subcollection
+                msgs = history_ref.stream()
+                batch = self._db.batch()
+                count = 0
+                for m in msgs:
+                    batch.delete(m.reference)
+                    count += 1
+                
+                # Delete the session document itself
+                batch.delete(session_ref)
+                batch.commit()
+                deleted += count + 1
+                logger.info(f"🗑️ Nuclear delete: mensajeria sessions purged for {clean_phone} ({count} msgs)")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to purge mensajeria session for {clean_phone}: {e}")
             
-            # 1. Targeted Delete using Centralized Helper
+            # --- 2. PURGE PROSPECT DATA (CRM) ---
+            # Targeted Delete using Centralized Helper
             doc_ref = self._find_prospect_ref(phone_number)
             if doc_ref:
                 # Nuclear subcollection purge
@@ -421,7 +443,7 @@ class MemoryService:
                 deleted += 1
                 logger.info(f"🗑️ Nuclear delete: prospect doc and history for {phone_number}")
 
-            # 2. Variant Cleanup (Safety sweep for variants not caught by helper)
+            # --- 3. VARIANT CLEANUP ---
             variants = [
                 clean_phone,                         # International: 573...
                 clean_phone.replace("57", "", 1),   # National: 3...
