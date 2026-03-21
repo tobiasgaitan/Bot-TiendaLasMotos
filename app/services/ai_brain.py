@@ -366,12 +366,15 @@ REGLAS ESTRICTAS DE USO:
             function_declarations = [handoff_function, catalog_function]
             
             # BUSINESS RULE: Moto must be confirmed (moto_ok/moto_confirmada) to trigger credit logic
+            # REFINEMENT (Audit P2): We also allow credit tools if we are already in Phase 3 Profiling.
+            phase = self._determine_funnel_phase(prospect_data)
             moto_confirmada = prospect_data.get("moto_confirmada") is True if prospect_data else False
-            if moto_confirmada:
+            
+            if moto_confirmada or phase == "PHASE_3_CREDIT_PROFILING":
                 function_declarations.append(credit_function)
-                logger.info("🛠️ Toolset: [handoff, catalog, credit] (Stop-Gate Open: Moto OK)")
+                logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Stop-Gate Open | Phase: {phase})")
             else:
-                logger.info("🛠️ Toolset: [handoff, catalog] (Stop-Gate Closed: No Moto confirmed)")
+                logger.info(f"🛠️ Toolset: [handoff, catalog] (Stop-Gate Closed | Phase: {phase})")
 
             return Tool(function_declarations=function_declarations)
         except Exception as e:
@@ -417,6 +420,7 @@ REGLAS ESTRICTAS DE USO:
         for attempt in range(max_retries):
             try:
                 # DYNAMIC TOOLS (Hotfix 128 - Stop-Gate)
+                # prospect_data is passed here to _create_tools to evaluate phase/moto_confirmada
                 dynamic_tools = self._create_tools(prospect_data)
                 
                 # Re-initialize model/chat with dynamic tools for this specific request
