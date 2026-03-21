@@ -277,17 +277,13 @@ REGLAS ESTRICTAS DE USO:
             # antes de intentar saludar o responder.
             catalog_function = FunctionDeclaration(
                 name="search_catalog",
-                description="""Search for motorcycles in the catalog using a query string. 
-REGLA DE ORO: NUNCA asumas el inventario. Si el usuario menciona CUALQUIER moto o necesidad, ESTÁS OBLIGADO a usar esta herramienta ANTES de responder. 
-IMPORTANTE: Lee las instrucciones del parámetro 'query' para saber cómo formular la búsqueda dependiendo de si es un modelo específico o una búsqueda amplia.""",
+                description="""Busca motocicletas en el catálogo usando un término clave. REGLA DE ORO: NUNCA asumas el inventario. Es OBLIGATORIO usar esta herramienta antes de recomendar cualquier moto.""",
                 parameters={
                     "type": "object",
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": """Término de búsqueda a ingresar en el sistema. Debes evaluar la frase del usuario y aplicar UNA de estas dos reglas:
-REGLA 1 (Modelos Específicos/Sniper): Si el usuario nombra una marca o modelo exacto (ej. 'Raider', 'NKD', 'Sport'), tu query DEBE ser EXACTAMENTE esa palabra (ej. 'Raider'). PROHIBIDO abstraer o agrupar en segmentos como 'motos street'.
-REGLA 2 (Búsqueda Amplia/Semántica): Si el usuario describe un uso, necesidad u oración larga (ej. 'motos para ir a la finca', 'para camellar', 'automática de mujer'), tu deber es EXTRAER SOLO EL CONCEPTO CLAVE de una o dos palabras (ej. 'enduro', 'trabajo', 'scooter'). NUNCA pases oraciones largas ni preposiciones al query."""
+                            "description": """Término de búsqueda. REGLAS SEMÁNTICAS: 1. Si el usuario pide moto para 'ciudad' o 'transporte', busca 'trabajo' o 'scooter'. 2. Si pide 'para el campo' o 'trocha', busca 'enduro'. 3. Si menciona 'economica', busca 'trabajo'. 4. NUNCA busques términos literales subjetivos; traduce a categorías: [trabajo, scooter, enduro, moped, sport]."""
                         }
                     },
                     "required": ["query"]
