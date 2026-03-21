@@ -327,8 +327,24 @@ REGLAS ESTRICTAS DE USO:
                             "description": "Estado en Datacrédito. Mapeo estricto: Si dice 'nunca he sacado nada', 'no sé', MÁPEALO a 'Sin experiencia'. Si dice 'bien', 'pagando cuenta', MÁPEALO a 'Al dia'. Si menciona 'atrasado', 'castigado', MÁPEALO a 'Reportado'."
                         },
                         "mora_y_paz_salvo": {
-                description="Calculates credit score and returns financial links.",
-                parameters=credit_params
+                            "type": "string",
+                            "description": "Si tiene reportes, ¿tiene paz y salvo? 'Sí/No' o descripción de la mora."
+                        },
+                        "ingresos_mensuales": {
+                            "type": "number",
+                            "description": "Valor numérico total de ingresos mensuales."
+                        },
+                        "gastos_mensuales": {
+                            "type": "number",
+                            "description": "Valor numérico total de gastos mensuales."
+                        },
+                        "tiene_gas_natural": {
+                            "type": "boolean",
+                            "description": "¿Cuenta con recibo de gas natural a su nombre? (Indispensable para Brilla)."
+                        }
+                    },
+                    "required": ["ocupacion_y_contrato", "ingresos_demostrables", "historial_datacredito"]
+                }
             )
 
             function_declarations = [handoff_function, catalog_function]
