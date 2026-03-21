@@ -6,6 +6,8 @@ Handles image analysis using Gemini Vision (Flash).
 import logging
 from typing import Dict, Any, Optional
 import json
+import asyncio
+import time
 
 from google.cloud import firestore
 
@@ -38,6 +40,26 @@ class VisionService:
             except Exception as e:
                 logger.error(f"❌ VisionService init error: {e}")
 
+    async def _call_gemini_with_retry_async(self, func, *args, **kwargs):
+        """
+        Resiliencia de Red (Exponential Backoff) para llamadas asíncronas.
+        """
+        max_retries = 2
+        delay = 1.5
+        for attempt in range(max_retries + 1):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                err_str = str(e).lower()
+                retryable_keywords = ["429", "503", "quota", "deadline", "unavailable", "timeout", "resource_exhausted"]
+                is_retryable = any(kw in err_str for kw in retryable_keywords)
+                
+                if is_retryable and attempt < max_retries:
+                    logger.warning(f"⚠️ Vision Gemini API failure (Attempt {attempt+1}/{max_retries+1}). Retrying in {delay}s... Error: {e}")
+                    await asyncio.sleep(delay)
+                    continue
+                raise e
+
     async def analyze_image(self, image_bytes: bytes, mime_type: str, phone: str, caption: str = "") -> str:
         """
         General analysis of an image sent by user.
@@ -68,7 +90,10 @@ class VisionService:
             Output ONLY raw JSON.
             """
             
-            response = self._model.generate_content([image_part, prompt])
+            response = await self._call_gemini_with_retry_async(
+                self._model.generate_content,
+                [image_part, prompt]
+            )
             result_json = self._parse_json(response.text)
             
             if result_json.get("type") in ["kyc_document", "id_card"]:

@@ -49,10 +49,11 @@ class CerebroIA:
             config_loader: Optional ConfigLoader instance for dynamic personality
             catalog_service: Optional CatalogService instance for tool use
         """
-        self.config_loader = config_loader
-        self.catalog_service = catalog_service
+        self._config_loader = config_loader
+        self._catalog_service = catalog_service
         self.motor_financiero = None  # Will be injected
         self._model = None
+        self._chat_history = {} # In-memory small cache for last turn context
         # HOT-RELOAD FIX (Audit P1, 4.3):
         # _system_instruction is intentionally NOT cached here.
         # _get_current_instruction() reads from config_loader on every request,
@@ -65,16 +66,38 @@ class CerebroIA:
                 vertexai.init(project="tiendalasmotos", location="us-central1")
                 # Model is initialized WITHOUT a system_instruction here.
                 # The instruction is injected dynamically per-request via _get_current_instruction().
-                self._model = GenerativeModel(
-                    "gemini-2.5-flash",
-                    tools=[self.tools] if self.tools else []
-                )
+                # Use Gemini 2.0 Flash for speed and intelligence
+                # 2.5-flash is the specific version requested for production stability
+                self._model = GenerativeModel("gemini-2.5-flash")
                 logger.info(f"🧠 CerebroIA initialized with Gemini 2.5 Flash ({'Tools Enabled' if self.tools else 'No Tools'})")
             except Exception as e:
                 logger.error(f"❌ Error initializing Vertex AI: {str(e)}")
                 self._model = None
         else:
             logger.warning("⚠️  CerebroIA running in fallback mode (no AI)")
+
+    def _call_gemini_with_retry(self, func, *args, **kwargs):
+        """
+        Resiliencia de Red (Exponential Backoff):
+        Implementa reintentos para errores 429, 503 y Timeouts de Vertex AI.
+        """
+        max_retries = 2
+        delay = 1.5
+        for attempt in range(max_retries + 1):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                err_str = str(e).lower()
+                # Capturamos específicamente errores de cuota (429), disponibilidad (503) y tiempo de espera
+                retryable_keywords = ["429", "503", "quota", "deadline", "unavailable", "timeout", "resource_exhausted"]
+                is_retryable = any(kw in err_str for kw in retryable_keywords)
+                
+                if is_retryable and attempt < max_retries:
+                    logger.warning(f"⚠️ Gemini API failure (Attempt {attempt+1}/{max_retries+1}). Retrying in {delay}s... Error: {e}")
+                    time.sleep(delay)
+                    continue
+                # Si no es reintentable o se agotaron los intentos, lanzamos la excepción
+                raise e
     
     def _get_current_instruction(self) -> str:
         """
@@ -91,9 +114,9 @@ class CerebroIA:
         3. Code constant in prompts.py (last resort)
         """
         # 1. ConfigLoader (Firestore)
-        if self.config_loader:
+        if self._config_loader:
             try:
-                personality = self.config_loader.get_juan_pablo_personality()
+                personality = self._config_loader.get_juan_pablo_personality()
                 instruction = personality.get("system_instruction", "")
                 if instruction:
                     logger.info("🧠 Loaded system instruction from Firestore Config")
@@ -510,14 +533,19 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 
                 full_prompt += "Juan Pablo:"
                 
-                # 1. Send initial message
+                # --- MAIN INFERENCE CALL ---
                 try:
-                    response = chat.send_message(
+                    # IMPLEMENTATION OF RESILIENCE WRAPPER
+                    response = self._call_gemini_with_retry(
+                        chat.send_message,
                         full_prompt,
-                        generation_config=GenerationConfig(temperature=0.2, max_output_tokens=8192)
+                        generation_config=GenerationConfig(
+                            temperature=0.2,
+                            max_output_tokens=8192
+                        )
                     )
                 except Exception as e:
-                    logger.error(f"❌ API Error on initial message: {e}")
+                    logger.error(f"❌ Critical Gemini failure after retries: {e}")
                     return self._fallback_response(texto, history)
 
                 # --- SAFETY & CANDIDATE CHECK (Audit Crash Fix) ---
@@ -540,7 +568,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     # This prevents injecting instruction text when another tool (like credit) is already queued.
                     if user_mentions_motorcycle and not has_catalog_call and not has_any_tool_call:
                         logger.warning(f"⚠️ AI bypassed catalog search for motorcycle query: '{texto}'. Forcing validation turn.")
-                        response = chat.send_message(
+                        response = self._call_gemini_with_retry(
+                            chat.send_message,
                             "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]",
                             generation_config=GenerationConfig(temperature=0.1, max_output_tokens=2048)
                         )
@@ -618,7 +647,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     # PARROT FILTER V2: Recursive injection to clean forbidden phrases
                                     retry_instruction = f"[SYSTEM: ERROR: {error_msg} INSTRUCCIÓN: Corrige la respuesta usando ÚNICAMENTE los modelos, precios e imágenes devueltos por el catálogo. PROHIBIDO: Inventar modelos o precios. PROHIBIDO iniciar con 'Entendido', 'Excelente', 'Claro que sí' o muletillas similares.]"
                                     
-                                    response = chat.send_message(
+                                    response = self._call_gemini_with_retry(
+                                        chat.send_message,
                                         retry_instruction,
                                         generation_config=GenerationConfig(temperature=0.1, max_output_tokens=2048)
                                     )
@@ -650,8 +680,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             
                             search_results = "No se encontraron resultados."
                             try:
-                                if self.catalog_service:
-                                    matches = self.catalog_service.search_items(query)
+                                if self._catalog_service:
+                                    matches = self._catalog_service.search_items(query)
                                     if matches:
                                         catalog_returned_results = True
                                         search_results = f"Encontré {len(matches)} motos relacionadas:\n"
@@ -744,7 +774,8 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
                     if response_parts:
                         turns += 1
                         try:
-                            response = chat.send_message(
+                            response = self._call_gemini_with_retry(
+                                chat.send_message,
                                 response_parts,
                                 generation_config=GenerationConfig(temperature=0.1, max_output_tokens=2048)
                             )
@@ -806,7 +837,7 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
           forzar al modelo de Gemini a generar un JSON garantizado y determinista, en lugar
           de Prompt Engineering + Regex (que era frágil e inseguro ante alucinaciones).
         - Impacto: Asegura que campos críticos del negocio como el perfil de crédito
-          (ocupación, datacrédito) no se pierdan o malformen, permitiendo que `memory_service`
+          (ocupación, datacredito) no se pierdan o malformen, permitiendo que `memory_service`
           los guarde correctamente en Firestore.
         """
         if not self._model:
@@ -814,68 +845,65 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
 
         
         try:
-            # AUDIT P2 (3.2): Inject last bot question as an anchor for field attribution.
-            # Without this anchor, a user replying 'Orihueca' to 'desde qué ciudad' could be
-            # mapped to moto_interest because the extractor reads the conversation linearly
-            # without knowing which question triggered the response.
-            question_context = ""
-            if last_bot_question:
-                question_context = f"""
-⚠️ CONTEXTO CRÍTICO DE EXTRACCIÓN:
-La Última pregunta que hizo el bot fue: "{last_bot_question}"
-USA ESTE CONTEXTO para determinar a qué campo pertenece la respuesta más reciente del usuario.
-Si la respuesta del usuario es claramente una ubicación geográfica y el bot acaba de preguntar
-por la ciudad, mápeala a `city` y NO a `moto_interest`.
-"""
-
             prompt = f"""
-Eres Juan Pablo, el asistente virtual experto de Auteco Las Motos.
-Tu misión es resumir la conversación con el cliente y extraer datos clave.
+            Eres el "Extractor PII Juan Pablo". Tu única tarea es extraer información del historial de chat
+            y devolverla en un JSON válido según el esquema proporcionado.
 
-Analiza esta conversación y extrae la información indicada en el esquema JSON proporcionado.
-Extrae ÚNICAMENTE información que el cliente haya mencionado explícitamente en la conversación.
+            REGLAS DE EXTRACCIÓN CRÍTICAS:
+            1. habeas_data_accepted: 
+               - Mapea afirmaciones positivas (ej: 👍, "ok", "listo", "dale", "sí", "acepto") a `true`.
+               - Si no hay una aceptación explícita o hay una negativa, usa `false`.
+            2. moto_aceptada:
+               - Este campo es INMUTABLE contra la competencia. Solo guarda modelos de Tienda Las Motos que el usuario haya aceptado explícitamente comprar o ver.
+               - PROHIBIDO guardar marcas como Bajaj, Yamaha, Honda, Suzuki, AKT a menos que sean modelos específicos que Tienda Las Motos distribuya (TVS, Victory). 
+               - Si el usuario menciona una marca de la competencia, déjalo en blanco.
+            3. moto_interes: La primera moto por la que preguntó el usuario.
+            4. moto_ofrecida: La moto que el bot recomendó del catálogo.
+            5. Resumen: Un resumen ejecutivo de la situación del cliente enfocado en su perfil crediticio y moto de interés.
 
-⚠️ PRIORIDAD DE EXTRACCIÓN (Anchor):
-Tu misión principal es capturar Nombres y Ciudades. 
-Si el usuario dice 'Hola, soy [X]' o 'Vivo en [Y]', extrae esos valores inmediatamente 
-hacia los campos 'name' y 'city', incluso si ya fueron mencionados antes.
+            HISTORIAL DE CHAT:
+            {conversation_text}
 
-REGLA DE ORO DE ESTABILIDAD: 
-Si el mensaje del usuario es solo una reacción (ej: "👍", "Ok", "Vale", "Sí") o no contiene entidades nuevas para extraer, 
-DEBES DEVOLVER EXACTAMENTE un objeto JSON vacío para el campo 'extracted': {{"summary": "...", "extracted": {{}} }}.
-NUNCA devuelvas texto plano ni markdown fuera del JSON.
-
-{question_context}
-Conversación a analizar:
----
-{conversation_text}
----
-"""
+            ÚLTIMA PREGUNTA DEL BOT:
+            {last_bot_question}
+            """
             extraction_schema = {
                 "type": "OBJECT",
                 "properties": {
                     "summary": {
                         "type": "STRING",
-                        "description": "Un resumen conciso (1-2 oraciones) del tema principal y datos clave de la conversación."
+                        "description": "Resumen de la sesión (máx 500 caracteres, sin Markdown)."
                     },
                     "extracted": {
                         "type": "OBJECT",
                         "properties": {
                             "name": {
                                 "type": "STRING",
-                                "description": "Nombre si se mencionó. IGNORA el nombre 'Juan Pablo', 'Auteco' o referencias al bot. SOLO extrae si el usuario se presenta a sí mismo."
+                                "description": "Nombre del cliente (máx 50 caracteres, saneado)."
                             },
                             "city": {
                                 "type": "STRING",
-                                "description": "Ciudad si se mencionó (ej. Bogotá, Medellín)."
+                                "description": "Ciudad del cliente (máx 50 caracteres)."
+                            },
+                            "moto_interes": {
+                                "type": "STRING",
+                                "description": "La primera moto o estilo por el que preguntó el usuario."
+                            },
+                            "moto_ofrecida": {
+                                "type": "STRING",
+                                "description": "La moto específica que el bot recomendó del catálogo."
+                            },
+                            "moto_aceptada": {
+                                "type": "STRING",
+                                "description": "La moto que el usuario aceptó explícitamente comprar o conocer más (Inmutable contra competencia)."
+                            },
+                            "habeas_data_accepted": {
+                                "type": "BOOLEAN",
+                                "description": "Indica si el usuario aceptó el tratamiento de datos (mapeado de afirmaciones o emojis)."
                             },
                             "payment_method": {
                                 "type": "STRING",
-                                "description": "Método de pago si se mencionó (ej. crédito, contado, brilla, no sé)."
-                            },
-                            "moto_interest": {
-                                "type": "STRING",
-                                "description": "ÚNICAMENTE referencias, marcas o estilos reales de motos (ej. Boxer, Pulsar, NKD, Scooter, Deportiva). IGNORA términos financieros."
+                                "description": "Método de pago preferido (ej. Crédito - 0 inicial, Contado, Financiado)."
                             },
                             "ocupacion": {
                                 "type": "STRING",
@@ -910,7 +938,8 @@ Conversación a analizar:
             # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
             # Exigimos explícitamente max_output_tokens=2048 para prevenir interrupciones y permitir
             # que el modelo asuma el schema de extracción complejo sin truncamiento.
-            response = extractor_model.generate_content(
+            response = self._call_gemini_with_retry(
+                extractor_model.generate_content,
                 prompt,
                 generation_config=GenerationConfig(
                     temperature=0.1,

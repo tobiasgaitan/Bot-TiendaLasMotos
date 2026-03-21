@@ -11,6 +11,7 @@ from typing import Optional
 
 # FFmpeg Wrapper
 import ffmpeg
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,26 @@ class AudioService:
             except Exception as e:
                 logger.error(f"❌ AudioService init error: {e}")
 
+    async def _call_gemini_with_retry_async(self, func, *args, **kwargs):
+        """
+        Resiliencia de Red (Exponential Backoff) para llamadas asíncronas.
+        """
+        max_retries = 2
+        delay = 1.5
+        for attempt in range(max_retries + 1):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                err_str = str(e).lower()
+                retryable_keywords = ["429", "503", "quota", "deadline", "unavailable", "timeout", "resource_exhausted"]
+                is_retryable = any(kw in err_str for kw in retryable_keywords)
+                
+                if is_retryable and attempt < max_retries:
+                    logger.warning(f"⚠️ Audio Gemini API failure (Attempt {attempt+1}/{max_retries+1}). Retrying in {delay}s... Error: {e}")
+                    await asyncio.sleep(delay)
+                    continue
+                raise e
+
     async def transcribe_audio(self, audio_bytes: bytes, mime_type: str) -> str:
         """
         Process incoming audio: Transcode -> AI Transcription.
@@ -65,7 +86,10 @@ class AudioService:
                 audio_part
             ]
             
-            response = self._model.generate_content(contents)
+            response = await self._call_gemini_with_retry_async(
+                self._model.generate_content,
+                contents
+            )
             
             text_out = response.text.strip()
             if not text_out:
