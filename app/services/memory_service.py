@@ -390,16 +390,41 @@ class MemoryService:
             logger.error(f"❌ Error creating prospect for {phone_number}: {e}", exc_info=True)
             return False
 
+    def _delete_collection_batched(self, collection_ref, batch_size=400):
+        """
+        Helper to delete all documents in a collection or subcollection using batches.
+        Firestore limit is 500 per batch. We use 400 for safety.
+        """
+        total_deleted = 0
+        while True:
+            docs = list(collection_ref.limit(batch_size).stream())
+            if not docs:
+                break
+                
+            batch = self._db.batch()
+            count = 0
+            for doc in docs:
+                batch.delete(doc.reference)
+                count += 1
+            
+            batch.commit()
+            total_deleted += count
+            
+            if count < batch_size:
+                break
+        return total_deleted
+
     def delete_prospect_completely(self, phone_number: str) -> int:
         """
         Nuclear wipe of a prospect and their history.
         Used by the /reset command to allow a fresh start.
+        Handles Firestore batch limits for long histories.
         
         Args:
             phone_number: Raw phone number to wipe
             
         Returns:
-            int: Number of items deleted (prospect doc + variants)
+            int: Number of items deleted (prospect doc + variants + history)
         """
         try:
             deleted = 0
@@ -410,17 +435,11 @@ class MemoryService:
                 session_ref = self._db.collection("mensajeria").document("whatsapp").collection("sesiones").document(clean_phone)
                 history_ref = session_ref.collection("historial")
                 
-                # Purge history subcollection
-                msgs = history_ref.stream()
-                batch = self._db.batch()
-                count = 0
-                for m in msgs:
-                    batch.delete(m.reference)
-                    count += 1
+                # Purge history subcollection with batches
+                count = self._delete_collection_batched(history_ref)
                 
                 # Delete the session document itself
-                batch.delete(session_ref)
-                batch.commit()
+                session_ref.delete()
                 deleted += count + 1
                 logger.info(f"🗑️ Nuclear delete: mensajeria sessions purged for {clean_phone} ({count} msgs)")
             except Exception as e:
@@ -430,17 +449,13 @@ class MemoryService:
             # Targeted Delete using Centralized Helper
             doc_ref = self._find_prospect_ref(phone_number)
             if doc_ref:
-                # Nuclear subcollection purge
+                # Nuclear subcollection purge with batches
                 history_ref = doc_ref.collection("historial")
-                batch = self._db.batch()
-                msgs = history_ref.stream()
-                for m in msgs:
-                    batch.delete(m.reference)
-                batch.commit()
+                count = self._delete_collection_batched(history_ref)
                 
                 # Delete the doc itself
                 doc_ref.delete()
-                deleted += 1
+                deleted += count + 1
                 logger.info(f"🗑️ Nuclear delete: prospect doc and history for {phone_number}")
 
             # --- 3. VARIANT CLEANUP ---
@@ -453,31 +468,23 @@ class MemoryService:
             for variant in variants:
                 # Delete by ID variants
                 v_ref = self._db.collection("prospectos").document(variant)
-                v_doc = v_ref.get()
-                if v_doc.exists:
+                if v_ref.get().exists:
                     # History purge
                     h_ref = v_ref.collection("historial")
-                    b = self._db.batch()
-                    for m in h_ref.stream():
-                        b.delete(m.reference)
-                    b.commit()
+                    count = self._delete_collection_batched(h_ref)
                     v_ref.delete()
-                    deleted += 1
-                    logger.info(f"🗑️ Nuclear delete: variant ID {variant}")
+                    deleted += count + 1
+                    logger.info(f"🗑️ Nuclear delete: variant ID {variant} and {count} history msgs")
                 
                 # Delete by 'celular' field variants
-                docs = self._db.collection("prospectos").where("celular", "==", variant).stream()
+                docs = list(self._db.collection("prospectos").where("celular", "==", variant).stream())
                 for doc in docs:
                     # Nuclear subcollection purge
                     h_ref = doc.reference.collection("historial")
-                    b = self._db.batch()
-                    for m in h_ref.stream():
-                        b.delete(m.reference)
-                    b.commit()
-                    
+                    count = self._delete_collection_batched(h_ref)
                     doc.reference.delete()
-                    deleted += 1
-                    logger.info(f"🗑️ Nuclear delete: variant field match {doc.id}")
+                    deleted += count + 1
+                    logger.info(f"🗑️ Nuclear delete: variant field match {doc.id} and {count} history msgs")
             
             return deleted
         except Exception as e:
