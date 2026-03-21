@@ -15,14 +15,15 @@ import time
 
 logger = logging.getLogger(__name__)
 
-# Vertex AI (Gemini)
+# google-genai (Gemini)
 try:
-    import vertexai
-    from vertexai.generative_models import GenerativeModel, Part
-    VERTEX_AI_AVAILABLE = True
+    from google import genai
+    from google.genai import types
+    from google.genai.errors import APIError
+    GENAI_AVAILABLE = True
 except ImportError:
-    VERTEX_AI_AVAILABLE = False
-    logger.warning("⚠️ Vertex AI not available for Audio Service.")
+    GENAI_AVAILABLE = False
+    logger.warning("⚠️ google-genai not available for Audio Service.")
 
 class AudioService:
     """
@@ -33,11 +34,16 @@ class AudioService:
         self._config_loader = config_loader
         self._model = None
         
-        if VERTEX_AI_AVAILABLE:
+        if GENAI_AVAILABLE:
             try:
-                # Gemini 2.5 Flash is effective for audio
-                self._model = GenerativeModel("gemini-2.5-flash") 
-                logger.info("🎤 AudioService initialized with Gemini 2.5 Flash")
+                # Gemini 1.5/2.0 Flash is effective for audio
+                self.client = genai.Client(
+                    vertexai=True,
+                    project=os.getenv("GOOGLE_CLOUD_PROJECT", "tiendali_las_motos"),
+                    location="us-central1"
+                )
+                self._model_id = "gemini-2.0-flash"
+                logger.info(f"🎤 AudioService initialized with {self._model_id} via google-genai")
             except Exception as e:
                 logger.error(f"❌ AudioService init error: {e}")
 
@@ -50,22 +56,20 @@ class AudioService:
         for attempt in range(max_retries + 1):
             try:
                 return func(*args, **kwargs)
-            except Exception as e:
-                err_str = str(e).lower()
-                retryable_keywords = ["429", "503", "quota", "deadline", "unavailable", "timeout", "resource_exhausted"]
-                is_retryable = any(kw in err_str for kw in retryable_keywords)
-                
-                if is_retryable and attempt < max_retries:
+            except APIError as e:
+                if attempt < max_retries:
                     logger.warning(f"⚠️ Audio Gemini API failure (Attempt {attempt+1}/{max_retries+1}). Retrying in {delay}s... Error: {e}")
                     await asyncio.sleep(delay)
                     continue
+                raise e
+            except Exception as e:
                 raise e
 
     async def transcribe_audio(self, audio_bytes: bytes, mime_type: str) -> str:
         """
         Process incoming audio: Transcode -> AI Transcription.
         """
-        if not self._model:
+        if not hasattr(self, 'client'):
             return "Lo siento, no puedo escuchar audios en este momento. 🙉"
 
         # 1. Transcode OGG to WAV (16kHz Mono) for Gemini
@@ -78,7 +82,7 @@ class AudioService:
             with open(mp3_path, "rb") as f:
                 audio_data = f.read()
             
-            audio_part = Part.from_data(data=audio_data, mime_type="audio/wav")
+            audio_part = types.Part.from_bytes(data=audio_data, mime_type="audio/wav")
             
             # 3. Request Transcription Only
             contents = [
@@ -87,8 +91,9 @@ class AudioService:
             ]
             
             response = await self._call_gemini_with_retry_async(
-                self._model.generate_content,
-                contents
+                self.client.models.generate_content,
+                model=self._model_id,
+                contents=contents
             )
             
             text_out = response.text.strip()

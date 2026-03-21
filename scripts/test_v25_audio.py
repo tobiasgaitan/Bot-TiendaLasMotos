@@ -10,8 +10,8 @@ sys.path.append(os.getcwd())
 
 # Mock modules
 sys.modules["google.cloud"] = MagicMock()
-sys.modules["vertexai"] = MagicMock()
-sys.modules["vertexai.generative_models"] = MagicMock()
+sys.modules["google.genai"] = MagicMock()
+sys.modules["google.genai.types"] = MagicMock()
 sys.modules["ffmpeg"] = MagicMock()
 
 from app.services.audio_service import AudioService
@@ -29,15 +29,19 @@ async def run_audio_pipeline():
     # We want to verify _transcode_to_wav is called
     with patch.object(audio, '_transcode_to_wav', return_value="test_audio.wav") as mock_transcode:
         
-        # Mock Gemini Model
-        audio._model = MagicMock()
+        # Mock Gemini Client
+        audio.client = MagicMock()
+        audio._model_id = "gemini-2.0-flash"
         mock_response = MagicMock()
         mock_response.text = "Entendido."
-        audio._model.generate_content.return_value = mock_response
+        audio.client.models.generate_content.return_value = mock_response
         
         # Run
-        # We need to mock open() since file doesn't exist
-        with patch("builtins.open", MagicMock()):
+        # We need to mock open() to return real bytes for Pydantic/google-genai validation
+        mock_file = MagicMock()
+        mock_file.read.return_value = b"mock_audio_content"
+        
+        with patch("builtins.open", return_value=mock_file):
              res = await audio.transcribe_audio(b"ogg_data", "audio/ogg")
              
         # Assertions
@@ -45,7 +49,7 @@ async def run_audio_pipeline():
         logger.info("✅ Transcoding to WAV called.")
         
         # Verify Model Prompt includes logic
-        args = audio._model.generate_content.call_args
+        args = audio.client.models.generate_content.call_args
         # We can inspect args if needed, but successful return implies flow worked
         
         assert res == "Entendido."

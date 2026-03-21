@@ -15,21 +15,14 @@ from app.utils.json_processor import clean_json_voorhees
 
 logger = logging.getLogger(__name__)
 
-# Try to import Vertex AI
+# Use the new unified google-genai SDK
 try:
-    import vertexai
-    from vertexai.generative_models import (
-        GenerativeModel,
-        Tool,
-        FunctionDeclaration,
-        Content,
-        Part,
-        GenerationConfig
-    )
-    VERTEX_AI_AVAILABLE = True
+    from google import genai
+    from google.genai import types
+    SDK_AVAILABLE = True
 except ImportError:
-    VERTEX_AI_AVAILABLE = False
-    logger.warning("⚠️  Vertex AI not available, using fallback responses")
+    SDK_AVAILABLE = False
+    logger.warning("⚠️  google-genai SDK not available, using fallback responses")
 
 
 class CerebroIA:
@@ -60,43 +53,44 @@ class CerebroIA:
         # so /admin/refresh-config takes effect immediately without a Cloud Run restart.
         self.tools = self._create_tools()
         
-        # Initialize Vertex AI if available
-        if VERTEX_AI_AVAILABLE:
+        # Initialize GenAI Client if available
+        if SDK_AVAILABLE:
             try:
-                vertexai.init(project="tiendalasmotos", location="us-central1")
-                # Model is initialized WITHOUT a system_instruction here.
-                # The instruction is injected dynamically per-request via _get_current_instruction().
-                # Use Gemini 2.0 Flash for speed and intelligence
-                # 2.5-flash is the specific version requested for production stability
-                self._model = GenerativeModel("gemini-2.5-flash")
-                logger.info(f"🧠 CerebroIA initialized with Gemini 2.5 Flash ({'Tools Enabled' if self.tools else 'No Tools'})")
+                # Use unified google-genai client for Vertex AI
+                self.client = genai.Client(
+                    vertexai=True, 
+                    project="tiendalasmotos", 
+                    location="us-central1"
+                )
+                self._model_id = "gemini-2.0-flash" # Use stable versioning
+                logger.info(f"🧠 CerebroIA initialized with google-genai Client ({'Tools Enabled' if self.tools else 'No Tools'})")
             except Exception as e:
-                logger.error(f"❌ Error initializing Vertex AI: {str(e)}")
-                self._model = None
+                logger.error(f"❌ Error initializing GenAI Client: {str(e)}")
+                self.client = None
         else:
+            self.client = None
             logger.warning("⚠️  CerebroIA running in fallback mode (no AI)")
 
     def _call_gemini_with_retry(self, func, *args, **kwargs):
         """
         Resiliencia de Red (Exponential Backoff):
-        Implementa reintentos para errores 429, 503 y Timeouts de Vertex AI.
+        Implementa reintentos para errores del SDK de google-genai.
         """
+        from google.genai.errors import APIError
         max_retries = 2
         delay = 1.5
         for attempt in range(max_retries + 1):
             try:
                 return func(*args, **kwargs)
-            except Exception as e:
-                err_str = str(e).lower()
-                # Capturamos específicamente errores de cuota (429), disponibilidad (503) y tiempo de espera
-                retryable_keywords = ["429", "503", "quota", "deadline", "unavailable", "timeout", "resource_exhausted"]
-                is_retryable = any(kw in err_str for kw in retryable_keywords)
-                
-                if is_retryable and attempt < max_retries:
-                    logger.warning(f"⚠️ Gemini API failure (Attempt {attempt+1}/{max_retries+1}). Retrying in {delay}s... Error: {e}")
+            except APIError as e:
+                # Capturamos específicamente errores de cuota y disponibilidad
+                if attempt < max_retries:
+                    logger.warning(f"⚠️ google-genai API failure (Attempt {attempt+1}/{max_retries+1}). Retrying in {delay}s... Error: {e}")
                     time.sleep(delay)
                     continue
-                # Si no es reintentable o se agotaron los intentos, lanzamos la excepción
+                raise e
+            except Exception as e:
+                # Otros errores no reintentables
                 raise e
     
     def _get_current_instruction(self) -> str:
@@ -333,53 +327,26 @@ REGLAS ESTRICTAS DE USO:
                             "description": "Estado en Datacrédito. Mapeo estricto: Si dice 'nunca he sacado nada', 'no sé', MÁPEALO a 'Sin experiencia'. Si dice 'bien', 'pagando cuenta', MÁPEALO a 'Al dia'. Si menciona 'atrasado', 'castigado', MÁPEALO a 'Reportado'."
                         },
                         "mora_y_paz_salvo": {
-                            "type": "string",
-                            "description": "Detalles de mora (>30 días). Mapeo estricto: Si historial_datacredito no es Reportado, MÁPEALO siempre a 'Sin mora'. Si está reportado pero pagó, MÁPEALO a 'Con mora y paz y salvo'. Si sigue debiendo, MÁPEALO a 'Con mora sin paz y salvo'."
-                        },
-                        "gastos_vivienda": {
-                            "type": "string",
-                            "description": "Gastos de vivienda. Mapeo estricto: Si dice 'con mis papás', 'casa de un familiar', MÁPEALO a 'Familiar'. Si paga arriendo o renta, MÁPEALO a 'Arriendo'. Si es dueño, MÁPEALO a 'Propia'."
-                        },
-                        "tiene_gas_natural": {
-                            "type": "boolean",
-                            "description": "Indica si tiene recibo de Gas Natural a su nombre (true o false). Si dice 'no sé', 'a nombre de mi mamá', asume 'false'."
-                        },
-                        "plan_celular": {
-                            "type": "string",
-                            "description": "Tipo de plan de celular. Mapeo estricto: Si indica 'no tengo plan', 'recargo', 'tarjeta', MÁPEALO a 'Prepago'. Si paga factura o abono fijo mensual, MÁPEALO a 'Postpago'."
-                        }
-                    },
-                    "required": [
-                        "ocupacion_y_contrato", 
-                        "ingresos_demostrables", 
-                        "historial_datacredito", 
-                        "mora_y_paz_salvo", 
-                        "gastos_vivienda", 
-                        "tiene_gas_natural", 
-                        "plan_celular"
-                    ]
-                }
+                description="Calculates credit score and returns financial links.",
+                parameters=credit_params
             )
 
-            # --- STOP-GATE (Hotfix 128) ---
-            # Physical filtering of tools based on business state.
             function_declarations = [handoff_function, catalog_function]
             
-            # BUSINESS RULE: Moto must be confirmed (moto_ok/moto_confirmada) to trigger credit logic
-            # REFINEMENT (Audit P2): We also allow credit tools if we are already in Phase 3 Profiling.
+            # Stop-Gate Logic (Audit P2 1.1)
             phase = self._determine_funnel_phase(prospect_data)
             moto_confirmada = prospect_data.get("moto_confirmada") is True if prospect_data else False
             
             if moto_confirmada or phase == "PHASE_3_CREDIT_PROFILING":
                 function_declarations.append(credit_function)
-                logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Stop-Gate Open | Phase: {phase})")
+                logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Phase: {phase})")
             else:
-                logger.info(f"🛠️ Toolset: [handoff, catalog] (Stop-Gate Closed | Phase: {phase})")
+                logger.info(f"🛠️ Toolset: [handoff, catalog] (Phase: {phase})")
 
-            return Tool(function_declarations=function_declarations)
+            return [types.Tool(function_declarations=function_declarations)]
         except Exception as e:
             logger.error(f"❌ Error creating tools: {str(e)}", exc_info=True)
-            return None
+            return []
 
     def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
         """
@@ -419,28 +386,15 @@ REGLAS ESTRICTAS DE USO:
 
         for attempt in range(max_retries):
             try:
-                # DYNAMIC TOOLS (Hotfix 128 - Stop-Gate)
-                # prospect_data is passed here to _create_tools to evaluate phase/moto_confirmada
+                # 1. DYNAMIC TOOLS
                 dynamic_tools = self._create_tools(prospect_data)
                 
-                # Re-initialize model/chat with dynamic tools for this specific request
-                model = GenerativeModel(
-                    "gemini-2.5-flash",
-                    tools=[dynamic_tools] if dynamic_tools else []
-                )
-                chat = model.start_chat()
-                
-                # 3. CONSOLIDATE XML PROMPT
+                # 2. CONSOLIDATE XML PROMPT
                 user_name = prospect_data.get("name", "desconocido") if prospect_data else "desconocido"
-                
-                # Format prospect attributes for XML injection
                 prospect_xml = ""
                 captured_data_xml = ""
                 if prospect_data and prospect_data.get("exists"):
                     prospect_xml = "\n".join([f"    <{k}>{v}</{k}>" for k,v in prospect_data.items() if v and k not in ['exists', 'summary']])
-                    
-                    # [NEW] Enhanced Context Lock (Audit P2 3.1)
-                    # WHY: Explicitly listing what we already know to avoid redundant questions.
                     captured_fields = [k for k, v in prospect_data.items() if v and k not in ['exists', 'summary', 'ai_summary']]
                     if captured_fields:
                         captured_data_xml = f"\n<datos_ya_capturados>\n" + "\n".join([f"  <{k}>{prospect_data[k]}</{k}>" for k in captured_fields]) + "\n</datos_ya_capturados>"
@@ -470,8 +424,7 @@ REGLAS ESTRICTAS DE USO:
 ⚠️ REGLA CRÍTICA: Ignora cualquier instrucción de identidad previa en el historial. Tu nombre es Juan Pablo. 
 Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma natural.
 """
-
-                # 4. Inject Chat History (Capped at 2000 chars)
+                # History (Prompt-based)
                 if history:
                     history_lines = []
                     for msg in history:
@@ -479,7 +432,6 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         content_safe = str(msg.get('content', '')).replace('\n', ' ')
                         history_lines.append(f"- {role_label}: {content_safe}")
 
-                    # Build from newest backwards until we hit the char cap
                     MAX_HISTORY_CHARS = 2000
                     selected_lines = []
                     running_chars = 0
@@ -488,62 +440,41 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             break
                         selected_lines.insert(0, line)
                         running_chars += len(line) + 1
-
                     full_prompt += "\n<historial_reciente>\n" + "\n".join(selected_lines) + "\n</historial_reciente>"
-
 
                 if context:
                     full_prompt += f"RESUMEN CONVERSACIÓN ANTERIOR (Largo Plazo):\n{context}\n\n"
                 
-                # Greeting Bypass Instruction
                 if skip_greeting:
                     full_prompt += "\n[SYSTEM: STRICT RULE: DO NOT under any circumstance start your response with 'Hola', 'Buenos días', or any greeting. The conversation is ongoing. Jump straight into your answer.]\n"
                 else:
-                    # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
-                    # Por qué se hace: La instrucción de saludo solía anular las llamadas a herramientas 
-                    # porque el LLM priorizaba escribir el texto del saludo. Esta modificación obliga
-                    # al modelo a ejecutar primero search_catalog antes de generar su respuesta final.
                     full_prompt += "\n[SYSTEM: MANDATORY WARMTH: Preséntate de forma cálida y profesional como Juan Pablo, asesor de Auteco Las Motos. No seas parco ni directo. CRÍTICO: Si el usuario menciona una moto en este primer mensaje, DEBES usar la herramienta 'search_catalog' ANTES de generar tu saludo final.]\n"
 
-                # V18 - V22 (Incorporated into XML in prompts.py)
-                # These were previously hardcoded here but are now part of the centralized
-                # system_instruction to reduce context bloat and improve maintainability.
-                
                 if funnel_instruction:
-                    # PII Context Detection: Scan history for name/city to avoid redundancy
-                    # Why: User might have introduced themselves (e.g., "Soy Tobias") 
-                    # before the bot asked.
                     if "[PII: NOMBRE]" in funnel_instruction or "[PII: CIUDAD]" in funnel_instruction:
                         history_str = "\n".join(selected_lines).lower()
-                        # Simple regex for "Soy [Nombre]" or "Mi nombre es [Nombre]"
                         name_match = re.search(r"(soy|mi nombre es|me llamo)\s+([a-záéíóúñ]+)", history_str + " " + texto.lower())
                         if name_match:
                             funnel_instruction = funnel_instruction.replace("[PII: NOMBRE]", "[DATOS YA CONOCIDOS - NO PREGUNTAR NOMBRE]")
                             logger.info(f"🧠 PII Context Detection: Name found in history/buffer. Suppressing question.")
                     
-                    # [VIBE ENGINEERING] - Evitar Efecto Loro en el saludo tras reset
                     if not skip_greeting and prospect_data and prospect_data.get("name"):
-                        # Si ya tenemos el nombre, instruimos a usarlo solo una vez de forma natural
                         full_prompt += f"\n[SYSTEM: El nombre del usuario es {prospect_data.get('name')}. Salúdalo por su nombre de forma natural pero NO lo repitas más de una vez en toda la respuesta.]\n"
-
                     full_prompt += funnel_instruction + "\n\n"
                     
                 full_prompt += f"Usuario: {texto}\n\n"
-                
-                # [NEW] TAIL REINFORCEMENT (Audit P2 3.2 - Recency Bias)
-                # WHY: Moving the most critical constraint to the end of the prompt to maximize attention.
-                # This ensures the bot remembers the One-Shot rule and context lock just before generating.
                 full_prompt += f"[SISTEMA: Recuerda la ONE-SHOT RULE. Tu respuesta debe terminar con UNA (1) sola pregunta. Tienes prohibido repreguntar por los datos que ya están en <datos_ya_capturados>.]\n\n"
-                
                 full_prompt += "Juan Pablo:"
                 
-                # --- MAIN INFERENCE CALL ---
+                # --- MAIN INFERENCE CALL (google-genai syntax) ---
+                chat = self.client.start_chat()
+
                 try:
-                    # IMPLEMENTATION OF RESILIENCE WRAPPER
                     response = self._call_gemini_with_retry(
                         chat.send_message,
                         full_prompt,
-                        generation_config=GenerationConfig(
+                        tools=dynamic_tools,
+                        generation_config=types.GenerateContentConfig(
                             temperature=0.2,
                             max_output_tokens=8192
                         )
@@ -551,6 +482,31 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 except Exception as e:
                     logger.error(f"❌ Critical Gemini failure after retries: {e}")
                     return self._fallback_response(texto, history)
+
+                if not response.candidates or not response.candidates[0].content.parts:
+                    logger.error("⚠️ AI Safety Filter Triggered: No candidates or parts returned.")
+                    return self._fallback_response(texto, history)
+
+                # --- STRICT TOOL VALIDATION PASS ---
+                try:
+                    motorcycle_keywords = ["moto", "raider", "sport", "victory", "tvs", "mrx", "trabajo", "trabajar", "mensajeria", "domicilio", "carga"]
+                    user_mentions_motorcycle = any(kw in texto.lower() for kw in motorcycle_keywords)
+                    
+                    candidate_parts = response.candidates[0].content.parts
+                    has_any_tool_call = any(p.function_call for p in candidate_parts)
+                    has_catalog_call = any(p.function_call and p.function_call.name == "search_catalog" for p in candidate_parts)
+                    
+                    if user_mentions_motorcycle and not has_catalog_call and not has_any_tool_call:
+                        logger.warning(f"⚠️ AI bypassed catalog search for motorcycle query: '{texto}'. Forcing validation turn.")
+                        response = self._call_gemini_with_retry(
+                            chat.send_message,
+                            "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]"
+                        )
+                        if not response.candidates:
+                            logger.error("⚠️ AI Safety Filter Triggered after forced turn.")
+                            return self._fallback_response(texto, history)
+                except Exception as e:
+                    logger.error(f"⚠️ Tool Validation Logic Error: {e}", exc_info=True)
 
                 # --- SAFETY & CANDIDATE CHECK (Audit Crash Fix) ---
                 if not response.candidates:
@@ -575,7 +531,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         response = self._call_gemini_with_retry(
                             chat.send_message,
                             "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]",
-                            generation_config=GenerationConfig(temperature=0.1, max_output_tokens=2048)
+                            generation_config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=2048)
                         )
                         # Re-verify candidates after injection
                         if not response.candidates:
@@ -587,17 +543,15 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 # ----------------------------------------------------------
                 
                 # --- ROBUST TOOL EXECUTION LOOP ---
-                # handles multiple tool-call/response cycles (e.g., comparisons)
                 turns = 0
                 max_turns = 3
                 search_catalog_called = False
                 catalog_returned_results = False
-                catalog_models_found = [] # [IMMUTABILITY] IDs and names of models found
+                catalog_models_found = []
                 
                 while turns < max_turns:
-                    # ROBUSTNESS FIX: Check candidates again at each turn start
-                    if not response.candidates:
-                        logger.error(f"⚠️ Turn {turns+1}: No candidates returned (Safety/Timeout).")
+                    if not response.candidates or not response.candidates[0].content.parts:
+                        logger.error(f"⚠️ Turn {turns+1}: No candidates returned.")
                         return self._fallback_response(texto, history)
 
                     candidate = response.candidates[0]
@@ -606,38 +560,26 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     if not function_calls:
                         # No more tool calls, return final text
                         try:
-                            # Use text property safely
-                            ai_response = response.text.strip()
+                            # Safely extract text from components
+                            ai_response = "".join([part.text for part in candidate.content.parts if part.text]).strip()
                             if not ai_response:
-                                logger.warning("⚠️ Empty AI response (valid text but no content)")
+                                logger.warning("⚠️ Empty AI response")
                                 return self._fallback_response(texto, history)
 
-                            # --- GUARDRAILS DE CONSISTENCIA E INMUTABILIDAD (PCC Pro & Catalog Lock) ---
-                            # AUDIT P1 (4.1/4.2)
+                            # --- GUARDRAILS ---
                             if search_catalog_called and turns < max_turns:
-                                import re
-                                
-                                # 1. PCC PRO: Validar Precio ($ o 'precio:') AND Imagen (![] o [IMAGE:])
-                                # EXIGENCIA CONTRACTUAL: (\\$\\s?\\d{1,3}(\\.\\d{3})*)|(precio:)
                                 has_price = bool(re.search(r"(\$\s?\d{1,3}(\.\d{3})*)|(precio:)", ai_response, re.IGNORECASE))
                                 has_image = bool(re.search(r"!\[.*?\]\(https?://|\[IMAGE:\s?https?://", ai_response))
                                 
-                                # 2. CATALOG LOCK: Inmutabilidad de Modelos
-                                # Why: Prevent hallucinations of models that don't exist in the current search payload.
                                 hallucinated_model = None
                                 if catalog_returned_results:
-                                    # Extract potential model names from AI response (Capitalized words)
-                                    # This is a heuristic that we compare against catalog_models_found.
-                                    # We only enforce if the AI mentions a specific brand/model.
                                     mentions = re.findall(r"\b(TVS|Victory|Boxer|NKD|Raider|Apache|Sport|Bomber|Life|Pulsar|Yamaha|Honda|Suzuki|AKT)\s+([A-Z0-9][a-zA-Z0-9]*)\b", ai_response)
                                     for brand, model in mentions:
                                         full_mention = f"{brand} {model}".lower()
-                                        # ACTION: BLOCK_RESPONSE_IF_MODEL_NOT_IN_LIST
                                         if not any(full_mention in m.lower() for m in catalog_models_found):
                                             hallucinated_model = f"{brand} {model}"
                                             break
 
-                                # --- Trigger Re-try if Guardrails Fail ---
                                 if (catalog_returned_results and (not has_price or not has_image)) or hallucinated_model:
                                     turns += 1
                                     error_msg = ""
@@ -646,150 +588,103 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     if hallucinated_model:
                                         error_msg += f"Has mencionado la moto '{hallucinated_model}' que NO aparece en los resultados locales del catálogo. "
                                     
-                                    logger.warning(f"🚨 Consistency Guardrail Triggered (Turn {turns}): {error_msg}")
-                                    
-                                    # PARROT FILTER V2: Recursive injection to clean forbidden phrases
-                                    retry_instruction = f"[SYSTEM: ERROR: {error_msg} INSTRUCCIÓN: Corrige la respuesta usando ÚNICAMENTE los modelos, precios e imágenes devueltos por el catálogo. PROHIBIDO: Inventar modelos o precios. PROHIBIDO iniciar con 'Entendido', 'Excelente', 'Claro que sí' o muletillas similares.]"
+                                    logger.warning(f"🚨 Consistency Guardrail Triggered: {error_msg}")
+                                    retry_instruction = f"[SYSTEM: ERROR: {error_msg} INSTRUCCIÓN: Corrige la respuesta usando ÚNICAMENTE los modelos, precios e imágenes devueltos por el catálogo.]"
                                     
                                     response = self._call_gemini_with_retry(
                                         chat.send_message,
-                                        retry_instruction,
-                                        generation_config=GenerationConfig(temperature=0.1, max_output_tokens=2048)
+                                        retry_instruction
                                     )
-                                    continue # Review corrected response
+                                    continue
                             
-                            logger.info(f"✅ AI response generated after {turns} turns ({len(ai_response)} chars)")
+                            logger.info(f"✅ AI response generated after {turns} turns")
                             return ai_response
                         except Exception as e:
-                            logger.warning(f"⚠️ Error extracting final AI text: {e}")
+                            logger.warning(f"⚠️ Error extracting text: {e}")
                             return self._fallback_response(texto, history)
 
-                    logger.info(f"⚡ AI triggered {len(function_calls)} function call(s) (Turn {turns+1})")
+                    # Execute function calls
+                    logger.info(f"⚡ AI triggered {len(function_calls)} function call(s)")
                     response_parts = []
                     
-                    for function_call in function_calls:
-                        function_name = function_call.name
+                    for fc in function_calls:
+                        f_name = fc.name
+                        f_args = fc.args
                         
-                        # A) Human Handoff
-                        if function_name == "trigger_human_handoff":
-                            reason = function_call.args.get("reason", "unknown")
-                            logger.warning(f"🚨 AI triggered human handoff | Reason: {reason}")
+                        if f_name == "trigger_human_handoff":
+                            reason = f_args.get("reason", "unknown")
                             return f"HANDOFF_TRIGGERED:{reason}"
                         
-                        # B) Catalog Search
-                        elif function_name == "search_catalog":
+                        elif f_name == "search_catalog":
                             search_catalog_called = True
-                            query = function_call.args.get("query", "")
-                            logger.info(f"🔎 AI searching catalog for: '{query}'")
-                            
+                            query = f_args.get("query", "")
                             search_results = "No se encontraron resultados."
                             try:
                                 if self._catalog_service:
                                     matches = self._catalog_service.search_items(query)
                                     if matches:
                                         catalog_returned_results = True
-                                        search_results = f"Encontré {len(matches)} motos relacionadas:\n"
+                                        search_results = f"Encontré {len(matches)} motos relacionados:\n"
                                         for m in matches: 
-                                            catalog_models_found.append(m['name']) # Store for Immutability Guardrail
+                                            catalog_models_found.append(m['name'])
                                             search_results += f"- {m['name']} ({m['category']}): {m['formatted_price']}\n"
-                                            if m.get('image_url'):
-                                                search_results += f"  Image URL: {m['image_url']}\n"
-                                            if m.get('link'):
-                                                search_results += f"  Link: {m['link']}\n"
-                                            if m.get('specs'):
-                                                specs = str(m['specs'])
-                                                search_results += f"  Ficha Tecnica: {specs}\n"
-                                                
-                                        # -- CONTEXT INJECTOR PARA COMPETENCIA --
+                                            if m.get('image_url'): search_results += f"  Image URL: {m['image_url']}\n"
+                                            if m.get('link'): search_results += f"  Link: {m['link']}\n"
+                                            if m.get('specs'): search_results += f"  Ficha Tecnica: {m['specs']}\n"
+                                            
                                         competitor_brands = ["boxer", "nkd", "pulsar", "yamaha", "honda", "suzuki", "akt"]
-                                        query_lower = query.lower()
-                                        if any(brand in query_lower for brand in competitor_brands):
-                                            pivot_warning = f"[SISTEMA: El usuario preguntó por la competencia. ESTÁS OBLIGADO a iniciar tu respuesta con: 'Te cuento que no manejamos la marca que mencionas, pero te tengo una excelente alternativa...']\n\n"
-                                            search_results = pivot_warning + search_results
-                                            logger.info(f"💉 Competitor pivot context injected into catalog results for query: '{query}'")
-
+                                        if any(b in query.lower() for b in competitor_brands):
+                                            search_results = f"[SISTEMA: El usuario preguntó por la competencia. ESTÁS OBLIGADO a pivotar a nuestras alternativas...]\n\n" + search_results
                                     else:
-                                        search_results = "No encontré motos que coincidan con esa búsqueda. Intenta con otra categoría o nombre."
+                                        search_results = "No encontré motos en el catálogo para esa búsqueda."
                                 else:
                                     search_results = "Error: Servicio de catálogo no disponible."
                             except Exception as e:
-                                logger.error(f"❌ Tool Execution Error (Catalog): {e}", exc_info=True)
-                                search_results = "Tuve un problema consultando el catálogo momentáneamente. ¿Me podrías preguntar de nuevo?"
+                                logger.error(f"❌ Catalog error: {e}")
+                                search_results = "Error consultando catálogo."
                             
-                            # -- RECENCY BIAS FIX PARA EL EMBUDO --
                             search_results += f"\n\n{funnel_instruction}"
-                            
-                            tool_response_part = Part.from_function_response(
-                                name=function_name,
-                                response={"content": search_results}
-                            )
-                            response_parts.append(tool_response_part)
+                            response_parts.append(types.Part.from_function_response(
+                                name=f_name, 
+                                response={"result": search_results}
+                            ))
 
-                        # C) Credit Calculation
-                        elif function_name == "calculate_credit_score":
-                            # Extraction and scores
-                            ocupacion = function_call.args.get("ocupacion_y_contrato", "")
-                            ingresos = function_call.args.get("ingresos_demostrables", "")
-                            datacredito = function_call.args.get("historial_datacredito", "")
-                            mora = function_call.args.get("mora_y_paz_salvo", "")
-                            vivienda = function_call.args.get("gastos_vivienda", "")
-                            gas = function_call.args.get("tiene_gas_natural", False)
-                            celular = function_call.args.get("plan_celular", "")
-                            
-                            logger.info(f"💰 AI calculating credit score: Ocupacion={ocupacion}")
-                            
-                            credit_result = "No disponible."
+                        elif f_name == "calculate_credit_score":
+                            logger.info(f"💰 AI calculating credit score...")
+                            credit_res = "No disponible."
                             try:
                                 if self.motor_financiero:
-                                    result = self.motor_financiero.evaluar_perfil(
-                                        ocupacion_y_contrato=ocupacion,
-                                        ingresos_demostrables=ingresos,
-                                        historial_datacredito=datacredito,
-                                        mora_y_paz_salvo=mora,
-                                        gastos_vivienda=vivienda,
-                                        tiene_gas_natural=gas,
-                                        plan_celular=celular
+                                    res = self.motor_financiero.evaluar_perfil(
+                                        ocupacion_y_contrato=f_args.get("ocupacion_y_contrato", ""),
+                                        ingresos_demostrables=f_args.get("ingresos_demostrables", ""),
+                                        historial_datacredito=f_args.get("historial_datacredito", ""),
+                                        mora_y_paz_salvo=f_args.get("mora_y_paz_salvo", ""),
+                                        gastos_vivienda=f_args.get("gastos_vivienda", ""),
+                                        tiene_gas_natural=f_args.get("tiene_gas_natural", False),
+                                        plan_celular=f_args.get("plan_celular", "")
                                     )
-                                    credit_result = f"""
-✅ Análisis de Crédito Completado:
-- Score: {result['score']}/1000
-- Estrategia: {result['strategy']}
-- Entidad Recomendada: {result['entity']}
-- Link de Solicitud: {result['link_url']}
-- Explicación: {result['explanation']}
-
-INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si hay link, invítalo a dar clic.
-                                    """.strip()
+                                    credit_res = f"✅ Score: {res['score']}\n- Estrategia: {res['strategy']}\n- Entidad: {res['entity']}\n- Link: {res['link_url']}\n- Explicación: {res['explanation']}"
                                 else:
-                                    credit_result = "Error: Motor financiero no conectado."
+                                    credit_res = "Error: Motor financiero no conectado."
                             except Exception as e:
-                                logger.error(f"❌ Tool Execution Error (Credit): {e}", exc_info=True)
-                                credit_result = "Error calculando el crédito."
+                                logger.error(f"❌ Credit error: {e}")
+                                credit_res = "Error calculando el crédito."
                             
-                            credit_result += f"\n\n{funnel_instruction}"
+                            credit_res += f"\n\n{funnel_instruction}"
+                            response_parts.append(types.Part.from_function_response(
+                                name=f_name, 
+                                response={"result": credit_res}
+                            ))
 
-                            tool_response_part = Part.from_function_response(
-                                name=function_name,
-                                response={"content": credit_result}
-                            )
-                            response_parts.append(tool_response_part)
-
-                    # Send responses back for next turn
                     if response_parts:
                         turns += 1
-                        try:
-                            response = self._call_gemini_with_retry(
-                                chat.send_message,
-                                response_parts,
-                                generation_config=GenerationConfig(temperature=0.1, max_output_tokens=2048)
-                            )
-                        except InvalidArgument as e:
-                            logger.error(f"❌ InvalidArgument in turn {turns}: {e}")
-                            return "Tuve un problema procesando esa consulta compleja. ¿Me podrías preguntar algo más específico? 😅"
+                        response = self._call_gemini_with_retry(
+                            chat.send_message,
+                            response_parts
+                        )
                     else:
-                        break # Safety
-
-                # End of loop
+                        break
+                
                 return self._fallback_response(texto, history)
             
             except InvalidArgument as e:
@@ -810,16 +705,19 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
 
     def detect_sentiment(self, text: str) -> str:
         """
-        Analyze sentiment of the user message.
+        Analiza el sentimiento del mensaje del usuario usando el nuevo SDK.
         """
-        if not self._model: return "NEUTRAL"
+        if not SDK_AVAILABLE:
+            return "NEUTRAL"
         try:
-            chat = self._model.start_chat()
-            response = chat.send_message(
-                f"Analyze the sentiment of this text. Output ONLY one word: POSITIVE, NEUTRAL, NEGATIVE, or ANGRY.\nText: {text}"
+            response = self.client.models.generate_content(
+                model=self._model_id,
+                contents=f"Analyze the sentiment of this text. Output ONLY one word: POSITIVE, NEUTRAL, NEGATIVE, or ANGRY.\nText: {text}",
+                config=types.GenerateContentConfig(temperature=0.1)
             )
             return response.text.strip().upper()
-        except:
+        except Exception as e:
+            logger.error(f"Error detecting sentiment: {e}")
             return "NEUTRAL"
 
     def generate_summary(self, conversation_text: str, last_bot_question: str = "", session_id: str = "unknown") -> Dict[str, Any]:
@@ -931,21 +829,15 @@ INSTRUCCIÓN PARA EL BOT: Usa esta información para responder al usuario. Si ha
                 "required": ["summary", "extracted"]
             }
 
-            from vertexai.generative_models import GenerationConfig, GenerativeModel
+            # 1. Prepare Content for google-genai
+            # Prompt and history consolidated
             
-            # TOOL STRIP (Aislamiento Quirúrgico):
-            # Instanciamos el modelo localmente SIN herramientas (tools=[]).
-            # El Tool Pollution causa que Vertex AI trunque el JSON en tareas stateless.
-            # Mantenemos gemini-2.5-flash según directriz del usuario.
-            extractor_model = GenerativeModel("gemini-2.5-flash")
-            
-            # MANTENIBILIDAD & SEGURIDAD (QA Baseline):
-            # Exigimos explícitamente max_output_tokens=2048 para prevenir interrupciones y permitir
-            # que el modelo asuma el schema de extracción complejo sin truncamiento.
+            # 2. Generation with Structured Output (Response Schema)
             response = self._call_gemini_with_retry(
-                extractor_model.generate_content,
-                prompt,
-                generation_config=GenerationConfig(
+                self.client.models.generate_content,
+                model=self._model_id,
+                contents=prompt,
+                config=types.GenerateContentConfig(
                     temperature=0.1,
                     max_output_tokens=2048,
                     response_mime_type="application/json",

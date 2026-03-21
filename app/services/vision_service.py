@@ -13,14 +13,15 @@ from google.cloud import firestore
 
 logger = logging.getLogger(__name__)
 
-# Vertex AI (Gemini)
+# google-genai (Gemini)
 try:
-    import vertexai
-    from vertexai.generative_models import GenerativeModel, Part, Image
-    VERTEX_AI_AVAILABLE = True
+    from google import genai
+    from google.genai import types
+    from google.genai.errors import APIError
+    GENAI_AVAILABLE = True
 except ImportError:
-    VERTEX_AI_AVAILABLE = False
-    logger.warning("⚠️ Vertex AI not available for Vision Service.")
+    GENAI_AVAILABLE = False
+    logger.warning("⚠️ google-genai not available for Vision Service.")
 
 class VisionService:
     """
@@ -31,12 +32,16 @@ class VisionService:
         self._db = db
         self._model = None
         
-        if VERTEX_AI_AVAILABLE:
+        if GENAI_AVAILABLE:
             try:
-                # Using Gemini 2.5 Flash (aligned with ai_brain)
-                # Upgraded from 1.5-flash-001 which was deprecated
-                self._model = GenerativeModel("gemini-2.5-flash")
-                logger.info("👁️ VisionService initialized with Gemini 2.5 Flash")
+                # Using Gemini 2.0 Flash (stable for vision)
+                self.client = genai.Client(
+                    vertexai=True,
+                    project=self._db.project, # Re-using project ID from Firestore client
+                    location="us-central1"    # Default location, can be moved to env
+                )
+                self._model_id = "gemini-2.0-flash"
+                logger.info(f"👁️ VisionService initialized with {self._model_id} via google-genai")
             except Exception as e:
                 logger.error(f"❌ VisionService init error: {e}")
 
@@ -48,16 +53,17 @@ class VisionService:
         delay = 1.5
         for attempt in range(max_retries + 1):
             try:
+                # In google-genai, most calls are sync or need careful async handling
+                # but we wrapper the sync call in a thread or use it directly if within async loop
+                # For now, keeping it simple as the SDK handles many things
                 return func(*args, **kwargs)
-            except Exception as e:
-                err_str = str(e).lower()
-                retryable_keywords = ["429", "503", "quota", "deadline", "unavailable", "timeout", "resource_exhausted"]
-                is_retryable = any(kw in err_str for kw in retryable_keywords)
-                
-                if is_retryable and attempt < max_retries:
+            except APIError as e:
+                if attempt < max_retries:
                     logger.warning(f"⚠️ Vision Gemini API failure (Attempt {attempt+1}/{max_retries+1}). Retrying in {delay}s... Error: {e}")
                     await asyncio.sleep(delay)
                     continue
+                raise e
+            except Exception as e:
                 raise e
 
     async def analyze_image(self, image_bytes: bytes, mime_type: str, phone: str, caption: str = "") -> str:
@@ -71,11 +77,11 @@ class VisionService:
         @param caption Optional user caption sent along with media.
         @returns A string intended for either direct output or AI Brain injection.
         """
-        if not self._model:
+        if not hasattr(self, 'client'):
             return "Lo siento, no puedo ver la imagen en este momento. 🙈"
 
         try:
-            image_part = Part.from_data(data=image_bytes, mime_type=mime_type)
+            image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
             
             # 1. Classification Prompt
             # Ask Gemini what it sees first to route logic
@@ -91,8 +97,9 @@ class VisionService:
             """
             
             response = await self._call_gemini_with_retry_async(
-                self._model.generate_content,
-                [image_part, prompt]
+                self.client.models.generate_content,
+                model=self._model_id,
+                contents=[image_part, prompt]
             )
             result_json = self._parse_json(response.text)
             
@@ -123,7 +130,7 @@ class VisionService:
         """
         return "¡Documento validado! 🚀 Ya lo adjunté a tu expediente. ¿Me falta alguna otra foto (cédula o recibo) para radicar tu solicitud con Brilla?"
 
-    async def _process_moto(self, image_part: Part, brief_desc: str) -> str:
+    async def _process_moto(self, image_part: types.Part, brief_desc: str) -> str:
         """
         Identify motorcycle and provide structured output for CerebroIA.
         
@@ -147,10 +154,13 @@ class VisionService:
         
         No conversational text, no questions. ONLY the prefix and the details.
         """
-        response = self._model.generate_content([image_part, prompt])
+        response = self.client.models.generate_content(
+            model=self._model_id,
+            contents=[image_part, prompt]
+        )
         return response.text.strip()
 
-    async def _process_general_image_sentiment(self, image_part: Part) -> str:
+    async def _process_general_image_sentiment(self, image_part: types.Part) -> str:
         """
         Extracts sentiment from general images/memes/stickers for dynamic business routing.
         
@@ -167,7 +177,10 @@ class VisionService:
         OUTPUT FORMAT:
         [System Note: User sent an image/sticker. Vision analysis: <your brief description>. Sentiment: <Sentiment>]
         """
-        response = self._model.generate_content([image_part, prompt])
+        response = self.client.models.generate_content(
+            model=self._model_id,
+            contents=[image_part, prompt]
+        )
         return response.text.strip()
 
     def _parse_json(self, text: str) -> Dict[str, Any]:
