@@ -720,6 +720,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             except Exception as e:
                 import traceback
                 error_type = type(e).__name__
+                logger.error(f"🚨 [AI FALLBACK REASON]: {error_type} - {e}")
                 logger.error(f"❌ [AUDIT FAIL] Error in AI attempt {attempt+1}: {error_type} - {e}")
                 logger.error(traceback.format_exc())
                 break
@@ -855,7 +856,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
             # 1. Prepare Content for google-genai
             # Prompt and history consolidated
-            logger.debug(f"🔍 [AUDIT PII] conversation_text enviado a Gemini: {conversation_text}")
+            logger.info(f"🔍 [AUDIT PII] conversation_text enviado a Gemini: {conversation_text}")
             
             # 2. Generation with Structured Output (Response Schema)
             response = self._call_gemini_with_retry(
