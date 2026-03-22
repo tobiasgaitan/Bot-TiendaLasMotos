@@ -529,6 +529,46 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
 
         # 3. Generar Respuesta (LLM exclusivo — pensar_respuesta)
         if msg_type == "text":
+            # --- SYNCHRONOUS PII EXTRACTION (Race Condition Fix) ---
+            try:
+                # 1. Prepare context for extraction
+                last_bot_q = ""
+                history_context = ""
+                # Get last 6 messages (3 turns) for context
+                context_messages = (current_history or [])[-6:]
+                for m in context_messages:
+                    role = "User" if m.get("role") == "user" else "Bot"
+                    history_context += f"{role}: {m.get('content', '')}\n"
+                
+                for m in reversed(current_history or []):
+                    if m.get("role") == "model":
+                        last_bot_q = m.get("content", "")
+                        break
+                
+                # Combine history with CURRENT message
+                conversation = f"{history_context}User: {message_body}"
+                
+                # 2. Extract Synchronously
+                logger.info(f"🧠 [SYNC] Running PII Extraction for {user_phone}...")
+                sync_summary = cerebro_ia.generate_summary(
+                    conversation, 
+                    last_bot_question=last_bot_q,
+                    session_id=user_phone
+                )
+                
+                # 3. Update Firestore immediately
+                if sync_summary.get("extracted"):
+                    await ms.update_prospect_summary(
+                        user_phone, 
+                        sync_summary.get("summary", ""), 
+                        sync_summary.get("extracted", {})
+                    )
+                    # 4. RELOAD prospect_data to ensure thinking has latest snapshot
+                    prospect_data = ms.get_prospect_data(user_phone)
+                    logger.info(f"✅ [SYNC] Prospect Data updated for {user_phone}")
+            except Exception as e:
+                logger.warning(f"⚠️ [SYNC] PII Extraction failed: {e}")
+
             # ALTERNATIVE C: Pre-processing Message Enrichment (Anchor)
             enriched_message = message_body
             if prospect_data and prospect_data.get("moto_interest"):

@@ -158,6 +158,20 @@ class CerebroIA:
         moto_confirmada = prospect_data.get("moto_confirmada") is True
         is_credit = prospect_data.get("payment_method") == "credito"
 
+        # --- BLOQUEO PROTOCOLO COMPETENCIA (Directiva 2026) ---
+        # Bloqueamos el avance a fase legal si la moto es de la competencia.
+        moto_interes = str(prospect_data.get("moto_interest", "")).lower()
+        competitors = ["boxer", "nkd", "yamaha", "suzuki", "honda", "akt", "pulsar", "victory", "tvs Apache"] # Apache can be our but Pulsar is competitor? Actually Pulsar is Bajaj.
+        # User defined Boxer, NKD, Yamaha explicitly.
+        competitor_keywords = ["boxer", "nkd", "yamaha", "suzuki", "honda", "bajaj", "hero"]
+        
+        is_competitor = any(comp in moto_interes for comp in competitor_keywords)
+        alternative_interest = prospect_data.get("interest_confirmed_in_alternative") is True
+        
+        if is_competitor and not alternative_interest:
+            logger.info(f"🚫 [PROTOCOL] Competitor brand detected: {moto_interes}. Blocking advance to Phase 2.")
+            return "PHASE_1_PROFILING"
+
         if has_name and has_city and moto_confirmada and is_credit:
             return "PHASE_2_HABEAS_DATA"
 
@@ -411,14 +425,9 @@ REGLAS ESTRICTAS DE USO:
             p_ciudad = prospect_data.get("ciudad") if prospect_data else None
             p_payment = prospect_data.get("payment_method") if prospect_data else None
             
-            # ANTI-AMNESIA (Heurística de Turno 1): Evitar preguntar lo que acaba de escribir
-            texto_lower = texto.lower()
-            if not p_name and re.search(r"(soy|mi nombre es|me llamo)\s+", texto_lower):
-                p_name = "Detectado_en_texto"
-            if not p_ciudad and re.search(r"(de|en|desde)\s+([a-záéíóúñ]+)", texto_lower):
-                p_ciudad = "Detectado_en_texto"
-            if not p_payment and re.search(r"(cr[eé]dito|contado|financiado|fiad[ao])", texto_lower):
-                p_payment = "Detectado_en_texto"
+            # Sincronización Protegida: Confiamos en prospect_data actualizado por el socket síncrono.
+            # Se eliminan detecciones manuales por Regex para evitar falsos positivos y bloqueos de lógica.
+            pass
 
             if not p_name:
                 funnel_instruction = "El sistema requiere el nombre del prospecto. Cierra tu mensaje preguntando: '¿con quién tengo el gusto?' o similar."
