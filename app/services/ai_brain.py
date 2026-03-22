@@ -429,11 +429,15 @@ REGLAS ESTRICTAS DE USO:
             # Se eliminan detecciones manuales por Regex para evitar falsos positivos y bloqueos de lógica.
             pass
 
-            if not p_name:
+            # HARD-GATE DE IDENTIDAD (Requirement 2026.1): Prohibido preguntar si ya existe.
+            if p_name:
+                pass # Already have it, NO instruction injected.
+            else:
                 funnel_instruction = "El sistema requiere el nombre del prospecto. Cierra tu mensaje preguntando: '¿con quién tengo el gusto?' o similar."
-            elif not p_ciudad:
+            
+            if not funnel_instruction and not p_ciudad:
                 funnel_instruction = "Falta la ciudad del prospecto. Cierra tu mensaje preguntando: '¿Desde qué ciudad nos escribes?'"
-            elif not p_payment:
+            elif not funnel_instruction and not p_payment:
                 funnel_instruction = "Falta el método de pago. Pregunta si prefiere compra de contado o a crédito."
         
         elif phase == "PHASE_2_HABEAS_DATA":
@@ -522,6 +526,11 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 
                 # --- MAIN INFERENCE CALL (google-genai syntax) ---
                 chat = self.client.chats.create(model=self._model_id)
+
+                # 💎 [FULL PROMPT AUDIT] (Requirement v2)
+                # We log the consolidated prompt to verify that PII and Phase are correctly injected.
+                audit_log = f"\n--- PROMPT AUDIT START ---\nPHASE: {phase}\nINSTRUCTION: {funnel_instruction}\nPROSPECT: {prospect_data}\nPROMPT: {full_prompt[:1500]}...\n--- PROMPT AUDIT END ---\n"
+                logger.info(f"💎 [FULL PROMPT AUDIT] sending to Gemini for {prospect_data.get('name') if prospect_data else 'None'}: {audit_log}")
 
                 try:
                     response = self._call_gemini_with_retry(
@@ -711,10 +720,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             except Exception as e:
                                 logger.error(f"❌ Credit error: {e}")
                                 credit_res = "Error calculando el crédito."
-                            
+
                             credit_res += f"\n\n{funnel_instruction}"
                             response_parts.append(types.Part.from_function_response(
-                                name=f_name, 
+                                name=f_name,
                                 response={"result": credit_res}
                             ))
 

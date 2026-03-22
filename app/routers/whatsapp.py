@@ -558,16 +558,16 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 
                 # 3. Update Firestore immediately
                 if sync_summary.get("extracted"):
-                    await ms.update_prospect_summary(
-                        user_phone, 
-                        sync_summary.get("summary", ""), 
-                        sync_summary.get("extracted", {})
-                    )
-                    # 4. RELOAD prospect_data to ensure thinking has latest snapshot
+                    # 4. RELOAD prospect_data if extraction was successful
                     prospect_data = ms.get_prospect_data(user_phone)
                     logger.info(f"✅ [SYNC] Prospect Data updated for {user_phone}")
             except Exception as e:
                 logger.warning(f"⚠️ [SYNC] PII Extraction failed: {e}")
+            finally:
+                # 5. MANDATORY RE-FETCH (Requirement v2)
+                # We fetch again outside the 'if extracted' block to ensure sync.
+                prospect_data = ms.get_prospect_data(user_phone)
+                logger.info(f"🔄 [SYNC] Mandatory Re-Fetch completed for {user_phone}. Identity: {prospect_data.get('name')}")
 
             # ALTERNATIVE C: Pre-processing Message Enrichment (Anchor)
             enriched_message = message_body
