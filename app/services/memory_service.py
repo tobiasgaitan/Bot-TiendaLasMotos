@@ -155,6 +155,7 @@ class MemoryService:
             doc = doc_ref.get()
             current_data = doc.to_dict()
 
+            # 1. Base update data
             update_data = {
                 "ai_summary": summary_text,
                 "updated_at": firestore.SERVER_TIMESTAMP
@@ -164,101 +165,80 @@ class MemoryService:
                 update_data["chatbot_status"] = "ACTIVE"
                 logger.info(f"🟢 Activating chatbot status for {clean_phone}")
 
-            # POR QUÉ: Mantener sincronización viva entre la charla de IA y los campos duros de la BD.
-            # LÓGICA DE NEGOCIO: Si el LLM detecta que el cliente mencionó su ciudad o método de pago
-            # orgánicamente, persistimos esto para que el motor determinista del embudo pueda avanzar.
+            # 2. MERGE STRATEGY (Non-Destructive PII Fusion)
             if extracted_data:
-                # REGLA DE SEGURIDAD (QA Baseline): No permitir que valores nulos o vacíos sobrescriban datos válidos.
-                def is_valid(val):
-                    if val is None: return False
-                    s_val = str(val).strip().lower()
-                    return s_val not in ["", "null", "none", "n/a", "undefined"]
-
-                if is_valid(extracted_data.get("name")):
-                    update_data["nombre"] = extracted_data["name"]
-                    logger.info(f"📝 Updating nombre: {extracted_data['name']}")
-                
-                if is_valid(extracted_data.get("moto_interest")):
-                    update_data["motoInteres"] = extracted_data["moto_interest"]
-                    logger.info(f"🏍️ Updating motoInteres: {extracted_data['moto_interest']}")
-                
-                if extracted_data.get("moto_confirmada") is not None:
-                    update_data["moto_confirmada"] = extracted_data["moto_confirmada"]
-                    logger.info(f"✅ Updating moto_confirmada: {extracted_data['moto_confirmada']}")
-                
-                if is_valid(extracted_data.get("moto_competidor")):
-                    update_data["moto_competidor"] = extracted_data["moto_competidor"]
-                    logger.info(f"🏎️ Updating moto_competidor: {extracted_data['moto_competidor']}")
-
-                if is_valid(extracted_data.get("moto_auteco")):
-                    update_data["moto_auteco"] = extracted_data["moto_auteco"]
-                    logger.info(f"🛵 Updating moto_auteco: {extracted_data['moto_auteco']}")
-                
-                if is_valid(extracted_data.get("city")):
-                    update_data["ciudad"] = extracted_data["city"]
-                    logger.info(f"🌆 Updating ciudad: {extracted_data['city']}")
-                
-                if is_valid(extracted_data.get("payment_method")):
-                    update_data["forma_pago"] = extracted_data["payment_method"]
-                    logger.info(f"💳 Updating forma_pago: {extracted_data['payment_method']}")
-                    
-                if is_valid(extracted_data.get("ocupacion")):
-                    update_data["ocupacion"] = extracted_data["ocupacion"]
-                    logger.info(f"💼 Updating ocupacion: {extracted_data['ocupacion']}")
-                
-                if is_valid(extracted_data.get("datacredito")):
-                    update_data["datacredito"] = extracted_data["datacredito"]
-                    logger.info(f"🏦 Updating datacredito: {extracted_data['datacredito']}")
-                
-                if is_valid(extracted_data.get("vivienda")):
-                    update_data["vivienda"] = extracted_data["vivienda"]
-                    logger.info(f"🏠 Updating vivienda: {extracted_data['vivienda']}")
-                
-                if is_valid(extracted_data.get("ingresos")):
-                    update_data["ingresos"] = extracted_data["ingresos"]
-                    logger.info(f"💵 Updating ingresos: {extracted_data['ingresos']}")
-                
-                if is_valid(extracted_data.get("gastos")):
-                    update_data["gastos"] = extracted_data["gastos"]
-                    logger.info(f"💸 Updating gastos: {extracted_data['gastos']}")
-                
-                if is_valid(extracted_data.get("gas_natural")):
-                    # For boolean, we just need to make sure it's not None
-                    if extracted_data.get("gas_natural") is not None:
-                        update_data["gas_natural"] = extracted_data["gas_natural"]
-                        logger.info(f"🔥 Updating gas_natural: {extracted_data['gas_natural']}")
-                
-                if is_valid(extracted_data.get("plan_celular")):
-                    update_data["plan_celular"] = extracted_data["plan_celular"]
-                    logger.info(f"📱 Updating plan_celular: {extracted_data['plan_celular']}")
-
-                if extracted_data.get("habeas_data_sent") is not None:
-                    # REGLA DE SEGURIDAD: Latch de una sola vía. Si ya es True en la BD, no permitir que baje a False.
-                    new_val = extracted_data.get("habeas_data_sent")
-                    existing_val = current_data.get("habeas_data_sent", False)
-                    if existing_val and not new_val:
-                        logger.warning(f"🛡️ Preventing habeas_data_sent overwrite (True -> False) for {clean_phone}")
-                        update_data["habeas_data_sent"] = True
-                    else:
-                        update_data["habeas_data_sent"] = new_val
-                        logger.info(f"📜 Updating habeas_data_sent: {new_val}")
-                
-                if extracted_data.get("habeas_data_accepted") is not None:
-                    # REGLA DE SEGURIDAD: Latch de una sola vía. Si ya es True en la BD, no permitir que baje a False.
-                    new_val = extracted_data.get("habeas_data_accepted")
-                    existing_val = current_data.get("habeas_data_accepted", False)
-                    if existing_val and not new_val:
-                        logger.warning(f"🛡️ Preventing habeas_data_accepted overwrite (True -> False) for {clean_phone}")
-                        update_data["habeas_data_accepted"] = True
-                    else:
-                        update_data["habeas_data_accepted"] = new_val
-                        logger.info(f"✅ Updating habeas_data_accepted: {new_val}")
+                merged_fields = self._merge_extracted_data(current_data, extracted_data)
+                if merged_fields:
+                    update_data.update(merged_fields)
+                    logger.info(f"🧬 Merged {len(merged_fields)} fields using Non-Destructive strategy")
 
             doc_ref.update(update_data)
             logger.info(f"✅ Successfully updated prospect summary for {clean_phone}")
 
         except Exception as e:
             logger.error(f"❌ Error updating prospect summary for {phone_number}: {str(e)}", exc_info=True)
+
+    def _merge_extracted_data(self, current: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Applies Non-Destructive Merge Strategy for PII and Business Data.
+        
+        Rules:
+        - PRESERVE_IF_HISTORIC_VALID: Incoming null/empty does NOT overwrite existing valid data.
+        - LATCH_TRUE_ONLY: Boolean flags cannot transition from True to False.
+        - NOMENCLATURE: Uses English keys for logic, maps to Firestore legacy Spanish keys where needed.
+        """
+        merged = {}
+        
+        def is_valid(val):
+            if val is None: return False
+            if isinstance(val, bool): return True # Booleans are always valid if not None
+            s_val = str(val).strip().lower()
+            return s_val not in ["", "null", "none", "n/a", "undefined"]
+
+        # Mapping: { extraction_key: firestore_key }
+        field_map = {
+            "name": "nombre",
+            "city": "ciudad",
+            "moto_interest": "motoInteres",
+            "payment_method": "forma_pago",
+            "ocupacion": "ocupacion",
+            "datacredito": "datacredito",
+            "vivienda": "vivienda",
+            "ingresos": "ingresos",
+            "gastos": "gastos",
+            "moto_competidor": "moto_competidor",
+            "moto_auteco": "moto_auteco"
+        }
+
+        # 1. String/Content Fields (PRESERVE_IF_HISTORIC_VALID)
+        for incoming_key, firestore_key in field_map.items():
+            new_val = incoming.get(incoming_key)
+            existing_val = current.get(firestore_key)
+            
+            # If incoming is valid, we always take it (it might be an update)
+            if is_valid(new_val):
+                merged[firestore_key] = new_val
+                # logger.debug(f"Merge: Updating {firestore_key} -> {new_val}")
+            # If incoming is INVALID but existing is VALID, we PRESERVE existing (Prevent Amnesia)
+            elif is_valid(existing_val):
+                # logger.debug(f"Merge: Preserving {firestore_key} -> {existing_val}")
+                pass # update_data won't contain this key, so Firestore won't overwrite it.
+
+        # 2. Boolean/Latch Fields (LATCH_TRUE_ONLY)
+        latch_fields = ["habeas_data_sent", "habeas_data_accepted", "moto_confirmada", "gas_natural"]
+        for field in latch_fields:
+            new_val = incoming.get(field)
+            existing_val = current.get(field, False)
+            
+            if new_val is not None:
+                # Rule: True -> False is FORBIDDEN
+                if existing_val and not new_val:
+                    # logger.warning(f"🛡️ Latch: Preventing {field} downgrade (True -> False)")
+                    merged[field] = True
+                else:
+                    merged[field] = new_val
+
+        return merged
 
     def update_last_interaction(self, phone_number: str) -> None:
         """
