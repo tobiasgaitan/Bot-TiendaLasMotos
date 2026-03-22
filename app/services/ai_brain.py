@@ -780,7 +780,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
           (ocupación, datacredito) no se pierdan o malformen, permitiendo que `memory_service`
           los guarde correctamente en Firestore.
         """
-        if not self._model:
+        if not self.client:
+            logger.error("❌ Gemini Client not initialized. Cannot generate summary.")
             return {"summary": "", "extracted": {}}
 
         
