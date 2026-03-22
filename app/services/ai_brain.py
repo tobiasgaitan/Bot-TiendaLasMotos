@@ -368,7 +368,7 @@ REGLAS ESTRICTAS DE USO:
         """
         Internal generation with exponential backoff and structured prompt injection.
         """
-        if not self._model: return self._fallback_response(texto, history)
+        if not self.client: return self._fallback_response(texto, history)
         
         max_retries = 3
         base_delay = 2 
