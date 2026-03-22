@@ -203,9 +203,29 @@ class CerebroIA:
                 if "tiendalasmotos.com/politica-de-privacidad" not in final_text:
                     final_text += "\n\n📄 Conoce nuestra Política de Privacidad aquí: https://tiendalasmotos.com/politica-de-privacidad"
             
+            # LAST-MILE CLEANUP: Remove any technical markdown residue
+            final_text = self.clean_markdown_blocks(final_text)
+            
             return final_text
             
-        return raw_response
+        return self.clean_markdown_blocks(raw_response)
+
+    @staticmethod
+    def clean_markdown_blocks(text: str) -> str:
+        """
+        Hard-kill for markdown code blocks (```...```).
+        Ensures technical hallucinations or exposed tool calls never reach the user.
+        """
+        if not text or not isinstance(text, str):
+            return text
+            
+        # 1. Remove complete triple-backtick blocks (with optional language tag)
+        cleaned = re.sub(r'```[a-z]*\s*[\s\S]*?```', '', text)
+        
+        # 2. Cleanup residual backticks
+        cleaned = cleaned.replace('```', '').strip()
+        
+        return cleaned
 
     @staticmethod
     def clean_parrot_phrases(text: str) -> str:
@@ -504,7 +524,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     logger.error("⚠️ AI Safety Filter Triggered: No candidates or parts returned.")
                     return self._fallback_response(texto, history)
 
-                # --- STRICT TOOL VALIDATION PASS ---
+                # --- FORCED TOOL VALIDATION TURN (PVN-Hardened) ---
+                # SECURITY (QA Baseline): If the user mentions a motorcycle but the AI 
+                # attempts to answer without using search_catalog, we intercept and 
+                # force a tool turn. CRITICAL: We MUST pass tools in the retry config.
                 try:
                     motorcycle_keywords = ["moto", "raider", "sport", "victory", "tvs", "mrx", "trabajo", "trabajar", "mensajeria", "domicilio", "carga"]
                     user_mentions_motorcycle = any(kw in texto.lower() for kw in motorcycle_keywords)
@@ -518,38 +541,11 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         response = self._call_gemini_with_retry(
                             chat.send_message,
                             "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]",
-                            config=types.GenerateContentConfig(temperature=0.1)
-                        )
-                        if not response.candidates:
-                            logger.error("⚠️ AI Safety Filter Triggered after forced turn.")
-                            return self._fallback_response(texto, history)
-                except Exception as e:
-                    logger.error(f"⚠️ Tool Validation Logic Error: {e}", exc_info=True)
-
-                # --- SAFETY & CANDIDATE CHECK (Audit Crash Fix) ---
-                if not response.candidates:
-                    logger.error("⚠️ AI Safety Filter Triggered: No candidates returned.")
-                    return self._fallback_response(texto, history)
-
-                # --- STRICT TOOL VALIDATION PASS (Audit Regression Fix) ---
-                # Check if user mentioned a motorcycle but the LLM bypassed search_catalog
-                try:
-                    motorcycle_keywords = ["moto", "raider", "sport", "victory", "tvs", "mrx", "trabajo", "trabajar", "mensajeria", "domicilio", "carga"]
-                    user_mentions_motorcycle = any(kw in texto.lower() for kw in motorcycle_keywords)
-                    
-                    # Check parts for tool calls
-                    candidate_parts = response.candidates[0].content.parts
-                    has_any_tool_call = any(p.function_call for p in candidate_parts)
-                    has_catalog_call = any(p.function_call and p.function_call.name == "search_catalog" for p in candidate_parts)
-                    
-                    # TURN-SEQUENCE FIX: Only trigger "forced validation" if NO tool was called at all.
-                    # This prevents injecting instruction text when another tool (like credit) is already queued.
-                    if user_mentions_motorcycle and not has_catalog_call and not has_any_tool_call:
-                        logger.warning(f"⚠️ AI bypassed catalog search for motorcycle query: '{texto}'. Forcing validation turn.")
-                        response = self._call_gemini_with_retry(
-                            chat.send_message,
-                            "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]",
-                            config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=2048)
+                            config=types.GenerateContentConfig(
+                                temperature=0.1, 
+                                max_output_tokens=2048,
+                                tools=dynamic_tools # FIX: Ensure tools are available for the forced turn
+                            )
                         )
                         # Re-verify candidates after injection
                         if not response.candidates:
@@ -557,7 +553,6 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             return self._fallback_response(texto, history)
                 except Exception as e:
                     logger.error(f"⚠️ Tool Validation Logic Error: {e}", exc_info=True)
-                    # We continue despite validation error to try and get a response
                 # ----------------------------------------------------------
                 
                 # --- ROBUST TOOL EXECUTION LOOP ---
