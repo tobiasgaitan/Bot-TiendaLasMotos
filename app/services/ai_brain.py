@@ -382,11 +382,19 @@ REGLAS ESTRICTAS DE USO:
         # 2. Build Instructions block based on State
         funnel_instruction = ""
         if phase == "PHASE_1_PROFILING":
-            # Missing basic profiling data
             p_name = prospect_data.get("name") if prospect_data else None
             p_ciudad = prospect_data.get("ciudad") if prospect_data else None
             p_payment = prospect_data.get("payment_method") if prospect_data else None
             
+            # ANTI-AMNESIA (Heurística de Turno 1): Evitar preguntar lo que acaba de escribir
+            texto_lower = texto.lower()
+            if not p_name and re.search(r"(soy|mi nombre es|me llamo)\s+", texto_lower):
+                p_name = "Detectado_en_texto"
+            if not p_ciudad and re.search(r"(de|en|desde)\s+([a-záéíóúñ]+)", texto_lower):
+                p_ciudad = "Detectado_en_texto"
+            if not p_payment and re.search(r"(cr[eé]dito|contado|financiado|fiad[ao])", texto_lower):
+                p_payment = "Detectado_en_texto"
+
             if not p_name:
                 funnel_instruction = "El sistema requiere el nombre del prospecto. Cierra tu mensaje preguntando: '¿con quién tengo el gusto?' o similar."
             elif not p_ciudad:
@@ -467,13 +475,6 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     full_prompt += "\n[SYSTEM: MANDATORY WARMTH: Preséntate de forma cálida y profesional como Juan Pablo, asesor de Auteco Las Motos. No seas parco ni directo. CRÍTICO: Si el usuario menciona una moto en este primer mensaje, DEBES usar la herramienta 'search_catalog' ANTES de generar tu saludo final.]\n"
 
                 if funnel_instruction:
-                    if "[PII: NOMBRE]" in funnel_instruction or "[PII: CIUDAD]" in funnel_instruction:
-                        history_str = "\n".join(selected_lines).lower()
-                        name_match = re.search(r"(soy|mi nombre es|me llamo)\s+([a-záéíóúñ]+)", history_str + " " + texto.lower())
-                        if name_match:
-                            funnel_instruction = funnel_instruction.replace("[PII: NOMBRE]", "[DATOS YA CONOCIDOS - NO PREGUNTAR NOMBRE]")
-                            logger.info(f"🧠 PII Context Detection: Name found in history/buffer. Suppressing question.")
-                    
                     if not skip_greeting and prospect_data and prospect_data.get("name"):
                         full_prompt += f"\n[SYSTEM: El nombre del usuario es {prospect_data.get('name')}. Salúdalo por su nombre de forma natural pero NO lo repitas más de una vez en toda la respuesta.]\n"
                     full_prompt += funnel_instruction + "\n\n"
