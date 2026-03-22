@@ -195,34 +195,19 @@ class MemoryService:
             s_val = str(val).strip().lower()
             return s_val not in ["", "null", "none", "n/a", "undefined"]
 
-        # Mapping: { extraction_key: firestore_key }
-        field_map = {
-            "name": "nombre",
-            "city": "ciudad",
-            "moto_interest": "motoInteres",
-            "payment_method": "forma_pago",
-            "ocupacion": "ocupacion",
-            "datacredito": "datacredito",
-            "vivienda": "vivienda",
-            "ingresos": "ingresos",
-            "gastos": "gastos",
-            "moto_competidor": "moto_competidor",
-            "moto_auteco": "moto_auteco"
-        }
-
         # 1. String/Content Fields (PRESERVE_IF_HISTORIC_VALID)
-        for incoming_key, firestore_key in field_map.items():
-            new_val = incoming.get(incoming_key)
-            existing_val = current.get(firestore_key)
+        # Rules: name, city, moto_interest, payment_method
+        pii_fields = ["name", "city", "moto_interest", "payment_method", "ocupacion", "datacredito", 
+                      "vivienda", "ingresos", "gastos", "moto_competidor", "moto_auteco"]
+        
+        for field in pii_fields:
+            new_val = incoming.get(field)
+            existing_val = current.get(field)
             
-            # If incoming is valid, we always take it (it might be an update)
             if is_valid(new_val):
-                merged[firestore_key] = new_val
-                # logger.debug(f"Merge: Updating {firestore_key} -> {new_val}")
-            # If incoming is INVALID but existing is VALID, we PRESERVE existing (Prevent Amnesia)
+                merged[field] = new_val
             elif is_valid(existing_val):
-                # logger.debug(f"Merge: Preserving {firestore_key} -> {existing_val}")
-                pass # update_data won't contain this key, so Firestore won't overwrite it.
+                pass # Preserve existing valid data by not including it in update_data
 
         # 2. Boolean/Latch Fields (LATCH_TRUE_ONLY)
         latch_fields = ["habeas_data_sent", "habeas_data_accepted", "moto_confirmada", "gas_natural"]
@@ -233,7 +218,6 @@ class MemoryService:
             if new_val is not None:
                 # Rule: True -> False is FORBIDDEN
                 if existing_val and not new_val:
-                    # logger.warning(f"🛡️ Latch: Preventing {field} downgrade (True -> False)")
                     merged[field] = True
                 else:
                     merged[field] = new_val
