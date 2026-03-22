@@ -889,6 +889,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             
             raw_response = response.text.strip()
             
+            # Sonda de Observabilidad RAW (Hotfix v6)
+            logger.info(f"🧠 [RAW LLM SUMMARY OUTPUT]: {raw_response}")
+            
             # ATOMIC JSON EXTRACTION (Protocolo JSON Voorhees)
             # We process the raw output through clean_json_voorhees to ensure
             # it's healthy for Firestore persistence.
