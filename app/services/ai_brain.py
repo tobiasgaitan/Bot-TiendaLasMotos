@@ -635,7 +635,13 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             search_results = "No se encontraron resultados."
                             try:
                                 if self._catalog_service:
+                                    import time
+                                    t_start = time.perf_counter()
                                     matches = self._catalog_service.search_items(query)
+                                    t_end = time.perf_counter()
+                                    latency = t_end - t_start
+                                    logger.info(f"⏱️ [TELEMETRY] search_catalog latency: {latency:.4f}s for query: '{query}'")
+                                    
                                     if matches:
                                         catalog_returned_results = True
                                         search_results = f"Encontré {len(matches)} motos relacionados:\n"
@@ -712,7 +718,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 time.sleep(wait_time)
                 
             except Exception as e:
-                logger.error(f"❌ Error in AI attempt {attempt+1}: {e}", exc_info=True)
+                import traceback
+                error_type = type(e).__name__
+                logger.error(f"❌ [AUDIT FAIL] Error in AI attempt {attempt+1}: {error_type} - {e}")
+                logger.error(traceback.format_exc())
                 break
         
         logger.error("❌ Failed to generate AI response after retries")
@@ -846,6 +855,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
             # 1. Prepare Content for google-genai
             # Prompt and history consolidated
+            logger.debug(f"🔍 [AUDIT PII] conversation_text enviado a Gemini: {conversation_text}")
             
             # 2. Generation with Structured Output (Response Schema)
             response = self._call_gemini_with_retry(
