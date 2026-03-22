@@ -66,72 +66,93 @@ class MemoryService:
             logger.error(f"❌ Error in _find_prospect_ref for {phone_number}: {e}")
             return None
 
-    def get_prospect_data(self, phone_number: str) -> Dict[str, Any]:
+    async def get_prospect_data(self, phone_number: str) -> Dict[str, Any]:
         """
-        Retrieve prospect data from Firestore by document ID (normalized phone).
+        Garantía de Verdad (Linear Blocking): Recupera datos frescos del prospecto.
+        """
+        import asyncio
+        return await asyncio.to_thread(self._get_prospect_data_sync, phone_number)
 
-        Args:
-            phone_number: Raw phone number to search for
-
-        Returns:
-            Dictionary with prospect data or empty context on error
+    def _get_prospect_data_sync(self, phone_number: str) -> Dict[str, Any]:
+        """
+        Internal sync retrieval for Firestore.
         """
         try:
             doc_ref = self._find_prospect_ref(phone_number)
-            
             if doc_ref:
                 doc = doc_ref.get()
-                data = doc.to_dict()
-                prospect_data = {
-                    "name": data.get("nombre"),
-                    "ciudad": data.get("ciudad"),
-                    "moto_interest": data.get("motoInteres"),
-                    "moto_confirmada": data.get("moto_confirmada", False),
-                    "payment_method": data.get("forma_pago"),
-                    "summary": data.get("ai_summary"),
-                    "human_help_requested": data.get("human_help_requested", False),
-                    "survey_state": data.get("survey_state"),
-                    "exists": True,
-                    "habeas_data_sent": data.get("habeas_data_sent", False),
-                    "habeas_data_accepted": data.get("habeas_data_accepted", False)
-                }
-                logger.info(
-                    f"✅ Prospecto encontrado: {prospect_data['name']} | "
-                    f"Moto: {prospect_data['moto_interest']} | "
-                    f"Human Help: {prospect_data['human_help_requested']}"
-                )
-                return prospect_data
-
-            logger.info(f"📭 Prospecto no encontrado para {phone_number}")
+                if doc.exists:
+                    data = doc.to_dict()
+                    prospect_data = {
+                        "name": data.get("nombre"),
+                        "ciudad": data.get("ciudad"),
+                        "moto_interest": data.get("motoInteres"),
+                        "moto_confirmada": data.get("moto_confirmada", False),
+                        "payment_method": data.get("forma_pago"),
+                        "summary": data.get("ai_summary"),
+                        "human_help_requested": data.get("human_help_requested", False),
+                        "survey_state": data.get("survey_state"),
+                        "exists": True,
+                        "habeas_data_sent": data.get("habeas_data_sent", False),
+                        "habeas_data_accepted": data.get("habeas_data_accepted", False)
+                    }
+                    return prospect_data
+            
             return {
                 "name": None, "ciudad": None, "moto_interest": None,
                 "payment_method": None, "summary": None,
                 "human_help_requested": False, "survey_state": None, "exists": False,
                 "habeas_data_sent": False, "habeas_data_accepted": False
             }
-
         except Exception as e:
-            logger.error(f"❌ Error al recuperar datos del prospecto {phone_number}: {str(e)}", exc_info=True)
-            return {
-                "name": None, "ciudad": None, "moto_interest": None,
-                "payment_method": None, "summary": None,
-                "human_help_requested": False, "survey_state": None, "exists": False,
-                "habeas_data_sent": False, "habeas_data_accepted": False
-            }
+            logger.error(f"❌ Error in _get_prospect_data_sync for {phone_number}: {e}")
+            return {"exists": False}
 
-    async def update_prospect_summary(
-        self,
-        phone_number: str,
-        summary_text: str,
-        extracted_data: Optional[Dict[str, Any]] = None
-    ) -> None:
+    async def generate_and_update_summary(self, phone_number: str, conversation_text: str, ai_brain, last_bot_question: str = "") -> None:
         """
-        Update prospect's conversation summary and extracted information.
+        Garantía de Verdad (Linear Blocking):
+        1. Ejecuta la extracción de la IA (Generate Summary).
+        2. Espera el resultado.
+        3. Persiste en Firestore inmediatamente.
+        4. Loguea la confirmación antes de permitir el siguiente paso.
+        """
+        try:
+            logger.info(f"🧠 [LINEAR BLOCKING] Starting summary generation for {phone_number}...")
+            
+            # 1. AI Extraction (Async)
+            summary_data = await ai_brain.generate_summary(
+                conversation_text, 
+                last_bot_question=last_bot_question,
+                session_id=phone_number
+            )
+            
+            # 2. Firestore Persistence (Async wrapper)
+            await self.update_prospect_summary(
+                phone_number, 
+                summary_data.get("summary", ""), 
+                summary_data.get("extracted", {})
+            )
+            
+            logger.info(f"✅ Successfully updated prospect summary for {phone_number}")
+            
+        except Exception as e:
+            logger.error(f"❌ [LINEAR BLOCKING] Failed to generate/update summary: {e}")
 
+    async def update_prospect_summary(self, phone_number: str, summary_text: str, extracted_data: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Updates the conversation summary and merges extracted PII data into Firestore.
+        
         Args:
             phone_number: Phone number to update
             summary_text: New conversation summary to save
             extracted_data: Optional dict with extracted fields
+        """
+        import asyncio
+        await asyncio.to_thread(self._update_prospect_summary_sync, phone_number, summary_text, extracted_data)
+
+    def _update_prospect_summary_sync(self, phone_number: str, summary_text: str, extracted_data: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Internal sync update for Firestore.
         """
         try:
             clean_phone = PhoneNormalizer.normalize(phone_number)

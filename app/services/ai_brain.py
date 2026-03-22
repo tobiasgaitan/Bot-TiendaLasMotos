@@ -8,6 +8,7 @@ import os
 import re
 import json
 import time
+import asyncio
 from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
 
@@ -71,26 +72,44 @@ class CerebroIA:
             self.client = None
             logger.warning("⚠️  CerebroIA running in fallback mode (no AI)")
 
+    async def _call_gemini_with_retry_async(self, func, *args, **kwargs):
+        """
+        Resiliencia de Red (Async): Implementa reintentos para errores del SDK.
+        """
+        from google.genai.errors import APIError
+        import asyncio
+        max_retries = 2
+        delay = 1.5
+        for attempt in range(max_retries + 1):
+            try:
+                return await func(*args, **kwargs)
+            except APIError as e:
+                if attempt < max_retries:
+                    logger.warning(f"⏳ API failure (Attempt {attempt+1}/{max_retries+1}). Retrying in {delay}s... Error: {e}")
+                    await asyncio.sleep(delay)
+                    continue
+                raise e
+            except Exception as e:
+                raise e
+
     def _call_gemini_with_retry(self, func, *args, **kwargs):
         """
-        Resiliencia de Red (Exponential Backoff):
-        Implementa reintentos para errores del SDK de google-genai.
+        Resiliencia de Red (Sync): Versión síncrona heredada.
         """
         from google.genai.errors import APIError
         max_retries = 2
         delay = 1.5
         for attempt in range(max_retries + 1):
             try:
-                return func(*args, **kwargs)
+                if hasattr(func, "__call__"):
+                    return func(*args, **kwargs)
             except APIError as e:
-                # Capturamos específicamente errores de cuota y disponibilidad
                 if attempt < max_retries:
-                    logger.warning(f"⚠️ google-genai API failure (Attempt {attempt+1}/{max_retries+1}). Retrying in {delay}s... Error: {e}")
+                    logger.warning(f"⚠️ API failure (Attempt {attempt+1}/{max_retries+1}). Retrying in {delay}s...")
                     time.sleep(delay)
                     continue
                 raise e
             except Exception as e:
-                # Otros errores no reintentables
                 raise e
     
     def _get_current_instruction(self) -> str:
@@ -178,19 +197,12 @@ class CerebroIA:
         # Phase 1: Default (Profiling / Catalog)
         return "PHASE_1_PROFILING"
 
-    def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
+    async def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
         """
         Main entry point for AI logic.
         Combines deterministic funnel checks + generative AI (Gemini).
-
-        QA Security Baseline:
-        - Context Injection: CRM fields (ocupacion, datacredito, etc.) are injected into the 
-          prompt so the LLM never re-asks questions already answered in the survey.
-        - Deterministic Funnel: Mathematically enforces name/city capture before advancing.
-        - Hardcoded Post-Processing: Uses Python-level sanitization to kill the "Parrot Effect".
-        - Tool Enforcement: Backend validation loop forces a retry if catalog search is bypassed.
         """
-        raw_response = self._generate_with_retry(texto, context, prospect_data, history, skip_greeting)
+        raw_response = await self._generate_with_retry_async(texto, context, prospect_data, history, skip_greeting)
         
         # --- PHASE-GATE FÍSICO (Bypass de Habeas Data) ---
         # AUDIT P1 (2.2): Interceptor de Respuesta.
@@ -206,7 +218,7 @@ class CerebroIA:
                 
                 # Forzamos el envío del PHASE 2 SCRIPT con instrucción punitiva (SISTEMA)
                 forced_instruction = "[CRITICAL: EL USUARIO NO HA ACEPTADO LA POLÍTICA DE DATOS. TIENES PROHIBIDO HACER PREGUNTAS DE CRÉDITO. SOLICITA AUTORIZACIÓN AHORA USANDO EL SCRIPT DE LA FASE 2.]"
-                raw_response = self._generate_with_retry(texto, context, prospect_data, history, skip_greeting, forced_instruction=forced_instruction)
+                raw_response = await self._generate_with_retry_async(texto, context, prospect_data, history, skip_greeting, forced_instruction=forced_instruction)
 
         # FINAL SANITIZATION: Hardcoded Parrot Effect Killer
         if raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
@@ -398,9 +410,9 @@ REGLAS ESTRICTAS DE USO:
             logger.error(f"❌ Error creating tools: {str(e)}", exc_info=True)
             return []
 
-    def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, forced_instruction: Optional[str] = None) -> str:
+    async def _generate_with_retry_async(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, forced_instruction: Optional[str] = None) -> str:
         """
-        Internal generation with exponential backoff and structured prompt injection.
+        Internal generation with exponential backoff and structured prompt injection (Async).
         """
         if not self.client: 
             logger.error("🚨 [AI FALLBACK REASON]: SDK Client not initialized")
@@ -412,7 +424,7 @@ REGLAS ESTRICTAS DE USO:
         max_retries = 3
         base_delay = 2 
         
-        import time
+        import asyncio
         from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable, InvalidArgument
 
         # 1. Deterministic state evaluation
@@ -525,7 +537,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 full_prompt += "Juan Pablo:"
                 
                 # --- MAIN INFERENCE CALL (google-genai syntax) ---
-                chat = self.client.chats.create(model=self._model_id)
+                chat = self.client.aio.chats.create(model=self._model_id)
 
                 # 💎 [FULL PROMPT AUDIT] (Requirement v2)
                 # We log the consolidated prompt to verify that PII and Phase are correctly injected.
@@ -533,7 +545,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 logger.info(f"💎 [FULL PROMPT AUDIT] sending to Gemini for {prospect_data.get('name') if prospect_data else 'None'}: {audit_log}")
 
                 try:
-                    response = self._call_gemini_with_retry(
+                    response = await self._call_gemini_with_retry_async(
                         chat.send_message,
                         full_prompt,
                         config=types.GenerateContentConfig(
@@ -566,7 +578,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     
                     if user_mentions_motorcycle and not has_catalog_call and not has_any_tool_call:
                         logger.warning(f"⚠️ AI bypassed catalog search for motorcycle query: '{texto}'. Forcing validation turn.")
-                        response = self._call_gemini_with_retry(
+                        response = await self._call_gemini_with_retry_async(
                             chat.send_message,
                             "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]",
                             config=types.GenerateContentConfig(
@@ -635,7 +647,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     logger.warning(f"🚨 Consistency Guardrail Triggered: {error_msg}")
                                     retry_instruction = f"[SYSTEM: ERROR: {error_msg} INSTRUCCIÓN: Corrige la respuesta usando ÚNICAMENTE los modelos, precios e imágenes devueltos por el catálogo.]"
                                     
-                                    response = self._call_gemini_with_retry(
+                                    response = await self._call_gemini_with_retry_async(
                                         chat.send_message,
                                         retry_instruction,
                                         config=types.GenerateContentConfig(temperature=0.1)
@@ -729,7 +741,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                     if response_parts:
                         turns += 1
-                        response = self._call_gemini_with_retry(
+                        response = await self._call_gemini_with_retry_async(
                             chat.send_message,
                             response_parts,
                             config=types.GenerateContentConfig(temperature=0.2)
@@ -746,7 +758,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             except (ResourceExhausted, ServiceUnavailable) as e:
                 wait_time = base_delay * (2 ** attempt)
                 logger.warning(f"⏳ API Limit (429/503). Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
-                time.sleep(wait_time)
+                await asyncio.sleep(wait_time)
                 
             except Exception as e:
                 import traceback
@@ -759,14 +771,14 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
         logger.error("❌ Failed to generate AI response after retries")
         return self._fallback_response(texto, history)
 
-    def detect_sentiment(self, text: str) -> str:
+    async def detect_sentiment(self, text: str) -> str:
         """
-        Analiza el sentimiento del mensaje del usuario usando el nuevo SDK.
+        Analiza el sentimiento del mensaje del usuario usando el nuevo SDK (Async).
         """
-        if not SDK_AVAILABLE:
+        if not SDK_AVAILABLE or not self.client:
             return "NEUTRAL"
         try:
-            response = self.client.models.generate_content(
+            response = await self.client.aio.models.generate_content(
                 model=self._model_id,
                 contents=f"Analyze the sentiment of this text. Output ONLY one word: POSITIVE, NEUTRAL, NEGATIVE, or ANGRY.\nText: {text}",
                 config=types.GenerateContentConfig(temperature=0.1)
@@ -776,22 +788,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             logger.error(f"Error detecting sentiment: {e}")
             return "NEUTRAL"
 
-    def generate_summary(self, conversation_text: str, last_bot_question: str = "", session_id: str = "unknown") -> Dict[str, Any]:
+    async def generate_summary(self, conversation_text: str, last_bot_question: str = "", session_id: str = "unknown") -> Dict[str, Any]:
         """
-        Summarize the conversation and extract structured prospect data.
-
-        Args:
-            conversation_text: The raw conversation string to analyze.
-            last_bot_question: AUDIT P2 (3.2 — Context Injection) — The last question the bot
-                asked before the user's current reply. Injecting this anchors the extractor:
-                when the only context is 'User: Orihueca' without knowing the bot asked about
-                city, the LLM has no anchor to know which field that answer belongs to.
-                Example: If last_bot_question='desde qué ciudad', the extractor correctly
-                maps 'Orihueca' -> city instead of moto_interest.
-            session_id: The session ID for error tracking and fallback state.
-
-        MANTENIBILIDAD & SEGURIDAD (QA Baseline):
-        - Por qué se hace: Utilizamos `response_schema` nativo (Structured Outputs) para
+        Summarize the conversation and extract structured prospect data (Async).
           forzar al modelo de Gemini a generar un JSON garantizado y determinista, en lugar
           de Prompt Engineering + Regex (que era frágil e inseguro ante alucinaciones).
         - Impacto: Asegura que campos críticos del negocio como el perfil de crédito
@@ -817,7 +816,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                - PROHIBIDO guardar marcas como Bajaj, Yamaha, Honda, Suzuki, AKT a menos que sean modelos específicos que Tienda Las Motos distribuya (TVS, Victory). 
                - Si el usuario menciona una marca de la competencia, déjalo en blanco.
             3. moto_interes: La primera moto por la que preguntó el usuario.
-            4. moto_ofrecida: La moto que el bot recomendó del catálogo.
+            4. moto_offered: La moto que el bot recomendó del catálogo.
             5. Resumen: Un resumen ejecutivo de la situación del cliente enfocado en su perfil crediticio y moto de interés.
 
             HISTORIAL DE CHAT:
@@ -848,9 +847,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 "type": "STRING",
                                 "description": "La primera moto o estilo por el que preguntó el usuario."
                             },
-                            "moto_ofrecida": {
+                            "moto_offered": {
                                 "type": "STRING",
-                                "description": "La moto específica que el bot recomendó del catálogo."
+                                "description": "La moto del catálogo (TVS/Victory) que el bot ofreció."
                             },
                             "moto_aceptada": {
                                 "type": "STRING",

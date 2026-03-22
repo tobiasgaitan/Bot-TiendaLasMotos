@@ -273,61 +273,44 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                 if memory_service_module.memory_service:
                                     ms = memory_service_module.memory_service
                                     ms.create_prospect_if_missing(user_phone)
-                                    ms.update_last_interaction(user_phone)
-                                    prospect_data = ms.get_prospect_data(user_phone)
+                                    # 1. LINEAR BLOCKING: Memory Sync (Wait for Firestore)
+                                    logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync (Image) for {user_phone}")
+                                    await ms.generate_and_update_summary(
+                                        user_phone, 
+                                        f"User sent image: {vision_description}", 
+                                        cerebro_ia, 
+                                        last_bot_question=""
+                                    )
                                     
-                                    if prospect_data and prospect_data.get('human_help_requested', False):
-                                        logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
-                                        return
-                                    
+                                    # 2. Re-fetch fresh data
+                                    prospect_data = await ms.get_prospect_data(user_phone)
                                     current_history = await ms.get_chat_history(user_phone, limit=10)
+
+                                    if prospect_data and prospect_data.get('human_help_requested', False):
+                                        logger.info(f"🛑 Human Help Requested active for {user_phone}. Silencing bot.")
+                                        return
+
                                     simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
                                     
-                                    final_response = cerebro_ia.pensar_respuesta(
+                                    # 3. AI Inference (Await)
+                                    final_response = await cerebro_ia.pensar_respuesta(
                                         simulated_user_msg, 
                                         context="", 
                                         prospect_data=prospect_data,
                                         history=current_history,
-                                        skip_greeting=skip_greeting
+                                        skip_greeting=True
                                     )
                                     
                                     if not final_response or not str(final_response).strip():
                                         final_response = "Lo siento, tuve un problema procesando esa información. ¿Podrías repetirme qué buscas para darte la mejor asesoría?"
-                                        logger.warning(f"⚠️ CerebroIA returned empty response for moto image. Injected fallback.")
                                     
-                                    # ONLY in this case do we prepend the Catalog header to the AI's final response if desired, or let the AI speak natively. Focus on letting the AI speak.
                                     await _send_whatsapp_message(user_phone, final_response)
                                     
                                     # Save to History
                                     await ms.save_message(user_phone, "user", simulated_user_msg)
                                     await ms.save_message(user_phone, "model", final_response)
                                     
-                                    # Update Summary
-                                    try:
-                                        # P2: Context Injection for extraction
-                                        last_bot_q = ""
-                                        history_context = ""
-                                        
-                                        # Get last 6 turns (12 messages) for context
-                                        context_messages = (current_history or [])[-12:]
-                                        for m in context_messages:
-                                            role = "User" if m.get("role") == "user" else "Bot"
-                                            history_context += f"{role}: {m.get('content', '')}\n"
-                                        
-                                        for m in reversed(current_history or []):
-                                            if m.get("role") == "model":
-                                                last_bot_q = m.get("content", "")
-                                                break
-                                                
-                                        conversation = f"{history_context}User: {simulated_user_msg}\nBot: {final_response}"
-                                        summary_data = cerebro_ia.generate_summary(
-                                            conversation, 
-                                            last_bot_question=last_bot_q,
-                                            session_id=user_phone
-                                        )
-                                        await ms.update_prospect_summary(user_phone, summary_data.get("summary", ""), summary_data.get("extracted", {}))
-                                    except Exception as e:
-                                        logger.warning(f"Failed to update summary: {e}")
+
                                 else:
                                     logger.warning("⚠️ Memory Service is NOT initialized. Cannot route image properly.")
                                     await _send_whatsapp_message(user_phone, "No pude conectar con mi cerebro para buscar esta moto. 😢")
@@ -346,27 +329,34 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                 if memory_service_module.memory_service:
                                     ms = memory_service_module.memory_service
                                     ms.create_prospect_if_missing(user_phone)
-                                    ms.update_last_interaction(user_phone)
-                                    prospect_data = ms.get_prospect_data(user_phone)
+                                    # 1. LINEAR BLOCKING: Memory Sync (Wait for Firestore)
+                                    logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync (Sticker/Meme) for {user_phone}")
+                                    await ms.generate_and_update_summary(
+                                        user_phone, 
+                                        f"User sent media: {vision_response}", 
+                                        cerebro_ia, 
+                                        last_bot_question=""
+                                    )
                                     
-                                    if prospect_data and prospect_data.get('human_help_requested', False):
-                                        logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
-                                        return
-                                    
+                                    # 2. Re-fetch
+                                    prospect_data = await ms.get_prospect_data(user_phone)
                                     current_history = await ms.get_chat_history(user_phone, limit=10)
                                     
-                                    # Forward the system note as if the user sent it, so the AI knows they sent an image
-                                    final_response = cerebro_ia.pensar_respuesta(
+                                    if prospect_data and prospect_data.get('human_help_requested', False):
+                                        logger.info(f"🛑 Human Help Requested active for {user_phone}. Silencing bot.")
+                                        return
+                                    
+                                    # 3. AI Inference (Await)
+                                    final_response = await cerebro_ia.pensar_respuesta(
                                         vision_response,
                                         context="", 
                                         prospect_data=prospect_data,
                                         history=current_history,
-                                        skip_greeting=skip_greeting
+                                        skip_greeting=True
                                     )
                                     
                                     if not final_response or not str(final_response).strip():
                                         final_response = "¡Estuvo bueno! 😅 Pero cuéntame, ¿en qué moto estabas pensando?"
-                                        logger.warning(f"⚠️ CerebroIA returned empty response for sticker/meme. Injected fallback.")
                                     
                                     await _send_whatsapp_message(user_phone, final_response)
                                     
@@ -374,32 +364,6 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                     await ms.save_message(user_phone, "user", vision_response)
                                     await ms.save_message(user_phone, "model", final_response)
                                     
-                                    # Update Summary
-                                    try:
-                                        # P2: Context Injection for extraction
-                                        last_bot_q = ""
-                                        history_context = ""
-                                        
-                                        # Get last 6 turns (12 messages) for context
-                                        context_messages = (current_history or [])[-12:]
-                                        for m in context_messages:
-                                            role = "User" if m.get("role") == "user" else "Bot"
-                                            history_context += f"{role}: {m.get('content', '')}\n"
-                                        
-                                        for m in reversed(current_history or []):
-                                            if m.get("role") == "model":
-                                                last_bot_q = m.get("content", "")
-                                                break
-
-                                        conversation = f"{history_context}User: {vision_response}\nBot: {final_response}"
-                                        summary_data = cerebro_ia.generate_summary(
-                                            conversation, 
-                                            last_bot_question=last_bot_q,
-                                            session_id=user_phone
-                                        )
-                                        await ms.update_prospect_summary(user_phone, summary_data.get("summary", ""), summary_data.get("extracted", {}))
-                                    except Exception as e:
-                                        pass
                                 else:
                                     # Fallback if no memory service
                                     await _send_whatsapp_message(user_phone, "No pude procesar bien esa imagen ahora mismo. 😅")
@@ -529,58 +493,54 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
 
         # 3. Generar Respuesta (LLM exclusivo — pensar_respuesta)
         if msg_type == "text":
-            # --- SYNCHRONOUS PII EXTRACTION (Race Condition Fix) ---
+            # --- LINEAR BLOCKING: Memory Update (Wait for Firestore) ---
             try:
-                # 1. Prepare context for extraction
+                # Identify last bot question for anchoring
                 last_bot_q = ""
-                history_context = ""
-                # Get last 6 messages (3 turns) for context
-                context_messages = (current_history or [])[-6:]
-                for m in context_messages:
-                    role = "User" if m.get("role") == "user" else "Bot"
-                    history_context += f"{role}: {m.get('content', '')}\n"
-                
                 for m in reversed(current_history or []):
                     if m.get("role") == "model":
                         last_bot_q = m.get("content", "")
                         break
                 
-                # Combine history with CURRENT message
-                conversation = f"{history_context}User: {message_body}"
+                # Full Context for Extraction
+                history_context = ""
+                context_messages = (current_history or [])[-6:]
+                for m in context_messages:
+                    role = "User" if m.get("role") == "user" else "Bot"
+                    history_context += f"{role}: {m.get('content', '')}\n"
                 
-                # 2. Extract Synchronously
-                logger.info(f"🧠 [SYNC] Running PII Extraction for {user_phone}...")
-                sync_summary = cerebro_ia.generate_summary(
+                conversation = f"{history_context}User: {message_body}"
+
+                # 1. Generate & Update Summary (BLOCKING)
+                logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync for {user_phone}")
+                await ms.generate_and_update_summary(
+                    user_phone, 
                     conversation, 
-                    last_bot_question=last_bot_q,
-                    session_id=user_phone
+                    cerebro_ia, 
+                    last_bot_question=last_bot_q
                 )
                 
-                # 3. Update Firestore immediately
-                if sync_summary.get("extracted"):
-                    # 4. RELOAD prospect_data if extraction was successful
-                    prospect_data = ms.get_prospect_data(user_phone)
-                    logger.info(f"✅ [SYNC] Prospect Data updated for {user_phone}")
+                # 2. GESTIÓN DE VERDAD: Re-fetch fresh prospect data from Firestore
+                prospect_data = await ms.get_prospect_data(user_phone)
+                logger.info(f"✅ [LINEAR BLOCKING] Memory Synced. Identity: {prospect_data.get('name')}")
+
             except Exception as e:
-                logger.warning(f"⚠️ [SYNC] PII Extraction failed: {e}")
-            finally:
-                # 5. MANDATORY RE-FETCH (Requirement v2)
-                # We fetch again outside the 'if extracted' block to ensure sync.
-                prospect_data = ms.get_prospect_data(user_phone)
-                logger.info(f"🔄 [SYNC] Mandatory Re-Fetch completed for {user_phone}. Identity: {prospect_data.get('name')}")
+                logger.error(f"❌ Error in Linear Blocking flow: {e}")
+                # Fallback to local data if sync fails
+                if not prospect_data:
+                    prospect_data = await ms.get_prospect_data(user_phone)
 
             # ALTERNATIVE C: Pre-processing Message Enrichment (Anchor)
             enriched_message = message_body
             if prospect_data and prospect_data.get("moto_interest"):
                 moto_interes = prospect_data.get("moto_interest")
-                # Enriquecer el mensaje solo si es relativamente corto y asumiendo que el usuario está preguntando
-                # sobre la moto que ya tiene instanciada en memoria, evitando que el AI olvide el contexto.
                 if len(message_body) < 60 and not any(m in message_body.lower() for m in ["otra", "cambiar", "no la"]):
                     enriched_message = f"[Contexto CRM: Hablando sobre {moto_interes}]\nMensaje: {message_body}"
                     logger.info(f"💉 Enriched user message with Moto Anchor: {moto_interes}")
 
-            logger.info(f"🧠 Calling CerebroIA.pensar_respuesta... (Skip Greeting: {skip_greeting})")
-            response_text = cerebro_ia.pensar_respuesta(
+            # 3. Inferencia de la IA (Solo con datos confirmados)
+            logger.info(f"🧠 Calling CerebroIA.pensar_respuesta (Await)...")
+            response_text = await cerebro_ia.pensar_respuesta(
                 enriched_message,
                 context=context,
                 prospect_data=prospect_data,
@@ -647,46 +607,27 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     if memory_service_module.memory_service:
                         await ms.save_message(user_phone, "user", transcription)
                     
-                    # Send transcription to main AI Pipeline
-                    response_text = cerebro_ia.pensar_respuesta(
+                    # 1. LINEAR BLOCKING: Memory Sync (Wait for Firestore)
+                    logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync (Audio) for {user_phone}")
+                    await ms.generate_and_update_summary(
+                        user_phone, 
+                        f"User sent audio. Transcription: {transcription}", 
+                        cerebro_ia, 
+                        last_bot_question=""
+                    )
+                    
+                    # 2. Re-fetch
+                    prospect_data = await ms.get_prospect_data(user_phone)
+                    current_history = await ms.get_chat_history(user_phone, limit=10)
+
+                    # 3. AI Inference (Await)
+                    response_text = await cerebro_ia.pensar_respuesta(
                         transcription,
                         context=context, 
                         prospect_data=prospect_data,
                         history=current_history,
-                        skip_greeting=True # Audios usually happen mid-conversation
+                        skip_greeting=True
                     )
-                    
-                    # 2. Update Summary for Audio (Amnesia Fix)
-                    if memory_service_module.memory_service:
-                        try:
-                            # P2: Context Injection for extraction
-                            last_bot_q = ""
-                            history_context = ""
-                            
-                            # Get last 6 turns (12 messages) for context
-                            context_messages = (current_history or [])[-12:]
-                            for m in context_messages:
-                                role = "User" if m.get("role") == "user" else "Bot"
-                                history_context += f"{role}: {m.get('content', '')}\n"
-                            
-                            for m in reversed(current_history or []):
-                                if m.get("role") == "model":
-                                    last_bot_q = m.get("content", "")
-                                    break
-
-                            conversation = f"{history_context}User: {transcription}\nBot: {response_text}"
-                            summary_data = cerebro_ia.generate_summary(
-                                conversation, 
-                                last_bot_question=last_bot_q,
-                                session_id=user_phone
-                            )
-                            await ms.update_prospect_summary(
-                                user_phone, 
-                                summary_data.get("summary", ""), 
-                                summary_data.get("extracted", {})
-                            )
-                        except Exception as e:
-                            logger.warning(f"Failed to update audio summary: {e}")
                 else:
                     response_text = "Escuché el audio pero no entendí bien. ¿Me repites? 😅"
             else:
@@ -750,39 +691,6 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 # Save Bot Response to History (PERSISTENCE FIX)
                 if memory_service_module.memory_service:
                     await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
-
-                # Update Summary
-                if msg_type == "text" and memory_service_module.memory_service:
-                    try:
-                        # P2: Context Injection for extraction
-                        last_bot_q = ""
-                        history_context = ""
-                        
-                        # Get last 6 turns (12 messages) for context
-                        context_messages = (current_history or [])[-12:]
-                        for m in context_messages:
-                            role = "User" if m.get("role") == "user" else "Bot"
-                            history_context += f"{role}: {m.get('content', '')}\n"
-                        
-                        # Identify last bot question for anchoring
-                        for m in reversed(current_history or []):
-                            if m.get("role") == "model":
-                                last_bot_q = m.get("content", "")
-                                break
-
-                        conversation = f"{history_context}User: {message_body}\nBot: {response_text}"
-                        summary_data = cerebro_ia.generate_summary(
-                            conversation, 
-                            last_bot_question=last_bot_q,
-                            session_id=user_phone
-                        )
-                        await memory_service_module.memory_service.update_prospect_summary(
-                            user_phone, 
-                            summary_data.get("summary", ""), 
-                            summary_data.get("extracted", {})
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to update summary: {e}")
 
     except Exception as e:
         logger.error(f"🔥 Error CRÍTICO en handle_message: {e}", exc_info=True)
