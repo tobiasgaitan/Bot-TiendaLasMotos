@@ -483,16 +483,16 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 full_prompt += "Juan Pablo:"
                 
                 # --- MAIN INFERENCE CALL (google-genai syntax) ---
-                chat = self.client.start_chat()
+                chat = self.client.chats.create(model=self._model_id)
 
                 try:
                     response = self._call_gemini_with_retry(
                         chat.send_message,
                         full_prompt,
-                        tools=dynamic_tools,
-                        generation_config=types.GenerateContentConfig(
+                        config=types.GenerateContentConfig(
                             temperature=0.2,
-                            max_output_tokens=8192
+                            max_output_tokens=8192,
+                            tools=dynamic_tools
                         )
                     )
                 except Exception as e:
@@ -516,7 +516,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         logger.warning(f"⚠️ AI bypassed catalog search for motorcycle query: '{texto}'. Forcing validation turn.")
                         response = self._call_gemini_with_retry(
                             chat.send_message,
-                            "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]"
+                            "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]",
+                            config=types.GenerateContentConfig(temperature=0.1)
                         )
                         if not response.candidates:
                             logger.error("⚠️ AI Safety Filter Triggered after forced turn.")
@@ -547,7 +548,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         response = self._call_gemini_with_retry(
                             chat.send_message,
                             "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]",
-                            generation_config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=2048)
+                            config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=2048)
                         )
                         # Re-verify candidates after injection
                         if not response.candidates:
@@ -609,7 +610,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     
                                     response = self._call_gemini_with_retry(
                                         chat.send_message,
-                                        retry_instruction
+                                        retry_instruction,
+                                        config=types.GenerateContentConfig(temperature=0.1)
                                     )
                                     continue
                             
@@ -696,7 +698,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         turns += 1
                         response = self._call_gemini_with_retry(
                             chat.send_message,
-                            response_parts
+                            response_parts,
+                            config=types.GenerateContentConfig(temperature=0.2)
                         )
                     else:
                         break
