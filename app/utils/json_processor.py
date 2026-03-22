@@ -59,7 +59,8 @@ def clean_json_voorhees(text: str, session_id: str = "unknown", last_intent: str
         return json.loads(json_str), True
 
     except (json.JSONDecodeError, Exception) as e:
-        logger.error(f"❌ JSON Voorhees Failure: {str(e)} | Raw: {text[:200]}...")
+        logger.error(f"🚨 [JSON VOORHEES FATAL] Fallo de parseo. Texto crudo recibido: {cleaned}")
+        logger.error(f"❌ JSON Voorhees Failure: {str(e)} | Raw snippet: {text[:200]}...")
         return _get_fallback_state(session_id, last_intent), False
 
 def _ensure_boolean_integrity(data: Any) -> Any:
