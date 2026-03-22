@@ -388,7 +388,12 @@ REGLAS ESTRICTAS DE USO:
         """
         Internal generation with exponential backoff and structured prompt injection.
         """
-        if not self.client: return self._fallback_response(texto, history)
+        if not self.client: 
+            logger.error("🚨 [AI FALLBACK REASON]: SDK Client not initialized")
+            return self._fallback_response(texto, history)
+        
+        # 0. AUDIT PROBE (Garantizada al inicio de la inferencia)
+        logger.info(f"🔍 [AUDIT PII] conversation_text: {texto}")
         
         max_retries = 3
         base_delay = 2 
@@ -517,10 +522,12 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         )
                     )
                 except Exception as e:
+                    logger.error(f"🚨 [AI FALLBACK REASON]: Gemini Inference Failure - {str(e)}")
                     logger.error(f"❌ Critical Gemini failure after retries: {e}")
                     return self._fallback_response(texto, history)
 
                 if not response.candidates or not response.candidates[0].content.parts:
+                    logger.error("🚨 [AI FALLBACK REASON]: Safety Filter or Empty Response (No candidates)")
                     logger.error("⚠️ AI Safety Filter Triggered: No candidates or parts returned.")
                     return self._fallback_response(texto, history)
 
@@ -549,6 +556,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         )
                         # Re-verify candidates after injection
                         if not response.candidates:
+                            logger.error("🚨 [AI FALLBACK REASON]: Safety Filter Triggered during Forced Turn")
                             logger.error("⚠️ AI Safety Filter Triggered after forced turn.")
                             return self._fallback_response(texto, history)
                 except Exception as e:
@@ -564,6 +572,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 
                 while turns < max_turns:
                     if not response.candidates or not response.candidates[0].content.parts:
+                        logger.error(f"🚨 [AI FALLBACK REASON]: Empty Candidate in Turn {turns+1}")
                         logger.error(f"⚠️ Turn {turns+1}: No candidates returned.")
                         return self._fallback_response(texto, history)
 
@@ -576,6 +585,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             # Safely extract text from components
                             ai_response = "".join([part.text for part in candidate.content.parts if part.text]).strip()
                             if not ai_response:
+                                logger.error("🚨 [AI FALLBACK REASON]: Empty AI Text Response (Turn final)")
                                 logger.warning("⚠️ Empty AI response")
                                 return self._fallback_response(texto, history)
 
