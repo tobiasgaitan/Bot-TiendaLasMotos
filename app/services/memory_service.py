@@ -167,7 +167,10 @@ class MemoryService:
 
             # 2. MERGE STRATEGY (Non-Destructive PII Fusion)
             if extracted_data:
-                merged_fields = self._merge_extracted_data(current_data, extracted_data)
+                # PVN Fix: Unwrap 'extracted' nesting if present (Gemini standard output)
+                clean_data = extracted_data.get("extracted", extracted_data) if isinstance(extracted_data, dict) else {}
+                
+                merged_fields = self._merge_extracted_data(current_data, clean_data)
                 if merged_fields:
                     update_data.update(merged_fields)
                     logger.info(f"🧬 Merged {len(merged_fields)} fields using Non-Destructive strategy")

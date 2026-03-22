@@ -190,9 +190,9 @@ class CerebroIA:
             if any(kw in raw_response.lower() for kw in credit_keywords):
                 logger.warning(f"🚨 PHASE-GATE TRIGGERED: AI attempted credit questions without Habeas Data. Re-generating...")
                 
-                # Forzamos el envío del PHASE 2 SCRIPT con instrucción punitiva
+                # Forzamos el envío del PHASE 2 SCRIPT con instrucción punitiva (SISTEMA)
                 forced_instruction = "[CRITICAL: EL USUARIO NO HA ACEPTADO LA POLÍTICA DE DATOS. TIENES PROHIBIDO HACER PREGUNTAS DE CRÉDITO. SOLICITA AUTORIZACIÓN AHORA USANDO EL SCRIPT DE LA FASE 2.]"
-                raw_response = self._generate_with_retry(forced_instruction + " " + texto, context, prospect_data, history, skip_greeting)
+                raw_response = self._generate_with_retry(texto, context, prospect_data, history, skip_greeting, forced_instruction=forced_instruction)
 
         # FINAL SANITIZATION: Hardcoded Parrot Effect Killer
         if raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
@@ -384,7 +384,7 @@ REGLAS ESTRICTAS DE USO:
             logger.error(f"❌ Error creating tools: {str(e)}", exc_info=True)
             return []
 
-    def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
+    def _generate_with_retry(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, forced_instruction: Optional[str] = None) -> str:
         """
         Internal generation with exponential backoff and structured prompt injection.
         """
@@ -498,6 +498,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     full_prompt += "\n[SYSTEM: STRICT RULE: DO NOT under any circumstance start your response with 'Hola', 'Buenos días', or any greeting. The conversation is ongoing. Jump straight into your answer.]\n"
                 else:
                     full_prompt += "\n[SYSTEM: MANDATORY WARMTH: Preséntate de forma cálida y profesional como Juan Pablo, asesor de Auteco Las Motos. No seas parco ni directo. CRÍTICO: Si el usuario menciona una moto en este primer mensaje, DEBES usar la herramienta 'search_catalog' ANTES de generar tu saludo final.]\n"
+
+                if forced_instruction:
+                    full_prompt += f"\n[SYSTEM: ALERT: {forced_instruction}]\n"
 
                 if funnel_instruction:
                     if not skip_greeting and prospect_data and prospect_data.get("name"):
