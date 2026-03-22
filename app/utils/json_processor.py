@@ -44,13 +44,14 @@ def clean_json_voorhees(text: str, session_id: str = "unknown", last_intent: str
         # 4. normalize_utf8: Ensure consistent encoding for names/cities with accents
         cleaned = unicodedata.normalize('NFC', cleaned)
         
-        # 5. sanitize_pii: Basic protection against injection or malformed strings
-        # Truncate potentially dangerous long strings or those with suspicious characters
-        # Note: This is a safe parse attempt first
+        # 5. Post-parse sanitization and type adaptation
         parsed = json.loads(cleaned)
         
+        # Capa de Adaptador: Ensure boolean integrity before sanitization
+        adapted = _ensure_boolean_integrity(parsed)
+        
         # Post-parse sanitization of critical fields
-        sanitized = _sanitize_fields(parsed)
+        sanitized = _sanitize_fields(adapted)
         
         # 6. Final verification: ensure it can be dumped safely as UTF-8
         # This catch-all ensures firestore won't reject it
@@ -61,6 +62,32 @@ def clean_json_voorhees(text: str, session_id: str = "unknown", last_intent: str
         logger.error(f"❌ JSON Voorhees Failure: {str(e)} | Raw: {text[:200]}...")
         return _get_fallback_state(session_id, last_intent), False
 
+def _ensure_boolean_integrity(data: Any) -> Any:
+    """
+    Capa de Adaptador Estricta: Casts potential boolean strings/emojis to bool primitive.
+    Targets 'habeas_data_accepted' specifically as per JSON Voorhees Hardened Protocol.
+    """
+    if not isinstance(data, dict):
+        return data
+        
+    # Truthy mapping as per mandatory directive
+    truthy = {"true", "sí", "si", "ok", "👍", "✅", "👌"}
+    
+    extracted = data.get("extracted")
+    if isinstance(extracted, dict):
+        val = extracted.get("habeas_data_accepted")
+        if val is not None:
+            if isinstance(val, bool):
+                pass # Already a primitive bool
+            elif isinstance(val, str):
+                val_clean = val.lower().strip()
+                extracted["habeas_data_accepted"] = val_clean in truthy
+            else:
+                # Any other type (numbers, None, etc.) defaults to False as per directive
+                extracted["habeas_data_accepted"] = False
+                
+    return data
+
 def _sanitize_fields(data: Any) -> Any:
     """Sanitizes PII and trims fields recursively to handle nested structures."""
     if isinstance(data, list):
@@ -69,19 +96,19 @@ def _sanitize_fields(data: Any) -> Any:
     if not isinstance(data, dict):
         return data
         
-    critical_fields = ["nombre", "name", "ciudad", "city", "motoInteres", "fullName", "location"]
+    # Restoration of 'moto_interest' as per nativa extraction schema
+    critical_fields = ["nombre", "name", "ciudad", "city", "moto_interest", "fullName", "location"]
     
     for key, value in data.items():
         if isinstance(value, (dict, list)):
             data[key] = _sanitize_fields(value)
         elif key in critical_fields and isinstance(value, str):
-            val = value.strip()
             # Remove control characters
-            val = "".join(ch for ch in val if unicodedata.category(ch)[0] != "C")
+            val = "".join(ch for ch in value if unicodedata.category(ch)[0] != "C")
             # Strict Regex Sanitization: keep alphanumeric, spaces, dots, dashes and accents
             val = re.sub(r'[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\.\-]', '', val)
-            # Truncate to safe length (50 chars)
-            data[key] = val[:50]
+            # Truncate to safe length (50 chars) and trim residual spaces from emoji removal
+            data[key] = val.strip()[:50]
             
     return data
 

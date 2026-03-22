@@ -802,7 +802,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 "type": "STRING",
                                 "description": "Ciudad del cliente (máx 50 caracteres)."
                             },
-                            "moto_interes": {
+                            "moto_interest": {
                                 "type": "STRING",
                                 "description": "La primera moto o estilo por el que preguntó el usuario."
                             },
