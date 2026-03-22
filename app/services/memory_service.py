@@ -172,6 +172,7 @@ class MemoryService:
                     update_data.update(merged_fields)
                     logger.info(f"🧬 Merged {len(merged_fields)} fields using Non-Destructive strategy")
 
+            logger.info(f"💾 [MEMORY DUMP] Final payload to Firestore for {clean_phone}: {update_data}")
             doc_ref.update(update_data)
             logger.info(f"✅ Successfully updated prospect summary for {clean_phone}")
 
