@@ -647,31 +647,42 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     await notification_service.notify_human_handoff(user_phone, "ai_trigger")
                 except ImportError: pass
             else:
-                # --- PHASE-GATE IMAGE INJECTION ---
+                # --- PHASE-GATE IMAGE INJECTION (Update v6.3.1) ---
                 if response_text.startswith("PHASE_GATE_TRIGGERED:"):
-                    logger.info("🛡️ PHASE-GATE TRIGGERED detected. Injecting fallback image.")
+                    logger.info("🛡️ PHASE-GATE TRIGGERED detected. Injecting dynamic image.")
                     response_text = response_text.replace("PHASE_GATE_TRIGGERED:", "").strip()
                     
-                    # Search for TVS Sport 100 in catalog to get image and price
+                    # Logica v6.3.1: Priorizar interes, sino Raider 125
+                    moto_interest = prospect_data.get("moto_interest") if prospect_data else None
+                    moto_to_search = moto_interest if moto_interest else "RAIDER 125"
+                    
                     if catalog_service_local:
                         try:
-                            moto_results = catalog_service_local.search_items("TVS Sport 100")
+                            # Search for interested bike or default
+                            moto_results = catalog_service_local.search_items(moto_to_search)
+                            
+                            # Fallback if interest search failed (Competitor or not found)
+                            if not moto_results and moto_interest:
+                                logger.info(f"🔄 No results for '{moto_interest}' (Competitor?). Falling back to Raider 125.")
+                                moto_results = catalog_service_local.search_items("RAIDER 125")
+                            
                             if moto_results:
                                 moto = moto_results[0]
                                 image_url = moto.get("image_url")
-                                price = moto.get("price")
+                                moto_name = moto.get("name")
+                                
                                 if image_url:
-                                    # Send image with fallback message as caption
-                                    caption = f"🏍️ *{moto.get('name')}* - {price}\n{response_text}"
-                                    logger.info(f"📸 Sending Phase-Gate fallback image: {image_url}")
+                                    # Caption v6.3.1: "Mira esta [Moto]"
+                                    caption = f"Mira esta {moto_name}\n\n{response_text}"
+                                    logger.info(f"📸 Sending Phase-Gate dynamic image: {image_url} for {moto_name}")
                                     await _send_whatsapp_image(user_phone, image_url, caption=caption)
                                     
-                                    # Save to history and stop (already sent)
+                                    # Save to history and stop
                                     if memory_service_module.memory_service:
                                         await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
                                     return 
                         except Exception as e:
-                            logger.error(f"⚠️ Error injecting fallback image: {e}")
+                            logger.error(f"⚠️ Error injecting dynamic Phase-Gate image: {e}")
 
                 # --- NATIVE IMAGE INTEGRATION ---
                 import re
