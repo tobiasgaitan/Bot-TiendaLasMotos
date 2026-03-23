@@ -264,15 +264,15 @@ class CerebroIA:
             
         import re
         
-        # 1. Hard-Kill Global (JSON Voorhees Safe)
-        cleaned = re.sub(r'\b[Ee][Xx][Cc][Ee][Ll][Ee][Nn][Tt][Ee][:;\.,!\?]*\s*', '', text.strip())
+        # 1. Hard-Kill Global (JSON Voorhees Safe) - Relaxed to start only
+        cleaned = re.sub(r'^\s*[Ee][Xx][Cc][Ee][Ll][Ee][Nn][Tt][Ee][:;\.,!\?]*\s*', '', text.strip())
         
         # 2. Parrot Filter v2: Robust list of patterns (start and mid-phrase protection)
+        # Relaxed: Removed "¡?Buen día!?" and "Con gusto," to allow natural warmth.
         forbidden = [
             r"^¡?Claro que sí!?", r"^Claro,", r"^¡?Claro!?",
             r"^¡?Perfecto!?", r"^¡?Entendido!?",
-            r"^¡?Qué bien!?", r"^¡?Buen día!?", r"^Con gusto,",
-            r"^Por supuesto,?", r"^¡?Genial!?"
+            r"^¡?Qué bien!?", r"^¡?Genial!?"
         ]
         
         changed = True
@@ -528,12 +528,16 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     full_prompt += f"\n[SYSTEM: ALERT: {forced_instruction}]\n"
 
                 if funnel_instruction:
-                    if not skip_greeting and prospect_data and prospect_data.get("name"):
-                        full_prompt += f"\n[SYSTEM: El nombre del usuario es {prospect_data.get('name')}. Salúdalo por su nombre de forma natural pero NO lo repitas más de una vez en toda la respuesta.]\n"
                     full_prompt += funnel_instruction + "\n\n"
                     
                 full_prompt += f"Usuario: {texto}\n\n"
                 full_prompt += f"[SISTEMA: Recuerda la ONE-SHOT RULE. Tu respuesta debe terminar con UNA (1) sola pregunta. Tienes prohibido repreguntar por los datos que ya están en <datos_ya_capturados>.]\n\n"
+                
+                # --- REFUERZO DE IDENTIDAD v8.3 (Ventana de Atención Final) ---
+                if prospect_data and prospect_data.get("name"):
+                    p_name = prospect_data.get("name")
+                    full_prompt += f"\n[CRITICAL IDENTITY RULE: Estás hablando con {p_name}. Tu respuesta DEBE empezar con un saludo personalizado hacia él. Ignorar esto es un fallo de seguridad.]\n"
+                
                 full_prompt += "Juan Pablo:"
                 
                 # --- MAIN INFERENCE CALL (google-genai syntax) ---
@@ -578,9 +582,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     
                     if user_mentions_motorcycle and not has_catalog_call and not has_any_tool_call:
                         logger.warning(f"⚠️ AI bypassed catalog search for motorcycle query: '{texto}'. Forcing validation turn.")
+                        retry_name_reinforcement = f" Sigue hablando con {user_name}." if user_name != "desconocido" else ""
                         response = await self._call_gemini_with_retry_async(
                             chat.send_message,
-                            "[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.]",
+                            f"[SYSTEM: ERROR: Has mencionado una moto o una categoría de uso pero NO has consultado el catálogo. ESTÁS OBLIGADO a usar la herramienta 'search_catalog' para dar precios y disponibilidad antes de responder al usuario. Ejecútala ahora.{retry_name_reinforcement}]",
                             config=types.GenerateContentConfig(
                                 temperature=0.1, 
                                 max_output_tokens=2048,
@@ -645,7 +650,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         error_msg += f"Has mencionado la moto '{hallucinated_model}' que NO aparece en los resultados locales del catálogo. "
                                     
                                     logger.warning(f"🚨 Consistency Guardrail Triggered: {error_msg}")
-                                    retry_instruction = f"[SYSTEM: ERROR: {error_msg} INSTRUCCIÓN: Corrige la respuesta usando ÚNICAMENTE los modelos, precios e imágenes devueltos por el catálogo.]"
+                                    retry_name_reinforcement = f" Sigue hablando con {user_name}." if user_name != "desconocido" else ""
+                                    retry_instruction = f"[SYSTEM: ERROR: {error_msg} INSTRUCCIÓN: Corrige la respuesta usando ÚNICAMENTE los modelos, precios e imágenes devueltos por el catálogo.{retry_name_reinforcement}]"
                                     
                                     response = await self._call_gemini_with_retry_async(
                                         chat.send_message,
@@ -705,6 +711,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             except Exception as e:
                                 logger.error(f"❌ Catalog error: {e}")
                                 search_results = "Error consultando catálogo."
+                                
+                            # Personalización de resultados (v8.3)
+                            if catalog_returned_results:
+                                search_results = f"[SISTEMA: Estos son los resultados para {user_name}. Recomiéndale la mejor opción de forma cálida basándote en su perfil, no solo listes datos.]\n\n" + search_results
                             
                             search_results += f"\n\n{funnel_instruction}"
                             response_parts.append(types.Part.from_function_response(
