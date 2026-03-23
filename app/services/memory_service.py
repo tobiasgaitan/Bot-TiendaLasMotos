@@ -205,34 +205,45 @@ class MemoryService:
 
     def _merge_extracted_data(self, current: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Applies Non-Destructive Merge Strategy for PII and Business Data.
+        Applies Non-Destructive Merge Strategy with Nomenclature Translation.
         
         Rules:
+        - TRANSLATION: Maps AI (English) keys to Firestore (Legacy Spanish/CamelCase) keys.
         - PRESERVE_IF_HISTORIC_VALID: Incoming null/empty does NOT overwrite existing valid data.
         - LATCH_TRUE_ONLY: Boolean flags cannot transition from True to False.
-        - NOMENCLATURE: Uses English keys for logic, maps to Firestore legacy Spanish keys where needed.
         """
         merged = {}
         
+        # MAPA DE TRADUCCIÓN OBLIGATORIO: AI_Key -> Firestore_Legacy_Key
+        field_mapping = {
+            "name": "nombre",
+            "city": "ciudad",
+            "moto_interest": "motoInteres",
+            "payment_method": "forma_pago",
+            "ocupacion": "ocupacion",
+            "datacredito": "datacredito",
+            "vivienda": "vivienda",
+            "ingresos": "ingresos",
+            "gastos": "gastos",
+            "moto_competidor": "moto_competidor",
+            "moto_auteco": "moto_auteco"
+        }
+
         def is_valid(val):
             if val is None: return False
-            if isinstance(val, bool): return True # Booleans are always valid if not None
+            if isinstance(val, bool): return True
             s_val = str(val).strip().lower()
             return s_val not in ["", "null", "none", "n/a", "undefined"]
 
-        # 1. String/Content Fields (PRESERVE_IF_HISTORIC_VALID)
-        # Rules: name, city, moto_interest, payment_method
-        pii_fields = ["name", "city", "moto_interest", "payment_method", "ocupacion", "datacredito", 
-                      "vivienda", "ingresos", "gastos", "moto_competidor", "moto_auteco"]
-        
-        for field in pii_fields:
-            new_val = incoming.get(field)
-            existing_val = current.get(field)
+        # 1. Map and Merge String/Content Fields
+        for ai_key, db_key in field_mapping.items():
+            new_val = incoming.get(ai_key)
+            existing_val = current.get(db_key)
             
             if is_valid(new_val):
-                merged[field] = new_val
+                merged[db_key] = new_val  # PERSISTENCIA EN LLAVE CORRECTA
             elif is_valid(existing_val):
-                pass # Preserve existing valid data by not including it in update_data
+                pass # Preserve historic valid data
 
         # 2. Boolean/Latch Fields (LATCH_TRUE_ONLY)
         latch_fields = ["habeas_data_sent", "habeas_data_accepted", "moto_confirmada", "gas_natural"]
@@ -241,7 +252,6 @@ class MemoryService:
             existing_val = current.get(field, False)
             
             if new_val is not None:
-                # Rule: True -> False is FORBIDDEN
                 if existing_val and not new_val:
                     merged[field] = True
                 else:
@@ -351,8 +361,10 @@ class MemoryService:
             # ULTIMATUM: Do NOT set updated_at/fecha yet to allow Greeting Logic to detect a fresh start
             new_data = {
                 "celular": clean_phone,
-                "name": "",
-                "nombre": "", # Legacy compat
+                "nombre": "",
+                "ciudad": "",
+                "motoInteres": "",
+                "forma_pago": "",
                 "chatbot_status": "ACTIVE",
                 "status": "Pendiente",
                 "source": "whatsapp_bot",
