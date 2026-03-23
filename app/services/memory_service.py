@@ -86,7 +86,7 @@ class MemoryService:
                     prospect_data = {
                         "name": data.get("nombre"),
                         "ciudad": data.get("ciudad"),
-                        "moto_interest": data.get("motoInteres"),
+                        "moto_interest": data.get("moto_interest"), # Unified nomenclature
                         "moto_confirmada": data.get("moto_confirmada", False),
                         "payment_method": data.get("forma_pago"),
                         "summary": data.get("ai_summary"),
@@ -218,7 +218,8 @@ class MemoryService:
         field_mapping = {
             "name": "nombre",
             "city": "ciudad",
-            "moto_interest": "motoInteres",
+            "moto_interest": "moto_interest", # Unified
+            "moto_ofrecida": "moto_ofrecida",  # Renamed from moto_offered
             "payment_method": "forma_pago",
             "ocupacion": "ocupacion",
             "datacredito": "datacredito",
@@ -226,7 +227,8 @@ class MemoryService:
             "ingresos": "ingresos",
             "gastos": "gastos",
             "moto_competidor": "moto_competidor",
-            "moto_auteco": "moto_auteco"
+            "moto_auteco": "moto_auteco",
+            "moto_aceptada": "moto_aceptada"
         }
 
         def is_valid(val):

@@ -63,7 +63,7 @@ class CerebroIA:
                     project="tiendalasmotos", 
                     location="us-central1"
                 )
-                self._model_id = "gemini-2.0-flash" # Use stable versioning
+                self._model_id = "gemini-2.5-flash" # Use stable versioning
                 logger.info(f"🧠 CerebroIA initialized with google-genai Client ({'Tools Enabled' if self.tools else 'No Tools'})")
             except Exception as e:
                 logger.error(f"❌ Error initializing GenAI Client: {str(e)}")
@@ -165,8 +165,9 @@ class CerebroIA:
             return "PHASE_1_PROFILING"
 
         # Phase 3: Credit Profiling
-        # Condition: Payment method is 'credito' AND Habeas Data is accepted.
-        if prospect_data.get("habeas_data_accepted") is True:
+        # Condition: Payment method is 'credito' AND Habeas Data is accepted AND sent.
+        # CRITICAL: Chat evidence (sent) must back the DB variable.
+        if prospect_data.get("habeas_data_accepted") is True and prospect_data.get("habeas_data_sent") is True:
             return "PHASE_3_CREDIT_PROFILING"
 
         # Phase 2: Habeas Data Request (Legal Script)
@@ -818,15 +819,16 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             y devolverla en un JSON válido según el esquema proporcionado.
 
             REGLAS DE EXTRACCIÓN CRÍTICAS:
-            1. habeas_data_accepted: 
-               - Mapea afirmaciones positivas (ej: 👍, "ok", "listo", "dale", "sí", "acepto") a `true`.
-               - Si no hay una aceptación explícita o hay una negativa, usa `false`.
+            1. habeas_data_accepted (STRICT NEGATIVE BIAS): 
+               - Solo mapea a `true` si el usuario da una respuesta afirmativa DIRECTA y EXPLÍCITA (ej: "Sí", "Acepto", "Dale", "Listo", "👍") tras el script legal.
+               - Si el usuario responde con otra pregunta (ej: "¿qué requisitos hay?") o ambigüedad, DEBE ser `false`.
+               - NUNCA asumas aceptación por el simple hecho de continuar la charla.
             2. moto_aceptada:
                - Este campo es INMUTABLE contra la competencia. Solo guarda modelos de Tienda Las Motos que el usuario haya aceptado explícitamente comprar o ver.
-               - PROHIBIDO guardar marcas como Bajaj, Yamaha, Honda, Suzuki, AKT a menos que sean modelos específicos que Tienda Las Motos distribuya (TVS, Victory). 
+               - PROHIBIDO guardar marcas de la competencia como Bajaj, Yamaha, Honda, Suzuki, AKT.
                - Si el usuario menciona una marca de la competencia, déjalo en blanco.
-            3. moto_interes: La primera moto por la que preguntó el usuario.
-            4. moto_offered: La moto que el bot recomendó del catálogo.
+            3. moto_interest: La primera moto por la que preguntó el usuario.
+            4. moto_ofrecida: La moto que el bot recomendó del catálogo (sustituye a moto_offered).
             5. Resumen: Un resumen ejecutivo de la situación del cliente enfocado en su perfil crediticio y moto de interés.
 
             HISTORIAL DE CHAT:
@@ -857,7 +859,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 "type": "STRING",
                                 "description": "La primera moto o estilo por el que preguntó el usuario."
                             },
-                            "moto_offered": {
+                            "moto_ofrecida": {
                                 "type": "STRING",
                                 "description": "La moto del catálogo (TVS/Victory) que el bot ofreció."
                             },
