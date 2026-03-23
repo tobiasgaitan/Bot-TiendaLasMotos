@@ -413,10 +413,12 @@ class CatalogService:
         seen_ids = set()
         for _, item in scored_results:
             if item["id"] not in seen_ids:
-                # Truncate according to objective: Name, Price, Image URL, and 10-word summary
+                # Truncate according to objective: Name, Price, Category, Image URL, and 10-word summary
                 truncated_item = {
                     "name": item.get("name"),
-                    "price": item.get("formatted_price"),
+                    "price": item.get("formatted_price"), # For compatibility with literal user request
+                    "formatted_price": item.get("formatted_price"), # For compatibility with ai_brain.py
+                    "category": item.get("category", "Moto"),
                     "image_url": item.get("image_url"),
                     "summary": self._summarize(item.get("description", ""))
                 }

@@ -760,8 +760,13 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         catalog_returned_results = True
                                         search_results = f"Encontré {len(matches)} motos relacionados:\n"
                                         for m in matches: 
-                                            catalog_models_found.append(m['name'])
-                                            search_results += f"- {m['name']} ({m['category']}): {m['formatted_price']}\n"
+                                            name = m.get('name', 'Moto')
+                                            catalog_models_found.append(name)
+                                            # Using .get for category and price for maximum robustness
+                                            category = m.get('category', 'Moto')
+                                            price = m.get('price', m.get('formatted_price', 'Consultar'))
+                                            
+                                            search_results += f"- {name} ({category}): {price}\n"
                                             if m.get('image_url'): search_results += f"  Image URL: {m['image_url']}\n"
                                             if m.get('link'): search_results += f"  Link: {m['link']}\n"
                                             if m.get('specs'): search_results += f"  Ficha Tecnica: {m['specs']}\n"
