@@ -647,6 +647,32 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     await notification_service.notify_human_handoff(user_phone, "ai_trigger")
                 except ImportError: pass
             else:
+                # --- PHASE-GATE IMAGE INJECTION ---
+                if response_text.startswith("PHASE_GATE_TRIGGERED:"):
+                    logger.info("🛡️ PHASE-GATE TRIGGERED detected. Injecting fallback image.")
+                    response_text = response_text.replace("PHASE_GATE_TRIGGERED:", "").strip()
+                    
+                    # Search for TVS Sport 100 in catalog to get image and price
+                    if catalog_service_local:
+                        try:
+                            moto_results = catalog_service_local.search_items("TVS Sport 100")
+                            if moto_results:
+                                moto = moto_results[0]
+                                image_url = moto.get("image_url")
+                                price = moto.get("price")
+                                if image_url:
+                                    # Send image with fallback message as caption
+                                    caption = f"🏍️ *{moto.get('name')}* - {price}\n{response_text}"
+                                    logger.info(f"📸 Sending Phase-Gate fallback image: {image_url}")
+                                    await _send_whatsapp_image(user_phone, image_url, caption=caption)
+                                    
+                                    # Save to history and stop (already sent)
+                                    if memory_service_module.memory_service:
+                                        await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
+                                    return 
+                        except Exception as e:
+                            logger.error(f"⚠️ Error injecting fallback image: {e}")
+
                 # --- NATIVE IMAGE INTEGRATION ---
                 import re
                 # Support both Markdown ![alt](url) and legacy [IMAGE: url]

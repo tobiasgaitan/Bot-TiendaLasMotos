@@ -406,15 +406,35 @@ class CatalogService:
         if scored_results:
              logger.info(f"✅ Top Result: {scored_results[0][1]['name']} (Score: {scored_results[0][0]})")
         
-        # Return top 5 unique items
+        # Return top 3 unique items with truncated fields (Prompt Optimization)
+        # Why: Reducing the payload to 3 results and 4 fields (Name, Price, Image, Summary)
+        # prevents prompt inflation and keeps the context window focused.
         unique_results = []
         seen_ids = set()
         for _, item in scored_results:
             if item["id"] not in seen_ids:
-                unique_results.append(item)
+                # Truncate according to objective: Name, Price, Image URL, and 10-word summary
+                truncated_item = {
+                    "name": item.get("name"),
+                    "price": item.get("formatted_price"),
+                    "image_url": item.get("image_url"),
+                    "summary": self._summarize(item.get("description", ""))
+                }
+                unique_results.append(truncated_item)
                 seen_ids.add(item["id"])
                 
-        return unique_results[:5]
+        return unique_results[:3]
+
+    def _summarize(self, text: str, max_words: int = 10) -> str:
+        """Helper to truncate description to a 10-word summary."""
+        if not text:
+            return ""
+        # Clean markdown or biological tags if any
+        clean_text = re.sub(r'<[^>]+>', '', str(text))
+        words = clean_text.split()
+        if len(words) <= max_words:
+            return clean_text
+        return " ".join(words[:max_words]) + "..."
 
     def _apply_scoring_adaptor(self, item: Dict[str, Any], query_tokens: List[str], current_score: float, is_identity_match: bool) -> float:
         """

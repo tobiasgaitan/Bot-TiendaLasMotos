@@ -176,6 +176,21 @@ class CerebroIA:
         logger.info("🧠 Loaded system instruction from code constant (Fallback)")
         return JUAN_PABLO_SYSTEM_INSTRUCTION
     
+    def _is_profiling_attempt(self, text: str) -> bool:
+        """
+        Detects if the AI is attempting to profiling the user (sensitive data)
+        without prior consent.
+        """
+        if not text: return False
+        
+        profiling_patterns = [
+            r"(cuánto?s?|qué|cuále?s?|en qué).*(gana|devenga|ingresa|ingresos?|sueldo|salario|gastos?|egresos?|labora|trabaja|hace|puesto|cargo|empresa|ocupación|oficio|profesión)",
+            r"(independiente|empleado|pensionado)",
+            r"(historial|reporte|datacrédito|cifin|experiencia.*crediticia)"
+        ]
+        
+        return any(re.search(pattern, text.lower()) for pattern in profiling_patterns)
+
     def _determine_funnel_phase(self, prospect_data: Optional[Dict[str, Any]], history: List[Any] = None) -> str:
         """
         Deterministic state machine for funnel phase allocation.
@@ -241,11 +256,11 @@ class CerebroIA:
         habeas_data_accepted = prospect_data.get("habeas_data_accepted", False) if prospect_data else False
         
         if not habeas_data_accepted and raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
-            # Palabras clave del perfilamiento (Fase 3)
-            # EXIGENCIA CONTRACTUAL: ocupación, trabaja, ingresos, vivienda, empresa, cargo, salario
-            credit_keywords = ["ocupación", "trabaja", "ingresos", "vivienda", "empresa", "cargo", "salario", "negocio", "independiente", "pensionado", "contrato"]
-            if any(kw in raw_response.lower() for kw in credit_keywords):
-                logger.warning(f"🚨 PHASE-GATE TRIGGERED: AI attempted credit questions without Habeas Data. Re-generating...")
+            # REGLA DE NEGOCIO (Audit v2.0): Permitir "crédito" como explicación, bloquear solo perfilamiento.
+            is_profiling = self._is_profiling_attempt(raw_response)
+            
+            if is_profiling:
+                logger.warning(f"🚨 PHASE-GATE TRIGGERED: AI attempted profiling questions without Habeas Data. Re-generating...")
                 
                 # 🚀 [PHASE-GATE OPTIMIZATION] (Audit v2.0)
                 # Static response instead of second AI call to save quota and avoid 429 errors.
@@ -253,8 +268,9 @@ class CerebroIA:
                 saludo = f"¡Excelente {p_name}! " if p_name else "¡Excelente! "
                 transition_msg = f"{saludo}Me encantaría ayudarte a estrenar moto con nosotros. Antes de hablar de números y planes de pago, ¿qué te pareció la moto que te recomendé arriba? Solo confírmame si te gusta esa o si buscamos otra en el catálogo y de una pasamos al tema del crédito. 😊"
                 
-                logger.info("✅ [PHASE-GATE] Static transition injected (AI call skipped)")
-                return transition_msg
+                logger.info("✅ [PHASE-GATE] Static transition injected with trigger signal")
+                # MANDATO: Se agrega el prefijo PHASE_GATE_TRIGGERED para que el router inyecte la imagen de la TVS Sport 100.
+                return f"PHASE_GATE_TRIGGERED: {transition_msg}"
 
         # FINAL SANITIZATION: Hardcoded Parrot Effect Killer
         if raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
