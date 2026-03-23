@@ -83,7 +83,7 @@ def test_merge_strategy_full_mapping_english(memory_service):
     
     assert merged["nombre"] == "Test User"
     assert merged["ciudad"] == "Bogotá"
-    assert merged["motoInteres"] == "TVS Apache"
+    assert merged["moto_interest"] == "TVS Apache"
     assert merged["forma_pago"] == "Contado"
     assert merged["ocupacion"] == "Ingeniero"
     assert merged["datacredito"] == "Aprobado"

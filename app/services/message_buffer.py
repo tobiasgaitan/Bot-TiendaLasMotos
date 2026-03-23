@@ -84,6 +84,12 @@ class MessageBuffer:
                 return False
 
             self._processed_wamids[wa_id].add(task_id)
+            
+            # Pruning logic: keep only the last 100 wamids per user for memory safety
+            if len(self._processed_wamids[wa_id]) > 100:
+                # set is not ordered, so this is just random pruning to keep size limited
+                # but 100 is plenty for meta retries which happen within seconds
+                self._processed_wamids[wa_id].pop()
 
             # Initialize buffer if needed
             if wa_id not in self._buffers:
@@ -188,9 +194,12 @@ class MessageBuffer:
                 del self._active_tasks[wa_id]
                 logger.debug(f"🗑️ Cleared active task for {wa_id}")
             
-            # Remove processed wamids
-            if wa_id in self._processed_wamids:
-                del self._processed_wamids[wa_id]
+            # 🚀 [DEDUPLICATION PERSISTENCE] (Audit v2.0)
+            # We do NOT delete the entire wamid set here anymore.
+            # Meta retries can arrive AFTER the buffer is cleared.
+            # We keep the wamids to ensure they are never processed again.
+            # Memory safety: we only prune old ones if the set grows too large (handled in add_message).
+            pass
     
     async def get_buffer_stats(self) -> Dict[str, int]:
         """

@@ -247,9 +247,14 @@ class CerebroIA:
             if any(kw in raw_response.lower() for kw in credit_keywords):
                 logger.warning(f"🚨 PHASE-GATE TRIGGERED: AI attempted credit questions without Habeas Data. Re-generating...")
                 
-                # Forzamos el envío del PHASE 2 SCRIPT con instrucción punitiva (SISTEMA)
-                forced_instruction = "[CRITICAL: EL USUARIO NO HA ACEPTADO LA POLÍTICA DE DATOS. TIENES PROHIBIDO HACER PREGUNTAS DE CRÉDITO. SOLICITA AUTORIZACIÓN AHORA USANDO EL SCRIPT DE LA FASE 2.]"
-                raw_response = await self._generate_with_retry_async(texto, context, prospect_data, history, skip_greeting, forced_instruction=forced_instruction)
+                # 🚀 [PHASE-GATE OPTIMIZATION] (Audit v2.0)
+                # Static response instead of second AI call to save quota and avoid 429 errors.
+                p_name = prospect_data.get("name") if prospect_data else None
+                saludo = f"¡Excelente {p_name}! " if p_name else "¡Excelente! "
+                transition_msg = f"{saludo}Me encantaría ayudarte a estrenar moto con nosotros. Antes de hablar de números y planes de pago, ¿qué te pareció la moto que te recomendé arriba? Solo confírmame si te gusta esa o si buscamos otra en el catálogo y de una pasamos al tema del crédito. 😊"
+                
+                logger.info("✅ [PHASE-GATE] Static transition injected (AI call skipped)")
+                return transition_msg
 
         # FINAL SANITIZATION: Hardcoded Parrot Effect Killer
         if raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
@@ -537,7 +542,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         content_safe = str(msg.get('content', '')).replace('\n', ' ')
                         history_lines.append(f"- {role_label}: {content_safe}")
 
-                    MAX_HISTORY_CHARS = 2000
+                    # --- CONTEXT OPTIMIZATION (Audit v2.0) ---
+                    # User requested aggressive truncation to stay below 5,000 tokens.
+                    # 1200 chars ~= 300-400 tokens + System Prompt + PII.
+                    MAX_HISTORY_CHARS = 1200 
                     selected_lines = []
                     running_chars = 0
                     for line in reversed(history_lines):
