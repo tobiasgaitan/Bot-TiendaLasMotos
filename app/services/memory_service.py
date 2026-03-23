@@ -369,6 +369,8 @@ class MemoryService:
                 "status": "Pendiente",
                 "source": "whatsapp_bot",
                 "human_help_requested": False,
+                "habeas_data_sent": False,
+                "habeas_data_accepted": False,
                 "created_at": firestore.SERVER_TIMESTAMP,
                 # Explicitly excluded updated_at/fecha for Atomic Greeting fix
             }
@@ -415,7 +417,7 @@ class MemoryService:
                 break
         return total_deleted
 
-    def delete_prospect_completely(self, phone_number: str) -> int:
+    async def delete_prospect_completely(self, phone_number: str) -> int:
         """
         Nuclear wipe of a prospect and their history.
         Used by the /reset command to allow a fresh start.
@@ -426,6 +428,13 @@ class MemoryService:
             
         Returns:
             int: Number of items deleted (prospect doc + variants + history)
+        """
+        import asyncio
+        return await asyncio.to_thread(self._delete_prospect_completely_sync, phone_number)
+
+    def _delete_prospect_completely_sync(self, phone_number: str) -> int:
+        """
+        Internal sync implementation of nuclear wipe.
         """
         try:
             deleted = 0

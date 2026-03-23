@@ -190,15 +190,18 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
 
             # --- RESET ASÍNCRONO (CONFIRMACIÓN FLASH) ---
             if message_body.strip().lower() in ["reset", "/reset"]:
-                logger.warning(f"☢️ NUCLEAR RESET TRIGGERED (Async) for {user_phone}")
-                # 1. Respuesta instantánea
-                await whatsapp_service.send_text_message(user_phone, "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?")
-                # 2. Purga en background (sin await)
+                logger.warning(f"☢️ NUCLEAR RESET TRIGGERED (Sync) for {user_phone}")
+                
+                # 1. Purga síncrona/esperable (Evita Zombie Data)
                 if memory_service_module.memory_service:
                     ms = memory_service_module.memory_service
-                    background_tasks.add_task(ms.delete_prospect_completely, user_phone)
+                    logger.info(f"🧹 [WIPE] Clearing local memory instances for {user_phone}...")
+                    await ms.delete_prospect_completely(user_phone)
                 
                 await message_buffer.clear_buffer(user_phone)
+                
+                # 2. Respuesta confirmando el estado limpio
+                await whatsapp_service.send_text_message(user_phone, "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?")
                 return 
 
             # Wait for debounce window (3s)

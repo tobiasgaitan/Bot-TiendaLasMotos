@@ -29,11 +29,11 @@ def test_merge_strategy_preserve_historic_valid(memory_service):
     
     merged = memory_service._merge_extracted_data(current_data, incoming_extracted)
     
-    # 'name' should be updated
-    assert merged["name"] == "Juan Pablo Garcés"
+    # 'name' translated to 'nombre'
+    assert merged["nombre"] == "Juan Pablo Garcés"
     # 'city' and 'payment_method' should NOT be in merged (preserving current Firestore values)
-    assert "city" not in merged
-    assert "payment_method" not in merged
+    assert "ciudad" not in merged
+    assert "forma_pago" not in merged
 
 def test_merge_strategy_latch_true_only(memory_service):
     """
@@ -81,10 +81,10 @@ def test_merge_strategy_full_mapping_english(memory_service):
     
     merged = memory_service._merge_extracted_data(current_data, incoming_extracted)
     
-    assert merged["name"] == "Test User"
-    assert merged["city"] == "Bogotá"
-    assert merged["moto_interest"] == "TVS Apache"
-    assert merged["payment_method"] == "Contado"
+    assert merged["nombre"] == "Test User"
+    assert merged["ciudad"] == "Bogotá"
+    assert merged["motoInteres"] == "TVS Apache"
+    assert merged["forma_pago"] == "Contado"
     assert merged["ocupacion"] == "Ingeniero"
     assert merged["datacredito"] == "Aprobado"
     assert merged["moto_competidor"] == "Honda CB 125"
@@ -105,4 +105,4 @@ def test_is_valid_helper_logic_english(memory_service):
     
     case_valid = {"name": "Juan"}
     merged_valid = memory_service._merge_extracted_data(current, case_valid)
-    assert merged_valid["name"] == "Juan"
+    assert merged_valid["nombre"] == "Juan"
