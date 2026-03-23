@@ -94,7 +94,9 @@ class MemoryService:
                         "survey_state": data.get("survey_state"),
                         "exists": True,
                         "habeas_data_sent": data.get("habeas_data_sent", False),
-                        "habeas_data_accepted": data.get("habeas_data_accepted", False)
+                        "habeas_data_accepted": data.get("habeas_data_accepted", False),
+                        "total_tokens_consumed": data.get("total_tokens_consumed", 0),
+                        "session_cost_usd": data.get("session_cost_usd", 0.0)
                     }
                     return prospect_data
             
@@ -102,7 +104,8 @@ class MemoryService:
                 "name": None, "ciudad": None, "moto_interest": None,
                 "payment_method": None, "summary": None,
                 "human_help_requested": False, "survey_state": None, "exists": False,
-                "habeas_data_sent": False, "habeas_data_accepted": False
+                "habeas_data_sent": False, "habeas_data_accepted": False,
+                "total_tokens_consumed": 0, "session_cost_usd": 0.0
             }
         except Exception as e:
             logger.error(f"❌ Error in _get_prospect_data_sync for {phone_number}: {e}")
@@ -192,6 +195,16 @@ class MemoryService:
                 clean_data = extracted_data.get("extracted") or extracted_data if isinstance(extracted_data, dict) else {}
                 
                 merged_fields = self._merge_extracted_data(current_data, clean_data)
+                
+                # ROI Telemetry injection from AI Brain
+                telemetry = extracted_data.get("telemetry") if isinstance(extracted_data, dict) else None
+                if telemetry:
+                    added_tokens = telemetry.get("tokens", 0)
+                    added_cost = telemetry.get("cost", 0.0)
+                    update_data["total_tokens_consumed"] = current_data.get("total_tokens_consumed", 0) + added_tokens
+                    update_data["session_cost_usd"] = current_data.get("session_cost_usd", 0.0) + added_cost
+                    logger.info(f"📊 [TELEMETRY] Added {added_tokens} tokens (${added_cost:.6f} USD) to session ROI.")
+
                 if merged_fields:
                     update_data.update(merged_fields)
                     logger.info(f"🧬 Merged {len(merged_fields)} fields using Non-Destructive strategy")
@@ -228,7 +241,9 @@ class MemoryService:
             "gastos": "gastos",
             "moto_competidor": "moto_competidor",
             "moto_auteco": "moto_auteco",
-            "moto_aceptada": "moto_aceptada"
+            "moto_aceptada": "moto_aceptada",
+            "total_tokens_consumed": "total_tokens_consumed",
+            "session_cost_usd": "session_cost_usd"
         }
 
         def is_valid(val):
@@ -365,7 +380,7 @@ class MemoryService:
                 "celular": clean_phone,
                 "nombre": "",
                 "ciudad": "",
-                "motoInteres": "",
+                "moto_interest": "", # Mandatory Key Alignment
                 "forma_pago": "",
                 "chatbot_status": "ACTIVE",
                 "status": "Pendiente",

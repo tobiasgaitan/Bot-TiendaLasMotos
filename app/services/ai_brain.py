@@ -9,6 +9,7 @@ import re
 import json
 import time
 import asyncio
+import random
 from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
 
@@ -74,23 +75,42 @@ class CerebroIA:
 
     async def _call_gemini_with_retry_async(self, func, *args, **kwargs):
         """
-        Resiliencia de Red (Async): Implementa reintentos para errores del SDK.
+        Resiliencia de Red (Async): Implementa reintentos con Exponential Backoff
+        para errores 429 (ResourceExhausted) y 503 (ServiceUnavailable).
         """
         from google.genai.errors import APIError
-        import asyncio
-        max_retries = 2
-        delay = 1.5
+        max_retries = 3
+        base_delay = 2.0
+        
         for attempt in range(max_retries + 1):
             try:
                 return await func(*args, **kwargs)
-            except APIError as e:
-                if attempt < max_retries:
-                    logger.warning(f"⏳ API failure (Attempt {attempt+1}/{max_retries+1}). Retrying in {delay}s... Error: {e}")
-                    await asyncio.sleep(delay)
+            except Exception as e:
+                # Note: google-genai SDK maps some errors to APIError or ClientError
+                # We look for 429 (Resource Exhausted) and 503 (Service Unavailable)
+                err_str = str(e).lower()
+                is_quota_error = "429" in err_str or "resource_exhausted" in err_str
+                is_service_error = "503" in err_str or "service_unavailable" in err_str
+                
+                if (is_quota_error or is_service_error) and attempt < max_retries:
+                    wait_time = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(f"⏳ [EXP BACKOFF] Attempt {attempt+1} failed ({type(e).__name__}). Retrying in {wait_time:.2f}s...")
+                    await asyncio.sleep(wait_time)
                     continue
                 raise e
-            except Exception as e:
-                raise e
+
+    def _calculate_session_cost(self, usage: Any) -> float:
+        """
+        Calcula el costo en USD basado en los tokens de Gemini 2.5 Flash.
+        Precios estimados: $0.15/1M input, $0.60/1M output.
+        """
+        if not usage:
+            return 0.0
+        # Accessing usage metadata from google-genai response attributes
+        i_tokens = getattr(usage, 'prompt_token_count', 0)
+        o_tokens = getattr(usage, 'candidates_token_count', 0)
+        cost = (i_tokens * 0.00000015) + (o_tokens * 0.0000006)
+        return round(cost, 6)
 
     def _call_gemini_with_retry(self, func, *args, **kwargs):
         """
@@ -156,7 +176,7 @@ class CerebroIA:
         logger.info("🧠 Loaded system instruction from code constant (Fallback)")
         return JUAN_PABLO_SYSTEM_INSTRUCTION
     
-    def _determine_funnel_phase(self, prospect_data: Optional[Dict[str, Any]]) -> str:
+    def _determine_funnel_phase(self, prospect_data: Optional[Dict[str, Any]], history: List[Any] = None) -> str:
         """
         Deterministic state machine for funnel phase allocation.
         Based on explicit business data gathered in Firestore.
@@ -166,8 +186,18 @@ class CerebroIA:
 
         # Phase 3: Credit Profiling
         # Condition: Payment method is 'credito' AND Habeas Data is accepted AND sent.
-        # CRITICAL: Chat evidence (sent) must back the DB variable.
-        if prospect_data.get("habeas_data_accepted") is True and prospect_data.get("habeas_data_sent") is True:
+        # MANDATO v2: Verificación física del link de privacidad en el historial del chat.
+        conversation_text = ""
+        if history:
+            for m in history:
+                # Extract text from Content parts
+                if hasattr(m, 'parts'):
+                    parts_text = "".join([getattr(p, 'text', '') for p in m.parts if hasattr(p, 'text')])
+                    conversation_text += parts_text + " "
+        
+        has_sent_link = "tiendalasmotos.com/politica-de-privacidad" in conversation_text.lower()
+        
+        if prospect_data.get("habeas_data_accepted") is True and prospect_data.get("habeas_data_sent") is True and has_sent_link:
             return "PHASE_3_CREDIT_PROFILING"
 
         # Phase 2: Habeas Data Request (Legal Script)
@@ -429,7 +459,7 @@ REGLAS ESTRICTAS DE USO:
         from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable, InvalidArgument
 
         # 1. Deterministic state evaluation
-        phase = self._determine_funnel_phase(prospect_data)
+        phase = self._determine_funnel_phase(prospect_data, history)
         
         # 2. Build Instructions block based on State
         funnel_instruction = ""
@@ -662,6 +692,16 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     continue
                             
                             logger.info(f"✅ AI response generated after {turns} turns")
+                            
+                            # Update telemetry in prospect_data
+                            if prospect_data is not None:
+                                usage = getattr(response, 'usage_metadata', None)
+                                tokens = getattr(usage, 'total_token_count', 0)
+                                cost = self._calculate_session_cost(usage)
+                                prospect_data['total_tokens_consumed'] = prospect_data.get('total_tokens_consumed', 0) + tokens
+                                prospect_data['session_cost_usd'] = prospect_data.get('session_cost_usd', 0.0) + cost
+                                logger.info(f"📊 [TELEMETRY] Response: {tokens} tokens, Cost: ${cost} USD | Cumulative in session.")
+
                             return ai_response
                         except Exception as e:
                             logger.warning(f"⚠️ Error extracting text: {e}")
@@ -938,6 +978,17 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             if "extracted" not in result: result["extracted"] = {}
             
             logger.info(f"📝 Generated summary (Voorhees Cleaned) with {len(result.get('extracted', {}))} fields | Valid: {is_valid}")
+            
+            # --- ROI TELEMETRY ---
+            usage = getattr(response, 'usage_metadata', None)
+            tokens = getattr(usage, 'total_token_count', 0)
+            cost = self._calculate_session_cost(usage)
+            logger.info(f"📊 [TELEMETRY] Summary Session: {tokens} tokens, Cost: ${cost} USD")
+            
+            result["telemetry"] = {
+                "tokens": tokens,
+                "cost": cost
+            }
             return result
             
         except Exception as e:

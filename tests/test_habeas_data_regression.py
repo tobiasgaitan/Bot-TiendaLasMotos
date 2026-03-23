@@ -39,16 +39,19 @@ class TestHabeasDataRegression(unittest.TestCase):
             "moto_interest": "TVS Raider",
             "moto_confirmada": True,
             "payment_method": "credito",
-            "habeas_data_accepted": True, # Supongamos que llegó True por error
-            "habeas_data_sent": False     # Pero NO se ha enviado el script en este flujo
+            "habeas_data_accepted": True, 
+            "habeas_data_sent": False     
         }
         
-        phase = self.cerebro._determine_funnel_phase(prospect_data)
+        # Test con history vacío
+        phase = self.cerebro._determine_funnel_phase(prospect_data, history=[])
         self.assertEqual(phase, "PHASE_2_HABEAS_DATA", "Debe bloquear PHASE_3 si el script no fue enviado.")
 
-    def test_phase_allowed_with_sent_and_accepted(self):
+    def test_phase_block_without_physical_link(self):
         """
-        Verifica que el avance a PHASE_3 sea permitido si AMBOS flags son True.
+        GIVEN: habeas_data_accepted=True y habeas_data_sent=True en DB.
+        BUT: El link físico de privacidad no está en el historial del chat.
+        THEN: El orquestador DEBE bloquear el avance a PHASE_3.
         """
         prospect_data = {
             "name": "Test User",
@@ -59,9 +62,35 @@ class TestHabeasDataRegression(unittest.TestCase):
             "habeas_data_accepted": True,
             "habeas_data_sent": True
         }
+        # History sin el link
+        history = [
+            type('obj', (object,), {'parts': [type('obj', (object,), {'text': 'Hola, acepto el tratamiento.'})]})
+        ]
         
-        phase = self.cerebro._determine_funnel_phase(prospect_data)
-        self.assertEqual(phase, "PHASE_3_CREDIT_PROFILING", "Debe permitir PHASE_3 si el script fue enviado y aceptado.")
+        phase = self.cerebro._determine_funnel_phase(prospect_data, history=history)
+        self.assertEqual(phase, "PHASE_2_HABEAS_DATA", "Debe bloquear si no hay evidencia física del link de privacidad.")
+
+    def test_phase_allowed_with_sent_and_accepted(self):
+        """
+        Verifica que el avance a PHASE_3 sea permitido si AMBOS flags son True Y el link está en el historial.
+        """
+        prospect_data = {
+            "name": "Test User",
+            "ciudad": "Medellin",
+            "moto_interest": "TVS Raider",
+            "moto_confirmada": True,
+            "payment_method": "credito",
+            "habeas_data_accepted": True,
+            "habeas_data_sent": True
+        }
+        # History con el link
+        history = [
+            type('obj', (object,), {'parts': [type('obj', (object,), {'text': 'Acepta aqui: tiendalasmotos.com/politica-de-privacidad'})]}),
+            type('obj', (object,), {'parts': [type('obj', (object,), {'text': 'Sí, acepto.'})]})
+        ]
+        
+        phase = self.cerebro._determine_funnel_phase(prospect_data, history=history)
+        self.assertEqual(phase, "PHASE_3_CREDIT_PROFILING", "Debe permitir PHASE_3 si hay evidencia del link y aceptación.")
 
 if __name__ == '__main__':
     unittest.main()
