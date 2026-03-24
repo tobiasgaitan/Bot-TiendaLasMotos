@@ -242,6 +242,7 @@ class MemoryService:
             "moto_competidor": "moto_competidor",
             "moto_auteco": "moto_auteco",
             "moto_aceptada": "moto_aceptada",
+            "moto_confirmada": "moto_confirmada", # New field for v6.6.2
             "total_tokens_consumed": "total_tokens_consumed",
             "session_cost_usd": "session_cost_usd"
         }

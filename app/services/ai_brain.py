@@ -237,6 +237,22 @@ class CerebroIA:
             logger.info(f"🚫 [PROTOCOL] Competitor brand detected: {moto_interes}. Blocking advance to Phase 2.")
             return "PHASE_1_PROFILING"
 
+        # --- SHADOW STATE LOGIC (v6.6.2) ---
+        # Backup check: If the user JUST confirmed interest in the current message,
+        # we treat it as confirmed even if Firestore hasn't updated yet.
+        if not moto_confirmada and history:
+            last_user_msg = ""
+            for m in reversed(history):
+                if m.get("role") == "user":
+                    last_user_msg = str(m.get("content", "")).lower()
+                    break
+            
+            confirmation_keywords = ["me interesa", "me gusta", "esa es", "si", "sí", "👍", "claro", "dale"]
+            # Only if we already have a moto_interest/offered or are talking about bikes
+            if any(kw in last_user_msg for kw in confirmation_keywords) and (prospect_data.get("moto_interest") or prospect_data.get("moto_ofrecida")):
+                logger.info("🕵️ [SHADOW STATE] Confirmation detected in current history. Force-upgrading state.")
+                moto_confirmada = True
+
         if has_name and has_city and moto_confirmada and is_credit:
             return "PHASE_2_HABEAS_DATA"
 
@@ -913,6 +929,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             3. moto_interest: La primera moto por la que preguntó el usuario.
             4. moto_ofrecida: La moto que el bot recomendó del catálogo (sustituye a moto_offered).
             5. Resumen: Un resumen ejecutivo de la situación del cliente enfocado en su perfil crediticio y moto de interés.
+            6. moto_confirmada: 
+               - Solo marca como `true` si el usuario da una respuesta de aceptación o interés EXPLÍCITO hacia la moto ofrecida (ej: "me interesa", "me gusta esa", "esa es", "sí/si", "👍").
+               - Si el usuario simplemente pregunta por el precio o características sin confirmar interés, déjalo en `false`.
 
             HISTORIAL DE CHAT:
             {conversation_text}
@@ -973,6 +992,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             "servicios_publicos": {
                                 "type": "STRING",
                                 "description": "Si tiene servicios públicos como Gas Natural a su nombre o plan de celular si se mencionó."
+                            },
+                            "moto_confirmada": {
+                                "type": "BOOLEAN",
+                                "description": "Indica si el usuario aceptó explícitamente la moto ofrecida o mostró interés cerrado (Shadow State Sync)."
                             }
                         }
                     }
