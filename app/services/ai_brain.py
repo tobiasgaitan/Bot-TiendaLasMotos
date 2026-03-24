@@ -687,6 +687,11 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 has_price = bool(re.search(r"(\$\s?\d{1,3}(\.\d{3})*)|(precio:)", ai_response, re.IGNORECASE))
                                 has_image = bool(re.search(r"!\[.*?\]\(https?://|\[IMAGE:\s?https?://", ai_response))
                                 
+                                # BYPASS LOGIC: Si la moto ya está confirmada, el prompt prohíbe imagen/precio 
+                                # para evitar saturación. El guardrail no debe exigir consistencia visual.
+                                moto_confirmada = (prospect_data and prospect_data.get("moto_confirmada") is True)
+                                requires_visuals = not moto_confirmada
+
                                 hallucinated_model = None
                                 if catalog_returned_results:
                                     mentions = re.findall(r"\b(TVS|Victory|Boxer|NKD|Raider|Apache|Sport|Bomber|Life|Pulsar|Yamaha|Honda|Suzuki|AKT)\s+([A-Z0-9][a-zA-Z0-9]*)\b", ai_response)
@@ -696,10 +701,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             hallucinated_model = f"{brand} {model}"
                                             break
 
-                                if (catalog_returned_results and (not has_price or not has_image)) or hallucinated_model:
+                                if (catalog_returned_results and requires_visuals and (not has_price or not has_image)) or hallucinated_model:
                                     turns += 1
                                     error_msg = ""
-                                    if not has_price or not has_image:
+                                    if requires_visuals and (not has_price or not has_image):
                                         error_msg = "Has ejecutado el catálogo pero tu respuesta final NO incluye el precio ($ o la palabra 'precio:') o la imagen. "
                                     if hallucinated_model:
                                         error_msg += f"Has mencionado la moto '{hallucinated_model}' que NO aparece en los resultados locales del catálogo. "
@@ -714,6 +719,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         config=types.GenerateContentConfig(temperature=0.1)
                                     )
                                     continue
+                                elif moto_confirmada and (not has_price or not has_image):
+                                    logger.info("✅ Consistency Guardrail Bypassed (Moto ya confirmada)")
                             
                             logger.info(f"✅ AI response generated after {turns} turns")
                             
