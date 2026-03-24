@@ -555,7 +555,11 @@ REGLAS ESTRICTAS DE USO:
             funnel_instruction = "EL USUARIO ESTÁ LISTO PARA EL CRÉDITO. Debes presentar el script legal de Habeas Data y pedir su aceptación explícita (Sí/No)."
         
         elif phase == "PHASE_3_CREDIT_PROFILING":
-            funnel_instruction = "Habeas Data Aceptado. Procede con las preguntas de perfilamiento crediticio (ocupación, ingresos, etc.) según el flujo del embudo."
+            funnel_instruction = (
+                "Habeas Data Aceptado. Procede con el perfilamiento. "
+                "Si el resultado es Brilla, solicita de inmediato fotos de cédula "
+                "y recibos de gas para que el asesor humano pueda cerrar el trámite."
+            )
 
         for attempt in range(max_retries):
             try:
@@ -860,7 +864,18 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         tiene_gas_natural=f_args.get("tiene_gas_natural", False),
                                         plan_celular=f_args.get("plan_celular", "")
                                     )
-                                    credit_res = f"✅ Score: {res['score']}\n- Estrategia: {res['strategy']}\n- Entidad: {res['entity']}\n- Link: {res['link_url']}\n- Explicación: {res['explanation']}"
+                                    if res.get('entity') == "Brilla de Gases":
+                                        credit_res = (
+                                            f"✅ RESULTADO: {res['score']} Puntos\n"
+                                            f"- ESTRATEGIA: {res['strategy']}\n"
+                                            f"- ENTIDAD: Brilla de Gases\n"
+                                            f"\n[SISTEMA: MANDATO CRÍTICO: El usuario es APTO para Brilla. "
+                                            f"Como NO hay link digital, ESTÁS OBLIGADO a solicitar en este "
+                                            f"mensaje las FOTOS de: 1. Cédula original y 2. Los dos últimos "
+                                            f"recibos del gas natural. No cierres la sesión sin pedir esto.]"
+                                        )
+                                    else:
+                                        credit_res = f"✅ Score: {res['score']}\n- Estrategia: {res['strategy']}\n- Entidad: {res['entity']}\n- Link: {res['link_url']}\n- Explicación: {res['explanation']}"
                                 else:
                                     credit_res = "Error: Motor financiero no conectado."
                             except Exception as e:
