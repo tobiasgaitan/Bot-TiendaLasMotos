@@ -649,40 +649,47 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             else:
                 # --- PHASE-GATE IMAGE INJECTION (Update v6.3.1) ---
                 if response_text.startswith("PHASE_GATE_TRIGGERED:"):
-                    logger.info("🛡️ PHASE-GATE TRIGGERED detected. Injecting dynamic image.")
+                    logger.info("🛡️ PHASE-GATE TRIGGERED detected.")
                     response_text = response_text.replace("PHASE_GATE_TRIGGERED:", "").strip()
                     
-                    # Logica v6.3.1: Priorizar interes, sino Raider 125
-                    moto_interest = prospect_data.get("moto_interest") if prospect_data else None
-                    moto_to_search = moto_interest if moto_interest else "RAIDER 125"
+                    # 🚀 [BYPASS OPTIMIZATION] (v6.6.1)
+                    moto_confirmada = prospect_data.get("moto_confirmada", False) if prospect_data else False
                     
-                    if catalog_service_local:
-                        try:
-                            # Search for interested bike or default
-                            moto_results = catalog_service_local.search_items(moto_to_search)
-                            
-                            # Fallback if interest search failed (Competitor or not found)
-                            if not moto_results and moto_interest:
-                                logger.info(f"🔄 No results for '{moto_interest}' (Competitor?). Falling back to Raider 125.")
-                                moto_results = catalog_service_local.search_items("RAIDER 125")
-                            
-                            if moto_results:
-                                moto = moto_results[0]
-                                image_url = moto.get("image_url")
-                                moto_name = moto.get("name")
+                    if not moto_confirmada:
+                        logger.info("📸 Injecting dynamic image (moto not confirmed).")
+                        # Logica v6.3.1: Priorizar interes, sino Raider 125
+                        moto_interest = prospect_data.get("moto_interest") if prospect_data else None
+                        moto_to_search = moto_interest if moto_interest else "RAIDER 125"
+                        
+                        if catalog_service_local:
+                            try:
+                                # Search for interested bike or default
+                                moto_results = catalog_service_local.search_items(moto_to_search)
                                 
-                                if image_url:
-                                    # Caption v6.3.1: "Mira esta [Moto]"
-                                    caption = f"Mira esta {moto_name}\n\n{response_text}"
-                                    logger.info(f"📸 Sending Phase-Gate dynamic image: {image_url} for {moto_name}")
-                                    await _send_whatsapp_image(user_phone, image_url, caption=caption)
+                                # Fallback if interest search failed (Competitor or not found)
+                                if not moto_results and moto_interest:
+                                    logger.info(f"🔄 No results for '{moto_interest}' (Competitor?). Falling back to Raider 125.")
+                                    moto_results = catalog_service_local.search_items("RAIDER 125")
+                                
+                                if moto_results:
+                                    moto = moto_results[0]
+                                    image_url = moto.get("image_url")
+                                    moto_name = moto.get("name")
                                     
-                                    # Save to history and stop
-                                    if memory_service_module.memory_service:
-                                        await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
-                                    return 
-                        except Exception as e:
-                            logger.error(f"⚠️ Error injecting dynamic Phase-Gate image: {e}")
+                                    if image_url:
+                                        # Caption v6.3.1: "Mira esta [Moto]"
+                                        caption = f"Mira esta {moto_name}\n\n{response_text}"
+                                        logger.info(f"📸 Sending Phase-Gate dynamic image: {image_url} for {moto_name}")
+                                        await _send_whatsapp_image(user_phone, image_url, caption=caption)
+                                        
+                                        # Save to history and stop
+                                        if memory_service_module.memory_service:
+                                            await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
+                                        return 
+                            except Exception as e:
+                                logger.error(f"⚠️ Error injecting dynamic Phase-Gate image: {e}")
+                    else:
+                        logger.info("⏩ [BYPASS] Skipping image injection: moto already confirmed.")
 
                 # --- NATIVE IMAGE INTEGRATION ---
                 import re

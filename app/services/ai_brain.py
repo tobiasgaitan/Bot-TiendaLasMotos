@@ -262,14 +262,21 @@ class CerebroIA:
             if is_profiling:
                 logger.warning(f"🚨 PHASE-GATE TRIGGERED: AI attempted profiling questions without Habeas Data. Re-generating...")
                 
-                # 🚀 [PHASE-GATE OPTIMIZATION] (Audit v2.0)
-                # Static response instead of second AI call to save quota and avoid 429 errors.
+                # 🚀 [PHASE-GATE OPTIMIZATION] (v6.6.1)
                 p_name = prospect_data.get("name") if prospect_data else None
-                saludo = f"¡Excelente {p_name}! " if p_name else "¡Excelente! "
-                transition_msg = f"{saludo}Me encantaría ayudarte a estrenar moto con nosotros. Antes de hablar de números y planes de pago, ¿qué te pareció la moto que te recomendé arriba? Solo confírmame si te gusta esa o si buscamos otra en el catálogo y de una pasamos al tema del crédito. 😊"
+                moto = prospect_data.get("moto_interest", "moto") if prospect_data else "moto"
+                moto_confirmada = prospect_data.get("moto_confirmada", False) if prospect_data else False
                 
-                logger.info("✅ [PHASE-GATE] Static transition injected with trigger signal")
-                # MANDATO: Se agrega el prefijo PHASE_GATE_TRIGGERED para que el router inyecte la imagen de la TVS Sport 100.
+                saludo = f"¡Excelente {p_name}! " if p_name else "¡Excelente! "
+                
+                if moto_confirmada:
+                    # Mensaje de continuidad (Usuario ya eligió moto)
+                    transition_msg = f"{saludo}Anotado. Como ya elegimos tu próxima {moto}, solo nos falta un pequeño paso legal: autorizar el tratamiento de tus datos para que nuestro sistema pueda procesar tu solicitud de crédito. ¿Me autorizas a continuar?"
+                else:
+                    # Mensaje de descubrimiento (Comportamiento legado mejorado)
+                    transition_msg = f"{saludo}Me encantaría ayudarte a estrenar moto con nosotros. Antes de hablar de números y planes de pago, ¿qué te pareció la {moto} que te recomendé arriba? Solo confírmame si te gusta esa o si buscamos otra en el catálogo y de una pasamos al tema del crédito. 😊"
+                
+                logger.info(f"✅ [PHASE-GATE] Dynamic transition injected (moto_confirmada={moto_confirmada})")
                 return f"PHASE_GATE_TRIGGERED: {transition_msg}"
 
         # FINAL SANITIZATION: Hardcoded Parrot Effect Killer
