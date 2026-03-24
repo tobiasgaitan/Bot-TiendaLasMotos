@@ -88,12 +88,19 @@ class VisionService:
             # Also consider the user's caption if provided
             caption_context = f"User caption: '{caption}'" if caption else ""
             
-            prompt = f"""
-            Analyze this image. {caption_context}
-            If it is a Colombian ID card (Cédula de Ciudadanía) or a utility bill (like Gas Natural), output JSON: {{"type": "kyc_document"}}
-            If it is a motorcycle, output JSON: {{"type": "moto", "description": "brief description of the bike"}}
-            Otherwise, output JSON: {{"type": "other", "description": "what is it"}}
-            Output ONLY raw JSON.
+            prompt = """
+            Analiza esta imagen. Si es un documento colombiano (Cédula de Ciudadanía o Recibo de Gas Natural), evalúa:
+            1. Nitidez: ¿El texto es 100% legible? (Rechazar si está movida/borrosa).
+            2. Iluminación: ¿Hay reflejos o sombras que tapen datos críticos?
+            3. Clasificación: ¿Es CEDULA o RECIBO_GAS?
+
+            REGLAS DE SALIDA:
+            - Si falla calidad: QUALITY_CHECK: FAILED | Motivo: [Borrosa/Oscura/Recortada/Reflejos]
+            - Si pasa: QUALITY_CHECK: PASSED | DOCUMENTO_DETECTADO: [CEDULA/RECIBO_GAS]
+
+            Si no es un documento:
+            - Si es una motocicleta, output JSON: {"type": "moto", "description": "brief description of the bike"}
+            - De lo contrario, output JSON: {"type": "other", "description": "what is it"}
             """
             
             response = await self._call_gemini_with_retry_async(
@@ -101,9 +108,17 @@ class VisionService:
                 model=self._model_id,
                 contents=[image_part, prompt]
             )
-            result_json = self._parse_json(response.text)
+            # 2. Extract Contract or JSON
+            response_text = response.text.strip()
+            
+            if "QUALITY_CHECK:" in response_text:
+                return response_text
+            
+            result_json = self._parse_json(response_text)
             
             if result_json.get("type") in ["kyc_document", "id_card"]:
+                # This path is kept for backward compatibility if the prompt fails to follow the new contract
+                # but the prompt above should prioritize the text contract.
                 return await self._process_kyc_document(image_part, phone)
             
             elif result_json.get("type") == "moto":
@@ -120,15 +135,20 @@ class VisionService:
         """
         Processes KYC documents (Identity cards or Utility bills) directly for the Brilla flow.
         
-        Security & Business Logic (QA Baseline):
-        - Why: This streamlines the Brilla credit application by explicitly acknowledging
-          the document receipt, preventing the AI from falling into the generic or motorcycle-specific flows.
-        - Fail-Closed: We only return the validation string if the model confidently 
-          classified it as 'kyc_document'. If unsure, it falls to the fallback.
-        - Security: No hardcoded credentials are used here; relies on application ADC.
-          Input validation is handled inherently by Vertex AI Part object processing.
+        Returns the mandatory contract format:
+        QUALITY_CHECK: [PASSED/FAILED] | DOCUMENTO_DETECTADO: [TIPO]
         """
-        return "¡Documento validado! 🚀 Ya lo adjunté a tu expediente. ¿Me falta alguna otra foto (cédula o recibo) para radicar tu solicitud con Brilla?"
+        # Second pass only if the first classification wasn't enough or for extra safety
+        prompt = """
+        Analiza el documento. 
+        Si es CEDULA o RECIBO_GAS y es LEGIBLE, responde: QUALITY_CHECK: PASSED | DOCUMENTO_DETECTADO: [TIPO]
+        Si no es legible o no es un documento válido, responde: QUALITY_CHECK: FAILED | Motivo: [Razón]
+        """
+        response = self.client.models.generate_content(
+            model=self._model_id,
+            contents=[image_part, prompt]
+        )
+        return response.text.strip()
 
     async def _process_moto(self, image_part: types.Part, brief_desc: str) -> str:
         """

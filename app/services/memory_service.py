@@ -244,7 +244,11 @@ class MemoryService:
             "moto_aceptada": "moto_aceptada",
             "moto_confirmada": "moto_confirmada", # New field for v6.6.2
             "total_tokens_consumed": "total_tokens_consumed",
-            "session_cost_usd": "session_cost_usd"
+            "session_cost_usd": "session_cost_usd",
+            "doc_cedula_url": "doc_cedula_url",      # v6.7.x
+            "doc_recibo_gas_url": "doc_recibo_gas_url", # v6.7.x
+            "doc_cedula": "doc_cedula",              # v6.7.x
+            "doc_recibo_gas": "doc_recibo_gas"       # v6.7.x
         }
 
         def is_valid(val):

@@ -24,8 +24,8 @@ from app.services.ai_brain import CerebroIA
 from app.services.vision_service import VisionService
 from app.services.audio_service import AudioService
 from app.services.catalog_service import CatalogService # Local instantiation class
-from app.services.catalog_service import CatalogService # Local instantiation class
 from app.services.survey_service import survey_service # Singleton
+from app.services.storage_service import storage_service # Singleton
 from app.services.message_buffer import MessageBuffer # Local instantiation
 
 # --- MEMORY SERVICE (MODULE IMPORT FOR SINGLETON ACCESS) ---
@@ -260,42 +260,88 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                         logger.info(f"🧠 Raw Vision response: {vision_response}")
                         
                         if vision_response:
-                            # 1. Handle Moto Detection
-                            if vision_response.startswith("MOTO_DETECTADA:"):
-                                logger.info("🧠 Moto detected. Routing to CerebroIA for cross-selling...")
+                            # 0. Handle Document Quality & Classification (v6.7.x)
+                            if "QUALITY_CHECK:" in vision_response:
+                                if "QUALITY_CHECK: FAILED" in vision_response:
+                                    motivo = "borrosa o ilegible"
+                                    if "|" in vision_response:
+                                        parts = vision_response.split("|")
+                                        for p in parts:
+                                            if "Motivo:" in p:
+                                                motivo = p.replace("Motivo:", "").strip().lower()
+                                    
+                                    p_name = "amigo"
+                                    if memory_service_module.memory_service:
+                                        pd = await memory_service_module.memory_service.get_prospect_data(user_phone)
+                                        p_name = pd.get("name") or "amigo"
+                                    
+                                    await _send_whatsapp_message(user_phone, f"¡Uy {p_name}! 📸 La foto parece {motivo}. ¿Podrías enviarla de nuevo que se vea bien clarita? Así el banco no nos la rechaza.")
+                                    return
+
+                                elif "QUALITY_CHECK: PASSED" in vision_response:
+                                    tipo = "CEDULA" # Default
+                                    if "DOCUMENTO_DETECTADO:" in vision_response:
+                                        tipo_raw = vision_response.split("DOCUMENTO_DETECTADO:")[1].strip().upper()
+                                        if "CEDULA" in tipo_raw: tipo = "CEDULA"
+                                        elif "RECIBO" in tipo_raw or "GAS" in tipo_raw: tipo = "RECIBO_GAS"
+                                    
+                                    logger.info(f"✅ Document quality passed: {tipo}. Uploading to Storage...")
+                                    
+                                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                    filename = f"prospectos/{user_phone}/{tipo.lower()}_{timestamp}.jpg"
+                                    
+                                    try:
+                                        public_url = await asyncio.to_thread(
+                                            storage_service.upload_document, 
+                                            image_bytes, 
+                                            filename, 
+                                            mime_type
+                                        )
+                                        
+                                        if memory_service_module.memory_service:
+                                            ms = memory_service_module.memory_service
+                                            field_url = "doc_cedula_url" if tipo == "CEDULA" else "doc_recibo_gas_url"
+                                            field_flag = "doc_cedula" if tipo == "CEDULA" else "doc_recibo_gas"
+                                            
+                                            await ms.update_prospect_summary(user_phone, "", {
+                                                field_url: public_url,
+                                                field_flag: True
+                                            })
+                                            
+                                            prospect = await ms.get_prospect_data(user_phone)
+                                            if prospect.get("doc_cedula") and prospect.get("doc_recibo_gas"):
+                                                await _send_whatsapp_message(user_phone, "¡Excelente! Ya tengo todo tu expediente completo. ✅ Un asesor lo revisará en breve.")
+                                            else:
+                                                faltante = "el recibo de gas" if tipo == "CEDULA" else "tu cédula"
+                                                nombre_doc = "cédula" if tipo == "CEDULA" else "recibo de gas"
+                                                await _send_whatsapp_message(user_phone, f"¡Recibida tu {nombre_doc}! ✅ Ya solo me falta {faltante} para terminar.")
+                                        return
+                                    except Exception as e:
+                                        logger.error(f"❌ Error uploading document: {e}")
+                                        await _send_whatsapp_message(user_phone, "Tuve un problemita guardando tu documento. ¿Podrías intentarlo de nuevo?")
+                                        return
+
+                            # 1. Handle Moto Detection (Legacy / Main Vision Logic)
+                            elif "[MOTO_DETECTADA]" in vision_response:
+                                vision_description = vision_response.replace("[MOTO_DETECTADA]", "").strip()
                                 _ensure_services()
                                 cerebro_ia = CerebroIA(config_loader, catalog_service_local)
                                 cerebro_ia.motor_financiero = motor_financiero
                                 
-                                vision_description = vision_response.replace("MOTO_DETECTADA:", "").strip()
-                                
-                                prospect_data = None
-                                current_history = []
-                                skip_greeting = True # Skip greeting since we are mid-conversation usually
-                                
                                 if memory_service_module.memory_service:
                                     ms = memory_service_module.memory_service
-                                    ms.create_prospect_if_missing(user_phone)
-                                    # 1. LINEAR BLOCKING: Memory Sync (Wait for Firestore)
-                                    logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync (Image) for {user_phone}")
-                                    await ms.generate_and_update_summary(
-                                        user_phone, 
-                                        f"User sent image: {vision_description}", 
-                                        cerebro_ia, 
-                                        last_bot_question=""
-                                    )
+                                    await ms.create_prospect_if_missing(user_phone)
+                                    # Memory Sync for context
+                                    await ms.generate_and_update_summary(user_phone, f"User sent image of: {vision_description}", cerebro_ia)
                                     
-                                    # 2. Re-fetch fresh data
                                     prospect_data = await ms.get_prospect_data(user_phone)
                                     current_history = await ms.get_chat_history(user_phone, limit=10)
-
+                                    
                                     if prospect_data and prospect_data.get('human_help_requested', False):
                                         logger.info(f"🛑 Human Help Requested active for {user_phone}. Silencing bot.")
                                         return
 
                                     simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
-                                    
-                                    # 3. AI Inference (Await)
                                     final_response = await cerebro_ia.pensar_respuesta(
                                         simulated_user_msg, 
                                         context="", 
@@ -304,52 +350,32 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                         skip_greeting=True
                                     )
                                     
-                                    if not final_response or not str(final_response).strip():
-                                        final_response = "Lo siento, tuve un problema procesando esa información. ¿Podrías repetirme qué buscas para darte la mejor asesoría?"
+                                    if not final_response:
+                                        final_response = "Lo siento, tuve un problema procesando esa información. ¿Podrías repetirme qué buscas?"
                                     
                                     await _send_whatsapp_message(user_phone, final_response)
-                                    
-                                    # Save to History
                                     await ms.save_message(user_phone, "user", simulated_user_msg)
                                     await ms.save_message(user_phone, "model", final_response)
-                                    
+                                    return
 
-                                else:
-                                    logger.warning("⚠️ Memory Service is NOT initialized. Cannot route image properly.")
-                                    await _send_whatsapp_message(user_phone, "No pude conectar con mi cerebro para buscar esta moto. 😢")
-                            
-                            # 2. Handle Sentiment / Memes / Stickers / General System Notes
+                            # 2. Handle Sentiment / Memes / Stickers
                             elif vision_response.startswith("[System Note:"):
-                                logger.info("🧠 General image/meme/sticker detected. Forwarding note to CerebroIA...")
+                                logger.info("🧠 General image/meme/sticker detected.")
                                 _ensure_services()
                                 cerebro_ia = CerebroIA(config_loader, catalog_service_local)
                                 cerebro_ia.motor_financiero = motor_financiero
                                 
-                                prospect_data = None
-                                current_history = []
-                                skip_greeting = True
-                                
                                 if memory_service_module.memory_service:
                                     ms = memory_service_module.memory_service
-                                    ms.create_prospect_if_missing(user_phone)
-                                    # 1. LINEAR BLOCKING: Memory Sync (Wait for Firestore)
-                                    logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync (Sticker/Meme) for {user_phone}")
-                                    await ms.generate_and_update_summary(
-                                        user_phone, 
-                                        f"User sent media: {vision_response}", 
-                                        cerebro_ia, 
-                                        last_bot_question=""
-                                    )
+                                    await ms.create_prospect_if_missing(user_phone)
+                                    await ms.generate_and_update_summary(user_phone, f"User sent media: {vision_response}", cerebro_ia)
                                     
-                                    # 2. Re-fetch
                                     prospect_data = await ms.get_prospect_data(user_phone)
                                     current_history = await ms.get_chat_history(user_phone, limit=10)
                                     
                                     if prospect_data and prospect_data.get('human_help_requested', False):
-                                        logger.info(f"🛑 Human Help Requested active for {user_phone}. Silencing bot.")
                                         return
                                     
-                                    # 3. AI Inference (Await)
                                     final_response = await cerebro_ia.pensar_respuesta(
                                         vision_response,
                                         context="", 
@@ -358,24 +384,21 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                         skip_greeting=True
                                     )
                                     
-                                    if not final_response or not str(final_response).strip():
+                                    if not final_response:
                                         final_response = "¡Estuvo bueno! 😅 Pero cuéntame, ¿en qué moto estabas pensando?"
                                     
                                     await _send_whatsapp_message(user_phone, final_response)
-                                    
-                                    # Save to History
                                     await ms.save_message(user_phone, "user", vision_response)
                                     await ms.save_message(user_phone, "model", final_response)
-                                    
-                                else:
-                                    # Fallback if no memory service
-                                    await _send_whatsapp_message(user_phone, "No pude procesar bien esa imagen ahora mismo. 😅")
-                            
-                            # 3. Handle literal fallback text from old vision routines (if any)
+                                    return
+
+                            # 3. Fallback text
                             else:
-                                logger.info("🧠 Fallback text returned from Vision AI, passing directly to user...")
+                                logger.info("🧠 Fallback text returned from Vision AI.")
                                 response_text = f"🏍️ **Catálogo Auteco Las Motos**\n\n{vision_response}"
                                 await _send_whatsapp_message(user_phone, response_text)
+                                return
+
                         
                         else:
                             await _send_whatsapp_message(user_phone, "¡Uff! Pero no alcanzo a ver bien los detalles. ¿Me cuentas qué es?")
