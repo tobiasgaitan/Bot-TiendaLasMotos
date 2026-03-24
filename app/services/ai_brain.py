@@ -285,14 +285,38 @@ class CerebroIA:
                 
                 saludo = f"¡Excelente {p_name}! " if p_name else "¡Excelente! "
                 
-                if moto_confirmada:
-                    # Mensaje de continuidad (Usuario ya eligió moto)
-                    transition_msg = f"{saludo}Anotado. Como ya elegimos tu próxima {moto}, solo nos falta un pequeño paso legal: autorizar el tratamiento de tus datos para que nuestro sistema pueda procesar tu solicitud de crédito. ¿Me autorizas a continuar?"
-                else:
-                    # Mensaje de descubrimiento (Comportamiento legado mejorado)
-                    transition_msg = f"{saludo}Me encantaría ayudarte a estrenar moto con nosotros. Antes de hablar de números y planes de pago, ¿qué te pareció la {moto} que te recomendé arriba? Solo confírmame si te gusta esa o si buscamos otra en el catálogo y de una pasamos al tema del crédito. 😊"
+            if is_profiling:
+                logger.warning(f"🚨 PHASE-GATE TRIGGERED: AI attempted profiling questions without Habeas Data. Re-generating...")
                 
-                logger.info(f"✅ [PHASE-GATE] Dynamic transition injected (moto_confirmada={moto_confirmada})")
+                # 🚀 [PHASE-GATE REPAIR v6.6.4]
+                p_name = prospect_data.get("name") if prospect_data else None
+                saludo = f"¡Excelente {p_name}! " if p_name else "¡Excelente! "
+                
+                # 1. CORRECCIÓN DE IDENTIDAD (Prioridad al Pivote)
+                resumen = prospect_data.get("summary", "").upper() if prospect_data else ""
+                moto_actual = "Victory Bomber 125 TK" if "BOMBER" in resumen else (prospect_data.get("moto_interest") or "la moto")
+                
+                # 2. DETECCIÓN DE INTENCIÓN (Requisitos)
+                requisitos_txt = ""
+                keywords_requisitos = ["requisito", "necesito", "papeles", "documento", "necesita"]
+                if any(w in texto.lower() for w in keywords_requisitos):
+                    requisitos_txt = (
+                        "\n\nLos requisitos para tu perfil son:\n"
+                        "• Cédula original (física o digital).\n"
+                        "• Correo electrónico y celular activo.\n"
+                        "• (Si estás reportado, cuota inicial mínima del 10%).\n"
+                    )
+
+                # 3. CONSTRUCCIÓN DEL MENSAJE LEGAL COMPLETO
+                transition_msg = (
+                    f"{saludo}Anotado. Como ya eligimos tu próxima {moto_actual}, "
+                    f"solo nos falta un pequeño paso legal para procesar tu crédito."
+                    f"{requisitos_txt}"
+                    f"\n\n¿Me autorizas el tratamiento de tus datos para continuar? "
+                    f"Mira nuestra política aquí: https://tiendalasmotos.com/politica-de-privacidad"
+                )
+                
+                logger.info(f"✅ [PHASE-GATE] Dynamic transition injected (moto_actual={moto_actual})")
                 return f"PHASE_GATE_TRIGGERED: {transition_msg}"
 
         # FINAL SANITIZATION: Hardcoded Parrot Effect Killer
