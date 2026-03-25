@@ -26,6 +26,18 @@ class ConfigService:
         self._partners_config: Optional[Dict[str, Any]] = None
         self._db: Optional[firestore.Client] = None
     
+    # Defaults (Fallbacks) - JSON Voorhees Contract
+    DEFAULT_FINANCIAL = {
+        "tasa_nmv_banco": 1.87,
+        "tasa_nmv_fintech": 2.22,
+        "fng_rate": 20.66,
+        "life_insurance_mode": "fixed",
+        "life_insurance_monthly": 15000,
+        "default_down_payment_ratio": 0.10,
+        "score_min_banco": 700,
+        "score_min_fintech": 400
+    }
+
     def initialize(self, db: firestore.Client) -> None:
         """
         Initialize the service with Firestore client and load configurations.
@@ -41,22 +53,22 @@ class ConfigService:
         Load configuration documents from Firestore into memory.
         
         Loads:
-            - configuracion/financiera: Financial configuration (rates, fees, etc.)
+            - financial_config/general/global_params/global_params: Certified Route
             - configuracion/aliados: Partner/entity configuration
         """
         try:
             logger.info("📋 Loading configuration from Firestore...")
             
             # Load financial configuration
-            financial_ref = self._db.collection("configuracion").document("financiera")
+            financial_ref = self._db.collection("financial_config").document("general").collection("global_params").document("global_params")
             financial_doc = financial_ref.get()
             
             if financial_doc.exists:
                 self._financial_config = financial_doc.to_dict()
-                logger.info(f"✅ Financial config loaded: {len(self._financial_config)} keys")
+                logger.info(f"✅ Financial config loaded from Certified Route: {len(self._financial_config)} keys")
             else:
-                logger.warning("⚠️  Financial config document not found")
-                self._financial_config = {}
+                logger.critical("🔥 CRITICAL: 'financial_config/.../global_params' not found! Using Hardcoded Defaults.")
+                self._financial_config = self.DEFAULT_FINANCIAL.copy()
             
             # Load partners configuration
             partners_ref = self._db.collection("configuracion").document("aliados")
@@ -71,8 +83,8 @@ class ConfigService:
                 
         except Exception as e:
             logger.error(f"❌ Error loading configurations: {str(e)}")
-            # Initialize with empty dicts to prevent None errors
-            self._financial_config = {}
+            # Initialize with defaults to prevent None errors or empty dicts
+            self._financial_config = self.DEFAULT_FINANCIAL.copy()
             self._partners_config = {}
     
     def get_financial_config(self) -> Dict[str, Any]:

@@ -26,9 +26,11 @@ class ConfigLoader:
     # Defaults (Fallbacks)
     DEFAULT_FINANCIAL = {
         "tasa_nmv_banco": 1.87,
-        "tasa_nmv_fintech": 2.22, # Slightly bumped per spec if failing
-        "porcentaje_aval": 5.0,
-        "seguro_vida_base": 2500,
+        "tasa_nmv_fintech": 2.22,
+        "fng_rate": 20.66,
+        "life_insurance_mode": "fixed",
+        "life_insurance_monthly": 15000,
+        "default_down_payment_ratio": 0.10,
         "score_min_banco": 700,
         "score_min_fintech": 400
     }
@@ -74,14 +76,14 @@ class ConfigLoader:
 
         try:
             # 1. Financial Config
-            fin_ref = self._db.collection("configuracion").document("financiera")
+            fin_ref = self._db.collection("financial_config").document("general").collection("global_params").document("global_params")
             fin_doc = fin_ref.get()
             
             if fin_doc.exists:
                 self._financial_cache = fin_doc.to_dict()
                 logger.info(f"✅ Loaded Financial Config from Firestore: {self._financial_cache}")
             else:
-                logger.critical("🔥 CRITICAL: 'configuracion/financiera' not found! Using Hardcoded Defaults.")
+                logger.critical("🔥 CRITICAL: 'financial_config/.../global_params' not found! Using Hardcoded Defaults.")
                 self._financial_cache = self.DEFAULT_FINANCIAL.copy()
 
             # 2. Partners Config
