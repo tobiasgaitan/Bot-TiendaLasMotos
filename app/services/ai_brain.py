@@ -491,11 +491,14 @@ REGLAS ESTRICTAS DE USO:
             phase = self._determine_funnel_phase(prospect_data)
             moto_confirmada = prospect_data.get("moto_confirmada") is True if prospect_data else False
             
-            # REGLA v1.3.1: Desacople de Crédito (Proactivo)
-            # La herramienta de crédito está disponible desde el mensaje inicial
-            # para cumplir con el protocolo de "Valor Primero".
-            function_declarations.append(credit_function)
-            logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Phase: {phase})")
+            # REGLA v1.3.1: Desacople de Crédito (Mandatorio)
+            # La herramienta de crédito debe estar disponible en las fases 1, 2 y 3
+            # para cumplir con el protocolo de "Valor Primero" y la Phase 2.
+            if phase in ["PHASE_1_PROFILING", "PHASE_2_HABEAS_DATA", "PHASE_3_CREDIT_PROFILING"]:
+                function_declarations.append(credit_function)
+                logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Phase: {phase})")
+            else:
+                logger.info(f"🛠️ Toolset: [handoff, catalog] (Phase: {phase})")
 
             return [types.Tool(function_declarations=function_declarations)]
         except Exception as e:

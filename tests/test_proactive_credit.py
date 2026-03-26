@@ -68,6 +68,25 @@ class TestProactiveCredit(unittest.TestCase):
         
         self.assertIn("calculate_credit_score", function_names, "La herramienta de crédito debe estar disponible proactivamente.")
 
+    def test_proactive_tools_in_phase_2(self):
+        """
+        GIVEN: Un prospecto en Fase 2 (Habeas Data Request).
+        THEN: La herramienta 'calculate_credit_score' DEBE estar disponible.
+        """
+        prospect_data = {
+            "nombre": "Juan",
+            "ciudad": "Bogota",
+            "moto_confirmada": True,
+            "forma_pago": "credito",
+            "habeas_data_accepted": False
+        }
+        # Forzar que _determine_funnel_phase devuelva PHASE_2
+        # (Ya debería devolverlo con estos datos)
+        tools = self.cerebro._create_tools(prospect_data)
+        
+        function_names = [fd.name for tool in tools for fd in tool.function_declarations]
+        self.assertIn("calculate_credit_score", function_names)
+
     def test_deterministic_insurance_fallback(self):
         """
         GIVEN: El MotorFinanciero se inicializa.
