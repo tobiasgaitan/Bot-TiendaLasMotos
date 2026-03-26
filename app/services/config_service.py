@@ -27,6 +27,7 @@ class ConfigService:
         self._db: Optional[firestore.Client] = None
     
     # Defaults (Fallbacks) - JSON Voorhees Contract
+    # [SSOT] All values must align with 'financial_config/general/global_params/global_params'
     DEFAULT_FINANCIAL = {
         "tasa_nmv_banco": 1.87,
         "tasa_nmv_fintech": 2.22,
