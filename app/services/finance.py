@@ -394,12 +394,20 @@ _*Cálculo estimado con tasa del {tasa_mensual}% MV. Sujeto a estudio de crédit
                 # Using the form: P * r / (1 - (1+r)^-n) which user requested logic similar to:
                 # [Monto_Financiado * Tasa] / [1 - (1 + Tasa)^-Meses]
                 
-                cuota_mensual = (capital * tasa_decimal) / (1 - (base ** -plazo_meses))
+                cuota_mensual_base = (capital * tasa_decimal) / (1 - (base ** -plazo_meses))
             else:
-                cuota_mensual = capital / plazo_meses
+                cuota_mensual_base = capital / plazo_meses
+            
+            # v1.3.0: Sincronía de Seguro ($15,000 deterministic add)
+            insurance_monthly = 15000 # Default fallback
+            if self._config_loader:
+                fin_config = self._config_loader.get_financial_config()
+                insurance_monthly = fin_config.get("life_insurance_monthly", 15000)
+            
+            cuota_mensual = cuota_mensual_base + insurance_monthly
             
             total_pagar = cuota_mensual * plazo_meses
-            total_intereses = total_pagar - capital
+            total_intereses = total_pagar - capital - (insurance_monthly * plazo_meses)
             
             return {
                 "cuota_mensual": round(cuota_mensual, 2),

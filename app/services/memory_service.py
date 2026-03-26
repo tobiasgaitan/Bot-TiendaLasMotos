@@ -229,11 +229,11 @@ class MemoryService:
         
         # MAPA DE TRADUCCIÓN OBLIGATORIO: AI_Key -> Firestore_Legacy_Key
         field_mapping = {
-            "name": "nombre",
-            "city": "ciudad",
+            "nombre": "nombre",
+            "ciudad": "ciudad",
             "moto_interest": "moto_interest", # Unified
             "moto_ofrecida": "moto_ofrecida",  # Renamed from moto_offered
-            "payment_method": "forma_pago",
+            "forma_pago": "forma_pago",
             "ocupacion": "ocupacion",
             "datacredito": "datacredito",
             "vivienda": "vivienda",

@@ -455,7 +455,7 @@ REGLAS ESTRICTAS DE USO:
             # Define credit calculation function
             credit_function = types.FunctionDeclaration(
                 name="calculate_credit_score",
-                description="ÚNICA herramienta autorizada para calcular el perfil crediticio. Úsala inmediatamente después del Paso 9. Proporciona el score, la entidad asignada y el link de aplicación.",
+                description="ÚNICA herramienta autorizada para calcular el perfil crediticio. Úsala inmediatamente después del Paso 9. Proporciona el score, la entidad asignada y el link de aplicación. Requisitos: ser mayor de edad y contar con ingresos demostrables.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -465,7 +465,7 @@ REGLAS ESTRICTAS DE USO:
                         },
                         "ingresos_demostrables": {
                             "type": "string",
-                            "description": "Nivel de ingresos. Mapeo estricto: Si dice 'el mínimo', 'lo básico', MÁPEALO a '1705905' (valor numérico). Si no da valor exacto pero afirma trabajar, infiere el mínimo legal ($1.705.905). No envíes texto como 'el mínimo'."
+                            "description": "Nivel de ingresos. Mapeo estricto: Si dice 'el mínimo' o 'lo básico', utiliza el valor numérico del Salario Mínimo (SMLV) actual. No envíes texto como 'el mínimo', solo el valor numérico."
                         },
                         "historial_datacredito": {
                             "type": "string",
@@ -541,10 +541,14 @@ REGLAS ESTRICTAS DE USO:
             pass
 
             # HARD-GATE DE IDENTIDAD (Requirement 2026.1): Prohibido preguntar si ya existe.
+            # v1.3.0: Skip name request if moto is confirmed or in context
+            moto_context = prospect_data.get("moto_interest") or prospect_data.get("moto_confirmada")
             if p_name:
-                pass # Already have it, NO instruction injected.
-            else:
+                pass # Already have it
+            elif not moto_context:
                 funnel_instruction = "El sistema requiere el nombre del prospecto. Cierra tu mensaje preguntando: '¿con quién tengo el gusto?' o similar."
+            else:
+                funnel_instruction = "El usuario ya mostró interés en una moto. Prioriza responder sobre la moto y NO pidas el nombre todavía."
             
             if not funnel_instruction and not p_ciudad:
                 funnel_instruction = "Falta la ciudad del prospecto. Cierra tu mensaje preguntando: '¿Desde qué ciudad nos escribes?'"
@@ -988,11 +992,11 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     "extracted": {
                         "type": "OBJECT",
                         "properties": {
-                            "name": {
+                            "nombre": {
                                 "type": "STRING",
                                 "description": "Nombre del cliente (máx 50 caracteres, saneado)."
                             },
-                            "city": {
+                            "ciudad": {
                                 "type": "STRING",
                                 "description": "Ciudad del cliente (máx 50 caracteres)."
                             },
@@ -1012,7 +1016,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 "type": "BOOLEAN",
                                 "description": "Indica si el usuario aceptó el tratamiento de datos (mapeado de afirmaciones o emojis)."
                             },
-                            "payment_method": {
+                            "forma_pago": {
                                 "type": "STRING",
                                 "description": "Método de pago preferido (ej. Crédito - 0 inicial, Contado, Financiado)."
                             },
