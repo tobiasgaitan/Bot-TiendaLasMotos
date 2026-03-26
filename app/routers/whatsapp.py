@@ -30,6 +30,7 @@ from app.services.message_buffer import MessageBuffer # Local instantiation
 
 # --- MEMORY SERVICE (MODULE IMPORT FOR SINGLETON ACCESS) ---
 import app.services.memory_service as memory_service_module
+from app.services.config_service import config_service # [SSOT] Unified Config
 # Note: Access via memory_service_module.memory_service to get the updated instance
 
 
@@ -62,20 +63,25 @@ def _ensure_services():
             logger.error(f"❌ Failed to initialize Firestore: {e}", exc_info=True)
             return # Cannot proceed
 
-    # 2. Config Loader
+    # 2. Config Loader (Personality & Routing)
     if db and not config_loader:
         try:
             config_loader = ConfigLoader(db)
-            # Ensure configuration is actually loaded in this worker process
             if not config_loader.get_juan_pablo_personality().get("name"):
-                 logger.info("🔧 ConfigLoader initialized empty in worker. forcing load_all()...")
                  config_loader.load_all()
+        except Exception: pass
+
+    # 2.1 Config Service (Financial SSOT)
+    if db:
+        try:
+            config_service.initialize(db)
         except Exception: pass
 
     # 3. Motor Financiero
     if db and not motor_financiero:
          try:
-            motor_financiero = MotorFinanciero(db, config_loader)
+            # v1.3.1: Pass None to use the internal singleton or pass config_service
+            motor_financiero = MotorFinanciero(db, config_service)
          except Exception: pass
 
     # 4. Catalog Service

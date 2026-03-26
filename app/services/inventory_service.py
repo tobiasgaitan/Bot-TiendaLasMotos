@@ -9,6 +9,7 @@ import asyncio
 
 from app.services.catalog_service import catalog_service
 from app.services.finance import MotorFinanciero
+from app.services.config_service import config_service
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class InventoryService:
 
         # Init Motor Financiero (lightweight)
         if db:
-            self._motor_financiero = MotorFinanciero(db, self._config_loader)
+            self._motor_financiero = MotorFinanciero(db, config_service)
         
         # Init Vertex AI
         if VERTEX_AI_AVAILABLE:
@@ -106,11 +107,10 @@ class InventoryService:
             # Fallback if not init with db, though ConfigLoader is enough for rates
             self._motor_financiero = MotorFinanciero(None, self._config_loader)
 
-        # Get Rate
+        # Get Rate from SSOT
         rate = 2.22 # Default
-        if self._config_loader:
-             config = self._config_loader.get_financial_config()
-             rate = config.get("tasa_nmv_fintech", 2.22)
+        fin_config = config_service.get_financial_config()
+        rate = fin_config.get("tasa_nmv_fintech", 2.22)
         
         matches = []
         items = catalog_service.get_all_items()

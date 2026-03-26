@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional, List, Union
 from google.cloud import firestore
 
 from app.services.scoring_service import scoring_service
+from app.services.config_service import config_service
 
 logger = logging.getLogger(__name__)
 
@@ -22,25 +23,26 @@ class MotorFinanciero:
     based on user inputs and financial configuration from Firestore.
     """
     
-    def __init__(self, db: firestore.Client, config_loader=None):
+    def __init__(self, db: firestore.Client, config_service=None):
         """
         Initialize the financial motor.
         
         Args:
-        Args:
             db: Firestore client instance
-            config_loader: ConfigLoader instance for dynamic rates (Services Layer)
+            config_service: ConfigService instance for dynamic parameters
         """
         self._db = db
-        self._config_loader = config_loader
+        # v1.3.1: Use injected service or global singleton (ConfigService)
+        from app.services.config_service import config_service as global_config
+        self._config_service = config_service or global_config
         self._scoring_service = scoring_service
         logger.info("💰 MotorFinanciero initialized")
 
     @property
     def link_brilla(self) -> str:
         """Get Brilla link from configuration."""
-        if self._config_loader:
-            partners = self._config_loader.get_partners_config()
+        if self._config_service:
+            partners = self._config_service.get_partners_config()
             return partners.get("link_brilla", "#")
         return "#"
 
@@ -89,8 +91,8 @@ class MotorFinanciero:
         link_url = "#"
         requires_documents = False
         
-        if self._config_loader and link_key:
-            partners = self._config_loader.get_partners_config()
+        if self._config_service and link_key:
+            partners = self._config_service.get_partners_config()
             link_url = partners.get(link_key, "#")
             
         entity = strategy_info["entity"]
@@ -176,17 +178,20 @@ Por ejemplo: "Doy 1 millón" o "Tengo 500mil".
     
     def _respuesta_generica(self) -> str:
         """Return generic response when no entities are detected."""
-        if self._config_loader:
-            financial_config = self._config_loader.get_financial_config()
-            tasa_banco = financial_config.get("tasa_nmv_banco", 1.87)
-            tasa_fintech = financial_config.get("tasa_nmv_fintech", 2.22)
+        tasa_banco = 1.87
+        tasa_fintech = 2.22
+        link_brilla = "#"
+        
+        if self._config_service:
+            financial_config = self._config_service.get_financial_config()
+            if financial_config:
+                tasa_banco = financial_config.get("tasa_nmv_banco", 1.87)
+                tasa_fintech = financial_config.get("tasa_nmv_fintech", 2.22)
+            
             # Aliados links
-            partners_config = self._config_loader.get_partners_config()
-            link_brilla = partners_config.get("link_brilla", "#")
-        else:
-            tasa_banco = 1.87
-            tasa_fintech = 2.22
-            link_brilla = "#"
+            partners_config = self._config_service.get_partners_config()
+            if partners_config:
+                link_brilla = partners_config.get("link_brilla", "#")
             
         return f"""
 🏍️ **Simulación de Crédito - Tienda Las Motos**
@@ -326,14 +331,12 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
         if loan_amount <= 0:
             return f"¡Genial! Con esa inicial de ${inicial:,.0f} cubres el valor total de la {nombre_moto} (${precio_moto:,.0f}). ¡Sería una venta de contado!"
             
-        # Dynamic parameters from ConfigLoader
+        # Dynamic parameters from ConfigService
         tasa_mensual = 2.22 # Fallback
-        porcentaje_aval = 5.0 # Fallback
         
-        if self._config_loader:
-             fin_config = self._config_loader.get_financial_config()
+        if self._config_service:
+             fin_config = self._config_service.get_financial_config()
              tasa_mensual = fin_config.get("tasa_nmv_fintech", 2.22)
-             porcentaje_aval = fin_config.get("porcentaje_aval", 5.0)
         
         # Calculate options
         plan_24 = self.calcular_cuota(precio_moto, inicial, 24, tasa_mensual)
@@ -398,11 +401,12 @@ _*Cálculo estimado con tasa del {tasa_mensual}% MV. Sujeto a estudio de crédit
             else:
                 cuota_mensual_base = capital / plazo_meses
             
-            # v1.3.0: Sincronía de Seguro ($15,000 deterministic add)
+            # v1.3.1: Sincronía de Seguro (Deterministic add from ConfigService)
             insurance_monthly = 15000 # Default fallback
-            if self._config_loader:
-                fin_config = self._config_loader.get_financial_config()
-                insurance_monthly = fin_config.get("life_insurance_monthly", 15000)
+            if self._config_service:
+                fin_config = self._config_service.get_financial_config()
+                if fin_config:
+                    insurance_monthly = fin_config.get("life_insurance_monthly", 15000)
             
             cuota_mensual = cuota_mensual_base + insurance_monthly
             
@@ -415,7 +419,8 @@ _*Cálculo estimado con tasa del {tasa_mensual}% MV. Sujeto a estudio de crédit
                 "total_intereses": round(total_intereses, 2),
                 "capital_financiado": capital,
                 "tasa_aplicada": tasa_mensual,
-                "plazo_meses": plazo_meses
+                "plazo_meses": plazo_meses,
+                "seguro_vida": insurance_monthly
             }
             
         except Exception as e:

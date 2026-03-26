@@ -84,11 +84,11 @@ class MemoryService:
                 if doc.exists:
                     data = doc.to_dict()
                     prospect_data = {
-                        "name": data.get("nombre"),
-                        "ciudad": data.get("ciudad"),
+                        "nombre": data.get("nombre") or data.get("name") or "",
+                        "ciudad": data.get("ciudad") or data.get("city") or "",
                         "moto_interest": data.get("moto_interest"), # Unified nomenclature
                         "moto_confirmada": data.get("moto_confirmada", False),
-                        "payment_method": data.get("forma_pago"),
+                        "forma_pago": data.get("forma_pago") or data.get("payment_method") or "",
                         "summary": data.get("ai_summary"),
                         "human_help_requested": data.get("human_help_requested", False),
                         "survey_state": data.get("survey_state"),
@@ -101,8 +101,8 @@ class MemoryService:
                     return prospect_data
             
             return {
-                "name": None, "ciudad": None, "moto_interest": None,
-                "payment_method": None, "summary": None,
+                "nombre": "", "ciudad": "", "moto_interest": "",
+                "forma_pago": "", "summary": "",
                 "human_help_requested": False, "survey_state": None, "exists": False,
                 "habeas_data_sent": False, "habeas_data_accepted": False,
                 "total_tokens_consumed": 0, "session_cost_usd": 0.0

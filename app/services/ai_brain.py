@@ -218,10 +218,10 @@ class CerebroIA:
         # Phase 2: Habeas Data Request (Legal Script)
         # Condition: User selected 'credito' AND we have name AND city AND moto_confirmada is True.
         # CRITICAL FIX: Extraction of moto_interest is not enough; explicit confirmation is required.
-        has_name = bool(prospect_data.get("name"))
-        has_city = bool(prospect_data.get("ciudad"))
+        has_name = bool(prospect_data.get("nombre") or prospect_data.get("name"))
+        has_city = bool(prospect_data.get("ciudad") or prospect_data.get("city"))
         moto_confirmada = prospect_data.get("moto_confirmada") is True
-        is_credit = prospect_data.get("payment_method") == "credito"
+        is_credit = bool(prospect_data.get("forma_pago") == "credito" or prospect_data.get("payment_method") == "credito")
 
         # --- BLOQUEO PROTOCOLO COMPETENCIA (Directiva 2026) ---
         # Bloqueamos el avance a fase legal si la moto es de la competencia.
@@ -237,23 +237,16 @@ class CerebroIA:
             logger.info(f"🚫 [PROTOCOL] Competitor brand detected: {moto_interes}. Blocking advance to Phase 2.")
             return "PHASE_1_PROFILING"
 
-        # --- SHADOW STATE LOGIC (v6.6.2) ---
-        # Backup check: If the user JUST confirmed interest in the current message,
-        # we treat it as confirmed even if Firestore hasn't updated yet.
-        if not moto_confirmada and history:
-            last_user_msg = ""
-            for m in reversed(history):
-                if m.get("role") == "user":
-                    last_user_msg = str(m.get("content", "")).lower()
-                    break
-            
-            confirmation_keywords = ["me interesa", "me gusta", "esa es", "si", "sí", "👍", "claro", "dale"]
-            # Only if we already have a moto_interest/offered or are talking about bikes
-            if any(kw in last_user_msg for kw in confirmation_keywords) and (prospect_data.get("moto_interest") or prospect_data.get("moto_ofrecida")):
-                logger.info("🕵️ [SHADOW STATE] Confirmation detected in current history. Force-upgrading state.")
-                moto_confirmada = True
+        # --- INTENCIÓN FINANCIERA (v1.3.1) ---
+        is_financial_intent = False
+        if history:
+            finance_keywords = ["cuota", "credito", "crédito", "financiar", "mensualidad", "requisitos", "cuanto pago", "papeles"]
+            last_msgs = [str(m.get("content", "")).lower() for m in reversed(history) if m.get("role") == "user"][:2]
+            if any(any(kw in msg for kw in finance_keywords) for msg in last_msgs):
+                logger.info("💰 [INTENT] Financial intent detected. Bypassing moto_confirmada for Phase 2.")
+                is_financial_intent = True
 
-        if has_name and has_city and moto_confirmada and is_credit:
+        if has_name and has_city and (moto_confirmada or is_financial_intent) and is_credit:
             return "PHASE_2_HABEAS_DATA"
 
         # Phase 1: Default (Profiling / Catalog)
@@ -498,11 +491,11 @@ REGLAS ESTRICTAS DE USO:
             phase = self._determine_funnel_phase(prospect_data)
             moto_confirmada = prospect_data.get("moto_confirmada") is True if prospect_data else False
             
-            if moto_confirmada or phase == "PHASE_3_CREDIT_PROFILING":
-                function_declarations.append(credit_function)
-                logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Phase: {phase})")
-            else:
-                logger.info(f"🛠️ Toolset: [handoff, catalog] (Phase: {phase})")
+            # REGLA v1.3.1: Desacople de Crédito (Proactivo)
+            # La herramienta de crédito está disponible desde el mensaje inicial
+            # para cumplir con el protocolo de "Valor Primero".
+            function_declarations.append(credit_function)
+            logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Phase: {phase})")
 
             return [types.Tool(function_declarations=function_declarations)]
         except Exception as e:
@@ -532,9 +525,9 @@ REGLAS ESTRICTAS DE USO:
         # 2. Build Instructions block based on State
         funnel_instruction = ""
         if phase == "PHASE_1_PROFILING":
-            p_name = prospect_data.get("name") if prospect_data else None
-            p_ciudad = prospect_data.get("ciudad") if prospect_data else None
-            p_payment = prospect_data.get("payment_method") if prospect_data else None
+            p_name = prospect_data.get("nombre") or prospect_data.get("name") if prospect_data else None
+            p_ciudad = prospect_data.get("ciudad") or prospect_data.get("city") if prospect_data else None
+            p_payment = prospect_data.get("forma_pago") or prospect_data.get("payment_method") if prospect_data else None
             
             # Sincronización Protegida: Confiamos en prospect_data actualizado por el socket síncrono.
             # Se eliminan detecciones manuales por Regex para evitar falsos positivos y bloqueos de lógica.
@@ -571,7 +564,7 @@ REGLAS ESTRICTAS DE USO:
                 dynamic_tools = self._create_tools(prospect_data)
                 
                 # 2. CONSOLIDATE XML PROMPT
-                user_name = prospect_data.get("name", "desconocido") if prospect_data else "desconocido"
+                user_name = prospect_data.get("nombre", "desconocido") if prospect_data else "desconocido"
                 prospect_xml = ""
                 captured_data_xml = ""
                 if prospect_data and prospect_data.get("exists"):
