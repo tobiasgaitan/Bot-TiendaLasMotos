@@ -176,6 +176,41 @@ class CerebroIA:
         logger.info("🧠 Loaded system instruction from code constant (Fallback)")
         return JUAN_PABLO_SYSTEM_INSTRUCTION
     
+    def _extract_visual_blocks(self, text: str) -> List[str]:
+        """Extrae líneas con precios ($), cuotas o imágenes Markdown (v1.3.2)."""
+        extracted = []
+        if not text:
+            return extracted
+            
+        lines = text.split('\n')
+        for line in lines:
+            line_clean = line.strip()
+            # Detectar imagen Markdown
+            if "![" in line_clean and "](" in line_clean:
+                extracted.append(line_clean)
+            # Detectar precio o cuota (contiene $)
+            elif "$" in line_clean:
+                # Limpieza básica para evitar inyectar fragmentos de preguntas
+                if not any(kw in line_clean.lower() for kw in ["ganas", "ingresos", "estamos", "contrato"]):
+                    extracted.append(line_clean)
+        return extracted
+
+    def _filter_profiling_content(self, text: str) -> str:
+        """Remueve líneas que contienen preguntas sobre ingresos o estabilidad laboral (v1.3.2)."""
+        if not text: return ""
+        
+        lines = text.split('\n')
+        filtered_lines = []
+        
+        # Patrones de profiling a eliminar
+        profiling_keywords = ["cuánto ganas", "cuánto devengas", "qué empresa", "qué cargo", "independiente", "empleado", "ingresos", "gastos", "egresos", "vivienda"]
+        
+        for line in lines:
+            if not any(kw in line.lower() for kw in profiling_keywords):
+                filtered_lines.append(line)
+                
+        return "\n".join(filtered_lines).strip()
+
     def _is_profiling_attempt(self, text: str) -> bool:
         """
         Detects if the AI is attempting to profiling the user (sensitive data)
@@ -211,8 +246,13 @@ class CerebroIA:
                     conversation_text += parts_text + " "
         
         has_sent_link = "tiendalasmotos.com/politica-de-privacidad" in conversation_text.lower()
-        
-        if prospect_data.get("habeas_data_accepted") is True and prospect_data.get("habeas_data_sent") is True and has_sent_link:
+        # SI YA ACEPTÓ HABEAS DATA -> PHASE 3 (Profiling)
+        if prospect_data.get("habeas_data_accepted") is True:
+            has_name = bool(prospect_data.get("nombre") or prospect_data.get("name"))
+            if not has_name:
+                # Regla v1.3.2: No avanzar a perfilamiento sin nombre (Guardrail de Vitrina)
+                logger.warning(f"⚠️ Prospecto aceptó Habeas Data pero no tiene nombre. Re-enrutando a Phase 1.")
+                return "PHASE_1_PROFILING"
             return "PHASE_3_CREDIT_PROFILING"
 
         # Phase 2: Habeas Data Request (Legal Script)
@@ -269,48 +309,24 @@ class CerebroIA:
             is_profiling = self._is_profiling_attempt(raw_response)
             
             if is_profiling:
-                logger.warning(f"🚨 PHASE-GATE TRIGGERED: AI attempted profiling questions without Habeas Data. Re-generating...")
+                # [PHASE-GATE PASSTHROUGH v1.3.2]
+                # Filtramos el contenido intrusivo pero permitimos visuales ($ e imágenes)
+                filtered_text = self._filter_profiling_content(raw_response)
                 
-                # 🚀 [PHASE-GATE OPTIMIZATION] (v6.6.1)
-                p_name = prospect_data.get("name") if prospect_data else None
-                moto = prospect_data.get("moto_interest", "moto") if prospect_data else "moto"
-                moto_confirmada = prospect_data.get("moto_confirmada", False) if prospect_data else False
-                
-                saludo = f"¡Excelente {p_name}! " if p_name else "¡Excelente! "
-                
-            if is_profiling:
-                logger.warning(f"🚨 PHASE-GATE TRIGGERED: AI attempted profiling questions without Habeas Data. Re-generating...")
-                
-                # 🚀 [PHASE-GATE REPAIR v6.6.4]
-                p_name = prospect_data.get("name") if prospect_data else None
-                saludo = f"¡Excelente {p_name}! " if p_name else "¡Excelente! "
-                
-                # 1. CORRECCIÓN DE IDENTIDAD (Prioridad al Pivote)
-                resumen = prospect_data.get("summary", "").upper() if prospect_data else ""
-                moto_actual = "Victory Bomber 125 TK" if "BOMBER" in resumen else (prospect_data.get("moto_interest") or "la moto")
-                
-                # 2. DETECCIÓN DE INTENCIÓN (Requisitos)
-                requisitos_txt = ""
-                keywords_requisitos = ["requisito", "necesito", "papeles", "documento", "necesita"]
-                if any(w in texto.lower() for w in keywords_requisitos):
-                    requisitos_txt = (
-                        "\n\nLos requisitos para tu perfil son:\n"
-                        "• Cédula original (física o digital).\n"
-                        "• Correo electrónico y celular activo.\n"
-                        "• (Si estás reportado, cuota inicial mínima del 10%).\n"
-                    )
+                # Si el filtrado dejó el texto vacío, intentamos recuperar visuales manualmente
+                if not filtered_text:
+                    visual_blocks = self._extract_visual_blocks(raw_response)
+                    filtered_text = "\n".join(visual_blocks)
 
-                # 3. CONSTRUCCIÓN DEL MENSAJE LEGAL COMPLETO
+                # SCRIPT DE TRANSICIÓN DINÁMICO
                 transition_msg = (
-                    f"{saludo}Anotado. Como ya eligimos tu próxima {moto_actual}, "
-                    f"solo nos falta un pequeño paso legal para procesar tu crédito."
-                    f"{requisitos_txt}"
-                    f"\n\n¿Me autorizas el tratamiento de tus datos para continuar? "
-                    f"Mira nuestra política aquí: https://tiendalasmotos.com/politica-de-privacidad"
+                    f"{filtered_text}\n\nPara darte una asesoría completa y tu plan de pagos exacto, "
+                    f"necesito tu autorización para el tratamiento de datos personales.\n\n"
+                    f"¿Aceptas nuestra política de privacidad? Consúltala aquí: {self.privacy_policy_url}"
                 )
                 
-                logger.info(f"✅ [PHASE-GATE] Dynamic transition injected (moto_actual={moto_actual})")
-                return f"PHASE_GATE_TRIGGERED: {transition_msg}"
+                logger.info("🛡️ [PHASE-GATE] Passthrough Filtrado aplicado con éxito.")
+                return transition_msg.strip()
 
         # FINAL SANITIZATION: Hardcoded Parrot Effect Killer
         if raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):

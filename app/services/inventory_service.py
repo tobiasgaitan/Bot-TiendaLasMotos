@@ -114,7 +114,7 @@ class InventoryService:
         
         matches = []
         items = catalog_service.get_all_items()
-        term = 36
+        term = 24
         
         for item in items:
             price = float(item.get("price", 0))

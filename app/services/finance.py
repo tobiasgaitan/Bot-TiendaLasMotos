@@ -355,7 +355,7 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
 🗓️ **36 meses:** ${cuota_36:,.0f} / mes
 🗓️ **48 meses:** ${cuota_48:,.0f} / mes
 
-_*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_mensual}% MV). Incluye cargos de registro y seguros. Sujeto a estudio de crédito._
+_*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_mensual}% MV). (incluye SOAT y Matrícula). Sujeto a estudio de crédito._
 
 📱 ¿Te gustaría iniciar el estudio de crédito para esta opción? Responde **SÍ** para continuar.
         """.strip()
@@ -400,9 +400,9 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
                 rate = float(fin_config.get("life_insurance_rate", 0.000806))
                 return financed_amount * rate
             else:
-                return float(fin_config.get("life_insurance_monthly", 15000))
+                return float(fin_config.get("life_insurance_monthly", 0))
                 
-        return 15000.0
+        return 0.0
 
     def calcular_cuota(
         self, 
