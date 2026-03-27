@@ -5,7 +5,7 @@ Provides fast access to financial and partner configuration.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Union
 
 from google.cloud import firestore
 
@@ -60,7 +60,7 @@ class ConfigService:
         try:
             logger.info("📋 Loading configuration from Firestore...")
             
-            # Load financial configuration
+            # Load financial configuration (SSOT)
             financial_ref = self._db.collection("financial_config").document("general").collection("global_params").document("global_params")
             financial_doc = financial_ref.get()
             
@@ -84,25 +84,49 @@ class ConfigService:
                 
         except Exception as e:
             logger.error(f"❌ Error loading configurations: {str(e)}")
-            # Initialize with defaults to prevent None errors or empty dicts
             self._financial_config = self.DEFAULT_FINANCIAL.copy()
             self._partners_config = {}
+
+    def get_financial_matrix(self, entity_id: str) -> List[Dict[str, Any]]:
+        """
+        Get the factor matrix for a specific financial entity.
+        
+        Args:
+            entity_id: ID of the entity (crediorbe, brilla, banco_bogota)
+            
+        Returns:
+            List of rows in the matrix
+        """
+        try:
+            # v1.3.1: Try requested path 'configuracion/simulador_web' first (future-proof)
+            # Defaulting to the existing 'financial_config' path which we confirmed has the data.
+            # Normalizing entity_id to match Firestore (e.g., 'crediorbe')
+            normalized_id = entity_id.lower().replace(" ", "_").replace("banco_de_bogotá", "banco_bogota")
+            
+            # 1. Primary path: financial_config/general/financieras/{entity}
+            matrix_ref = self._db.collection("financial_config").document("general").collection("financieras").document(normalized_id)
+            matrix_doc = matrix_ref.get()
+            
+            if matrix_doc.exists:
+                data = matrix_doc.to_dict()
+                return data.get("rows", [])
+            
+            logger.warning(f"⚠️  Matrix not found for {normalized_id} in primary path.")
+            return []
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting financial matrix for {entity_id}: {str(e)}")
+            return []
     
     def get_financial_config(self) -> Dict[str, Any]:
         """
         Get financial configuration.
-        
-        Returns:
-            Dictionary containing financial configuration
         """
-        return self._financial_config or {}
+        return self._financial_config or self.DEFAULT_FINANCIAL.copy()
     
     def get_partners_config(self) -> Dict[str, Any]:
         """
         Get partners/entities configuration.
-        
-        Returns:
-            Dictionary containing partners configuration
         """
         return self._partners_config or {}
     

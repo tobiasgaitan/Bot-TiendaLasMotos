@@ -312,16 +312,11 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
     def _generar_simulacion_completa(self, moto: Dict, inicial: float) -> str:
         """
         Generate full simulation response.
-        
-        Args:
-            moto: Motorcycle data
-            inicial: Initial payment amount
-            
-        Returns:
-            Formatted response string
         """
         precio_moto = float(moto.get('price', 0))
         nombre_moto = moto.get('name', 'Moto')
+        moto_cc = float(moto.get('displacement', 0))
+        category = moto.get('category', 'motos')
         
         if precio_moto <= 0:
             return f"Lo siento, no tengo el precio actualizado para la {nombre_moto}. Por favor consulta con un asesor."
@@ -331,19 +326,19 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
         if loan_amount <= 0:
             return f"¡Genial! Con esa inicial de ${inicial:,.0f} cubres el valor total de la {nombre_moto} (${precio_moto:,.0f}). ¡Sería una venta de contado!"
             
-        # Dynamic parameters from ConfigService
-        tasa_mensual = 2.22 # Fallback
+        # [SSOT] Mandatory v1.3.1: Use Crediorbe for proactive simulation
+        entidad_default = "Crediorbe"
+        tasa_mensual = 2.22 
         
         if self._config_service:
              fin_config = self._config_service.get_financial_config()
              tasa_mensual = fin_config.get("tasa_nmv_fintech", 2.22)
         
-        # Calculate options
-        plan_24 = self.calcular_cuota(precio_moto, inicial, 24, tasa_mensual)
-        plan_36 = self.calcular_cuota(precio_moto, inicial, 36, tasa_mensual)
-        plan_48 = self.calcular_cuota(precio_moto, inicial, 48, tasa_mensual)
+        # Calculate options using the new matrix-aware method
+        plan_24 = self.calcular_cuota(precio_moto, inicial, 24, tasa_mensual, entidad=entidad_default, moto_cc=moto_cc, category=category)
+        plan_36 = self.calcular_cuota(precio_moto, inicial, 36, tasa_mensual, entidad=entidad_default, moto_cc=moto_cc, category=category)
+        plan_48 = self.calcular_cuota(precio_moto, inicial, 48, tasa_mensual, entidad=entidad_default, moto_cc=moto_cc, category=category)
         
-        # Safe handling if calculation matched error
         cuota_24 = plan_24.get('cuota_mensual', 0)
         cuota_36 = plan_36.get('cuota_mensual', 0)
         cuota_48 = plan_48.get('cuota_mensual', 0)
@@ -360,72 +355,124 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
 🗓️ **36 meses:** ${cuota_36:,.0f} / mes
 🗓️ **48 meses:** ${cuota_48:,.0f} / mes
 
-_*Cálculo estimado con tasa del {tasa_mensual}% MV. Sujeto a estudio de crédito y políticas de la entidad financiera. No incluye seguro ni matrícula._
+_*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_mensual}% MV). Incluye cargos de registro y seguros. Sujeto a estudio de crédito._
 
 📱 ¿Te gustaría iniciar el estudio de crédito para esta opción? Responde **SÍ** para continuar.
         """.strip()
     
+    def _get_matrix_row(self, entity_id: str, moto_cc: float, category: str = "motos") -> Optional[Dict[str, Any]]:
+        """
+        Lookup the matching row in the financial matrix.
+        """
+        matrix = self._config_service.get_financial_matrix(entity_id)
+        if not matrix:
+            return None
+            
+        # Filter by category and find the row with the largest minCC <= moto_cc
+        matching_rows = [
+            row for row in matrix 
+            if row.get("category") == category and float(row.get("minCC", 0)) <= moto_cc
+        ]
+        
+        if not matching_rows:
+            return None
+            
+        # Sort by minCC descending to get the best fit
+        matching_rows.sort(key=lambda x: float(x.get("minCC", 0)), reverse=True)
+        return matching_rows[0]
+
+    def _get_insurance_monthly(self, entity_id: str, financed_amount: float) -> float:
+        """
+        Calculate monthly life insurance based on entity and config.
+        """
+        # [SSOT] Baseline: Crediorbe = $0, others = from matrix/global_params
+        normalized_id = entity_id.lower()
+        
+        # Mandatory Guardrail: Crediorbe default insurance is $0
+        if "crediorbe" in normalized_id:
+            return 0.0
+            
+        if self._config_service:
+            fin_config = self._config_service.get_financial_config()
+            mode = fin_config.get("life_insurance_mode", "fixed")
+            
+            if mode == "rate":
+                rate = float(fin_config.get("life_insurance_rate", 0.000806))
+                return financed_amount * rate
+            else:
+                return float(fin_config.get("life_insurance_monthly", 15000))
+                
+        return 15000.0
+
     def calcular_cuota(
         self, 
         precio: float, 
         inicial: float, 
         plazo_meses: int, 
-        tasa_mensual: float = 2.22
+        tasa_mensual: float = 2.22,
+        entidad: str = "Crediorbe",
+        moto_cc: float = 0.0,
+        category: str = "motos"
     ) -> Dict[str, Any]:
         """
-        Calculate monthly payment for a motorcycle loan.
-        Uses Standard French Amortization formula.
-        
-        Args:
-            precio: Motorcycle price
-            inicial: Down payment
-            plazo_meses: Loan term in months
-            tasa_mensual: Monthly interest rate (percentage)
-        
-        Returns:
-            Dictionary with payment details
+        Calculate monthly payment using the Financial Matrix (v1.3.1).
+        If matrix is unavailable, falls back to French Amortization.
         """
         try:
-            capital = precio - inicial
+            monto_base = precio - inicial
+            
+            # 1. Try Matrix-based calculation (Layered Capitalization)
+            row = self._get_matrix_row(entidad, moto_cc, category)
+            
+            if row and "factors" in row:
+                factor = row.get("factors", {}).get(str(plazo_meses))
+                if factor:
+                    # Apply Layered Capitalization (Following calculator.ts)
+                    registro = float(row.get("registrationCreditGeneral", 0))
+                    fng_rate = float(row.get("fngRate", 0))
+                    management_fixed = float(row.get("managementFixed", 0))
+                    coverage_fixed = float(row.get("coverageFixed", 0))
+                    
+                    # Capital = (Base + Registro + FNG + Gestion + Cobertura)
+                    fng_cost = monto_base * fng_rate
+                    capital_financiado = monto_base + registro + fng_cost + management_fixed + coverage_fixed
+                    
+                    cuota_mensual_base = capital_financiado * float(factor)
+                    seguro_vida = self._get_insurance_monthly(entidad, capital_financiado)
+                    
+                    cuota_mensual = cuota_mensual_base + seguro_vida
+                    
+                    return {
+                        "cuota_mensual": round(cuota_mensual, 2),
+                        "total_pagar": round(cuota_mensual * plazo_meses, 2),
+                        "capital_financiado": round(capital_financiado, 2),
+                        "seguro_vida": round(seguro_vida, 2),
+                        "plazo_meses": plazo_meses,
+                        "entidad": entidad,
+                        "usó_matriz": True
+                    }
+
+            # 2. Fallback to Standard French Amortization
             tasa_decimal = tasa_mensual / 100
-            
-            # French Amortization Formula: A = P * (r * (1+r)^n) / ((1+r)^n - 1)
-            # Equivalent to: A = P * r / (1 - (1+r)^-n)
-            
             if tasa_decimal > 0:
                 base = 1 + tasa_decimal
-                # Using the form: P * r / (1 - (1+r)^-n) which user requested logic similar to:
-                # [Monto_Financiado * Tasa] / [1 - (1 + Tasa)^-Meses]
-                
-                cuota_mensual_base = (capital * tasa_decimal) / (1 - (base ** -plazo_meses))
+                cuota_mensual_base = (monto_base * tasa_decimal) / (1 - (base ** -plazo_meses))
             else:
-                cuota_mensual_base = capital / plazo_meses
+                cuota_mensual_base = monto_base / plazo_meses
             
-            # v1.3.1: Sincronía de Seguro (Deterministic add from ConfigService)
-            insurance_monthly = 15000 # Default fallback
-            if self._config_service:
-                fin_config = self._config_service.get_financial_config()
-                if fin_config:
-                    insurance_monthly = fin_config.get("life_insurance_monthly", 15000)
-            
-            cuota_mensual = cuota_mensual_base + insurance_monthly
-            
-            total_pagar = cuota_mensual * plazo_meses
-            total_intereses = total_pagar - capital - (insurance_monthly * plazo_meses)
+            seguro_vida = self._get_insurance_monthly(entidad, monto_base)
+            cuota_mensual = cuota_mensual_base + seguro_vida
             
             return {
                 "cuota_mensual": round(cuota_mensual, 2),
-                "total_pagar": round(total_pagar, 2),
-                "total_intereses": round(total_intereses, 2),
-                "capital_financiado": capital,
-                "tasa_aplicada": tasa_mensual,
+                "total_pagar": round(cuota_mensual * plazo_meses, 2),
+                "capital_financiado": monto_base,
+                "seguro_vida": seguro_vida,
                 "plazo_meses": plazo_meses,
-                "seguro_vida": insurance_monthly
+                "entidad": entidad,
+                "usó_matriz": False
             }
             
         except Exception as e:
             logger.error(f"❌ Error calculating payment: {str(e)}")
-            return {
-                "error": "Error en el cálculo",
-                "mensaje": str(e)
-            }
+            return {"error": "Error en el cálculo", "mensaje": str(e)}
