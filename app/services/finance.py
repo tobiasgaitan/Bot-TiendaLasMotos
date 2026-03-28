@@ -434,7 +434,7 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
                     coverage_fixed = float(row.get("coverageFixed", 0))
                     
                     # Capital = (Base + Registro + FNG + Gestion + Cobertura)
-                    fng_cost = monto_base * fng_rate
+                    fng_cost = monto_base * (fng_rate / 100)
                     capital_financiado = monto_base + registro + fng_cost + management_fixed + coverage_fixed
                     
                     cuota_mensual_base = capital_financiado * float(factor)

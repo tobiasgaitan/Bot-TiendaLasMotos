@@ -277,7 +277,8 @@ class ConfigLoader:
         return {
             "link_banco_bogota": "https://digital.bancodebogota.com/",
             "link_crediorbe": "https://crediorbe.com/",
-            "link_brilla": "https://brilladegasesdeoccidente.com/"
+            "link_brilla": "https://brilladegasesdeoccidente.com/",
+            "privacy_policy_url": "https://tiendalasmotos.com/politica-de-privacidad"
         }
 
 

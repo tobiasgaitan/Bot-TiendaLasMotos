@@ -65,6 +65,16 @@ class CerebroIA:
                     location="us-central1"
                 )
                 self._model_id = "gemini-2.5-flash" # Use stable versioning
+                
+                # [CONFIG INJECTION v1.3.2]
+                self.privacy_policy_url = "https://tiendalasmotos.com/politica-de-privacidad"
+                if self._config_loader:
+                    try:
+                        partners = self._config_loader.get_partners_config()
+                        self.privacy_policy_url = partners.get("privacy_policy_url", self.privacy_policy_url)
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to load privacy link from loader: {e}")
+
                 logger.info(f"🧠 CerebroIA initialized with google-genai Client ({'Tools Enabled' if self.tools else 'No Tools'})")
             except Exception as e:
                 logger.error(f"❌ Error initializing GenAI Client: {str(e)}")
@@ -754,10 +764,11 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 has_price = bool(re.search(r"(\$\s?\d{1,3}(\.\d{3})*)|(precio:)", ai_response, re.IGNORECASE))
                                 has_image = bool(re.search(r"!\[.*?\]\(https?://|\[IMAGE:\s?https?://", ai_response))
                                 
-                                # BYPASS LOGIC: Si la moto ya está confirmada, el prompt prohíbe imagen/precio 
+                                # BYPASS LOGIC: Si la moto ya está confirmada o hay una de interés, el prompt prohíbe imagen/precio 
                                 # para evitar saturación. El guardrail no debe exigir consistencia visual.
                                 moto_confirmada = (prospect_data and prospect_data.get("moto_confirmada") is True)
-                                requires_visuals = not moto_confirmada
+                                has_moto_interest = bool(prospect_data.get("moto_interest")) if prospect_data else False
+                                requires_visuals = not moto_confirmada and not has_moto_interest
 
                                 hallucinated_model = None
                                 if catalog_returned_results:
@@ -891,7 +902,38 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             f"recibos del gas natural. No cierres la sesión sin pedir esto.]"
                                         )
                                     else:
-                                        credit_res = f"✅ Score: {res['score']}\n- Estrategia: {res['strategy']}\n- Entidad: {res['entity']}\n- Link: {res['link_url']}\n- Explicación: {res['explanation']}"
+                                        # [NO-BREAKDOWN RULE v1.3.2]
+                                        # Consolidating output into a single formatted string.
+                                        label = "Cuota Mensual Total"
+                                        entity = res.get('entity', 'Crediorbe')
+                                        
+                                        # Resolve simulation if moto is in context
+                                        moto_name = (prospect_data or {}).get("moto_interest", "")
+                                        cuota_str = "$X.XXX"
+                                        
+                                        if moto_name and self.motor_financiero:
+                                            # We attempt a quick lookup to get the price
+                                            m_price = 0
+                                            if self._catalog_service:
+                                                m_results = self._catalog_service.search(moto_name)
+                                                if m_results: m_price = m_results[0].get('price', 0)
+                                            
+                                            if m_price > 0:
+                                                # Use 0 initial as baseline for Crediorbe if not specified
+                                                sim = self.motor_financiero.calcular_cuota(
+                                                    precio=m_price,
+                                                    inicial=0,
+                                                    plazo_meses=24,
+                                                    entidad=entity
+                                                )
+                                                cuota_val = sim.get('cuota_mensual', 0)
+                                                cuota_str = f"${cuota_val:,.0f}"
+
+                                        credit_res = (
+                                            f"✅ Score: {res['score']} | {res['strategy']}\n"
+                                            f"{label}: {cuota_str} (Incluye SOAT, Matrícula, Seguros y FNG a 24 meses con {entity})\n"
+                                            f"Link de Pre-aprobación: {res['link_url']}"
+                                        )
                                 else:
                                     credit_res = "Error: Motor financiero no conectado."
                             except Exception as e:
