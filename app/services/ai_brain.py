@@ -915,8 +915,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             # We attempt a quick lookup to get the price
                                             m_price = 0
                                             if self._catalog_service:
-                                                m_results = self._catalog_service.search(moto_name)
-                                                if m_results: m_price = m_results[0].get('price', 0)
+                                                m_results = self._catalog_service.search_items(moto_name)
+                                                if m_results: 
+                                                    m_price = m_results[0].get('raw_price', 0)
                                             
                                             if m_price > 0:
                                                 # Use 0 initial as baseline for Crediorbe if not specified

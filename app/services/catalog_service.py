@@ -417,6 +417,7 @@ class CatalogService:
                 truncated_item = {
                     "name": item.get("name"),
                     "price": item.get("formatted_price"), # For compatibility with literal user request
+                    "raw_price": item.get("price"), # Numeric for logic calculations
                     "formatted_price": item.get("formatted_price"), # For compatibility with ai_brain.py
                     "category": item.get("category", "Moto"),
                     "image_url": item.get("image_url"),
@@ -426,6 +427,13 @@ class CatalogService:
                 seen_ids.add(item["id"])
                 
         return unique_results[:3]
+
+    def search(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Alias for search_items to maintain backward compatibility 
+        and satisfy the contract expected by ai_brain.py.
+        """
+        return self.search_items(query)
 
     def _summarize(self, text: str, max_words: int = 10) -> str:
         """Helper to truncate description to a 10-word summary."""
