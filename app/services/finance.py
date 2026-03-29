@@ -75,7 +75,8 @@ class MotorFinanciero:
         score = self._scoring_service.calculate_score(
             ocupacion_y_contrato=ocupacion_y_contrato, 
             historial_datacredito=historial_datacredito, 
-            ingresos_demostrables=ingresos_demostrables
+            ingresos_demostrables=ingresos_demostrables,
+            plan_celular=plan_celular
         )
         
         # Determine Strategy

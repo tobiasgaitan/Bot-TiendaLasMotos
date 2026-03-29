@@ -505,6 +505,10 @@ REGLAS ESTRICTAS DE USO:
                         "tiene_gas_natural": {
                             "type": "boolean",
                             "description": "¿Cuenta con recibo de gas natural a su nombre? (Indispensable para Brilla)."
+                        },
+                        "plan_celular": {
+                            "type": "string",
+                            "description": "¿Tiene plan de celular postpago activo? (Otorga bono de +50 pts). MÁPEALO a 'Sí' o 'No'."
                         }
                     },
                     "required": ["ocupacion_y_contrato", "ingresos_demostrables", "historial_datacredito"]
@@ -889,7 +893,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         mora_y_paz_salvo=f_args.get("mora_y_paz_salvo", ""),
                                         gastos_vivienda=f_args.get("gastos_vivienda", ""),
                                         tiene_gas_natural=f_args.get("tiene_gas_natural", False),
-                                        plan_celular=f_args.get("plan_celular", "")
+                                        plan_celular=f_args.get("plan_celular", "No")
                                     )
                                     if res.get('entity') == "Brilla de Gases":
                                         credit_res = (

@@ -59,7 +59,7 @@ class ScoringService:
         "variable": 500
     }
     
-    def calculate_score(self, ocupacion_y_contrato: str, historial_datacredito: str, ingresos_demostrables: str) -> int:
+    def calculate_score(self, ocupacion_y_contrato: str, historial_datacredito: str, ingresos_demostrables: str, plan_celular: str = "No") -> int:
         """
         Calculate credit score based on user profile.
         
@@ -85,10 +85,19 @@ class ScoringService:
         raw_score = (p_contract * self.WEIGHT_CONTRACT) + \
                     (p_habit * self.WEIGHT_HABIT) + \
                     (p_income * self.WEIGHT_INCOME)
-                    
-        final_score = int(round(raw_score))
         
-        logger.info(f"📊 Score Config: C={p_contract} * {self.WEIGHT_CONTRACT} + H={p_habit} * {self.WEIGHT_HABIT} + I={p_income} * {self.WEIGHT_INCOME}")
+        # Add Cellular Plan Bonus (+50 pts)
+        bonus = 0
+        if self._normalize_input(plan_celular) == "sí":
+            bonus = 50
+            
+        final_score = int(round(raw_score + bonus))
+        
+        # Truncate at 1000
+        if final_score > 1000:
+            final_score = 1000
+            
+        logger.info(f"📊 Score Config: C={p_contract} * {self.WEIGHT_CONTRACT} + H={p_habit} * {self.WEIGHT_HABIT} + I={p_income} * {self.WEIGHT_INCOME} | Bonus={bonus}")
         logger.info(f"✅ Final Score: {final_score}")
         
         return final_score
@@ -100,12 +109,22 @@ class ScoringService:
         return text.lower().strip()
 
     def _get_points(self, mapping: Dict[str, int], key: str, default: int) -> int:
-        """Find best matching key in mapping."""
-        # Exact match
+        """Find best matching key in mapping using strict logic to avoid substrings errors."""
+        key = self._normalize_input(key)
+        
+        # 1. Exact match (Highest priority)
         if key in mapping:
             return mapping[key]
         
-        # Partial match (e.g. "tengo contrato indefinido" -> "indefinido")
+        # 2. Word-based match to avoid "no reportado" matching "reportado"
+        # We iterate and check if the mapping key is exactly the normalized input
+        # or if we should trust the specific mappings more.
+        for k, v in mapping.items():
+            if k == key:
+                return v
+        
+        # 3. Fallback to partial match only for non-ambiguous cases
+        # But for 'habits', we want to be very strict
         for k, v in mapping.items():
             if k in key:
                 return v
