@@ -453,7 +453,18 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
                     }
 
             # 2. Fallback to Standard French Amortization
-            tasa_decimal = tasa_mensual / 100
+            # [SSOT] Mandatory v1.3.1: Special rates by entity if matrix mission
+            normalized_entidad = entidad.lower()
+            current_tasa = tasa_mensual
+            
+            if "brilla" in normalized_entidad:
+                current_tasa = 1.95  # Brilla's verified rate
+            elif "bogota" in normalized_entidad:
+                current_tasa = 1.87
+            elif "crediorbe" in normalized_entidad:
+                current_tasa = 2.22
+
+            tasa_decimal = current_tasa / 100
             if tasa_decimal > 0:
                 base = 1 + tasa_decimal
                 cuota_mensual_base = (monto_base * tasa_decimal) / (1 - (base ** -plazo_meses))
@@ -470,6 +481,7 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
                 "seguro_vida": seguro_vida,
                 "plazo_meses": plazo_meses,
                 "entidad": entidad,
+                "tasa_aplicada": current_tasa,
                 "usó_matriz": False
             }
             

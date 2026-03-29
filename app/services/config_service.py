@@ -100,8 +100,16 @@ class ConfigService:
         try:
             # v1.3.1: Try requested path 'configuracion/simulador_web' first (future-proof)
             # Defaulting to the existing 'financial_config' path which we confirmed has the data.
-            # Normalizing entity_id to match Firestore (e.g., 'crediorbe')
-            normalized_id = entity_id.lower().replace(" ", "_").replace("banco_de_bogotá", "banco_bogota")
+            # Normalized entity_id to match Firestore (e.g., 'crediorbe', 'brilla', 'banco_bogota')
+            normalized_id = entity_id.lower().replace("banco_de_bogotá", "banco_bogota").replace("brilla_de_gases", "brilla").replace(" ", "_")
+            
+            # Additional safety for 'brilla' variations
+            if "brilla" in normalized_id:
+                normalized_id = "brilla"
+            elif "bogota" in normalized_id:
+                normalized_id = "banco_bogota"
+            elif "crediorbe" in normalized_id:
+                normalized_id = "crediorbe"
             
             # 1. Primary path: financial_config/general/financieras/{entity}
             matrix_ref = self._db.collection("financial_config").document("general").collection("financieras").document(normalized_id)

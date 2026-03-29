@@ -488,7 +488,7 @@ REGLAS ESTRICTAS DE USO:
                         },
                         "historial_datacredito": {
                             "type": "string",
-                            "description": "Estado en Datacrédito. Mapeo estricto: Si dice 'nunca he sacado nada', 'no sé', MÁPEALO a 'Sin experiencia'. Si dice 'bien', 'pagando cuenta', MÁPEALO a 'Al dia'. Si menciona 'atrasado', 'castigado', MÁPEALO a 'Reportado'."
+                            "description": "Estado en Datacrédito. Mapeo estricto: Si no se conoce aún, o si dice 'nunca he sacado nada', 'no sé', MÁPEALO a 'Sin experiencia' (esto es vital para no penalizar el el score inicial). Si dice 'bien', 'pagando cuenta', MÁPEALO a 'Al dia'. Si menciona 'atrasado', 'castigado', MÁPEALO a 'Reportado'."
                         },
                         "mora_y_paz_salvo": {
                             "type": "string",
