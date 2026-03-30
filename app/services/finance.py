@@ -316,7 +316,17 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
         """
         precio_moto = float(moto.get('price', 0))
         nombre_moto = moto.get('name', 'Moto')
-        moto_cc = float(moto.get('displacement', 0))
+        
+        # Extracción segura de cilindraje (Prevenir '109.7cc' -> 0.0)
+        try:
+            cc_raw = moto.get('displacement', 0)
+            if isinstance(cc_raw, str):
+                import re
+                cc_raw = re.sub(r'[^\d.]', '', cc_raw)
+            moto_cc = float(cc_raw) if cc_raw else 0.0
+        except ValueError:
+            moto_cc = 0.0
+            
         category = moto.get('category', 'motos')
         
         if precio_moto <= 0:
@@ -369,16 +379,20 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
         if not matrix:
             return None
             
-        # Filter by category and find the row with the largest minCC <= moto_cc
-        matching_rows = [
-            row for row in matrix 
-            if row.get("category") == category and float(row.get("minCC", 0)) <= moto_cc
-        ]
+        matching_rows = []
+        for row in matrix:
+            min_cc = float(row.get("minCC", 0))
+            # Si no hay maxCC definido, asume 9999 para coger rangos abiertos superiores
+            max_cc = float(row.get("maxCC", 9999))
+            
+            # Match estricto por cilindrada
+            if min_cc <= moto_cc <= max_cc:
+                matching_rows.append(row)
         
         if not matching_rows:
             return None
             
-        # Sort by minCC descending to get the best fit
+        # Si hay varios matches (colisión), priorizamos el que tenga el minCC más alto (especificidad)
         matching_rows.sort(key=lambda x: float(x.get("minCC", 0)), reverse=True)
         return matching_rows[0]
 
@@ -449,7 +463,8 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
                 
             # Campos Sucios (Business Mandate):
             # Priorizamos FNG de la Matriz (si existe) sobre la raíz para evitar sobrecargos en Crediorbe
-            row_fng_rate = float(row.get("fngRate") if row else 0)
+            row_fng = row.get("fngRate") if row else None
+            row_fng_rate = float(row_fng if row_fng is not None else 0)
             root_fng_rate = float(entity_config.get("fngRate", 0))
             fng_to_apply = row_fng_rate if "fngRate" in (row or {}) else root_fng_rate
             
@@ -457,11 +472,9 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
             monto_base = precio - inicial
             
             # 1. Registro (Matrícula) - Consultamos la matrícula específica de la moto si aplica
-            # Para la Apache 160, el valor de registro financiado para lograr la paridad de $589.787 es $201.033
-            registro = float(row.get("registrationCreditGeneral") if row else entity_config.get("registro", 0))
-            if entidad == "crediorbe" and registro == 0:
-                # Ajuste inmutable para cuadrar la cuota de la Apache 160 con la web calculator
-                registro = 201033 
+            row_reg = row.get("registrationCreditGeneral") if row else None
+            entity_reg = entity_config.get("registro") if entity_config else 0
+            registro = float(row_reg if row_reg is not None else (entity_reg or 0))
             
             capital_inicial = round(monto_base + registro, 0)
             
@@ -473,26 +486,29 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
             mgmt_rate = float(entity_config.get("brillaManagementRate", 5))
             mgmt_cost = round((capital_inicial + fng_cost) * (mgmt_rate / 100), 0)
             
-            # 4. Aval Diferido (Coverage) - 4% via coverageRate
+            # 4. Aval Diferido (Coverage) - 4% via coverageRate, cascada sobre capital + fng + gestión
             cov_rate = float(entity_config.get("coverageRate", 4))
-            cov_cost = round((capital_inicial + fng_cost) * (cov_rate / 100), 0)
+            cov_cost = round((capital_inicial + fng_cost + mgmt_cost) * (cov_rate / 100), 0)
             
-            # P_final: Capital Total redondeado
-            P_final = round(capital_inicial + fng_cost + mgmt_cost + cov_cost, 0)
+            # P_final: Capital Total redondeado SIN el Aval, el Aval se difiere en cuota
+            P_final = round(capital_inicial + fng_cost + mgmt_cost, 0)
+            
+            # Cuota diferida del Aval exclusivo a 12 meses
+            cuota_aval_mensual = round(cov_cost / 12, 0) if cov_cost > 0 else 0
             
             # --- PHASE 3: CUOTA CALCULATION (PARITY EQUATION) ---
             seguro_vida = float(entity_config.get("life_insurance_monthly", 15000))
             
             if factor > 0:
-                # Ecuación de Paridad: round((round(P_final, 0) * Factor) + Seguro, 0)
-                cuota_mensual = round((round(P_final, 0) * factor) + seguro_vida, 0)
+                # Ecuación de Paridad: round((round(P_final, 0) * Factor) + Seguro + Cuota Aval, 0)
+                cuota_mensual = round((round(P_final, 0) * factor) + seguro_vida + cuota_aval_mensual, 0)
                 uso_matriz = True
             else:
                 # Fallback: Amortización Francesa (Inmutable round)
                 rate = float(row.get("interestRate") if row else entity_config.get("interest_rate", 2.5))
                 monthly_rate = rate / 100
                 f = (monthly_rate * (1 + monthly_rate) ** plazo_meses) / ((1 + monthly_rate) ** plazo_meses - 1)
-                cuota_mensual = round((P_final * f) + seguro_vida, 0)
+                cuota_mensual = round((P_final * f) + seguro_vida + cuota_aval_mensual, 0)
                 uso_matriz = False
             
             logger.info(f"💰 Simulation [{entidad}]: Cap:{P_final:.0f} Factor:{factor} Final:{cuota_mensual:.0f}")
@@ -531,5 +547,6 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
             }
             
         except Exception as e:
+            import traceback; traceback.print_exc()
             logger.error(f"❌ Error calculating payment: {str(e)}")
             return {"error": "Error en el cálculo", "mensaje": str(e)}
