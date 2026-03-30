@@ -384,26 +384,31 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
 
     def _get_insurance_monthly(self, entity_id: str, financed_amount: float) -> float:
         """
-        Calculate monthly life insurance based on entity and config.
+        Calculate monthly life insurance based on entity configuration.
         """
-        # [SSOT] Baseline: Crediorbe = $0, others = from matrix/global_params
-        normalized_id = entity_id.lower()
-        
-        # Mandatory Guardrail: Crediorbe default insurance is $0
-        if "crediorbe" in normalized_id:
-            return 0.0
+        try:
+            # v1.4.0: Dynamic loading from Entity root to avoid 'machetazos'
+            entity_config = self._config_service.get_financial_entity_config(entity_id)
             
-        if self._config_service:
-            fin_config = self._config_service.get_financial_config()
-            mode = fin_config.get("life_insurance_mode", "fixed")
+            # 1. Check for specific root field 'lifeInsuranceValue'
+            if "lifeInsuranceValue" in entity_config:
+                return float(entity_config.get("lifeInsuranceValue", 0))
             
-            if mode == "rate":
-                rate = float(fin_config.get("life_insurance_rate", 0.000806))
-                return financed_amount * rate
-            else:
-                return float(fin_config.get("life_insurance_monthly", 0))
+            # 2. Fallback to global config if entity root is missing the value
+            if self._config_service:
+                fin_config = self._config_service.get_financial_config()
+                mode = fin_config.get("life_insurance_mode", "fixed")
                 
-        return 0.0
+                if mode == "rate":
+                    rate = float(fin_config.get("life_insurance_rate", 0.000806))
+                    return financed_amount * rate
+                else:
+                    return float(fin_config.get("life_insurance_monthly", 15000))
+                    
+            return 0.0
+        except Exception as e:
+            logger.error(f"❌ Error calculating dynamic insurance for {entity_id}: {e}")
+            return 15000.0 # Safe baseline fallback
 
     def calcular_cuota(
         self, 
@@ -416,64 +421,81 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
         category: str = "motos"
     ) -> Dict[str, Any]:
         """
-        Calculate monthly payment using the Financial Matrix (v1.3.1).
-        If matrix is unavailable, falls back to French Amortization.
+        Calculate monthly payment (v1.4.0 - Root Parity).
+        Target: Apache 160 -> $589.787 (24m, 1.5M init).
         """
         try:
             monto_base = precio - inicial
             
-            # 1. Try Matrix-based calculation (Layered Capitalization)
-            row = self._get_matrix_row(entidad, moto_cc, category)
+            # --- PHASE 1: CONFIG RETRIEVAL (ROOT PARITY) ---
+            entity_config = self._config_service.get_financial_entity_config(entidad)
             
+            # Campos Sucios (Business Mandate):
+            # Priorizamos FNG de la Matriz (si existe) sobre la raíz para evitar sobrecargos en Crediorbe
+            row_fng_rate = float(row.get("fngRate") if row else 0)
+            root_fng_rate = float(entity_config.get("fngRate", 0))
+            fng_to_apply = row_fng_rate if "fngRate" in (row or {}) else root_fng_rate
+            
+            # brillaManagementRate takes priority for Brilla, fallback to managementRate
+            root_mgmt_rate = float(entity_config.get("brillaManagementRate") or entity_config.get("managementRate") or 0)
+            root_coverage_rate = float(entity_config.get("coverageRate", 0))
+            
+            # --- PHASE 2: MATRIX LOOKUP ---
             if row and "factors" in row:
                 factor = row.get("factors", {}).get(str(plazo_meses))
                 if factor:
-                    # Apply Layered Capitalization (Following calculator.ts)
+                    # v1.4.0 Algorithm: Layered Capitalization with Root Parity
                     registro = float(row.get("registrationCreditGeneral", 0))
-                    fng_rate = float(row.get("fngRate", 0))
-                    management_fixed = float(row.get("managementFixed", 0))
-                    coverage_fixed = float(row.get("coverageFixed", 0))
                     
-                    # Capital = (Base + Registro + FNG + Gestion + Cobertura)
-                    fng_cost = monto_base * (fng_rate / 100)
-                    capital_financiado = monto_base + registro + fng_cost + management_fixed + coverage_fixed
+                    # 1. Capital Base (Monto + Registro)
+                    capital_base = monto_base + registro
                     
-                    cuota_mensual_base = capital_financiado * float(factor)
+                    # 2. FNG Cost (Based on Capital Base)
+                    fng_cost = capital_base * (fng_to_apply / 100)
+                    
+                    # 3. Management Cost (Based on Capital Base + FNG)
+                    mgmt_cost = (capital_base + fng_cost) * (root_mgmt_rate / 100)
+                    
+                    # 4. Final Capital for Interest Calculation
+                    capital_financiado = capital_base + fng_cost + mgmt_cost
+                    
+                    # 5. Base Monthly Quota (Financial)
+                    cuota_financiera = capital_financiado * float(factor)
+                    
+                    # 6. Life Insurance (Dynamic Root)
                     seguro_vida = self._get_insurance_monthly(entidad, capital_financiado)
                     
-                    cuota_mensual = cuota_mensual_base + seguro_vida
+                    # 7. Coverage/Aval (Deferred Rule: First 12 months)
+                    # Calculation: Total Coverage Cost / 12 (as per web behavior)
+                    coverage_total = capital_financiado * (root_coverage_rate / 100)
+                    coverage_monthly = (coverage_total / 12) if (plazo_meses >= 1) else 0
+                    
+                    # Final Quota (Assuming simulation shows the first 12 months value)
+                    cuota_mensual = cuota_financiera + seguro_vida + coverage_monthly
+                    
+                    logger.info(f"💰 Simulation [{entidad}]: Cap:{capital_financiado:.0f} Factor:{factor} Quota:{cuota_mensual:.0f}")
                     
                     return {
                         "cuota_mensual": round(cuota_mensual, 2),
                         "total_pagar": round(cuota_mensual * plazo_meses, 2),
                         "capital_financiado": round(capital_financiado, 2),
                         "seguro_vida": round(seguro_vida, 2),
+                        "cuota_aval": round(coverage_monthly, 2),
                         "plazo_meses": plazo_meses,
                         "entidad": entidad,
                         "usó_matriz": True
                     }
 
-            # 2. Fallback to Standard French Amortization
-            # [SSOT] Mandatory v1.3.1: Special rates by entity if matrix mission
-            normalized_entidad = entidad.lower()
-            current_tasa = tasa_mensual
-            
-            if "brilla" in normalized_entidad:
-                current_tasa = 1.95  # Brilla's verified rate
-            elif "bogota" in normalized_entidad:
-                current_tasa = 1.87
-            elif "crediorbe" in normalized_entidad:
-                current_tasa = 2.22
-
-            tasa_decimal = current_tasa / 100
+            # 3. Fallback (Basic French Amortization)
+            tasa_decimal = tasa_mensual / 100
             if tasa_decimal > 0:
                 base = 1 + tasa_decimal
-                cuota_mensual_base = (monto_base * tasa_decimal) / (1 - (base ** -plazo_meses))
+                cuota_financiera = (monto_base * tasa_decimal) / (1 - (base ** -plazo_meses))
             else:
-                cuota_mensual_base = monto_base / plazo_meses
+                cuota_financiera = monto_base / plazo_meses
             
             seguro_vida = self._get_insurance_monthly(entidad, monto_base)
-            cuota_mensual = cuota_mensual_base + seguro_vida
+            cuota_mensual = cuota_financiera + seguro_vida
             
             return {
                 "cuota_mensual": round(cuota_mensual, 2),
@@ -482,7 +504,7 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
                 "seguro_vida": seguro_vida,
                 "plazo_meses": plazo_meses,
                 "entidad": entidad,
-                "tasa_aplicada": current_tasa,
+                "tasa_aplicada": tasa_mensual,
                 "usó_matriz": False
             }
             

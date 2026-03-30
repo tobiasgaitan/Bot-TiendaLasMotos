@@ -87,31 +87,31 @@ class ConfigService:
             self._financial_config = self.DEFAULT_FINANCIAL.copy()
             self._partners_config = {}
 
+    def _normalize_entity_id(self, entity_id: str) -> str:
+        """
+        Normalize entity ID to match Firestore document IDs.
+        """
+        if not entity_id:
+            return "crediorbe"
+            
+        normalized = str(entity_id).lower().replace("banco_de_bogotá", "banco_bogota").replace("brilla_de_gases", "brilla").replace(" ", "_")
+        
+        if "brilla" in normalized:
+            return "brilla"
+        elif "bogota" in normalized:
+            return "banco_bogota"
+        elif "crediorbe" in normalized:
+            return "crediorbe"
+            
+        return normalized
+
     def get_financial_matrix(self, entity_id: str) -> List[Dict[str, Any]]:
         """
         Get the factor matrix for a specific financial entity.
-        
-        Args:
-            entity_id: ID of the entity (crediorbe, brilla, banco_bogota)
-            
-        Returns:
-            List of rows in the matrix
         """
         try:
-            # v1.3.1: Try requested path 'configuracion/simulador_web' first (future-proof)
-            # Defaulting to the existing 'financial_config' path which we confirmed has the data.
-            # Normalized entity_id to match Firestore (e.g., 'crediorbe', 'brilla', 'banco_bogota')
-            normalized_id = entity_id.lower().replace("banco_de_bogotá", "banco_bogota").replace("brilla_de_gases", "brilla").replace(" ", "_")
+            normalized_id = self._normalize_entity_id(entity_id)
             
-            # Additional safety for 'brilla' variations
-            if "brilla" in normalized_id:
-                normalized_id = "brilla"
-            elif "bogota" in normalized_id:
-                normalized_id = "banco_bogota"
-            elif "crediorbe" in normalized_id:
-                normalized_id = "crediorbe"
-            
-            # 1. Primary path: financial_config/general/financieras/{entity}
             matrix_ref = self._db.collection("financial_config").document("general").collection("financieras").document(normalized_id)
             matrix_doc = matrix_ref.get()
             
@@ -119,12 +119,32 @@ class ConfigService:
                 data = matrix_doc.to_dict()
                 return data.get("rows", [])
             
-            logger.warning(f"⚠️  Matrix not found for {normalized_id} in primary path.")
+            logger.warning(f"⚠️  Matrix not found for {normalized_id}")
             return []
             
         except Exception as e:
             logger.error(f"❌ Error getting financial matrix for {entity_id}: {str(e)}")
             return []
+
+    def get_financial_entity_config(self, entity_id: str) -> Dict[str, Any]:
+        """
+        Get the full configuration document for a specific financial entity.
+        """
+        try:
+            normalized_id = self._normalize_entity_id(entity_id)
+            
+            doc_ref = self._db.collection("financial_config").document("general").collection("financieras").document(normalized_id)
+            doc = doc_ref.get()
+            
+            if doc.exists:
+                return doc.to_dict()
+                
+            logger.warning(f"⚠️  Configuration not found for {normalized_id}")
+            return {}
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting entity config for {entity_id}: {str(e)}")
+            return {}
     
     def get_financial_config(self) -> Dict[str, Any]:
         """
