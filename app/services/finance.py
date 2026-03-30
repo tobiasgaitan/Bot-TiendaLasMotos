@@ -386,12 +386,10 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
         """
         Calculate monthly life insurance based on entity and config.
         """
-        # [SSOT] Baseline: Crediorbe = $0, others = from matrix/global_params
+        # [SSOT] Baseline: Insurance from matrix/global_params
         normalized_id = entity_id.lower()
         
-        # Mandatory Guardrail: Crediorbe default insurance is $0
-        if "crediorbe" in normalized_id:
-            return 0.0
+        # Mandatory Guardrail: Crediorbe no longer forced to $0 as per requirement
             
         if self._config_service:
             fin_config = self._config_service.get_financial_config()
@@ -444,10 +442,10 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
                     cuota_mensual = cuota_mensual_base + seguro_vida
                     
                     return {
-                        "cuota_mensual": round(cuota_mensual, 2),
-                        "total_pagar": round(cuota_mensual * plazo_meses, 2),
-                        "capital_financiado": round(capital_financiado, 2),
-                        "seguro_vida": round(seguro_vida, 2),
+                        "cuota_mensual": round(cuota_mensual, 0),
+                        "total_pagar": round(cuota_mensual * plazo_meses, 0),
+                        "capital_financiado": round(capital_financiado, 0),
+                        "seguro_vida": round(seguro_vida, 0),
                         "plazo_meses": plazo_meses,
                         "entidad": entidad,
                         "usó_matriz": True
@@ -476,10 +474,10 @@ _*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_men
             cuota_mensual = cuota_mensual_base + seguro_vida
             
             return {
-                "cuota_mensual": round(cuota_mensual, 2),
-                "total_pagar": round(cuota_mensual * plazo_meses, 2),
-                "capital_financiado": monto_base,
-                "seguro_vida": seguro_vida,
+                "cuota_mensual": round(cuota_mensual, 0),
+                "total_pagar": round(cuota_mensual * plazo_meses, 0),
+                "capital_financiado": round(monto_base, 0),
+                "seguro_vida": round(seguro_vida, 0),
                 "plazo_meses": plazo_meses,
                 "entidad": entidad,
                 "tasa_aplicada": current_tasa,
