@@ -259,9 +259,10 @@ class CerebroIA:
         # SI YA ACEPTÓ HABEAS DATA -> PHASE 3 (Profiling)
         if prospect_data.get("habeas_data_accepted") is True:
             has_name = bool(prospect_data.get("nombre") or prospect_data.get("name"))
-            if not has_name:
-                # Regla v1.3.2: No avanzar a perfilamiento sin nombre (Guardrail de Vitrina)
-                logger.warning(f"⚠️ Prospecto aceptó Habeas Data pero no tiene nombre. Re-enrutando a Phase 1.")
+            has_city = bool(prospect_data.get("ciudad") or prospect_data.get("city"))
+            if not has_name or not has_city:
+                # Regla v1.3.2: No avanzar a perfilamiento sin nombre ni ciudad (Guardrail de Vitrina)
+                logger.warning(f"⚠️ Prospecto aceptó Habeas Data pero falta nombre o ciudad. Re-enrutando a Phase 1.")
                 return "PHASE_1_PROFILING"
             return "PHASE_3_CREDIT_PROFILING"
 
@@ -839,32 +840,45 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             try:
                                 if self._catalog_service:
                                     import time
-                                    t_start = time.perf_counter()
-                                    matches = self._catalog_service.search_items(query)
-                                    t_end = time.perf_counter()
-                                    latency = t_end - t_start
-                                    logger.info(f"⏱️ [TELEMETRY] search_catalog latency: {latency:.4f}s for query: '{query}'")
+                                    # --- INTERCEPTOR DE NEGOCIO (JSON Voorhees v6.6.6) ---
+                                    moto_interest_prev = prospect_data.get("moto_interest") if prospect_data else None
+                                    skip_catalog = False
+                                    if moto_interest_prev:
+                                        import difflib
+                                        ratio = difflib.SequenceMatcher(None, str(query).lower(), str(moto_interest_prev).lower()).ratio()
+                                        if ratio >= 0.1:
+                                            skip_catalog = True
+                                            logger.info(f"🛡️ [INTERCEPTOR] Búsqueda de '{query}' bloqueada. Ratio: {ratio:.2f} >= 0.1. Protegiendo '{moto_interest_prev}'.")
                                     
-                                    if matches:
-                                        catalog_returned_results = True
-                                        search_results = f"Encontré {len(matches)} motos relacionados:\n"
-                                        for m in matches: 
-                                            name = m.get('name', 'Moto')
-                                            catalog_models_found.append(name)
-                                            # Using .get for category and price for maximum robustness
-                                            category = m.get('category', 'Moto')
-                                            price = m.get('price', m.get('formatted_price', 'Consultar'))
-                                            
-                                            search_results += f"- {name} ({category}): {price}\n"
-                                            if m.get('image_url'): search_results += f"  Image URL: {m['image_url']}\n"
-                                            if m.get('link'): search_results += f"  Link: {m['link']}\n"
-                                            if m.get('specs'): search_results += f"  Ficha Tecnica: {m['specs']}\n"
-                                            
-                                        competitor_brands = ["boxer", "nkd", "pulsar", "yamaha", "honda", "suzuki", "akt"]
-                                        if any(b in query.lower() for b in competitor_brands):
-                                            search_results = f"[SISTEMA: El usuario preguntó por la competencia. ESTÁS OBLIGADO a pivotar a nuestras alternativas...]\n\n" + search_results
+                                    if skip_catalog:
+                                        search_results = f"[SISTEMA: El usuario ya tiene en contexto la moto '{moto_interest_prev}'. REGLA OBLIGATORIA: NO listes otras motos ni ofrezcas más opciones. Enfócate en concretar la venta de '{moto_interest_prev}' (preguntar forma de pago o iniciar crédito).]"
                                     else:
-                                        search_results = "No encontré motos en el catálogo para esa búsqueda."
+                                        t_start = time.perf_counter()
+                                        matches = self._catalog_service.search_items(query)
+                                        t_end = time.perf_counter()
+                                        latency = t_end - t_start
+                                        logger.info(f"⏱️ [TELEMETRY] search_catalog latency: {latency:.4f}s for query: '{query}'")
+                                        
+                                        if matches:
+                                            catalog_returned_results = True
+                                            search_results = f"Encontré {len(matches)} motos relacionados:\n"
+                                            for m in matches: 
+                                                name = m.get('name', 'Moto')
+                                                catalog_models_found.append(name)
+                                                # Using .get for category and price for maximum robustness
+                                                category = m.get('category', 'Moto')
+                                                price = m.get('price', m.get('formatted_price', 'Consultar'))
+                                                
+                                                search_results += f"- {name} ({category}): {price}\n"
+                                                if m.get('image_url'): search_results += f"  Image URL: {m['image_url']}\n"
+                                                if m.get('link'): search_results += f"  Link: {m['link']}\n"
+                                                if m.get('specs'): search_results += f"  Ficha Tecnica: {m['specs']}\n"
+                                                
+                                            competitor_brands = ["boxer", "nkd", "pulsar", "yamaha", "honda", "suzuki", "akt"]
+                                            if any(b in query.lower() for b in competitor_brands):
+                                                search_results = f"[SISTEMA: El usuario preguntó por la competencia. ESTÁS OBLIGADO a pivotar a nuestras alternativas...]\n\n" + search_results
+                                        else:
+                                            search_results = "No encontré motos en el catálogo para esa búsqueda."
                                 else:
                                     search_results = "Error: Servicio de catálogo no disponible."
                             except Exception as e:
@@ -1000,7 +1014,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             logger.error(f"Error detecting sentiment: {e}")
             return "NEUTRAL"
 
-    async def generate_summary(self, conversation_text: str, last_bot_question: str = "", session_id: str = "unknown") -> Dict[str, Any]:
+    async def generate_summary(self, conversation_text: str, last_bot_question: str = "", session_id: str = "unknown", previous_moto_interest: str = "") -> Dict[str, Any]:
         """
         Summarize the conversation and extract structured prospect data (Async).
           forzar al modelo de Gemini a generar un JSON garantizado y determinista, en lugar
@@ -1040,6 +1054,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
             ÚLTIMA PREGUNTA DEL BOT:
             {last_bot_question}
+            
+            [REGLA DE PERSISTENCIA - MOTO DE INTERÉS]
+            Moto actual en base de datos: {previous_moto_interest if previous_moto_interest else 'Ninguna'}
+            MANDATO: Si la moto actual NO es 'Ninguna', DEBES volver a incluirla en el campo 'moto_interest' del JSON de respuesta, A MENOS que el usuario pida explícitamente cambiarla en este último chat. BAJO NINGUNA CIRCUNSTANCIA debes dejarla vacía o reemplazarla si el usuario solo está respondiendo a una pregunta o no menciona motos.
             """
             extraction_schema = {
                 "type": "OBJECT",

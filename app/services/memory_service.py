@@ -122,11 +122,16 @@ class MemoryService:
         try:
             logger.info(f"🧠 [LINEAR BLOCKING] Starting summary generation for {phone_number}...")
             
+            # --- INYECCIÓN DE CONTEXTO PREVIO (JSON Voorhees v6.6.6) ---
+            prospect_data = await self.get_prospect_data(phone_number)
+            moto_interest_prev = prospect_data.get("moto_interest", "") if prospect_data else ""
+
             # 1. AI Extraction (Async)
             summary_data = await ai_brain.generate_summary(
                 conversation_text, 
                 last_bot_question=last_bot_question,
-                session_id=phone_number
+                session_id=phone_number,
+                previous_moto_interest=moto_interest_prev
             )
             
             # 2. Firestore Persistence (Async wrapper)
