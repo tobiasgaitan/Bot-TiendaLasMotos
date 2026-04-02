@@ -846,9 +846,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     if moto_interest_prev:
                                         import difflib
                                         ratio = difflib.SequenceMatcher(None, str(query).lower(), str(moto_interest_prev).lower()).ratio()
-                                        if ratio >= 0.1:
+                                        if 0.35 <= ratio < 0.95:
                                             skip_catalog = True
-                                            logger.info(f"🛡️ [INTERCEPTOR] Búsqueda de '{query}' bloqueada. Ratio: {ratio:.2f} >= 0.1. Protegiendo '{moto_interest_prev}'.")
+                                            logger.info(f"🛡️ [INTERCEPTOR] Búsqueda de '{query}' bloqueada. Ratio: {ratio:.2f} (Drift Threshold). Protegiendo '{moto_interest_prev}'.")
                                     
                                     if skip_catalog:
                                         search_results = f"[SISTEMA: El usuario ya tiene en contexto la moto '{moto_interest_prev}'. REGLA OBLIGATORIA: NO listes otras motos ni ofrezcas más opciones. Enfócate en concretar la venta de '{moto_interest_prev}' (preguntar forma de pago o iniciar crédito).]"
