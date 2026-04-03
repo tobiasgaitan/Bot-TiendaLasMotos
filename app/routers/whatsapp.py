@@ -562,18 +562,10 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 if not prospect_data:
                     prospect_data = await ms.get_prospect_data(user_phone)
 
-            # ALTERNATIVE C: Pre-processing Message Enrichment (Anchor)
-            enriched_message = message_body
-            if prospect_data and prospect_data.get("moto_interest"):
-                moto_interes = prospect_data.get("moto_interest")
-                if len(message_body) < 60 and not any(m in message_body.lower() for m in ["otra", "cambiar", "no la"]):
-                    enriched_message = f"[Contexto CRM: Hablando sobre {moto_interes}]\nMensaje: {message_body}"
-                    logger.info(f"💉 Enriched user message with Moto Anchor: {moto_interes}")
-
             # 3. Inferencia de la IA (Solo con datos confirmados)
             logger.info(f"🧠 Calling CerebroIA.pensar_respuesta (Await)...")
             response_text = await cerebro_ia.pensar_respuesta(
-                enriched_message,
+                message_body,
                 context=context,
                 prospect_data=prospect_data,
                 history=current_history,

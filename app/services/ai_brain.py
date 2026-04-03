@@ -556,6 +556,17 @@ REGLAS ESTRICTAS DE USO:
         # 1. Deterministic state evaluation
         phase = self._determine_funnel_phase(prospect_data, history)
         
+        # --- NEW ADAPTER LAYER: CRM ANCHOR CONTEXT (REF-004) ---
+        # Moving the anchor logic from the router to the brain.
+        # This keeps the 'texto' (raw user input) clean for the tool interceptor.
+        anchor_context = ""
+        if prospect_data and prospect_data.get("moto_interest"):
+            moto_interes = prospect_data.get("moto_interest")
+            # Anchor rule: If message is short (<60 chars) and doesn't imply a shift, reinforce preference.
+            if len(texto) < 60 and not any(m in texto.lower() for m in ["otra", "cambiar", "no la"]):
+                anchor_context = f"\n[CRM ANCHOR: El usuario está interesado en la {moto_interes}. Mantén el contexto sobre este modelo a menos que el usuario pida conocer otra motocicleta.]\n"
+                logger.info(f"💉 Internal CRM Anchor Context injected: {moto_interes}")
+
         # 2. Build Instructions block based on State
         funnel_instruction = ""
         if phase == "PHASE_1_PROFILING":
@@ -666,6 +677,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                 if funnel_instruction:
                     full_prompt += funnel_instruction + "\n\n"
+
+                # Inject Anchor Context (Isolated from raw user message)
+                if anchor_context:
+                    full_prompt += anchor_context + "\n"
                     
                 full_prompt += f"Usuario: {texto}\n\n"
                 full_prompt += f"[SISTEMA: Recuerda la ONE-SHOT RULE. Tu respuesta debe terminar con UNA (1) sola pregunta. Tienes prohibido repreguntar por los datos que ya están en <datos_ya_capturados>.]\n\n"
