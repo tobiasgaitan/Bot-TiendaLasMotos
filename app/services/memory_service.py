@@ -123,7 +123,9 @@ class MemoryService:
                         "survey_state": data.get("survey_state"),
                         "exists": True,
                         "habeas_data_sent": data.get("habeas_data_sent", False),
-                        "habeas_data_accepted": data.get("habeas_data_accepted", False),
+                        # [JSON Voorhees v6.9.4] Reverse Mapping: Prioritize Canonical over Legacy
+                        "habeas_data_accepted": data.get("habeasData", data.get("habeas_data_accepted", False)),
+                        "servicios_publicos": data.get("serviciosPublicos", data.get("servicios_publicos", None)),
                         "total_tokens_consumed": data.get("total_tokens_consumed", 0),
                         "session_cost_usd": data.get("session_cost_usd", 0.0)
                     }
@@ -133,7 +135,9 @@ class MemoryService:
                 "nombre": "", "ciudad": "", "moto_interest": "",
                 "forma_pago": "", "summary": "",
                 "human_help_requested": False, "survey_state": None, "exists": False,
-                "habeas_data_sent": False, "habeas_data_accepted": False,
+                "habeas_data_sent": False, 
+                "habeas_data_accepted": False,
+                "servicios_publicos": None,
                 "total_tokens_consumed": 0, "session_cost_usd": 0.0
             }
         except Exception as e:
@@ -440,7 +444,8 @@ class MemoryService:
                 "source": "whatsapp_bot",
                 "human_help_requested": False,
                 "habeas_data_sent": False,
-                "habeas_data_accepted": False,
+                "habeasData": False,         # [JSON Voorhees v6.9.4] Canonical Placement
+                "serviciosPublicos": None,  # [JSON Voorhees v6.9.4] Canonical Placement
                 "created_at": firestore.SERVER_TIMESTAMP,
                 # Explicitly excluded updated_at/fecha for Atomic Greeting fix
             }
