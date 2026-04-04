@@ -56,12 +56,14 @@ def _ensure_services():
     # 1. Firestore
     if not db:
         try:
+            # v6.9.7: Try to retrieve from app.state if available, otherwise fallback
+            from app.core.security import get_firebase_credentials_object
             creds = get_firebase_credentials_object()
             db = firestore.Client(credentials=creds, project=settings.gcp_project_id)
             logger.info(f"✅ Database connected to project: {settings.gcp_project_id}")
         except Exception as e:
-            logger.error(f"❌ Failed to initialize Firestore: {e}", exc_info=True)
-            return # Cannot proceed
+            logger.error(f"❌ Failed to initialize Firestore: {e}")
+            return 
 
     # 2. Config Loader (Personality & Routing)
     if db and not config_loader:
@@ -502,8 +504,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                         logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
 
             # 3. NOW update/create timestamps AFTER decision is made
-            ms.create_prospect_if_missing(user_phone)
-            ms.update_last_interaction(user_phone)
+            await ms.create_prospect_if_missing(user_phone)
+            await ms.update_last_interaction(user_phone)
             
             logger.info(f"👤 Prospect Data Processed: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
             
@@ -609,8 +611,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             current_history = []
             if memory_service_module.memory_service:
                 ms = memory_service_module.memory_service
-                ms.create_prospect_if_missing(user_phone) # Good practice
-                ms.update_last_interaction(user_phone)
+                await ms.create_prospect_if_missing(user_phone) # Good practice
+                await ms.update_last_interaction(user_phone)
                 
                 # Check for Human Handoff status
                 prospect_data = await ms.get_prospect_data(user_phone)
@@ -661,7 +663,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             # Check for AI Handoff
             if response_text.startswith("HANDOFF_TRIGGERED"):
                 if memory_service_module.memory_service:
-                    memory_service_module.memory_service.set_human_help_status(user_phone, True)
+                    await memory_service_module.memory_service.set_human_help_status(user_phone, True)
                 await _send_whatsapp_message(user_phone, "Te voy a transferir con un compañero para que te ayude con esto. Dame un momento...")
                 try:
                     from app.services.notification_service import notification_service

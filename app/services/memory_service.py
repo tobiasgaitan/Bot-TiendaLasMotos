@@ -26,7 +26,7 @@ class MemoryService:
     - No raw query logging recommended in production.
     """
 
-    def __init__(self, db: firestore.Client):
+    def __init__(self, db: firestore.AsyncClient):
         """
         Initialize the memory service.
 
@@ -35,7 +35,7 @@ class MemoryService:
         """
         self._db = db
         self._pending_tasks: Set[asyncio.Task] = set()
-        logger.info("🧠 MemoryService initialized with Task Tracker (v6.9.2)")
+        logger.info("🧠 MemoryService initialized with AsyncClient & Task Tracker (v6.9.6)")
 
     def _track_task(self, coro) -> asyncio.Task:
         """
@@ -64,7 +64,7 @@ class MemoryService:
         except Exception as e:
             logger.error(f"❌ [SHUTDOWN] Error during persistence flush: {e}")
 
-    def _find_prospect_ref(self, phone_number: str) -> Optional[firestore.DocumentReference]:
+    async def _find_prospect_ref(self, phone_number: str) -> Optional[firestore.AsyncDocumentReference]:
         """
         Private helper to find a prospect reference by ID or legacy celular field.
         
@@ -81,12 +81,13 @@ class MemoryService:
             
             # 1. Try by ID
             doc_ref = prospectos_ref.document(clean_phone)
-            if doc_ref.get().exists:
+            doc_snapshot = await doc_ref.get()
+            if doc_snapshot.exists:
                 return doc_ref
             
             # 2. Try by field query
             query = prospectos_ref.where("celular", "==", clean_phone).limit(1)
-            docs = query.get()
+            docs = await query.get()
             if docs:
                 return docs[0].reference
                 
@@ -98,32 +99,25 @@ class MemoryService:
     async def get_prospect_data(self, phone_number: str) -> Dict[str, Any]:
         """
         Garantía de Verdad (Linear Blocking): Recupera datos frescos del prospecto.
-        """
-        import asyncio
-        return await asyncio.to_thread(self._get_prospect_data_sync, phone_number)
-
-    def _get_prospect_data_sync(self, phone_number: str) -> Dict[str, Any]:
-        """
-        Internal sync retrieval for Firestore.
+        Refactored to native Async I/O (v6.9.6).
         """
         try:
-            doc_ref = self._find_prospect_ref(phone_number)
+            doc_ref = await self._find_prospect_ref(phone_number)
             if doc_ref:
-                doc = doc_ref.get()
-                if doc.exists:
-                    data = doc.to_dict()
+                doc_snap = await doc_ref.get()
+                if doc_snap.exists:
+                    data = doc_snap.to_dict()
                     prospect_data = {
                         "nombre": data.get("nombre") or data.get("name") or "",
                         "ciudad": data.get("ciudad") or data.get("city") or "",
-                        "moto_interest": data.get("moto_interest"), # Unified nomenclature
-                        "moto_confirmada": data.get("moto_confirmada", False),
-                        "forma_pago": data.get("forma_pago") or data.get("payment_method") or "",
+                        "moto_interest": data.get("motoInteres") or data.get("moto_interest"), # Unified
+                        "moto_confirmada": data.get("motoConfirmada") or data.get("moto_confirmada", False),
+                        "forma_pago": data.get("formaPago") or data.get("forma_pago") or "",
                         "summary": data.get("ai_summary"),
                         "human_help_requested": data.get("human_help_requested", False),
                         "survey_state": data.get("survey_state"),
                         "exists": True,
                         "habeas_data_sent": data.get("habeas_data_sent", False),
-                        # [JSON Voorhees v6.9.4] Reverse Mapping: Prioritize Canonical over Legacy
                         "habeas_data_accepted": data.get("habeasData", data.get("habeas_data_accepted", False)),
                         "servicios_publicos": data.get("serviciosPublicos", data.get("servicios_publicos", None)),
                         "total_tokens_consumed": data.get("total_tokens_consumed", 0),
@@ -141,7 +135,7 @@ class MemoryService:
                 "total_tokens_consumed": 0, "session_cost_usd": 0.0
             }
         except Exception as e:
-            logger.error(f"❌ Error in _get_prospect_data_sync for {phone_number}: {e}")
+            logger.error(f"❌ Error in get_prospect_data for {phone_number}: {e}")
             return {"exists": False}
 
     async def generate_and_update_summary(self, phone_number: str, conversation_text: str, ai_brain, last_bot_question: str = "") -> None:
@@ -182,29 +176,18 @@ class MemoryService:
     async def update_prospect_summary(self, phone_number: str, summary_text: str, extracted_data: Optional[Dict[str, Any]] = None) -> None:
         """
         Updates the conversation summary and merges extracted PII data into Firestore.
-        
-        Args:
-            phone_number: Phone number to update
-            summary_text: New conversation summary to save
-            extracted_data: Optional dict with extracted fields
-        """
-        import asyncio
-        await asyncio.to_thread(self._update_prospect_summary_sync, phone_number, summary_text, extracted_data)
-
-    def _update_prospect_summary_sync(self, phone_number: str, summary_text: str, extracted_data: Optional[Dict[str, Any]] = None) -> None:
-        """
-        Internal sync update for Firestore.
+        Native Async Implementation (v6.9.6)
         """
         try:
             clean_phone = PhoneNormalizer.normalize(phone_number)
-            logger.info(f"💾 Updating prospect summary for {clean_phone}")
+            logger.info(f"💾 Updating prospect summary for {clean_phone} (ASYNC)")
 
-            doc_ref = self._find_prospect_ref(phone_number)
+            doc_ref = await self._find_prospect_ref(phone_number)
             
             if not doc_ref:
                 logger.warning(f"⚠️ No prospect found to update for {clean_phone}")
                 new_doc_ref = self._db.collection("prospectos").document(clean_phone)
-                new_doc_ref.set({
+                await new_doc_ref.set({
                     "celular": clean_phone,
                     "ai_summary": summary_text,
                     "chatbot_status": "ACTIVE",
@@ -214,8 +197,8 @@ class MemoryService:
                 logger.info(f"✅ Created new prospect document for {clean_phone}")
                 return
 
-            doc = doc_ref.get()
-            current_data = doc.to_dict()
+            doc_snap = await doc_ref.get()
+            current_data = doc_snap.to_dict()
 
             # 1. Base update data
             update_data = {
@@ -247,8 +230,13 @@ class MemoryService:
                     update_data.update(merged_fields)
                     logger.info(f"🧬 Merged {len(merged_fields)} fields using Non-Destructive strategy")
 
-            logger.info(f"💾 [MEMORY DUMP] Final payload to Firestore for {clean_phone}: {update_data}")
-            doc_ref.update(update_data)
+            # 3. Media Vault Update (if present)
+            if extracted_data and "media_url" in extracted_data:
+                update_data["media_vault"] = firestore.ArrayUnion([extracted_data["media_url"]])
+                logger.info(f"📸 Adding image to media_vault for {clean_phone}")
+
+            logger.info(f"💾 [MEMORY DUMP] Final payload to Firestore for {clean_phone}")
+            await doc_ref.update(update_data)
             logger.info(f"✅ Successfully updated prospect summary for {clean_phone}")
 
         except Exception as e:
@@ -269,26 +257,22 @@ class MemoryService:
         field_mapping = {
             "nombre": "nombre",
             "ciudad": "ciudad",
-            "moto_interest": "moto_interest", # Unified
-            "moto_ofrecida": "moto_ofrecida",  # Renamed from moto_offered
-            "forma_pago": "forma_pago",
+            "moto_interest": "motoInteres",      # [Key Alignment v6.9.6]
+            "moto_ofrecida": "motoOfrecida",      # [Key Alignment v6.9.6]
+            "moto_aceptada": "motoAceptada",      # [Key Alignment v6.9.6]
+            "moto_confirmada": "motoConfirmada",  # [Key Alignment v6.9.6]
+            "forma_pago": "formaPago",            # [Key Alignment v6.9.6]
             "ocupacion": "ocupacion",
             "datacredito": "datacredito",
             "vivienda": "vivienda",
             "ingresos": "ingresos",
             "gastos": "gastos",
-            "moto_competidor": "moto_competidor",
-            "moto_auteco": "moto_auteco",
-            "moto_aceptada": "moto_aceptada",
-            "moto_confirmada": "moto_confirmada", # New field for v6.6.2
             "habeas_data_accepted": "habeasData", # [JSON Voorhees v6.9.2]
             "servicios_publicos": "serviciosPublicos", # [JSON Voorhees v6.9.2]
             "total_tokens_consumed": "total_tokens_consumed",
             "session_cost_usd": "session_cost_usd",
-            "doc_cedula_url": "doc_cedula_url",      # v6.7.x
-            "doc_recibo_gas_url": "doc_recibo_gas_url", # v6.7.x
-            "doc_cedula": "doc_cedula",              # v6.7.x
-            "doc_recibo_gas": "doc_recibo_gas"       # v6.7.x
+            "doc_cedula_url": "doc_cedula_url",      
+            "doc_recibo_gas_url": "doc_recibo_gas_url"
         }
 
         def is_valid(val):
@@ -309,6 +293,11 @@ class MemoryService:
                 # Boolean Casting for Legal compliance
                 if db_key == "habeasData":
                     val = bool(val)
+
+                # [JSON Voorhees v6.9.6] PII Guardrail: Truncate to 50 chars
+                if db_key in ["nombre", "ciudad"] and isinstance(val, str):
+                    val = val[:50].strip()
+                    logger.debug(f"🛡️ PII Guardrail: Truncated {db_key} to 50 chars.")
 
                 # Applying LATCH_TRUE_ONLY logic during mapping if applicable
                 if db_key in latch_fields:
@@ -333,46 +322,30 @@ class MemoryService:
 
         return merged
 
-    def update_last_interaction(self, phone_number: str) -> None:
+    async def update_last_interaction(self, phone_number: str) -> None:
         """
         Updates only the fecha timestamp to bring user to top of admin list.
-
-        Why: When a user is in Human Mode the bot is muted, but admins
-        still need to see the user's latest activity in the Admin Panel.
-        This method bumps the fecha field so the user floats to the top.
-
-        Production-proven: Uses celular field query (not document ID) to
-        match the fix that was manually applied and verified on the live server.
-
-        Args:
-            phone_number: Phone number to update
         """
         try:
-            doc_ref = self._find_prospect_ref(phone_number)
+            doc_ref = await self._find_prospect_ref(phone_number)
             if doc_ref:
-                doc_ref.update({"fecha": firestore.SERVER_TIMESTAMP})
+                await doc_ref.update({"fecha": firestore.SERVER_TIMESTAMP})
                 logger.info(f"✅ TIMESTAMP UPDATED for {phone_number}")
         except Exception as e:
             logger.error(f"❌ Error updating timestamp: {e}", exc_info=True)
 
-    def set_human_help_status(self, phone_number: str, status: bool) -> None:
+    async def set_human_help_status(self, phone_number: str, status: bool) -> None:
         """
         Set the human_help_requested flag for a prospect in Firestore.
-
-        Controls whether the bot should remain silent for this user.
-        When True, bot will not respond until admin resets flag to False.
-
-        Args:
-            phone_number: Phone number to update
-            status: True to mute bot, False to resume bot
+        Native Async Implementation (v6.9.6)
         """
         try:
-            logger.info(f"🔧 Setting human_help_requested={status} for {phone_number}")
+            logger.info(f"🔧 Setting human_help_requested={status} for {phone_number} (ASYNC)")
 
-            doc_ref = self._find_prospect_ref(phone_number)
+            doc_ref = await self._find_prospect_ref(phone_number)
             
             if doc_ref:
-                doc_ref.update({
+                await doc_ref.update({
                     "human_help_requested": status,
                     "updated_at": firestore.SERVER_TIMESTAMP,
                     "fecha": firestore.SERVER_TIMESTAMP
@@ -384,7 +357,7 @@ class MemoryService:
             normalized_phone = PhoneNormalizer.normalize(phone_number)
             logger.warning(f"⚠️ No existing prospect found for {phone_number}, creating new document")
             new_doc_ref = self._db.collection("prospectos").document(normalized_phone)
-            new_doc_ref.set({
+            await new_doc_ref.set({
                 "celular": normalized_phone,
                 "human_help_requested": status,
                 "created_at": firestore.SERVER_TIMESTAMP,
@@ -399,83 +372,64 @@ class MemoryService:
                 exc_info=True
             )
 
-    def create_prospect_if_missing(self, phone_number: str) -> bool:
+    async def create_prospect_if_missing(self, phone_number: str) -> bool:
         """
         Ensures a prospect document exists for the given phone number.
-        Crucial for new users coming via latency bypass to appear in Admin Panel.
-        
-        Fields set:
-        - chatbot_status: "ACTIVE"
-        - status: "Pendiente"
-        - name: "Cliente WhatsApp"
-        - source: "whatsapp_bot"
-        - created_at: SERVER_TIMESTAMP
-        - updated_at: SERVER_TIMESTAMP
-        
-        Args:
-            phone_number: Raw phone number
-            
-        Returns:
-            bool: True if created, False if already existed
+        Native Async Implementation (v6.9.6)
         """
         try:
             clean_phone = PhoneNormalizer.normalize(phone_number)
-            logger.info(f"💾 Ensuring prospect existence for {clean_phone}...")
+            logger.info(f"💾 Ensuring prospect existence for {clean_phone} (ASYNC)...")
             
             prospectos_ref = self._db.collection("prospectos")
             doc_ref = prospectos_ref.document(clean_phone)
-            doc = doc_ref.get()
+            doc_snap = await doc_ref.get()
             
-            if doc.exists:
-                # Optional: Ensure minimal fields are present even if exists?
-                # For now, just return False as it exists
+            if doc_snap.exists:
                 return False
                 
-            # Create new with strict defaults for visibility in Admin Panel
-            # ULTIMATUM: Do NOT set updated_at/fecha yet to allow Greeting Logic to detect a fresh start
             new_data = {
                 "celular": clean_phone,
                 "nombre": "",
                 "ciudad": "",
-                "moto_interest": "", # Mandatory Key Alignment
-                "forma_pago": "",
+                "motoInteres": "", # Mandatory Key Alignment
+                "formaPago": "",
                 "chatbot_status": "ACTIVE",
                 "status": "Pendiente",
                 "source": "whatsapp_bot",
                 "human_help_requested": False,
                 "habeas_data_sent": False,
                 "habeasData": False,         # [JSON Voorhees v6.9.4] Canonical Placement
-                "serviciosPublicos": None,  # [JSON Voorhees v6.9.4] Canonical Placement
+                "serviciosPublicos": None,   # [JSON Voorhees v6.9.4] Canonical Placement
                 "created_at": firestore.SERVER_TIMESTAMP,
-                # Explicitly excluded updated_at/fecha for Atomic Greeting fix
             }
-            doc_ref.set(new_data)
-            logger.info(f"✅ Created NEW prospect doc for {clean_phone}")
+            await doc_ref.set(new_data)
+            logger.info(f"✅ Created NEW prospect doc for {clean_phone} (ASYNC)")
 
             # --- ZOMBIE SESSION PURGE ---
             try:
-                # Delete any stuck session to ensure a fresh start
-                # Fix: Correct path is mensajeria/whatsapp/sesiones
                 session_ref = self._db.collection("mensajeria").document("whatsapp").collection("sesiones").document(clean_phone)
-                session_ref.delete()
-                logger.info(f"🗑️ Zombie session purged for new prospect {clean_phone}")
+                await session_ref.delete()
+                logger.info(f"🗑️ Zombie session purged for new prospect {clean_phone} (ASYNC)")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to purge zombie session for {clean_phone}: {e}")
-            # ---------------------------
             return True
             
         except Exception as e:
             logger.error(f"❌ Error creating prospect for {phone_number}: {e}", exc_info=True)
             return False
 
-    def _delete_collection_batched(self, collection_ref, batch_size=400):
+    async def _delete_collection_batched(self, collection_ref, batch_size=400):
         """
-        Helper to delete all documents in a collection or subcollection using batches.
-        Firestore limit is 500 per batch. We use 400 for safety.
+        Helper to delete all documents in a collection (ASYNC).
         """
         total_deleted = 0
         while True:
-            docs = list(collection_ref.limit(batch_size).stream())
+            docs_stream = collection_ref.limit(batch_size).stream()
+            docs = []
+            async for doc in docs_stream:
+                docs.append(doc)
+            
             if not docs:
                 break
                 
@@ -485,7 +439,7 @@ class MemoryService:
                 batch.delete(doc.reference)
                 count += 1
             
-            batch.commit()
+            await batch.commit()
             total_deleted += count
             
             if count < batch_size:
@@ -494,22 +448,7 @@ class MemoryService:
 
     async def delete_prospect_completely(self, phone_number: str) -> int:
         """
-        Nuclear wipe of a prospect and their history.
-        Used by the /reset command to allow a fresh start.
-        Handles Firestore batch limits for long histories.
-        
-        Args:
-            phone_number: Raw phone number to wipe
-            
-        Returns:
-            int: Number of items deleted (prospect doc + variants + history)
-        """
-        import asyncio
-        return await asyncio.to_thread(self._delete_prospect_completely_sync, phone_number)
-
-    def _delete_prospect_completely_sync(self, phone_number: str) -> int:
-        """
-        Internal sync implementation of nuclear wipe.
+        Nuclear wipe of a prospect and their history (ASYNC).
         """
         try:
             deleted = 0
@@ -519,58 +458,20 @@ class MemoryService:
             try:
                 session_ref = self._db.collection("mensajeria").document("whatsapp").collection("sesiones").document(clean_phone)
                 history_ref = session_ref.collection("historial")
-                
-                # Purge history subcollection with batches
-                count = self._delete_collection_batched(history_ref)
-                
-                # Delete the session document itself
-                session_ref.delete()
+                count = await self._delete_collection_batched(history_ref)
+                await session_ref.delete()
                 deleted += count + 1
-                logger.info(f"🗑️ Nuclear delete: mensajeria sessions purged for {clean_phone} ({count} msgs)")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to purge mensajeria session for {clean_phone}: {e}")
             
             # --- 2. PURGE PROSPECT DATA (CRM) ---
-            # Targeted Delete using Centralized Helper
-            doc_ref = self._find_prospect_ref(phone_number)
+            doc_ref = await self._find_prospect_ref(phone_number)
             if doc_ref:
-                # Nuclear subcollection purge with batches
                 history_ref = doc_ref.collection("historial")
-                count = self._delete_collection_batched(history_ref)
-                
-                # Delete the doc itself
-                doc_ref.delete()
+                count = await self._delete_collection_batched(history_ref)
+                await doc_ref.delete()
                 deleted += count + 1
-                logger.info(f"🗑️ Nuclear delete: prospect doc and history for {phone_number}")
 
-            # --- 3. VARIANT CLEANUP ---
-            variants = [
-                clean_phone,                         # International: 573...
-                clean_phone.replace("57", "", 1),   # National: 3...
-                f"+{clean_phone}"                    # Plus prefixed
-            ]
-            
-            for variant in variants:
-                # Delete by ID variants
-                v_ref = self._db.collection("prospectos").document(variant)
-                if v_ref.get().exists:
-                    # History purge
-                    h_ref = v_ref.collection("historial")
-                    count = self._delete_collection_batched(h_ref)
-                    v_ref.delete()
-                    deleted += count + 1
-                    logger.info(f"🗑️ Nuclear delete: variant ID {variant} and {count} history msgs")
-                
-                # Delete by 'celular' field variants
-                docs = list(self._db.collection("prospectos").where("celular", "==", variant).stream())
-                for doc in docs:
-                    # Nuclear subcollection purge
-                    h_ref = doc.reference.collection("historial")
-                    count = self._delete_collection_batched(h_ref)
-                    doc.reference.delete()
-                    deleted += count + 1
-                    logger.info(f"🗑️ Nuclear delete: variant field match {doc.id} and {count} history msgs")
-            
             return deleted
         except Exception as e:
             logger.error(f"❌ Error in nuclear prospect delete for {phone_number}: {e}", exc_info=True)
@@ -602,7 +503,7 @@ class MemoryService:
             }
             
             # Using add() allows auto-ID generation
-            history_ref.add(message_data)
+            await history_ref.add(message_data)
             # logger.debug(f"💾 Message saved for {clean_phone} ({role})")
             
         except Exception as e:
@@ -627,15 +528,14 @@ class MemoryService:
             
             # Query: Order by timestamp DESC to get recent, then reverse list
             query = history_ref.order_by("timestamp", direction=firestore.Query.DESCENDING).limit(limit)
-            docs = query.stream()
+            docs_stream = query.stream()
             
             messages = []
-            for doc in docs:
+            async for doc in docs_stream:
                 data = doc.to_dict()
                 messages.append({
                     "role": data.get("role"),
                     "content": data.get("content"),
-                    # Add timestamp for potential time-based logic (last 30m)
                     "timestamp": data.get("timestamp")
                 })
             
@@ -660,16 +560,16 @@ class MemoryService:
             
             # Batch delete
             batch = self._db.batch()
-            docs = history_ref.stream()
+            docs_stream = history_ref.stream()
             count = 0
-            for doc in docs:
+            async for doc in docs_stream:
                 batch.delete(doc.reference)
                 count += 1
                 if count >= 400: # Firestore limit
-                    batch.commit()
+                    await batch.commit()
                     batch = self._db.batch()
                     count = 0
-            batch.commit()
+            await batch.commit()
             
             logger.info(f"🧠 AI Memory cleared for {clean_phone}")
             return True
@@ -680,7 +580,7 @@ class MemoryService:
 # Singleton instance (will be initialized in main.py with db)
 memory_service: Optional["MemoryService"] = None
 
-def init_memory_service(db: firestore.Client) -> None:
+def init_memory_service(db: firestore.AsyncClient) -> None:
     """
     Initialize the global memory service instance.
 

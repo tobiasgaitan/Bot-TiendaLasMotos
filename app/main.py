@@ -42,9 +42,13 @@ async def lifespan(app: FastAPI):
         logger.info("🔐 Retrieving credentials from Secret Manager...")
         credentials = get_firebase_credentials_object()
         
-        # 2. Initialize Firestore client
-        logger.info("🔥 Initializing Firestore client...")
+        # 2. Initialize Firestore clients (Dual-Client Adapter v6.9.7)
+        logger.info("🔥 Initializing Firestore clients (Dual-Mode)...")
         db = firestore.Client(
+            project=settings.gcp_project_id,
+            credentials=credentials
+        )
+        db_async = firestore.AsyncClient(
             project=settings.gcp_project_id,
             credentials=credentials
         )
@@ -70,16 +74,17 @@ async def lifespan(app: FastAPI):
         app.state.config_loader = config_loader
         app.state.finance_config_loader = finance_config_loader
         app.state.db = db
+        app.state.db_async = db_async
         
         # 5. Initialize Cloud Storage
         logger.info("☁️  Initializing Cloud Storage...")
         storage_service.initialize(credentials)
         
-        # 6. Initialize Memory Service for CRM Integration
-        logger.info("🧠 Initializing Memory Service...")
+        # 6. Initialize Memory Service for CRM Integration (ASYNC ONLY)
+        logger.info("🧠 Initializing Memory Service (Async)...")
         try:
-            init_memory_service(db)
-            logger.info("✅ Memory Service initialized successfully")
+            init_memory_service(db_async)
+            logger.info("✅ Memory Service initialized successfully with AsyncClient")
         except Exception as mem_error:
             logger.error(f"❌ Failed to initialize Memory Service: {str(mem_error)}", exc_info=True)
             logger.warning("⚠️  Bot will continue without CRM memory integration")
