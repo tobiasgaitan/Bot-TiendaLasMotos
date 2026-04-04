@@ -157,6 +157,61 @@ class ConfigService:
         Get partners/entities configuration.
         """
         return self._partners_config or {}
+
+    def get_registration_cost(self, cc: Optional[int] = None, category: Optional[str] = None) -> int:
+        """
+        Retrieve registration and SOAT cost from financial configuration.
+        
+        Mandato v6.8.0 CP-002: 
+        - Access is O(1) from memory-cached _financial_config.
+        - Strict No-Assumption: Returns 0 if no match is found.
+        
+        Args:
+            cc: Cylinder capacity in cc
+            category: Motorcycle category (e.g. ELECTRICA)
+            
+        Returns:
+            int: The registrationCredit amount or 0 if matching fails.
+        """
+        try:
+            if not self._financial_config:
+                logger.error("❌ Global params not loaded in memory")
+                return 0
+                
+            rows = self._financial_config.get("rows", [])
+            if not rows:
+                logger.error("❌ No registration rows found in financial_config")
+                return 0
+                
+            # Normalize inputs
+            norm_category = str(category or "").upper().strip()
+            
+            # 1. Match by specific category (Special cases: ELECTRICA, MOTOCARRO)
+            for row in rows:
+                row_cat = str(row.get("category") or "").upper().strip()
+                if row_cat and norm_category == row_cat:
+                    cost = int(row.get("registrationCredit", 0))
+                    logger.debug(f"✅ Match by Category: {norm_category} -> ${cost}")
+                    return cost
+            
+            # 2. Match by Cylinder Capacity (CC)
+            if cc is not None:
+                for row in rows:
+                    min_cc = int(row.get("minCC", 0))
+                    max_cc = int(row.get("maxCC", 99999))
+                    
+                    if min_cc <= cc <= max_cc:
+                        cost = int(row.get("registrationCredit", 0))
+                        logger.debug(f"✅ Match by CC Range: {min_cc}-{max_cc} ({cc}cc) -> ${cost}")
+                        return cost
+            
+            # 3. Fallback: Log Error (Violation to No-Assumption Policy)
+            logger.error(f"⚠️ [MANDATO v6.8.0] Fallo de Match: Falta CC o Categoría para calcular costo de trámite (CC: {cc}, Cat: {category})")
+            return 0
+            
+        except Exception as e:
+            logger.error(f"❌ Error indexing registration matrix: {str(e)}")
+            return 0
     
     def refresh(self) -> None:
         """

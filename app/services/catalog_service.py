@@ -142,6 +142,33 @@ class CatalogService:
                 raw_specs = data.get("fichatecnica") or data.get("ficha_tecnica") or data.get("specs")
                 specs = self._parse_specs(raw_specs)
 
+                # --- EXTRACCIÓN DE CILINDRAJE (Audit v6.8.0) ---
+                # Why: Required to fetch the correct registration cost from ConfigService.
+                # Must be a numeric value for range matching.
+                cc = None
+                if isinstance(raw_specs, dict):
+                    # Priority 1: Generic 'cilindraje' field in specs
+                    cc_raw = raw_specs.get("cilindraje") or raw_specs.get("displacement")
+                    if cc_raw:
+                        try:
+                            # Extract numeric part (e.g., "160 cc" -> 160)
+                            cc_match = re.search(r'(\d+)', str(cc_raw))
+                            if cc_match:
+                                cc = int(cc_match.group(1))
+                        except (ValueError, TypeError):
+                            pass
+                
+                # Priority 2: Direct field in data (if available)
+                if cc is None:
+                    cc_val = data.get("cilindraje") or data.get("cc")
+                    if cc_val:
+                        try:
+                            cc_match = re.search(r'(\d+)', str(cc_val))
+                            if cc_match:
+                                cc = int(cc_match.group(1))
+                        except (ValueError, TypeError):
+                            pass
+
                 # --- Build Rich Searchable Corpus ---
                 # Why: Concatenating categories, tech specs, tags, and promotional data 
                 # resolving the "search blindness" issue for non-name queries (like displacement)
@@ -198,9 +225,9 @@ class CatalogService:
                     "description": data.get("descripcion", data.get("description", "")),
                     "specs": specs,
                     "link": link,
-                    "search_tags": search_tags,
                     "search_tokens": item_search_tokens,
-                    "search_text": item_search_text
+                    "search_text": item_search_text,
+                    "cc": cc  # Store numeric CC for late-binding financial logic
                 }
 
                 self._items.append(mapped_item)
@@ -411,14 +438,32 @@ class CatalogService:
         # prevents prompt inflation and keeps the context window focused.
         unique_results = []
         seen_ids = set()
+        
+        # Access config_service for registration costs
+        from app.services.config_service import config_service
+        
         for _, item in scored_results:
             if item["id"] not in seen_ids:
+                # --- PRICE CONSOLIDATION (Audit v6.8.0) ---
+                # Mandato de Oficio: Summation occurs in backend. AI is prohibited.
+                base_price = item.get("price", 0)
+                cc = item.get("cc")
+                category = item.get("category")
+                
+                # Fetch registration cost from memory-cached config (O(1))
+                reg_cost = config_service.get_registration_cost(cc=cc, category=category)
+                total_price = base_price + reg_cost
+                
+                # Build formatted price with mandatory legal disclaimer
+                # Strict Rule: No assumptions, logic handles reg_cost=0 naturally.
+                formatted_w_soat = f"${total_price:,.0f} (incluye SOAT, Matrícula, y tramites)".replace(",", ".")
+                
                 # Truncate according to objective: Name, Price, Category, Image URL, and 10-word summary
                 truncated_item = {
                     "name": item.get("name"),
-                    "price": item.get("formatted_price"), # For compatibility with literal user request
-                    "raw_price": item.get("price"), # Numeric for logic calculations
-                    "formatted_price": item.get("formatted_price"), # For compatibility with ai_brain.py
+                    "price": formatted_w_soat, 
+                    "raw_price": total_price, 
+                    "formatted_price": formatted_w_soat,
                     "category": item.get("category", "Moto"),
                     "image_url": item.get("image_url"),
                     "summary": self._summarize(item.get("description", ""))
