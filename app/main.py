@@ -98,6 +98,11 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("👋 Shutting down Auteco Las Motos Backend...")
+    from app.services.memory_service import memory_service
+    if memory_service:
+        await memory_service.shutdown()
+    else:
+        logger.warning("⚠️ MemoryService not initialized, skipping shutdown flush.")
 
 
 # Create FastAPI application
