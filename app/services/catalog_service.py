@@ -142,32 +142,10 @@ class CatalogService:
                 raw_specs = data.get("fichatecnica") or data.get("ficha_tecnica") or data.get("specs")
                 specs = self._parse_specs(raw_specs)
 
-                # --- EXTRACCIÓN DE CILINDRAJE (Audit v6.8.0) ---
-                # Why: Required to fetch the correct registration cost from ConfigService.
-                # Must be a numeric value for range matching.
-                cc = None
-                if isinstance(raw_specs, dict):
-                    # Priority 1: Generic 'cilindraje' field in specs
-                    cc_raw = raw_specs.get("cilindraje") or raw_specs.get("displacement")
-                    if cc_raw:
-                        try:
-                            # Extract numeric part (e.g., "160 cc" -> 160)
-                            cc_match = re.search(r'(\d+)', str(cc_raw))
-                            if cc_match:
-                                cc = int(cc_match.group(1))
-                        except (ValueError, TypeError):
-                            pass
-                
-                # Priority 2: Direct field in data (if available)
-                if cc is None:
-                    cc_val = data.get("cilindraje") or data.get("cc")
-                    if cc_val:
-                        try:
-                            cc_match = re.search(r'(\d+)', str(cc_val))
-                            if cc_match:
-                                cc = int(cc_match.group(1))
-                        except (ValueError, TypeError):
-                            pass
+                # --- EXTRACCIÓN DE CILINDRAJE (Audit v6.9.0) ---
+                # Why: DisplacementExtractorV2 - Robust extraction for registration costs.
+                # Normalizes "159.7 CC", 159.7, or "CILINDRAJE" (Upper) into int(159).
+                cc = self._extract_cc(data)
 
                 # --- Build Rich Searchable Corpus ---
                 # Why: Concatenating categories, tech specs, tags, and promotional data 
@@ -490,6 +468,43 @@ class CatalogService:
         if len(words) <= max_words:
             return clean_text
         return " ".join(words[:max_words]) + "..."
+
+    def _extract_cc(self, data: Dict[str, Any]) -> int:
+        """
+        [MANDATO v6.9.0] DisplacementExtractorV2
+        Multi-layer extraction with case-insensitive search and float truncation.
+        """
+        def find_in_dict(d: Any, keys: List[str]) -> Any:
+            if not isinstance(d, dict): return None
+            # Case-insensitive mapping
+            d_lower = {str(k).lower(): v for k, v in d.items()}
+            for k in keys:
+                if k in d_lower: return d_lower[k]
+            return None
+
+        try:
+            # Phase 1: Search root
+            cc_val = find_in_dict(data, ["displacement", "cilindraje", "cc"])
+            
+            # Phase 2: Search fichatecnica
+            if cc_val is None:
+                ft = data.get("fichatecnica") or data.get("ficha_tecnica") or {}
+                cc_val = find_in_dict(ft, ["cilindraje", "displacement", "cc", "rango cilindraje"])
+
+            if cc_val is None:
+                return 0
+
+            # Phase 3: Regex strict extraction (r'\d+(?:\.\d+)?')
+            # Why: Ensures 159.7 CC -> 159.7 and prevents ValueError on int()
+            match = re.search(r'\d+(?:\.\d+)?', str(cc_val))
+            if match:
+                # Phase 4: float -> int (Truncate as per Legal Requirement)
+                return int(float(match.group(0)))
+            
+            return 0
+        except Exception as e:
+            logger.error(f"⚠️ Error extracting CC: {str(e)}")
+            return 0
 
     def _apply_scoring_adaptor(self, item: Dict[str, Any], query_tokens: List[str], current_score: float, is_identity_match: bool) -> float:
         """
