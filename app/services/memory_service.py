@@ -163,13 +163,12 @@ class MemoryService:
                 previous_moto_interest=moto_interest_prev
             )
             
-            # 2. Firestore Persistence (Async wrapper)
-            # Tracked via _track_task to ensure shutdown safety
-            self._track_task(self.update_prospect_summary(
+            # 2. Firestore Persistence (Blocking Await for Data Integrity)
+            await self.update_prospect_summary(
                 phone_number, 
                 summary_data.get("summary", ""), 
                 summary_data.get("extracted", {})
-            ))
+            )
             
             logger.info(f"✅ Successfully updated prospect summary for {phone_number}")
             
@@ -294,24 +293,36 @@ class MemoryService:
             s_val = str(val).strip().lower()
             return s_val not in ["", "null", "none", "n/a", "undefined"]
 
-        # 1. Map and Merge String/Content Fields
+        # List of fields that once True, must never revert to False (Legal/Business Guardrails)
+        latch_fields = ["habeas_data_sent", "habeasData", "moto_confirmada", "gas_natural"]
+
+        # 1. Map and Merge with Destructive Mutation (Sanitization)
         for ai_key, db_key in field_mapping.items():
-            new_val = incoming.get(ai_key)
-            existing_val = current.get(db_key)
-            
-            if is_valid(new_val):
-                merged[db_key] = new_val  # PERSISTENCIA EN LLAVE CORRECTA
-            elif is_valid(existing_val):
+            if ai_key in incoming:
+                # [JSON Voorhees v6.9.3] Destructive pop to prevent context bleeding
+                val = incoming.pop(ai_key)
+                
+                # Boolean Casting for Legal compliance
+                if db_key == "habeasData":
+                    val = bool(val)
+
+                # Applying LATCH_TRUE_ONLY logic during mapping if applicable
+                if db_key in latch_fields:
+                    if current.get(db_key) is True:
+                        merged[db_key] = True
+                    else:
+                        merged[db_key] = val
+                elif is_valid(val):
+                    merged[db_key] = val
+            elif is_valid(current.get(db_key)):
                 pass # Preserve historic valid data
 
-        # 2. Boolean/Latch Fields (LATCH_TRUE_ONLY)
-        latch_fields = ["habeas_data_sent", "habeas_data_accepted", "moto_confirmada", "gas_natural"]
+        # 2. Process Remaining Latch Fields (not in field_mapping, e.g. habeas_data_sent)
         for field in latch_fields:
-            new_val = incoming.get(field)
-            existing_val = current.get(field, False)
-            
-            if new_val is not None:
-                if existing_val and not new_val:
+            if field in incoming:
+                new_val = incoming.get(field)
+                existing_val = current.get(field, False)
+                if existing_val is True:
                     merged[field] = True
                 else:
                     merged[field] = new_val

@@ -12,36 +12,35 @@ def test_merge_strategy_preserve_historic_valid(memory_service):
     """
     Test Rule: PRESERVE_IF_HISTORIC_VALID
     Incoming null/empty does NOT overwrite existing valid data.
-    Uses English keys for Firestore.
     """
     current_data = {
-        "name": "Juan Pablo",
-        "city": "Medellín",
-        "payment_method": "Crédito"
+        "nombre": "Juan Pablo",
+        "ciudad": "Medellín",
+        "forma_pago": "Crédito"
     }
     
     # AI extracts name but forgets city and payment method
     incoming_extracted = {
-        "name": "Juan Pablo Garcés",
-        "city": None,
-        "payment_method": ""
+        "nombre": "Juan Pablo Garcés",
+        "ciudad": None,
+        "forma_pago": ""
     }
     
     merged = memory_service._merge_extracted_data(current_data, incoming_extracted)
     
-    # 'name' translated to 'nombre'
     assert merged["nombre"] == "Juan Pablo Garcés"
-    # 'city' and 'payment_method' should NOT be in merged (preserving current Firestore values)
+    # city and payment_method should NOT be in merged (preserving current Firestore values)
     assert "ciudad" not in merged
     assert "forma_pago" not in merged
 
 def test_merge_strategy_latch_true_only(memory_service):
     """
-    Test Rule: LATCH_TRUE_ONLY
+    Test Rule: LATCH_TRUE_ONLY (v6.9.3)
     Boolean flags cannot transition from True to False.
+    Verify transition to canonical keys (habeasData).
     """
     current_data = {
-        "habeas_data_accepted": True,
+        "habeasData": True,
         "habeas_data_sent": True,
         "moto_confirmada": False
     }
@@ -55,21 +54,44 @@ def test_merge_strategy_latch_true_only(memory_service):
     
     merged = memory_service._merge_extracted_data(current_data, incoming_extracted)
     
-    # Latch should keep them True
-    assert merged["habeas_data_accepted"] is True
-    # moto_confirmada should upgrade to True
+    # Latch should keep them True in the canonical field
+    assert merged["habeasData"] is True
+    # 'habeas_data_accepted' must be POPPED (Destructive Mutation)
+    assert "habeas_data_accepted" not in merged
+    # 'moto_confirmada' should upgrade to True
     assert merged["moto_confirmada"] is True
 
-def test_merge_strategy_full_mapping_english(memory_service):
+def test_merge_strategy_pop_destructive(memory_service):
     """
-    Tests that all keys are correctly handled using English nomenclature.
+    Verify that ALL mapped keys are popped from the incoming dict to prevent bleeding.
+    """
+    incoming = {
+        "habeas_data_accepted": True,
+        "servicios_publicos": "gas_natural"
+    }
+    current = {}
+    
+    merged = memory_service._merge_extracted_data(current, incoming)
+    
+    # Check canonical keys exist
+    assert merged["habeasData"] is True
+    assert merged["serviciosPublicos"] == "gas_natural"
+    
+    # Check legacy/source keys are gone from result
+    assert "habeas_data_accepted" not in merged
+    assert "servicios_publicos" not in merged
+
+
+def test_merge_strategy_full_mapping_spanish(memory_service):
+    """
+    Tests that all keys are correctly handled using target nomenclature.
     """
     current_data = {}
     incoming_extracted = {
-        "name": "Test User",
-        "city": "Bogotá",
+        "nombre": "Test User",
+        "ciudad": "Bogotá",
         "moto_interest": "TVS Apache",
-        "payment_method": "Contado",
+        "forma_pago": "Contado",
         "ocupacion": "Ingeniero",
         "datacredito": "Aprobado",
         "vivienda": "Propia",
@@ -89,20 +111,21 @@ def test_merge_strategy_full_mapping_english(memory_service):
     assert merged["datacredito"] == "Aprobado"
     assert merged["moto_competidor"] == "Honda CB 125"
 
-def test_is_valid_helper_logic_english(memory_service):
+def test_is_valid_helper_logic(memory_service):
     """
     Tests the internal is_valid logic inside _merge_extracted_data.
     """
-    current = {"name": "Existing"}
+    current = {"nombre": "Existing"}
     
-    case_invalid = {"name": "null"}
+    case_invalid = {"nombre": "null"}
     merged_invalid = memory_service._merge_extracted_data(current, case_invalid)
-    assert "name" not in merged_invalid
+    assert "nombre" not in merged_invalid
     
-    case_empty = {"name": "  "}
+    case_empty = {"nombre": "  "}
     merged_empty = memory_service._merge_extracted_data(current, case_empty)
-    assert "name" not in merged_empty
+    assert "nombre" not in merged_empty
     
-    case_valid = {"name": "Juan"}
+    case_valid = {"nombre": "Juan"}
     merged_valid = memory_service._merge_extracted_data(current, case_valid)
     assert merged_valid["nombre"] == "Juan"
+
