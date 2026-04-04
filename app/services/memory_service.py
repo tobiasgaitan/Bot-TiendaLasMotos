@@ -4,7 +4,8 @@ Handles prospect data retrieval and conversation summary updates in Firestore.
 """
 
 import logging
-from typing import Dict, Any, Optional
+import asyncio
+from typing import Dict, Any, Optional, Set
 from google.cloud import firestore
 from app.core.utils import PhoneNormalizer
 
@@ -33,7 +34,35 @@ class MemoryService:
             db: Firestore client instance
         """
         self._db = db
-        logger.info("🧠 MemoryService initialized")
+        self._pending_tasks: Set[asyncio.Task] = set()
+        logger.info("🧠 MemoryService initialized with Task Tracker (v6.9.2)")
+
+    def _track_task(self, coro) -> asyncio.Task:
+        """
+        Register a coroutine as a tracked task to ensure visibility during shutdown.
+        """
+        task = asyncio.create_task(coro)
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+        return task
+
+    async def shutdown(self, timeout: int = 8) -> None:
+        """
+        Graceful Shutdown Mechanism (Atomic Persistence Flush).
+        Waits for all tracked tasks to complete before allowing process termination.
+        """
+        if not self._pending_tasks:
+            logger.info("👋 [SHUTDOWN] No pending persistence tasks. Closing cleanly.")
+            return
+
+        logger.info(f"⏳ [SHUTDOWN] Flushing {len(self._pending_tasks)} pending persistence tasks (Timeout: {timeout}s)...")
+        try:
+            await asyncio.wait_for(asyncio.gather(*self._pending_tasks, return_exceptions=True), timeout=timeout)
+            logger.info("✅ [SHUTDOWN] All persistence tasks flushed successfully.")
+        except asyncio.TimeoutError:
+            logger.warning(f"⚠️ [SHUTDOWN] Persistence flush timed out after {timeout}s. {len(self._pending_tasks)} tasks lost.")
+        except Exception as e:
+            logger.error(f"❌ [SHUTDOWN] Error during persistence flush: {e}")
 
     def _find_prospect_ref(self, phone_number: str) -> Optional[firestore.DocumentReference]:
         """
@@ -135,11 +164,12 @@ class MemoryService:
             )
             
             # 2. Firestore Persistence (Async wrapper)
-            await self.update_prospect_summary(
+            # Tracked via _track_task to ensure shutdown safety
+            self._track_task(self.update_prospect_summary(
                 phone_number, 
                 summary_data.get("summary", ""), 
                 summary_data.get("extracted", {})
-            )
+            ))
             
             logger.info(f"✅ Successfully updated prospect summary for {phone_number}")
             
@@ -248,6 +278,8 @@ class MemoryService:
             "moto_auteco": "moto_auteco",
             "moto_aceptada": "moto_aceptada",
             "moto_confirmada": "moto_confirmada", # New field for v6.6.2
+            "habeas_data_accepted": "habeasData", # [JSON Voorhees v6.9.2]
+            "servicios_publicos": "serviciosPublicos", # [JSON Voorhees v6.9.2]
             "total_tokens_consumed": "total_tokens_consumed",
             "session_cost_usd": "session_cost_usd",
             "doc_cedula_url": "doc_cedula_url",      # v6.7.x
