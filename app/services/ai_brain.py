@@ -1029,7 +1029,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             logger.error(f"Error detecting sentiment: {e}")
             return "NEUTRAL"
 
-    async def generate_summary(self, conversation_text: str, last_bot_question: str = "", session_id: str = "unknown", previous_moto_interest: str = "") -> Dict[str, Any]:
+    async def generate_summary(self, conversation_text: str, last_bot_question: str = "", session_id: str = "unknown", previous_moto_interes: str = "") -> Dict[str, Any]:
         """
         Summarize the conversation and extract structured prospect data (Async).
           forzar al modelo de Gemini a generar un JSON garantizado y determinista, en lugar
@@ -1049,7 +1049,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             y devolverla en un JSON válido según el esquema proporcionado.
 
             REGLAS DE EXTRACCIÓN CRÍTICAS:
-            1. habeas_data_accepted (STRICT NEGATIVE BIAS): 
+            1. habeas_data (STRICT NEGATIVE BIAS): 
                - Solo mapea a `true` si el usuario da una respuesta afirmativa DIRECTA y EXPLÍCITA (ej: "Sí", "Acepto", "Dale", "Listo", "👍") tras el script legal.
                - Si el usuario responde con otra pregunta (ej: "¿qué requisitos hay?") o ambigüedad, DEBE ser `false`.
                - NUNCA asumas aceptación por el simple hecho de continuar la charla.
@@ -1057,7 +1057,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                - Este campo es INMUTABLE contra la competencia. Solo guarda modelos de Tienda Las Motos que el usuario haya aceptado explícitamente comprar o ver.
                - PROHIBIDO guardar marcas de la competencia como Bajaj, Yamaha, Honda, Suzuki, AKT.
                - Si el usuario menciona una marca de la competencia, déjalo en blanco.
-            3. moto_interest: La primera moto por la que preguntó el usuario.
+            3. moto_interes: La primera moto por la que preguntó el usuario.
             4. moto_ofrecida: La moto que el bot recomendó del catálogo (sustituye a moto_offered).
             5. Resumen: Un resumen ejecutivo de la situación del cliente enfocado en su perfil crediticio y moto de interés.
             6. moto_confirmada: 
@@ -1071,8 +1071,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             {last_bot_question}
             
             [REGLA DE PERSISTENCIA - MOTO DE INTERÉS]
-            Moto actual en base de datos: {previous_moto_interest if previous_moto_interest else 'Ninguna'}
-            MANDATO: Si la moto actual NO es 'Ninguna', DEBES volver a incluirla en el campo 'moto_interest' del JSON de respuesta, A MENOS que el usuario pida explícitamente cambiarla en este último chat. BAJO NINGUNA CIRCUNSTANCIA debes dejarla vacía o reemplazarla si el usuario solo está respondiendo a una pregunta o no menciona motos.
+            Moto actual en base de datos: {previous_moto_interes if previous_moto_interes else 'Ninguna'}
+            MANDATO: Si la moto actual NO es 'Ninguna', DEBES volver a incluirla en el campo 'moto_interes' del JSON de respuesta, A MENOS que el usuario pida explícitamente cambiarla en este último chat. BAJO NINGUNA CIRCUNSTANCIA debes dejarla vacía o reemplazarla si el usuario solo está respondiendo a una pregunta o no menciona motos.
             """
             extraction_schema = {
                 "type": "OBJECT",
@@ -1092,7 +1092,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 "type": "STRING",
                                 "description": "Ciudad del cliente (máx 50 caracteres)."
                             },
-                            "moto_interest": {
+                            "moto_interes": {
                                 "type": "STRING",
                                 "description": "La primera moto o estilo por el que preguntó el usuario."
                             },
@@ -1104,7 +1104,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 "type": "STRING",
                                 "description": "La moto que el usuario aceptó explícitamente comprar o conocer más (Inmutable contra competencia)."
                             },
-                            "habeas_data_accepted": {
+                            "habeas_data": {
                                 "type": "BOOLEAN",
                                 "description": "Indica si el usuario aceptó el tratamiento de datos (mapeado de afirmaciones o emojis)."
                             },

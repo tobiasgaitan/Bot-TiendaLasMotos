@@ -110,27 +110,27 @@ class MemoryService:
                     prospect_data = {
                         "nombre": data.get("nombre") or data.get("name") or "",
                         "ciudad": data.get("ciudad") or data.get("city") or "",
-                        "moto_interest": data.get("motoInteres") or data.get("moto_interest"), # Unified
-                        "moto_confirmada": data.get("motoConfirmada") or data.get("moto_confirmada", False),
-                        "forma_pago": data.get("formaPago") or data.get("forma_pago") or "",
-                        "summary": data.get("ai_summary"),
+                        "moto_interes": data.get("moto_interes") or data.get("motoInteres") or data.get("moto_interest", ""), 
+                        "moto_confirmada": data.get("moto_confirmada") or data.get("motoConfirmada", False),
+                        "forma_pago": data.get("forma_pago") or data.get("formaPago") or "",
+                        "summary": data.get("ai_summary") or data.get("summary"),
                         "human_help_requested": data.get("human_help_requested", False),
                         "survey_state": data.get("survey_state"),
                         "exists": True,
                         "habeas_data_sent": data.get("habeas_data_sent", False),
-                        "habeas_data_accepted": data.get("habeasData", data.get("habeas_data_accepted", False)),
-                        "servicios_publicos": data.get("serviciosPublicos", data.get("servicios_publicos", None)),
+                        "habeas_data": data.get("habeas_data") or data.get("habeasData") or data.get("habeas_data_accepted", False),
+                        "servicios_publicos": data.get("servicios_publicos") or data.get("serviciosPublicos", None),
                         "total_tokens_consumed": data.get("total_tokens_consumed", 0),
                         "session_cost_usd": data.get("session_cost_usd", 0.0)
                     }
                     return prospect_data
             
             return {
-                "nombre": "", "ciudad": "", "moto_interest": "",
+                "nombre": "", "ciudad": "", "moto_interes": "",
                 "forma_pago": "", "summary": "",
                 "human_help_requested": False, "survey_state": None, "exists": False,
                 "habeas_data_sent": False, 
-                "habeas_data_accepted": False,
+                "habeas_data": False,
                 "servicios_publicos": None,
                 "total_tokens_consumed": 0, "session_cost_usd": 0.0
             }
@@ -149,16 +149,16 @@ class MemoryService:
         try:
             logger.info(f"🧠 [LINEAR BLOCKING] Starting summary generation for {phone_number}...")
             
-            # --- INYECCIÓN DE CONTEXTO PREVIO (JSON Voorhees v6.6.6) ---
+            # --- INYECCIÓN DE CONTEXTO PREVIO (UNE v7.0.0 Unification) ---
             prospect_data = await self.get_prospect_data(phone_number)
-            moto_interest_prev = prospect_data.get("moto_interest", "") if prospect_data else ""
+            moto_interes_prev = prospect_data.get("moto_interes", "") if prospect_data else ""
 
             # 1. AI Extraction (Async)
             summary_data = await ai_brain.generate_summary(
                 conversation_text, 
                 last_bot_question=last_bot_question,
                 session_id=phone_number,
-                previous_moto_interest=moto_interest_prev
+                previous_moto_interes=moto_interes_prev
             )
             
             # 2. Firestore Persistence (Blocking Await for Data Integrity)
@@ -244,37 +244,15 @@ class MemoryService:
 
     def _merge_extracted_data(self, current: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Applies Non-Destructive Merge Strategy with Nomenclature Translation.
+        Applies Non-Destructive Merge Strategy (UNE v7.0.0).
         
         Rules:
-        - TRANSLATION: Maps AI (English) keys to Firestore (Legacy Spanish/CamelCase) keys.
+        - NO_TRANSLATION: Keys are used directly as provided by the AI (standardized snake_case).
         - PRESERVE_IF_HISTORIC_VALID: Incoming null/empty does NOT overwrite existing valid data.
         - LATCH_TRUE_ONLY: Boolean flags cannot transition from True to False.
         """
         merged = {}
         
-        # MAPA DE TRADUCCIÓN OBLIGATORIO: AI_Key -> Firestore_Legacy_Key
-        field_mapping = {
-            "nombre": "nombre",
-            "ciudad": "ciudad",
-            "moto_interest": "motoInteres",      # [Key Alignment v6.9.6]
-            "moto_ofrecida": "motoOfrecida",      # [Key Alignment v6.9.6]
-            "moto_aceptada": "motoAceptada",      # [Key Alignment v6.9.6]
-            "moto_confirmada": "motoConfirmada",  # [Key Alignment v6.9.6]
-            "forma_pago": "formaPago",            # [Key Alignment v6.9.6]
-            "ocupacion": "ocupacion",
-            "datacredito": "datacredito",
-            "vivienda": "vivienda",
-            "ingresos": "ingresos",
-            "gastos": "gastos",
-            "habeas_data_accepted": "habeasData", # [JSON Voorhees v6.9.2]
-            "servicios_publicos": "serviciosPublicos", # [JSON Voorhees v6.9.2]
-            "total_tokens_consumed": "total_tokens_consumed",
-            "session_cost_usd": "session_cost_usd",
-            "doc_cedula_url": "doc_cedula_url",      
-            "doc_recibo_gas_url": "doc_recibo_gas_url"
-        }
-
         def is_valid(val):
             if val is None: return False
             if isinstance(val, bool): return True
@@ -282,43 +260,34 @@ class MemoryService:
             return s_val not in ["", "null", "none", "n/a", "undefined"]
 
         # List of fields that once True, must never revert to False (Legal/Business Guardrails)
-        latch_fields = ["habeas_data_sent", "habeasData", "moto_confirmada", "gas_natural"]
+        latch_fields = ["habeas_data_sent", "habeas_data", "moto_confirmada", "gas_natural"]
 
-        # 1. Map and Merge with Destructive Mutation (Sanitization)
-        for ai_key, db_key in field_mapping.items():
-            if ai_key in incoming:
-                # [JSON Voorhees v6.9.3] Destructive pop to prevent context bleeding
-                val = incoming.pop(ai_key)
-                
-                # Boolean Casting for Legal compliance
-                if db_key == "habeasData":
-                    val = bool(val)
+        # 1. Merge and Sanitize (Directly using incoming keys)
+        for key, val in incoming.items():
+            # Boolean Casting for critical flags
+            if key == "habeas_data":
+                val = bool(val)
 
-                # [JSON Voorhees v6.9.6] PII Guardrail: Truncate to 50 chars
-                if db_key in ["nombre", "ciudad"] and isinstance(val, str):
-                    val = val[:50].strip()
-                    logger.debug(f"🛡️ PII Guardrail: Truncated {db_key} to 50 chars.")
+            # [JSON Voorhees v6.9.6] PII Guardrail: Truncate to 50 chars
+            if key in ["nombre", "ciudad"] and isinstance(val, str):
+                val = val[:50].strip()
+                logger.debug(f"🛡️ PII Guardrail: Truncated {key} to 50 chars.")
 
-                # Applying LATCH_TRUE_ONLY logic during mapping if applicable
-                if db_key in latch_fields:
-                    if current.get(db_key) is True:
-                        merged[db_key] = True
-                    else:
-                        merged[db_key] = val
-                elif is_valid(val):
-                    merged[db_key] = val
-            elif is_valid(current.get(db_key)):
-                pass # Preserve historic valid data
-
-        # 2. Process Remaining Latch Fields (not in field_mapping, e.g. habeas_data_sent)
-        for field in latch_fields:
-            if field in incoming:
-                new_val = incoming.get(field)
-                existing_val = current.get(field, False)
+            # Apply Merge Logic
+            if key in latch_fields:
+                # Rule: Once True, never False
+                existing_val = current.get(key)
                 if existing_val is True:
-                    merged[field] = True
+                    merged[key] = True
                 else:
-                    merged[field] = new_val
+                    merged[key] = val
+            elif is_valid(val):
+                # Rule: Update only if new value is valid
+                merged[key] = val
+            else:
+                # Rule: Preserve numeric or non-null values if they exist
+                # If we don't handle it here, it won't be in 'merged' and thus not updated.
+                pass
 
         return merged
 
@@ -392,15 +361,15 @@ class MemoryService:
                 "celular": clean_phone,
                 "nombre": "",
                 "ciudad": "",
-                "motoInteres": "", # Mandatory Key Alignment
-                "formaPago": "",
+                "moto_interes": "", # UNE v7.0.0 Standard
+                "forma_pago": "",
                 "chatbot_status": "ACTIVE",
                 "status": "Pendiente",
                 "source": "whatsapp_bot",
                 "human_help_requested": False,
                 "habeas_data_sent": False,
-                "habeasData": False,         # [JSON Voorhees v6.9.4] Canonical Placement
-                "serviciosPublicos": None,   # [JSON Voorhees v6.9.4] Canonical Placement
+                "habeas_data": False,
+                "servicios_publicos": None,
                 "created_at": firestore.SERVER_TIMESTAMP,
             }
             await doc_ref.set(new_data)
