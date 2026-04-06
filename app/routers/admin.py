@@ -366,32 +366,40 @@ async def start_campaign(
             moto = prospect_data.get("moto_interes", "la moto de tus sueños")
             
             # Meta Payload Components
-            components = [
-                {
-                    "type": "body",
-                    "parameters": [
-                        {"type": "text", "text": nombre},
-                        {"type": "text", "text": moto}
-                    ]
-                }
-            ]
+            components = []
+            if template_to_use != "hello_world":
+                components = [
+                    {
+                        "type": "body",
+                        "parameters": [
+                            {"type": "text", "text": nombre},
+                            {"type": "text", "text": moto}
+                        ]
+                    }
+                ]
             
             try:
+                # [CRITICAL: GREETING BOUNCE FIX & PERSISTENCE FIRST] 
+                # Synchronous injection of ghost history to skip greeting detector in whatsapp.py
+                # This ensures that when the user replies, current_history > 1
+                try:
+                    await memory_service.save_message(
+                        phone_id, 
+                        "model", 
+                        f"[SISTEMA: Campaña de Reactivación Enviada - Variante {variant.upper()}]",
+                        blocking=True
+                    )
+                except Exception as db_err:
+                    logger.error(f"❌ Error persisting campaign history for {phone_id}: {str(db_err)}")
+                    errors.append({"phone": phone_id, "error": f"Firestore Error: {str(db_err)}"})
+                    continue
+
                 # [TRANSPORT] Send Meta Template
                 await whatsapp_service.send_template_message(
                     to_phone=phone_id, 
                     template_name=template_to_use,
                     components=components,
                     language_code=request.language
-                )
-                
-                # [CRITICAL: GREETING BOUNCE FIX] 
-                # Synchronous injection of ghost history to skip greeting detector in whatsapp.py
-                # This ensures that when the user replies, current_history > 1
-                await memory_service.save_message(
-                    phone_id, 
-                    "model", 
-                    f"[SISTEMA: Campaña de Reactivación Enviada - Variante {variant.upper()}]"
                 )
                 
                 # Update Firestore Document

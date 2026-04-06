@@ -446,7 +446,7 @@ class MemoryService:
             logger.error(f"❌ Error in nuclear prospect delete for {phone_number}: {e}", exc_info=True)
             return deleted
 
-    async def save_message(self, phone_number: str, role: str, content: str) -> None:
+    async def save_message(self, phone_number: str, role: str, content: str, blocking: bool = False) -> None:
         """
         Save a message to the chat history sub-collection.
         
@@ -456,6 +456,7 @@ class MemoryService:
             phone_number: User's phone number
             role: 'user' or 'model'
             content: Message text
+            blocking: If True, awaits Firestore confirmation. If False, runs track_task.
         """
         try:
             from app.core.utils import PhoneNormalizer
@@ -471,8 +472,12 @@ class MemoryService:
                 "timestamp": firestore.SERVER_TIMESTAMP
             }
             
-            # Using add() allows auto-ID generation
-            await history_ref.add(message_data)
+            # Application of blocking/non-blocking strategy
+            coro = history_ref.add(message_data)
+            if blocking:
+                await coro
+            else:
+                self._track_task(coro)
             # logger.debug(f"💾 Message saved for {clean_phone} ({role})")
             
         except Exception as e:
