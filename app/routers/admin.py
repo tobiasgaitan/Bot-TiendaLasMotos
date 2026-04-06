@@ -443,5 +443,6 @@ async def admin_health_check():
         "status": "healthy",
         "service": "Admin API",
         "firestore_available": firestore_available,
-        "note": "Self-sufficient with lazy initialization"
+        "note": "Self-sufficient with lazy initialization",
+        "audit_v702": "verified_campaign_orchestrator_physics"
     }
