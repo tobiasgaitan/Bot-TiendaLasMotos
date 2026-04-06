@@ -43,6 +43,32 @@ class ResetHandoffResponse(BaseModel):
     status: bool
 
 
+class CampaignRequest(BaseModel):
+    """Request model for mass campaign start."""
+    template_a: str
+    template_b: str
+    language: str = "es_CO"
+    limit: int = 50
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "template_a": "reactivacion_v1_a",
+                "template_b": "reactivacion_v1_b",
+                "language": "es_CO",
+                "limit": 10
+            }
+        }
+
+
+class CampaignResponse(BaseModel):
+    """Response model for campaign status."""
+    success: bool
+    processed: int
+    variants: dict
+    errors: list = []
+
+
 # ============================================================================
 # ROUTER SETUP
 # ============================================================================
@@ -296,6 +322,102 @@ async def refresh_config(
             status_code=500,
             detail=f"Failed to refresh config: {str(e)}"
         )
+
+
+@router.post("/campaign/start", response_model=CampaignResponse)
+async def start_campaign(
+    request: CampaignRequest = Body(...),
+    x_admin_api_key: Optional[str] = Header(None, alias="X-Admin-API-Key")
+):
+    """
+    Orchestrator for Meta Template mass sending with A/B testing and 
+    Greeting Bounce mitigation via synchronous ghost history injection.
+    """
+    # 1. AUTHENTICATION
+    if not x_admin_api_key or x_admin_api_key != settings.admin_api_key:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        from app.services.whatsapp_service import whatsapp_service
+        from app.services.memory_service import memory_service
+        from app.core.utils import PhoneNormalizer
+
+        db = firestore.AsyncClient() # Use AsyncClient for better performance in loops
+        prospectos_ref = db.collection("prospectos")
+        
+        # Query prospects with status 'Pendiente'
+        query = prospectos_ref.where("status", "==", "Pendiente").limit(request.limit)
+        docs = await query.get()
+        
+        processed_count = 0
+        variants_count = {"a": 0, "b": 0}
+        errors = []
+
+        for i, doc in enumerate(docs):
+            prospect_data = doc.to_dict()
+            phone_id = doc.id # Document ID is the 10-digit phone
+            
+            # A/B Logic (50/50 split)
+            variant = "a" if i % 2 == 0 else "b"
+            template_to_use = request.template_a if variant == "a" else request.template_b
+            
+            # Mapping Variables (Name and Moto)
+            nombre = prospect_data.get("nombre", "amigo/a")
+            moto = prospect_data.get("moto_interes", "la moto de tus sueños")
+            
+            # Meta Payload Components
+            components = [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": nombre},
+                        {"type": "text", "text": moto}
+                    ]
+                }
+            ]
+            
+            try:
+                # [TRANSPORT] Send Meta Template
+                await whatsapp_service.send_template_message(
+                    to_phone=phone_id, 
+                    template_name=template_to_use,
+                    components=components,
+                    language_code=request.language
+                )
+                
+                # [CRITICAL: GREETING BOUNCE FIX] 
+                # Synchronous injection of ghost history to skip greeting detector in whatsapp.py
+                # This ensures that when the user replies, current_history > 1
+                await memory_service.save_message(
+                    phone_id, 
+                    "model", 
+                    f"[SISTEMA: Campaña de Reactivación Enviada - Variante {variant.upper()}]"
+                )
+                
+                # Update Firestore Document
+                await doc.reference.update({
+                    "ab_template_sent": f"variante_{variant}",
+                    "status": "Enviado",
+                    "template_timestamp": firestore.SERVER_TIMESTAMP
+                })
+                
+                processed_count += 1
+                variants_count[variant] += 1
+                
+            except Exception as e:
+                logger.error(f"❌ Error processing prospect {phone_id}: {str(e)}")
+                errors.append({"phone": phone_id, "error": str(e)})
+
+        return CampaignResponse(
+            success=True,
+            processed=processed_count,
+            variants=variants_count,
+            errors=errors
+        )
+
+    except Exception as e:
+        logger.error(f"💥 Critical error in campaign orchestrator: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 

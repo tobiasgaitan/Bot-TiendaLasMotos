@@ -113,5 +113,46 @@ class WhatsAppService:
             logger.error(f"💥 Error crítico en send_image_message para {to}: {str(e)}")
             raise
 
+    async def send_template_message(
+        self, 
+        to_phone: str, 
+        template_name: str, 
+        components: list = None, 
+        language_code: str = "es_CO"
+    ) -> Dict[str, Any]:
+        """
+        Sends a WhatsApp template message (Meta API).
+        """
+        # 1. Normalización Atómica (Protocolo Meta)
+        to_phone = PhoneNormalizer.to_international(to_phone)
+        
+        url = f"{self.base_url}/messages"
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_phone,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": language_code},
+            },
+        }
+        
+        if components:
+            payload["template"]["components"] = components
+
+        try:
+            logger.debug(f"📤 Enviando Template a Meta: {payload}")
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, headers=self.headers, json=payload, timeout=15.0)
+                if response.status_code >= 400:
+                    logger.error(f"❌ Error Meta API Template ({response.status_code}): {response.text}")
+                response.raise_for_status()
+                data = response.json()
+                logger.info(f"✅ Template '{template_name}' enviado a {to_phone}")
+                return data
+        except Exception as e:
+            logger.error(f"💥 Error crítico en send_template_message para {to_phone}: {str(e)}")
+            raise
+
 # Singleton instance
 whatsapp_service = WhatsAppService()
