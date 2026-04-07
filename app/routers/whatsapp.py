@@ -822,10 +822,18 @@ def _extract_message_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     except:
         return None
 
-async def _send_whatsapp_message(to_phone: str, message_text: str) -> None:
+async def _send_whatsapp_message(to_phone: str, message_text: str) -> bool:
     """Send WhatsApp message via WhatsAppService."""
     from app.services.whatsapp_service import whatsapp_service
-    await whatsapp_service.send_text_message(to_phone, message_text)
+    try:
+        await whatsapp_service.send_text_message(to_phone, message_text)
+        return True
+    except httpx.HTTPStatusError as e:
+        logger.error(f"❌ Error HTTP ({e.response.status_code}): El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e.response.text}")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Error Genérico: El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e}")
+        return False
 
 async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "") -> bool:
     """Send Image via WhatsAppService."""
@@ -833,14 +841,25 @@ async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "")
     try:
         await whatsapp_service.send_image_message(to_phone, image_url, caption)
         return True
+    except httpx.HTTPStatusError as e:
+        logger.error(f"❌ Error HTTP ({e.response.status_code}): El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e.response.text}")
+        return False
     except Exception as e:
-        logger.error(f"Error in _send_whatsapp_image: {e}")
+        logger.error(f"❌ Error Genérico: El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e}")
         return False
 
-async def _mark_message_as_read(message_id: str) -> None:
+async def _mark_message_as_read(message_id: str) -> bool:
     """Mark as read via WhatsAppService."""
     from app.services.whatsapp_service import whatsapp_service
-    await whatsapp_service.mark_as_read(message_id)
+    try:
+        await whatsapp_service.mark_as_read(message_id)
+        return True
+    except httpx.HTTPStatusError as e:
+        logger.error(f"❌ Error HTTP al marcar como leído ({e.response.status_code}): {e.response.text}")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Error inesperado al marcar como leído: {e}")
+        return False
 
 async def _download_media(media_id: str) -> Optional[bytes]:
     """Download media from WhatsApp."""
