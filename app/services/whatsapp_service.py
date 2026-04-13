@@ -26,14 +26,15 @@ class WhatsAppService:
             "Content-Type": "application/json",
         }
 
-    async def send_text_message(self, to: str, text: str, reply_to_id: Optional[str] = None) -> Dict[str, Any]:
+    async def send_text_message(self, to: str, text: str, reply_to_id: Optional[str] = None, phone_number_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Sends a text message to a WhatsApp user.
         """
         # 1. Normalización Atómica (Protocolo Meta)
         to = PhoneNormalizer.to_international(to)
         
-        url = f"{self.base_url}/messages"
+        target_id = phone_number_id or self.phone_number_id
+        url = f"https://graph.facebook.com/v18.0/{target_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
@@ -41,8 +42,6 @@ class WhatsAppService:
             "type": "text",
             "text": {"preview_url": True, "body": text},
         }
-        
-        if reply_to_id:
             payload["context"] = {"message_id": reply_to_id}
 
         try:
@@ -62,11 +61,12 @@ class WhatsAppService:
             logger.error(f"💥 Error crítico en send_text_message para {to}: {str(e)}")
             raise
 
-    async def mark_as_read(self, msg_id: str) -> bool:
+    async def mark_as_read(self, msg_id: str, phone_number_id: Optional[str] = None) -> bool:
         """
         Marks a specific message as read (Blue check).
         """
-        url = f"{self.base_url}/messages"
+        target_id = phone_number_id or self.phone_number_id
+        url = f"https://graph.facebook.com/v18.0/{target_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
             "status": "read",
@@ -83,14 +83,15 @@ class WhatsAppService:
             logger.error(f"❌ Error marking message {msg_id} as read: {e}")
             return False
 
-    async def send_image_message(self, to: str, image_url: str, caption: Optional[str] = None) -> Dict[str, Any]:
+    async def send_image_message(self, to: str, image_url: str, caption: Optional[str] = None, phone_number_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Sends an image message via URL.
         """
         # 1. Normalización Atómica (Protocolo Meta)
         to = PhoneNormalizer.to_international(to)
         
-        url = f"{self.base_url}/messages"
+        target_id = phone_number_id or self.phone_number_id
+        url = f"https://graph.facebook.com/v18.0/{target_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
@@ -124,7 +125,8 @@ class WhatsAppService:
         to_phone: str, 
         template_name: str, 
         components: list = None, 
-        language_code: str = "es_CO"
+        language_code: str = "es_CO",
+        phone_number_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Sends a WhatsApp template message (Meta API).
@@ -132,7 +134,8 @@ class WhatsAppService:
         # 1. Normalización Atómica (Protocolo Meta)
         to_phone = PhoneNormalizer.to_international(to_phone)
         
-        url = f"{self.base_url}/messages"
+        target_id = phone_number_id or self.phone_number_id
+        url = f"https://graph.facebook.com/v18.0/{target_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
             "to": to_phone,
