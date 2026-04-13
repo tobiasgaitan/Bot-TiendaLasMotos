@@ -55,6 +55,9 @@ class WhatsAppService:
                 data = response.json()
                 logger.info(f"✅ Mensaje enviado a {to} | ID: {data.get('messages', [{}])[0].get('id')}")
                 return data
+        except httpx.HTTPStatusError as e:
+            logger.error(f"❌ HTTP Error en send_text_message para {to} ({e.response.status_code}): {e.response.text}")
+            raise
         except Exception as e:
             logger.error(f"💥 Error crítico en send_text_message para {to}: {str(e)}")
             raise
@@ -109,6 +112,9 @@ class WhatsAppService:
                 data = response.json()
                 logger.info(f"✅ Imagen enviada a {to}")
                 return data
+        except httpx.HTTPStatusError as e:
+            logger.error(f"❌ HTTP Error en send_image_message para {to} ({e.response.status_code}): {e.response.text}")
+            raise
         except Exception as e:
             logger.error(f"💥 Error crítico en send_image_message para {to}: {str(e)}")
             raise
@@ -150,6 +156,9 @@ class WhatsAppService:
                 data = response.json()
                 logger.info(f"✅ Template '{template_name}' enviado a {to_phone}")
                 return data
+        except httpx.HTTPStatusError as e:
+            logger.error(f"❌ HTTP Error en send_template_message para {to_phone} ({e.response.status_code}): {e.response.text}")
+            raise
         except Exception as e:
             logger.error(f"💥 Error crítico en send_template_message para {to_phone}: {str(e)}")
             raise

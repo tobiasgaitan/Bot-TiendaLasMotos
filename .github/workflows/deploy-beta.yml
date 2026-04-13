@@ -1,9 +1,9 @@
-name: Deploy to Cloud Run
+name: Deploy Beta to Cloud Run
 
 on:
   push:
     branches:
-      - main
+      - beta
 
 jobs:
   deploy:
@@ -22,8 +22,9 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy bot-tiendalasmotos \
+          gcloud run deploy bot-tiendalasmotos-beta \
             --source . \
             --region us-central1 \
             --allow-unauthenticated \
-            --project tiendalasmotos
+            --project tiendalasmotos \
+            --set-env-vars="PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos_beta"
