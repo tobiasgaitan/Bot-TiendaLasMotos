@@ -28,7 +28,7 @@ class Settings:
         
         # WhatsApp Configuration - CRITICAL for message sending
         self.whatsapp_token: str = os.getenv("WHATSAPP_TOKEN", "")
-        self.phone_number_id: str = os.getenv("PHONE_NUMBER_ID", "")
+        self.phone_number_id: str = os.getenv("PHONE_NUMBER_ID", "1021779847693778")
         self.webhook_verify_token: str = os.getenv("WEBHOOK_VERIFY_TOKEN", "motos2026")
         
         # Server Configuration

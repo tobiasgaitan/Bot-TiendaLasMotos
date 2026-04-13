@@ -397,9 +397,9 @@ async def start_campaign(
                 # [TRANSPORT] Send Meta Template
                 await whatsapp_service.send_template_message(
                     to_phone=phone_id, 
-                    template_name=template_to_use,
+                    template_name="contactos_impulsa",
                     components=components,
-                    language_code=request.language
+                    language_code="en_US"
                 )
                 
                 # Update Firestore Document
