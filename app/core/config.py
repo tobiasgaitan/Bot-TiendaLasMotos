@@ -27,7 +27,7 @@ class Settings:
         self.admin_api_key: str = os.getenv("ADMIN_API_KEY", "moto_master_2026")
         
         # WhatsApp Configuration - CRITICAL for message sending
-        self.whatsapp_token: str = os.getenv("WHATSAPP_TOKEN", "")
+        self.whatsapp_token: str = os.getenv("WHATSAPP_TOKEN", "***REMOVED***")
         self.phone_number_id: str = os.getenv("PHONE_NUMBER_ID", "1021779847693778")
         self.webhook_verify_token: str = os.getenv("WEBHOOK_VERIFY_TOKEN", "motos2026")
         
