@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request, Query, HTTPException, BackgroundTasks
+from fastapi.responses import PlainTextResponse
 from google.cloud import firestore
 
 from app.core.config import settings
@@ -108,11 +109,11 @@ async def verify_webhook(
     hub_mode: str = Query(alias="hub.mode"),
     hub_verify_token: str = Query(alias="hub.verify_token"),
     hub_challenge: str = Query(alias="hub.challenge"),
-) -> str:
+) -> PlainTextResponse:
     """Verificación del Webhook de Meta"""
     if hub_mode == "subscribe" and hub_verify_token == settings.webhook_verify_token:
         logger.info("✅ Webhook verificado correctamente.")
-        return hub_challenge
+        return PlainTextResponse(content=hub_challenge)
     else:
         logger.error("❌ Token de verificación incorrecto.")
         raise HTTPException(status_code=403, detail="Forbidden")
