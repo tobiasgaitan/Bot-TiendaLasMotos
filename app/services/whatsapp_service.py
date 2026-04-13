@@ -42,6 +42,8 @@ class WhatsAppService:
             "type": "text",
             "text": {"preview_url": True, "body": text},
         }
+        
+        if reply_to_id:
             payload["context"] = {"message_id": reply_to_id}
 
         try:
