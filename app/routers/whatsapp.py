@@ -161,12 +161,13 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         user_phone = PhoneNormalizer.normalize(raw_phone)
         msg_type = msg_data["type"].lower()
         msg_id_unique = msg_data.get("id") or f"{user_phone}_{int(datetime.now().timestamp())}"
+        phone_number_id = msg_data.get("phone_number_id")
 
         # --- PROTOCOLO READ-FIRST (PRIORIDAD 1) ---
         # Marcamos como leído ANTES de cualquier lógica para evitar el 'check gris'
         # y confirmar a Meta que el webhook fue recibido.
         from app.services.whatsapp_service import whatsapp_service
-        await whatsapp_service.mark_as_read(msg_id_unique)
+        await whatsapp_service.mark_as_read(msg_id_unique, phone_number_id=phone_number_id)
         
         # DEBUG LOG for Image Troubleshooting
         logger.info(f"🕵️ DEBUG: Received message {msg_id_unique} from {user_phone} | Type: '{msg_type}'")
@@ -210,7 +211,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 await message_buffer.clear_buffer(user_phone)
                 
                 # 2. Respuesta confirmando el estado limpio
-                await whatsapp_service.send_text_message(user_phone, "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?")
+                await whatsapp_service.send_text_message(user_phone, "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?", phone_number_id=phone_number_id)
                 return 
 
             # Wait for debounce window (3s)
@@ -232,7 +233,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             
         elif msg_type in ["image", "document", "sticker"]:
             logger.info(f"📸 Media detected from {user_phone} (Type: {msg_type}). Processing immediately...")
-            await _mark_message_as_read(msg_data["id"])
+            await _mark_message_as_read(msg_data["id"], phone_number_id=phone_number_id)
             
             # Initialize Vision Service locally if needed
             if db:
@@ -260,7 +261,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     
                     if not media_id:
                         logger.error("❌ Failed to extract media_id from message")
-                        await _send_whatsapp_message(user_phone, "No pude procesar el archivo. 😢")
+                        await _send_whatsapp_message(user_phone, "No pude procesar el archivo. 😢", phone_number_id=phone_number_id)
                         return
 
                     image_bytes = await _download_media(media_id)
@@ -284,7 +285,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                         pd = await memory_service_module.memory_service.get_prospect_data(user_phone)
                                         p_name = pd.get("name") or "amigo"
                                     
-                                    await _send_whatsapp_message(user_phone, f"¡Uy {p_name}! 📸 La foto parece {motivo}. ¿Podrías enviarla de nuevo que se vea bien clarita? Así el banco no nos la rechaza.")
+                                    await _send_whatsapp_message(user_phone, f"¡Uy {p_name}! 📸 La foto parece {motivo}. ¿Podrías enviarla de nuevo que se vea bien clarita? Así el banco no nos la rechaza.", phone_number_id=phone_number_id)
                                     return
 
                                 elif "QUALITY_CHECK: PASSED" in vision_response:
@@ -319,15 +320,15 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                             
                                             prospect = await ms.get_prospect_data(user_phone)
                                             if prospect.get("doc_cedula") and prospect.get("doc_recibo_gas"):
-                                                await _send_whatsapp_message(user_phone, "¡Excelente! Ya tengo todo tu expediente completo. ✅ Un asesor lo revisará en breve.")
+                                                await _send_whatsapp_message(user_phone, "¡Excelente! Ya tengo todo tu expediente completo. ✅ Un asesor lo revisará en breve.", phone_number_id=phone_number_id)
                                             else:
                                                 faltante = "el recibo de gas" if tipo == "CEDULA" else "tu cédula"
                                                 nombre_doc = "cédula" if tipo == "CEDULA" else "recibo de gas"
-                                                await _send_whatsapp_message(user_phone, f"¡Recibida tu {nombre_doc}! ✅ Ya solo me falta {faltante} para terminar.")
+                                                await _send_whatsapp_message(user_phone, f"¡Recibida tu {nombre_doc}! ✅ Ya solo me falta {faltante} para terminar.", phone_number_id=phone_number_id)
                                         return
                                     except Exception as e:
                                         logger.error(f"❌ Error uploading document: {e}")
-                                        await _send_whatsapp_message(user_phone, "Tuve un problemita guardando tu documento. ¿Podrías intentarlo de nuevo?")
+                                        await _send_whatsapp_message(user_phone, "Tuve un problemita guardando tu documento. ¿Podrías intentarlo de nuevo?", phone_number_id=phone_number_id)
                                         return
 
                             # 1. Handle Moto Detection (Legacy / Main Vision Logic)
@@ -362,7 +363,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                     if not final_response:
                                         final_response = "Lo siento, tuve un problema procesando esa información. ¿Podrías repetirme qué buscas?"
                                     
-                                    await _send_whatsapp_message(user_phone, final_response)
+                                    await _send_whatsapp_message(user_phone, final_response, phone_number_id=phone_number_id)
                                     await ms.save_message(user_phone, "user", simulated_user_msg)
                                     await ms.save_message(user_phone, "model", final_response)
                                     return
@@ -396,7 +397,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                     if not final_response:
                                         final_response = "¡Estuvo bueno! 😅 Pero cuéntame, ¿en qué moto estabas pensando?"
                                     
-                                    await _send_whatsapp_message(user_phone, final_response)
+                                    await _send_whatsapp_message(user_phone, final_response, phone_number_id=phone_number_id)
                                     await ms.save_message(user_phone, "user", vision_response)
                                     await ms.save_message(user_phone, "model", final_response)
                                     return
@@ -405,22 +406,22 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                             else:
                                 logger.info("🧠 Fallback text returned from Vision AI.")
                                 response_text = f"🏍️ **Catálogo Auteco Las Motos**\n\n{vision_response}"
-                                await _send_whatsapp_message(user_phone, response_text)
+                                await _send_whatsapp_message(user_phone, response_text, phone_number_id=phone_number_id)
                                 return
 
                         
                         else:
-                            await _send_whatsapp_message(user_phone, "¡Uff! Pero no alcanzo a ver bien los detalles. ¿Me cuentas qué es?")
+                            await _send_whatsapp_message(user_phone, "¡Uff! Pero no alcanzo a ver bien los detalles. ¿Me cuentas qué es?", phone_number_id=phone_number_id)
                     else:
-                        await _send_whatsapp_message(user_phone, "No pude descargar el archivo. Intenta de nuevo.")
+                        await _send_whatsapp_message(user_phone, "No pude descargar el archivo. Intenta de nuevo.", phone_number_id=phone_number_id)
                 except Exception as e:
                     logger.error(f"❌ Error processing media: {e}")
-                    await _send_whatsapp_message(user_phone, "Tuve un problema viendo el archivo. ¿Me cuentas qué es? 😅")
+                    await _send_whatsapp_message(user_phone, "Tuve un problema viendo el archivo. ¿Me cuentas qué es? 😅", phone_number_id=phone_number_id)
             
             return  # EARLY EXIT: Stop processing here
             
         # Marcar como leído locally
-        await _mark_message_as_read(msg_data["id"]) 
+        await _mark_message_as_read(msg_data["id"], phone_number_id=phone_number_id) 
 
         # 1.5 Save User Message to History (PERSISTENCE FIX)
         if memory_service_module.memory_service:
@@ -441,7 +442,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 logger.error(f"❌ Error refreshing catalog: {e}")
                 confirm_msg = f"❌ Error al actualizar el catálogo: {str(e)}"
                 
-            await _send_whatsapp_message(user_phone, confirm_msg)
+            await _send_whatsapp_message(user_phone, confirm_msg, phone_number_id=phone_number_id)
             return
 
         # 2. Gestión de Sesión
@@ -665,7 +666,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             if response_text.startswith("HANDOFF_TRIGGERED"):
                 if memory_service_module.memory_service:
                     await memory_service_module.memory_service.set_human_help_status(user_phone, True)
-                await _send_whatsapp_message(user_phone, "Te voy a transferir con un compañero para que te ayude con esto. Dame un momento...")
+                await _send_whatsapp_message(user_phone, "Te voy a transferir con un compañero para que te ayude con esto. Dame un momento...", phone_number_id=phone_number_id)
                 try:
                     from app.services.notification_service import notification_service
                     await notification_service.notify_human_handoff(user_phone, "ai_trigger")
@@ -704,7 +705,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                         # Caption v6.3.1: "Mira esta [Moto]"
                                         caption = f"Mira esta {moto_name}\n\n{response_text}"
                                         logger.info(f"📸 Sending Phase-Gate dynamic image: {image_url} for {moto_name}")
-                                        await _send_whatsapp_image(user_phone, image_url, caption=caption)
+                                        await _send_whatsapp_image(user_phone, image_url, caption=caption, phone_number_id=phone_number_id)
                                         
                                         # Save to history and stop
                                         if memory_service_module.memory_service:
@@ -748,16 +749,16 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                         caption = caption[:split_idx].strip()
                     
                     logger.info(f"📸 Strategy A (Caption): url={image_url}")
-                    await _send_whatsapp_image(user_phone, image_url, caption=caption)
+                    await _send_whatsapp_image(user_phone, image_url, caption=caption, phone_number_id=phone_number_id)
                     
                     if overflow_text:
                         logger.info(f"📤 Sending overflow text ({len(overflow_text)} chars)")
-                        await _send_whatsapp_message(user_phone, overflow_text)
+                        await _send_whatsapp_message(user_phone, overflow_text, phone_number_id=phone_number_id)
                     
                     # Store the cleaned text for history to avoid raw markdown clutter
                     response_text = cleaned_response_text 
                 else:
-                    await _send_whatsapp_message(user_phone, response_text)
+                    await _send_whatsapp_message(user_phone, response_text, phone_number_id=phone_number_id)
                 
                 # Save Bot Response to History (PERSISTENCE FIX)
                 if memory_service_module.memory_service:
@@ -783,13 +784,16 @@ def _is_valid_message(payload: Dict[str, Any]) -> bool:
 
 def _extract_message_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     try:
-        msg = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+        value = payload["entry"][0]["changes"][0]["value"]
+        msg = value["messages"][0]
+        metadata = value.get("metadata", {})
         msg_type = msg["type"]
         data = {
             "from": msg["from"],
             "id": msg["id"],
             "timestamp": msg["timestamp"],
             "type": msg_type,
+            "phone_number_id": metadata.get("phone_number_id"),
         }
         if msg_type == "text":
             data["text"] = msg["text"]["body"]
@@ -823,11 +827,11 @@ def _extract_message_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     except:
         return None
 
-async def _send_whatsapp_message(to_phone: str, message_text: str) -> bool:
+async def _send_whatsapp_message(to_phone: str, message_text: str, phone_number_id: Optional[str] = None) -> bool:
     """Send WhatsApp message via WhatsAppService."""
     from app.services.whatsapp_service import whatsapp_service
     try:
-        await whatsapp_service.send_text_message(to_phone, message_text)
+        await whatsapp_service.send_text_message(to_phone, message_text, phone_number_id=phone_number_id)
         return True
     except httpx.HTTPStatusError as e:
         logger.error(f"❌ Error HTTP ({e.response.status_code}): El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e.response.text}")
@@ -836,11 +840,11 @@ async def _send_whatsapp_message(to_phone: str, message_text: str) -> bool:
         logger.error(f"❌ Error Genérico: El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e}")
         return False
 
-async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "") -> bool:
+async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "", phone_number_id: Optional[str] = None) -> bool:
     """Send Image via WhatsAppService."""
     from app.services.whatsapp_service import whatsapp_service
     try:
-        await whatsapp_service.send_image_message(to_phone, image_url, caption)
+        await whatsapp_service.send_image_message(to_phone, image_url, caption, phone_number_id=phone_number_id)
         return True
     except httpx.HTTPStatusError as e:
         logger.error(f"❌ Error HTTP ({e.response.status_code}): El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e.response.text}")
@@ -849,11 +853,11 @@ async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "")
         logger.error(f"❌ Error Genérico: El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e}")
         return False
 
-async def _mark_message_as_read(message_id: str) -> bool:
+async def _mark_message_as_read(message_id: str, phone_number_id: Optional[str] = None) -> bool:
     """Mark as read via WhatsAppService."""
     from app.services.whatsapp_service import whatsapp_service
     try:
-        await whatsapp_service.mark_as_read(message_id)
+        await whatsapp_service.mark_as_read(message_id, phone_number_id=phone_number_id)
         return True
     except httpx.HTTPStatusError as e:
         logger.error(f"❌ Error HTTP al marcar como leído ({e.response.status_code}): {e.response.text}")
