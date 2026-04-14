@@ -403,7 +403,7 @@ async def start_campaign(
                     to_phone=phone_id, 
                     template_name="contactos_impulsa",
                     components=components,
-                    language_code="en_US"
+                    language_code=request.language
                 )
                 
                 # Update Firestore Document
