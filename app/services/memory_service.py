@@ -418,6 +418,7 @@ class MemoryService:
     async def delete_prospect_completely(self, phone_number: str) -> int:
         """
         Nuclear wipe of a prospect and their history (ASYNC).
+        Handles multi-format schema matches for frontend CRM compatibility.
         """
         try:
             deleted = 0
@@ -433,12 +434,37 @@ class MemoryService:
             except Exception as e:
                 logger.warning(f"⚠️ Failed to purge mensajeria session for {clean_phone}: {e}")
             
-            # --- 2. PURGE PROSPECT DATA (CRM) ---
-            doc_ref = await self._find_prospect_ref(phone_number)
-            if doc_ref:
-                history_ref = doc_ref.collection("historial")
+            # --- 2. PURGE PROSPECT DATA (CRM MULTI-SCAN) ---
+            prospectos_ref = self._db.collection("prospectos")
+            refs_to_delete = {}
+            
+            # A) Búsqueda Legacy (Por ID directo)
+            doc_ref = prospectos_ref.document(clean_phone)
+            doc_snap = await doc_ref.get()
+            if doc_snap.exists:
+                refs_to_delete[doc_ref.id] = doc_ref
+                
+            # B) Búsqueda Nativa (Inyección Frontend)
+            raw_target = str(phone_number).strip()
+            variaciones = [raw_target, clean_phone, f"+{raw_target}"]
+            if clean_phone:
+                variaciones.extend([f"+57{clean_phone}", f"57{clean_phone}"])
+                
+            # Filtrar y dedup (límite de Firestore es 10 para IN array)
+            variaciones_unicas = list(set([v for v in variaciones if v]))[:10]
+            
+            if variaciones_unicas:
+                query = prospectos_ref.where("celular", "in", variaciones_unicas)
+                docs = await query.get()
+                for doc in docs:
+                    refs_to_delete[doc.id] = doc.reference
+                    
+            # C) Aniquilación Atómica
+            for ref_id, ref in refs_to_delete.items():
+                logger.info(f"🧹 [NUCLEAR WIPE] Removing Document & Histories for CRM record {ref_id}")
+                history_ref = ref.collection("historial")
                 count = await self._delete_collection_batched(history_ref)
-                await doc_ref.delete()
+                await ref.delete()
                 deleted += count + 1
 
             return deleted
