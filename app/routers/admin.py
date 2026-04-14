@@ -355,7 +355,11 @@ async def start_campaign(
 
         for i, doc in enumerate(docs):
             prospect_data = doc.to_dict()
-            phone_id = doc.id # Document ID is the 10-digit phone
+            phone_id = prospect_data.get("celular")
+            
+            if not phone_id:
+                logger.error(f"❌ Documento {doc.id} no posee campo celular. Omitiendo.")
+                continue
             
             # A/B Logic (50/50 split)
             variant = "a" if i % 2 == 0 else "b"
