@@ -150,11 +150,16 @@ class WhatsAppService:
         
         if components:
             # Lógica de auto-formateo del wrapper (Detectar strings planos vs JSON)
-            if all(isinstance(c, str) for c in components):
+            if all(isinstance(c, str) or c is None for c in components):
+                parameters = []
+                for c in components:
+                    safe_text = str(c).strip() if c else "tu consulta"
+                    parameters.append({"type": "text", "text": safe_text})
+                    
                 payload["template"]["components"] = [
                     {
                         "type": "body",
-                        "parameters": [{"type": "text", "text": c} for c in components]
+                        "parameters": parameters
                     }
                 ]
             else:
