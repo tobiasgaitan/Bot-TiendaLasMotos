@@ -365,8 +365,12 @@ async def start_campaign(
             variant = "a" if i % 2 == 0 else "b"
             template_to_use = request.template_a if variant == "a" else request.template_b
             
-            # La plantilla contactos_impulsa es estática, se retiran los componentes crudos
-            components = None
+            # Mapping Variables
+            prospect_name = prospect_data.get("nombre", "Cliente")
+            moto_model = prospect_data.get("moto_interes", "la moto de tus sueños")
+            
+            # Componentes posicionales para la plantilla contactos_impulsa
+            components = [prospect_name, moto_model]
             
             try:
                 # [CRITICAL: GREETING BOUNCE FIX & PERSISTENCE FIRST] 

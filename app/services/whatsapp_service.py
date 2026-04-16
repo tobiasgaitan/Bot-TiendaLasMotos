@@ -149,7 +149,16 @@ class WhatsAppService:
         }
         
         if components:
-            payload["template"]["components"] = components
+            # Lógica de auto-formateo del wrapper (Detectar strings planos vs JSON)
+            if all(isinstance(c, str) for c in components):
+                payload["template"]["components"] = [
+                    {
+                        "type": "body",
+                        "parameters": [{"type": "text", "text": c} for c in components]
+                    }
+                ]
+            else:
+                payload["template"]["components"] = components
 
         try:
             logger.debug(f"📤 Enviando Template a Meta: {payload}")
