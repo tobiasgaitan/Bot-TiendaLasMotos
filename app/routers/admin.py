@@ -365,22 +365,18 @@ async def start_campaign(
             variant = "a" if i % 2 == 0 else "b"
             template_to_use = request.template_a if variant == "a" else request.template_b
             
-            # Mapping Variables (Name and Moto)
-            nombre = prospect_data.get("nombre", "amigo/a")
-            moto = prospect_data.get("moto_interes", "la moto de tus sueños")
+            # Mapping Variables (Name)
+            prospect_name = prospect_data.get("nombre", "Cliente")
             
             # Meta Payload Components
-            components = []
-            if template_to_use != "hello_world":
-                components = [
-                    {
-                        "type": "body",
-                        "parameters": [
-                            {"type": "text", "text": nombre},
-                            {"type": "text", "text": moto}
-                        ]
-                    }
-                ]
+            components = [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": prospect_name}
+                    ]
+                }
+            ]
             
             try:
                 # [CRITICAL: GREETING BOUNCE FIX & PERSISTENCE FIRST] 
