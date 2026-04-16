@@ -85,8 +85,9 @@ class MemoryService:
             if doc_snapshot.exists:
                 return doc_ref
             
-            # 2. Try by field query
-            query = prospectos_ref.where("celular", "==", clean_phone).limit(1)
+            # 2. Try by field query (Multi-format CRM support)
+            variations = [clean_phone, f"57{clean_phone}", f"+57{clean_phone}", f"+{clean_phone}"]
+            query = prospectos_ref.where("celular", "in", variations).limit(1)
             docs = await query.get()
             if docs:
                 return docs[0].reference
