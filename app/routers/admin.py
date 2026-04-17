@@ -355,7 +355,8 @@ async def start_campaign(
 
         for i, doc in enumerate(docs):
             prospect_data = doc.to_dict()
-            phone_id = prospect_data.get("celular")
+            raw_phone = prospect_data.get("celular", "")
+            phone_id = raw_phone.replace("+", "")
             
             if not phone_id:
                 logger.error(f"❌ Documento {doc.id} no posee campo celular. Omitiendo.")
