@@ -365,7 +365,7 @@ class MemoryService:
                 "moto_interes": "", # UNE v7.0.0 Standard
                 "forma_pago": "",
                 "chatbot_status": "ACTIVE",
-                "status": "Pendiente",
+                "status": "PENDING",
                 "source": "whatsapp_bot",
                 "human_help_requested": False,
                 "habeas_data_sent": False,
