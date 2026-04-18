@@ -189,7 +189,7 @@ class MemoryService:
                 logger.warning(f"⚠️ No prospect found to update for {clean_phone}")
                 new_doc_ref = self._db.collection("prospectos").document(clean_phone)
                 await new_doc_ref.set({
-                    "celular": clean_phone,
+                    "celular": f"+57{clean_phone}",
                     "ai_summary": summary_text,
                     "chatbot_status": "ACTIVE",
                     "created_at": firestore.SERVER_TIMESTAMP,
@@ -328,7 +328,7 @@ class MemoryService:
             logger.warning(f"⚠️ No existing prospect found for {phone_number}, creating new document")
             new_doc_ref = self._db.collection("prospectos").document(normalized_phone)
             await new_doc_ref.set({
-                "celular": normalized_phone,
+                "celular": f"+57{normalized_phone}",
                 "human_help_requested": status,
                 "created_at": firestore.SERVER_TIMESTAMP,
                 "updated_at": firestore.SERVER_TIMESTAMP,
@@ -359,7 +359,7 @@ class MemoryService:
                 return False
                 
             new_data = {
-                "celular": clean_phone,
+                "celular": f"+57{clean_phone}",
                 "nombre": "",
                 "ciudad": "",
                 "moto_interes": "", # UNE v7.0.0 Standard
