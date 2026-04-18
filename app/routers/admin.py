@@ -47,7 +47,7 @@ class CampaignRequest(BaseModel):
     """Request model for mass campaign start."""
     template_a: str
     template_b: str
-    language: str = "es_CO"
+    language: str
     limit: int = 50
 
     class Config:
