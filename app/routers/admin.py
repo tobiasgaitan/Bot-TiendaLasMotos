@@ -146,7 +146,7 @@ def _set_human_help_status_direct(phone_number: str, status: bool) -> None:
         # Use normalized phone as document ID
         new_doc_ref = prospectos_ref.document(normalized_phone)
         new_doc_ref.set({
-            "celular": normalized_phone,
+            "celular": f"+57{normalized_phone}",
             "human_help_requested": status,
             "created_at": firestore.SERVER_TIMESTAMP,
             "updated_at": firestore.SERVER_TIMESTAMP
