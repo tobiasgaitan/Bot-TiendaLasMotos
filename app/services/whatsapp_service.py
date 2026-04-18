@@ -20,7 +20,7 @@ class WhatsAppService:
     def __init__(self):
         self.token = settings.whatsapp_token
         self.phone_number_id = settings.phone_number_id
-        self.base_url = f"https://graph.facebook.com/v18.0/{self.phone_number_id}"
+        self.base_url = f"https://graph.facebook.com/v25.0/{self.phone_number_id}"
         self.headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
@@ -34,7 +34,7 @@ class WhatsAppService:
         to = PhoneNormalizer.to_international(to)
         
         target_id = phone_number_id or self.phone_number_id
-        url = f"https://graph.facebook.com/v18.0/{target_id}/messages"
+        url = f"https://graph.facebook.com/v25.0/{target_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
@@ -68,7 +68,7 @@ class WhatsAppService:
         Marks a specific message as read (Blue check).
         """
         target_id = phone_number_id or self.phone_number_id
-        url = f"https://graph.facebook.com/v18.0/{target_id}/messages"
+        url = f"https://graph.facebook.com/v25.0/{target_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
             "status": "read",
@@ -93,7 +93,7 @@ class WhatsAppService:
         to = PhoneNormalizer.to_international(to)
         
         target_id = phone_number_id or self.phone_number_id
-        url = f"https://graph.facebook.com/v18.0/{target_id}/messages"
+        url = f"https://graph.facebook.com/v25.0/{target_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
@@ -126,8 +126,9 @@ class WhatsAppService:
         self, 
         to_phone: str, 
         template_name: str, 
+        *,
+        language_code: str,
         components: list = None, 
-        language_code: str = "es_CO",
         phone_number_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
@@ -137,7 +138,7 @@ class WhatsAppService:
         to_phone = PhoneNormalizer.to_international(to_phone)
         
         target_id = phone_number_id or self.phone_number_id
-        url = f"https://graph.facebook.com/v18.0/{target_id}/messages"
+        url = f"https://graph.facebook.com/v25.0/{target_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
             "to": to_phone,
