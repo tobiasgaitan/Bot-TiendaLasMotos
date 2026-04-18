@@ -126,8 +126,9 @@ class WhatsAppService:
         self, 
         to_phone: str, 
         template_name: str, 
+        *,
+        language_code: str,
         components: list = None, 
-        language_code: str = "es_CO",
         phone_number_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
