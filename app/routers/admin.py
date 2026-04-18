@@ -47,7 +47,7 @@ class CampaignRequest(BaseModel):
     """Request model for mass campaign start."""
     template_a: str
     template_b: str
-    language: str = "es_CO"
+    language: str
     limit: int = 50
 
     class Config:
@@ -346,7 +346,7 @@ async def start_campaign(
         prospectos_ref = db.collection("prospectos")
         
         # Query prospects with status 'Pendiente'
-        query = prospectos_ref.where("status", "==", "Pendiente").limit(request.limit)
+        query = prospectos_ref.where("status", "==", "PENDING").limit(request.limit)
         docs = await query.get()
         
         processed_count = 0
@@ -355,7 +355,8 @@ async def start_campaign(
 
         for i, doc in enumerate(docs):
             prospect_data = doc.to_dict()
-            phone_id = prospect_data.get("celular")
+            raw_phone = prospect_data.get("celular", "")
+            phone_id = raw_phone.replace("+", "")
             
             if not phone_id:
                 logger.error(f"❌ Documento {doc.id} no posee campo celular. Omitiendo.")
@@ -391,7 +392,7 @@ async def start_campaign(
                 # [TRANSPORT] Send Meta Template
                 await whatsapp_service.send_template_message(
                     to_phone=phone_id, 
-                    template_name="contactos_impulsa",
+                    template_name=template_to_use,
                     components=components,
                     language_code=request.language
                 )
@@ -399,7 +400,7 @@ async def start_campaign(
                 # Update Firestore Document
                 await doc.reference.update({
                     "ab_template_sent": f"variante_{variant}",
-                    "status": "Enviado",
+                    "status": "IN_PROGRESS",
                     "template_timestamp": firestore.SERVER_TIMESTAMP
                 })
                 
