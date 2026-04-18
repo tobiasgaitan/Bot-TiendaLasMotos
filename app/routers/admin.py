@@ -392,7 +392,7 @@ async def start_campaign(
                 # [TRANSPORT] Send Meta Template
                 await whatsapp_service.send_template_message(
                     to_phone=phone_id, 
-                    template_name="contactos_impulsa",
+                    template_name=template_to_use,
                     components=components,
                     language_code=request.language
                 )
