@@ -346,7 +346,7 @@ async def start_campaign(
         prospectos_ref = db.collection("prospectos")
         
         # Query prospects with status 'Pendiente'
-        query = prospectos_ref.where("status", "==", "Pendiente").limit(request.limit)
+        query = prospectos_ref.where("status", "==", "PENDING").limit(request.limit)
         docs = await query.get()
         
         processed_count = 0
@@ -400,7 +400,7 @@ async def start_campaign(
                 # Update Firestore Document
                 await doc.reference.update({
                     "ab_template_sent": f"variante_{variant}",
-                    "status": "Enviado",
+                    "status": "IN_PROGRESS",
                     "template_timestamp": firestore.SERVER_TIMESTAMP
                 })
                 
