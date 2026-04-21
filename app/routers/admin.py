@@ -347,7 +347,7 @@ async def start_campaign(
         
         # Query prospects with status 'PENDING'
         logger.info(f"Buscando prospectos en la colección {settings.firestore_collection} con estado PENDING")
-        query = prospectos_ref.where("status", "==", "PENDING").limit(request.limit)
+        query = prospectos_ref.where("status", "==", "PENDING").where("metadata.source", "==", "BULK_IMPORT_V1.2").limit(request.limit)
         docs = await query.get()
         
         processed_count = 0
