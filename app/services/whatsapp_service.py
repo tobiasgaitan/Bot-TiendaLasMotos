@@ -20,7 +20,7 @@ class WhatsAppService:
     def __init__(self):
         self.token = settings.whatsapp_token
         self.phone_number_id = settings.phone_number_id
-        self.base_url = f"https://graph.facebook.com/v25.0/{self.phone_number_id}"
+        self.base_url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{self.phone_number_id}"
         self.headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
@@ -34,7 +34,7 @@ class WhatsAppService:
         to = PhoneNormalizer.to_international(to)
         
         target_id = phone_number_id or self.phone_number_id
-        url = f"https://graph.facebook.com/v25.0/{target_id}/messages"
+        url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{target_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
@@ -57,7 +57,7 @@ class WhatsAppService:
                 logger.info(f"✅ Mensaje enviado a {to} | ID: {data.get('messages', [{}])[0].get('id')}")
                 return data
         except httpx.HTTPStatusError as e:
-            logger.error(f"❌ HTTP Error en send_text_message para {to} ({e.response.status_code}): {e.response.text}")
+            logger.error(f"❌ HTTP Error en send_text_message para Destino Final Normalizado: {to} ({e.response.status_code}): {e.response.text}")
             raise
         except Exception as e:
             logger.error(f"💥 Error crítico en send_text_message para {to}: {str(e)}")
@@ -68,7 +68,7 @@ class WhatsAppService:
         Marks a specific message as read (Blue check).
         """
         target_id = phone_number_id or self.phone_number_id
-        url = f"https://graph.facebook.com/v25.0/{target_id}/messages"
+        url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{target_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
             "status": "read",
@@ -93,7 +93,7 @@ class WhatsAppService:
         to = PhoneNormalizer.to_international(to)
         
         target_id = phone_number_id or self.phone_number_id
-        url = f"https://graph.facebook.com/v25.0/{target_id}/messages"
+        url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{target_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
@@ -116,7 +116,7 @@ class WhatsAppService:
                 logger.info(f"✅ Imagen enviada a {to}")
                 return data
         except httpx.HTTPStatusError as e:
-            logger.error(f"❌ HTTP Error en send_image_message para {to} ({e.response.status_code}): {e.response.text}")
+            logger.error(f"❌ HTTP Error en send_image_message para Destino Final Normalizado: {to} ({e.response.status_code}): {e.response.text}")
             raise
         except Exception as e:
             logger.error(f"💥 Error crítico en send_image_message para {to}: {str(e)}")
@@ -138,7 +138,7 @@ class WhatsAppService:
         to_phone = PhoneNormalizer.to_international(to_phone)
         
         target_id = phone_number_id or self.phone_number_id
-        url = f"https://graph.facebook.com/v25.0/{target_id}/messages"
+        url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{target_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
             "to": to_phone,
@@ -177,10 +177,10 @@ class WhatsAppService:
                 logger.info(f"✅ Template '{template_name}' enviado a {to_phone}")
                 return data
         except httpx.HTTPStatusError as e:
-            logger.error(f"❌ HTTP Error en send_template_message para {to_phone} ({e.response.status_code}): {e.response.text}")
+            logger.error(f"❌ HTTP Error en send_template_message para Destino Final Normalizado: {to_phone} ({e.response.status_code}): {e.response.text}")
             raise
         except Exception as e:
-            logger.error(f"💥 Error crítico en send_template_message para {to_phone}: {str(e)}")
+            logger.error(f"💥 Error crítico en send_template_message para Destino Final Normalizado: {to_phone}: {str(e)}")
             raise
 
 # Singleton instance
