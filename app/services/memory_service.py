@@ -578,6 +578,102 @@ class MemoryService:
             logger.error(f"❌ Error clearing memory for {phone_number}: {e}")
             return False
 
+    async def update_whatsapp_status(
+        self,
+        phone_number: str,
+        status_value: str,
+        wamid: str
+    ) -> None:
+        """
+        [ARCH-BULK-META-010] Actualiza el sub-campo metadata.whatsapp del prospecto
+        con el último acuse de recibo de Meta (sent/delivered/read/failed).
+
+        WHY dot-notation: Firestore interpreta 'metadata.whatsapp.last_status' como
+        un path de campo anidado. Esto garantiza que otros campos dentro de 'metadata'
+        no sean sobreescritos (merge-safe update).
+
+        Args:
+            phone_number: Teléfono del destinatario (cualquier formato — _find_prospect_ref normaliza).
+            status_value: Literal del acuse — 'sent', 'delivered', 'read' o 'failed'.
+            wamid: ID del mensaje al que corresponde el acuse (wa_message_id).
+        """
+        try:
+            doc_ref = await self._find_prospect_ref(phone_number)
+            if not doc_ref:
+                logger.warning(
+                    f"⚠️ [STATUSES] Prospecto no encontrado para acuse '{status_value}' de {phone_number}. "
+                    f"El webhooks se procesó correctamente pero no hay doc de Firestore que actualizar."
+                )
+                return
+
+            # Dot-notation: no sobreescribe otros campos de metadata
+            await doc_ref.update({
+                "metadata.whatsapp.last_status": status_value,
+                "metadata.whatsapp.last_status_timestamp": firestore.SERVER_TIMESTAMP,
+                "metadata.whatsapp.last_wamid": wamid,
+            })
+            logger.info(
+                f"✅ [STATUSES] Acuse '{status_value}' registrado para {phone_number} (WAMID: {wamid})"
+            )
+        except Exception as e:
+            logger.error(
+                f"❌ [STATUSES] Error actualizando metadata.whatsapp para {phone_number}: {str(e)}",
+                exc_info=True
+            )
+
+    async def transition_to_in_progress(self, phone_number: str) -> bool:
+        """
+        [ARCH-BULK-META-010] Transición atómica PENDING → IN_PROGRESS.
+
+        WHY: El orquestador de campaña (admin.py) ya NO actualiza el status al enviar
+        el template. La transición ocurre aquí cuando se recibe la primera respuesta
+        real del usuario (webhook de tipo 'messages').
+
+        GUARDRAIL: Verifica el status actual antes de escribir para evitar sobreescrituras
+        innecesarias en prospectos que ya están en IN_PROGRESS, DONE o DISCARDED.
+
+        Args:
+            phone_number: Teléfono del usuario que respondió.
+
+        Returns:
+            True si se realizó la transición (era PENDING), False si no era necesaria.
+        """
+        try:
+            doc_ref = await self._find_prospect_ref(phone_number)
+            if not doc_ref:
+                logger.warning(f"⚠️ [STATE] No doc para transición de {phone_number}")
+                return False
+
+            # Verificación bloqueante: leer status actual antes de decidir
+            doc_snap = await doc_ref.get()
+            if not doc_snap.exists:
+                return False
+
+            current_status = doc_snap.to_dict().get("status", "")
+            if current_status != "PENDING":
+                logger.info(
+                    f"⏭️ [STATE] Prospecto {phone_number} ya está en '{current_status}'. "
+                    f"Transición PENDING→IN_PROGRESS omitida."
+                )
+                return False
+
+            # Transición atómica: await bloqueante garantiza commit antes de continuar
+            await doc_ref.update({
+                "status": "IN_PROGRESS",
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
+            logger.info(
+                f"🟢 [STATE] Prospecto {phone_number}: PENDING → IN_PROGRESS (primera respuesta recibida)"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"❌ [STATE] Error en transición PENDING→IN_PROGRESS para {phone_number}: {str(e)}",
+                exc_info=True
+            )
+            return False
+
 # Singleton instance (will be initialized in main.py with db)
 memory_service: Optional["MemoryService"] = None
 
