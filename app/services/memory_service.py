@@ -5,6 +5,7 @@ Handles prospect data retrieval and conversation summary updates in Firestore.
 
 import logging
 import asyncio
+from datetime import datetime
 from typing import Dict, Any, Optional, Set
 from google.cloud import firestore
 from app.core.utils import PhoneNormalizer
@@ -624,7 +625,8 @@ class MemoryService:
             # Los campos whatsapp_delivery_status / whatsapp_error_details son
             # ortogonales y siempre se actualizan.
             doc_snap = await doc_ref.get()
-            current_crm_status = doc_snap.to_dict().get("status", "") if doc_snap.exists else ""
+            current_data = doc_snap.to_dict() if doc_snap.exists else {}
+            current_crm_status = current_data.get("status", "")
             protected_statuses = {"IN_PROGRESS", "DONE", "DISCARDED"}
 
             # Dot-notation: no sobreescribe otros campos de metadata
@@ -636,6 +638,11 @@ class MemoryService:
                 "whatsapp_delivery_status": status_value,
                 "whatsapp_delivery_updated_at": firestore.SERVER_TIMESTAMP,
             }
+
+            # --- Idempotencia para whatsapp_read_at ---
+            if status_value == "read" and "whatsapp_read_at" not in current_data:
+                update_payload["whatsapp_read_at"] = datetime.utcnow()
+                logger.info(f"⏱️ [STATUSES] Inyectando whatsapp_read_at por primera vez para {phone_number}")
 
             # --- Error details: solo si Meta reportó un fallo ---
             if status_value == "failed" and errors:
