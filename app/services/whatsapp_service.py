@@ -57,8 +57,9 @@ class WhatsAppService:
                 logger.info(f"✅ Mensaje enviado a {to} | ID: {data.get('messages', [{}])[0].get('id')}")
                 return data
         except httpx.HTTPStatusError as e:
-            logger.error(f"❌ HTTP Error en send_text_message para Destino Final Normalizado: {to} ({e.response.status_code}): {e.response.text}")
-            raise
+            raw_response = e.response.text
+            logger.error(f"❌ HTTP Error en send_text_message para Destino Final Normalizado: {to} ({e.response.status_code}): {raw_response}")
+            raise RuntimeError(f"Meta API Error ({e.response.status_code}): {raw_response}") from e
         except Exception as e:
             logger.error(f"💥 Error crítico en send_text_message para {to}: {str(e)}")
             raise
@@ -116,8 +117,9 @@ class WhatsAppService:
                 logger.info(f"✅ Imagen enviada a {to}")
                 return data
         except httpx.HTTPStatusError as e:
-            logger.error(f"❌ HTTP Error en send_image_message para Destino Final Normalizado: {to} ({e.response.status_code}): {e.response.text}")
-            raise
+            raw_response = e.response.text
+            logger.error(f"❌ HTTP Error en send_image_message para Destino Final Normalizado: {to} ({e.response.status_code}): {raw_response}")
+            raise RuntimeError(f"Meta API Error ({e.response.status_code}): {raw_response}") from e
         except Exception as e:
             logger.error(f"💥 Error crítico en send_image_message para {to}: {str(e)}")
             raise
@@ -177,8 +179,9 @@ class WhatsAppService:
                 logger.info(f"✅ Template '{template_name}' enviado a {to_phone}")
                 return data
         except httpx.HTTPStatusError as e:
-            logger.error(f"❌ HTTP Error en send_template_message para Destino Final Normalizado: {to_phone} ({e.response.status_code}): {e.response.text}")
-            raise
+            raw_response = e.response.text
+            logger.error(f"❌ HTTP Error en send_template_message para Destino Final Normalizado: {to_phone} ({e.response.status_code}): {raw_response}")
+            raise RuntimeError(f"Meta API Error ({e.response.status_code}): {raw_response}") from e
         except Exception as e:
             logger.error(f"💥 Error crítico en send_template_message para Destino Final Normalizado: {to_phone}: {str(e)}")
             raise

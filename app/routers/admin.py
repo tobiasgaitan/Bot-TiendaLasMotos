@@ -346,6 +346,7 @@ async def start_campaign(
         prospectos_ref = db.collection(settings.firestore_collection)
         
         # Query prospects with status 'PENDING'
+        logger.info(f"Buscando prospectos en la colección {settings.firestore_collection} con estado PENDING")
         query = prospectos_ref.where("status", "==", "PENDING").limit(request.limit)
         docs = await query.get()
         
@@ -356,9 +357,9 @@ async def start_campaign(
         for i, doc in enumerate(docs):
             prospect_data = doc.to_dict()
             raw_phone = prospect_data.get("celular", "")
-            phone_id = raw_phone.replace("+", "")
+            to_phone = PhoneNormalizer.to_international(raw_phone or doc.id)
             
-            if not phone_id:
+            if not to_phone:
                 logger.error(f"❌ Documento {doc.id} no posee campo celular. Omitiendo.")
                 continue
             
@@ -379,19 +380,19 @@ async def start_campaign(
                 # This ensures that when the user replies, current_history > 1
                 try:
                     await memory_service.save_message(
-                        phone_id, 
+                        to_phone, 
                         "model", 
                         f"[SISTEMA: Campaña de Reactivación Enviada - Variante {variant.upper()}]",
                         blocking=True
                     )
                 except Exception as db_err:
-                    logger.error(f"❌ Error persisting campaign history for {phone_id}: {str(db_err)}")
-                    errors.append({"phone": phone_id, "error": f"Firestore Error: {str(db_err)}"})
+                    logger.error(f"❌ Error persisting campaign history for documento {doc.id} (to_phone: {to_phone}): {str(db_err)}")
+                    errors.append({"doc_id": doc.id, "to_phone": to_phone, "error": f"Firestore Error: {str(db_err)}"})
                     continue
 
                 # [TRANSPORT] Send Meta Template
                 await whatsapp_service.send_template_message(
-                    to_phone=phone_id, 
+                    to_phone=to_phone, 
                     template_name=template_to_use,
                     components=components,
                     language_code=request.language
@@ -412,8 +413,8 @@ async def start_campaign(
                 variants_count[variant] += 1
                 
             except Exception as e:
-                logger.error(f"❌ Error processing prospect {phone_id}: {str(e)}")
-                errors.append({"phone": phone_id, "error": str(e)})
+                logger.error(f"❌ Error processing prospect {doc.id} (to_phone: {to_phone}): {str(e)}")
+                errors.append({"doc_id": doc.id, "to_phone": to_phone, "error": str(e)})
 
         return CampaignResponse(
             success=True,
