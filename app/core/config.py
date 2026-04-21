@@ -35,6 +35,9 @@ class Settings:
         # Server Configuration
         self.port: int = int(os.getenv("PORT", "8080"))
         
+        # WhatsApp API Version Override
+        self.whatsapp_api_version: str = os.getenv("WHATSAPP_API_VERSION", "v21.0")
+        
         # Log configuration status (DO NOT log actual tokens)
         self._log_config_status()
     
@@ -53,6 +56,7 @@ class Settings:
         print(f"Webhook Verify Token: {'✅ SET' if self.webhook_verify_token else '❌ MISSING'}")
         print(f"WhatsApp Token: {'✅ FOUND' if self.whatsapp_token else '❌ MISSING'}")
         print(f"Phone Number ID: {'✅ FOUND' if self.phone_number_id else '❌ MISSING'}")
+        print(f"WhatsApp API Version: {self.whatsapp_api_version}")
         
         # Server
         print(f"Port: {self.port}")
