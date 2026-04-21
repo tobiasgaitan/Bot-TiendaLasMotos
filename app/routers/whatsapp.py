@@ -189,10 +189,12 @@ async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
 
         # Persistencia bloqueante (await) — mandato ARCH-BULK-META-010
         if memory_service_module.memory_service:
+            errors = status_data.get("errors", [])
             await memory_service_module.memory_service.update_whatsapp_status(
                 phone_number=recipient_id,
                 status_value=status_value,
-                wamid=wamid
+                wamid=wamid,
+                errors=errors,
             )
         else:
             logger.warning("⚠️ [STATUSES] MemoryService no inicializado. Acuse no persistido.")
@@ -866,12 +868,17 @@ def _extract_status_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         value = payload["entry"][0]["changes"][0]["value"]
         status_obj = value["statuses"][0]
         metadata = value.get("metadata", {})
+        # WHY: Meta envía el array 'errors' únicamente cuando status='failed'.
+        # Capturamos el objeto completo para preservar code + title + message
+        # sin asumir la estructura interna (puede cambiar entre versiones de la API).
+        errors = status_obj.get("errors", [])
         return {
             "id": status_obj.get("id", ""),
             "recipient_id": status_obj.get("recipient_id", ""),
             "status": status_obj.get("status", ""),
             "timestamp": status_obj.get("timestamp", ""),
             "phone_number_id": metadata.get("phone_number_id"),
+            "errors": errors,  # Lista vacía [] si no hay error
         }
     except Exception as e:
         logger.warning(f"⚠️ [STATUSES] Error extrayendo status_data: {e}")
