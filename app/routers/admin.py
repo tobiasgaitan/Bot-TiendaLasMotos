@@ -108,7 +108,7 @@ def _set_human_help_status_direct(phone_number: str, status: bool) -> None:
             f"Input: {phone_number} | Normalizado (ID): {normalized_phone}"
         )
         
-        prospectos_ref = db.collection("prospectos")
+        prospectos_ref = db.collection(settings.firestore_collection)
         
         # ATTEMPT 1: Direct document ID lookup
         doc_ref = prospectos_ref.document(normalized_phone)
@@ -343,9 +343,9 @@ async def start_campaign(
         from app.core.utils import PhoneNormalizer
 
         db = firestore.AsyncClient() # Use AsyncClient for better performance in loops
-        prospectos_ref = db.collection("prospectos")
+        prospectos_ref = db.collection(settings.firestore_collection)
         
-        # Query prospects with status 'Pendiente'
+        # Query prospects with status 'PENDING'
         query = prospectos_ref.where("status", "==", "PENDING").limit(request.limit)
         docs = await query.get()
         
@@ -441,7 +441,7 @@ async def admin_health_check():
     try:
         db = firestore.Client()
         # Quick test query
-        db.collection("prospectos").limit(1).get()
+        db.collection(settings.firestore_collection).limit(1).get()
         firestore_available = True
     except Exception as e:
         logger.error(f"❌ Admin health check: Firestore unavailable: {str(e)}")

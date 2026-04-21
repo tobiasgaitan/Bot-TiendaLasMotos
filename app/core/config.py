@@ -22,6 +22,7 @@ class Settings:
         self.gcp_project_id: str = os.getenv("GOOGLE_CLOUD_PROJECT", "tiendalasmotos")
         self.secret_name: str = os.getenv("FIREBASE_SECRET_NAME", "FIREBASE_CREDENTIALS")
         self.storage_bucket: str = os.getenv("STORAGE_BUCKET", "tiendalasmotos-documents")
+        self.firestore_collection: str = os.getenv("FIRESTORE_COLLECTION", "prospectos")
         
         # Admin API Key from Secret Manager
         self.admin_api_key: str = os.getenv("ADMIN_API_KEY", "moto_master_2026")
