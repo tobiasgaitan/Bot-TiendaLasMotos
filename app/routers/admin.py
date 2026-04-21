@@ -49,6 +49,10 @@ class CampaignRequest(BaseModel):
     template_b: str
     language: str
     limit: int = 50
+    # WHY: Permite al frontend especificar qué número de teléfono de negocio
+    # (phone_number_id de Meta) realiza el envío. Si no se provee, se usa
+    # el fallback a la variable de entorno PHONE_NUMBER_ID.
+    phone_id: Optional[str] = None
 
     class Config:
         json_schema_extra = {
@@ -56,7 +60,8 @@ class CampaignRequest(BaseModel):
                 "template_a": "reactivacion_v1_a",
                 "template_b": "reactivacion_v1_b",
                 "language": "es_CO",
-                "limit": 10
+                "limit": 10,
+                "phone_id": "1021779847693778"
             }
         }
 
@@ -391,11 +396,16 @@ async def start_campaign(
                     continue
 
                 # [TRANSPORT] Send Meta Template
+                # WHY: `phone_number_id` se propaga desde request.phone_id para
+                # permitir el envío desde un número de negocio específico.
+                # Si es None, whatsapp_service usa el fallback a self.phone_number_id
+                # (var de entorno PHONE_NUMBER_ID). Esto garantiza retrocompatibilidad.
                 await whatsapp_service.send_template_message(
                     to_phone=to_phone, 
                     template_name=template_to_use,
                     components=components,
-                    language_code=request.language
+                    language_code=request.language,
+                    phone_number_id=request.phone_id
                 )
                 
                 # [ARCH-BULK-META-010] Update Firestore Document.
