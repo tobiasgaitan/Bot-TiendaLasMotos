@@ -353,19 +353,25 @@ async def start_campaign(
         # Query prospects with status 'PENDING'
         logger.info(f"Buscando prospectos en la colección {settings.firestore_collection} con estado PENDING")
         query = prospectos_ref.where("status", "==", "PENDING").where("metadata.source", "==", "BULK_IMPORT_V1.2").limit(request.limit)
-        docs = await query.get()
+        
+        try:
+            docs_list = [doc async for doc in query.stream()]
+            logger.info(f"🔎 Documentos crudos encontrados en Firestore: {len(docs_list)}")
+        except Exception as e:
+            logger.error(f"❌ Error en consulta Firestore: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
         
         processed_count = 0
         variants_count = {"a": 0, "b": 0}
         errors = []
 
-        for i, doc in enumerate(docs):
+        for i, doc in enumerate(docs_list):
             prospect_data = doc.to_dict()
             raw_phone = prospect_data.get("celular", "")
             to_phone = PhoneNormalizer.to_international(raw_phone or doc.id)
             
             if not to_phone:
-                logger.error(f"❌ Documento {doc.id} no posee campo celular. Omitiendo.")
+                logger.warning(f"⚠️ Saltando doc {doc.id}: No posee campo celular válido.")
                 continue
             
             # A/B Logic (50/50 split)
