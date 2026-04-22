@@ -27,4 +27,4 @@ jobs:
             --region us-central1 \
             --allow-unauthenticated \
             --project tiendalasmotos \
-            --set-env-vars="PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos_beta"
+            --set-env-vars="PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos"
