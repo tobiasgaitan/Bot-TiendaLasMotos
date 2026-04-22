@@ -367,9 +367,9 @@ async def start_campaign(
 
         for i, doc in enumerate(docs_list):
             prospect_data = doc.to_dict()
-            raw_phone = prospect_data.get("celular", "")
-            to_phone = PhoneNormalizer.to_international(raw_phone or doc.id)
-            
+            raw_phone = prospect_data.get("celular")
+            to_phone = str(raw_phone).strip() if raw_phone else ""
+
             if not to_phone:
                 logger.warning(f"⚠️ Saltando doc {doc.id}: No posee campo celular válido.")
                 continue
