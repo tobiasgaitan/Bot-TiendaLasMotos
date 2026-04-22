@@ -345,6 +345,7 @@ async def start_campaign(
     try:
         from app.services.whatsapp_service import whatsapp_service
         from app.services.memory_service import memory_service
+        from app.services.template_service import template_service
         from app.core.utils import PhoneNormalizer
 
         db = firestore.AsyncClient() # Use AsyncClient for better performance in loops
@@ -360,6 +361,10 @@ async def start_campaign(
         except Exception as e:
             logger.error(f"❌ Error en consulta Firestore: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail=str(e))
+        
+        # [NO-CODE TEMPLATES] Fetch dynamic fields from Firestore cache
+        fields_a = await template_service.get_template_fields(request.template_a)
+        fields_b = await template_service.get_template_fields(request.template_b)
         
         processed_count = 0
         variants_count = {"a": 0, "b": 0}
@@ -377,13 +382,24 @@ async def start_campaign(
             # A/B Logic (50/50 split)
             variant = "a" if i % 2 == 0 else "b"
             template_to_use = request.template_a if variant == "a" else request.template_b
+            fields_to_use = fields_a if variant == "a" else fields_b
             
-            # Mapping Variables
-            prospect_name = prospect_data.get("nombre", "Cliente")
-            moto_model = prospect_data.get("moto_interes", "la moto de tus sueños")
+            # [NO-CODE TEMPLATES] Mapping Variables Strict Extraction
+            parameters = []
+            for field in fields_to_use:
+                # Regla de Negocio: Las celdas nunca vienen vacías, sin fallbacks.
+                val = str(prospect_data.get(field)).strip()
+                parameters.append({"type": "text", "text": val})
             
-            # Componentes posicionales para la plantilla contactos_impulsa
-            components = [prospect_name, moto_model]
+            # Estructura Meta API exacta
+            components = []
+            if parameters:
+                components = [
+                    {
+                        "type": "body",
+                        "parameters": parameters
+                    }
+                ]
             
             try:
                 # [CRITICAL: GREETING BOUNCE FIX & PERSISTENCE FIRST] 
