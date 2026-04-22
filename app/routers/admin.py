@@ -353,11 +353,15 @@ async def start_campaign(
         
         # Query prospects with status 'PENDING'
         logger.info(f"Buscando prospectos en la colección {settings.firestore_collection} con estado PENDING")
-        query = prospectos_ref.where("status", "==", "PENDING").where("metadata.source", "==", "BULK_IMPORT_V1.2").limit(request.limit)
+        query = prospectos_ref.where("status", "==", "PENDING").where("metadata.source", "==", "BULK_IMPORT_V2.0").limit(request.limit)
         
         try:
             docs_list = [doc async for doc in query.stream()]
             logger.info(f"🔎 Documentos crudos encontrados en Firestore: {len(docs_list)}")
+            
+            if not docs_list:
+                logger.critical("⚠️ Alerta: La consulta de campaña no encontró prospectos. Verifica el filtro de metadata.source (Actual: BULK_IMPORT_V2.0)")
+                
         except Exception as e:
             logger.error(f"❌ Error en consulta Firestore: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail=str(e))
