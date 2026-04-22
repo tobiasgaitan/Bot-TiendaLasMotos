@@ -435,15 +435,16 @@ async def start_campaign(
                 )
                 
                 # [ARCH-BULK-META-010] Update Firestore Document.
-                # WHY: El campo 'status' NO se actualiza aquí.
-                # El prospecto permanece en 'PENDING' hasta recibir la primera
-                # respuesta real del usuario. La transición PENDING→IN_PROGRESS
-                # ocurre en _handle_message_background() (whatsapp.py) cuando
-                # llega el webhook de tipo 'messages'.
-                await doc.reference.update({
-                    "ab_template_sent": f"variante_{variant}",
-                    "template_timestamp": firestore.SERVER_TIMESTAMP
-                })
+                # Se restaura la lógica para transición INMEDIATA a IN_PROGRESS tras el 200 OK de Meta.
+                try:
+                    await doc.reference.update({
+                        "ab_template_sent": f"variante_{variant}",
+                        "template_timestamp": firestore.SERVER_TIMESTAMP,
+                        "status": "IN_PROGRESS",
+                        "updated_at": firestore.SERVER_TIMESTAMP
+                    })
+                except Exception as update_err:
+                    logger.critical(f"💥 CRITICAL: Falló la actualización de estado a IN_PROGRESS para {doc.id}: {str(update_err)}")
                 
                 processed_count += 1
                 variants_count[variant] += 1

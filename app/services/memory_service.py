@@ -641,7 +641,7 @@ class MemoryService:
 
             # --- Idempotencia para whatsapp_read_at ---
             if status_value == "read" and "whatsapp_read_at" not in current_data:
-                update_payload["whatsapp_read_at"] = datetime.utcnow()
+                update_payload["whatsapp_read_at"] = firestore.SERVER_TIMESTAMP
                 logger.info(f"⏱️ [STATUSES] Inyectando whatsapp_read_at por primera vez para {phone_number}")
 
             # --- Error details: solo si Meta reportó un fallo ---

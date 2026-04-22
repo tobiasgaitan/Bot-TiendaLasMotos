@@ -187,6 +187,9 @@ async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
             f"(WAMID: {wamid})"
         )
 
+        if status_value == 'read':
+            logger.info(f"👉 Confirmación de lectura recibida para el número {recipient_id}")
+
         # Persistencia bloqueante (await) — mandato ARCH-BULK-META-010
         if memory_service_module.memory_service:
             errors = status_data.get("errors", [])
