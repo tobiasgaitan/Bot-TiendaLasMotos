@@ -5,6 +5,7 @@ Handles Meta WhatsApp webhook verification and message reception.
 Completely self-contained to avoid ModuleNotFoundError.
 """
 
+import json
 import logging
 import httpx
 import asyncio
@@ -126,6 +127,7 @@ async def webhook_handler(
     """Recepción de mensajes y acuses de recibo de WhatsApp."""
     try:
         payload = await request.json()
+        logger.info(f"📡 RADAR WEBHOOK RAW PAYLOAD: {json.dumps(payload)}")
 
         # --- RAMA 1: Acuses de recibo Meta (sent/delivered/read/failed) ---
         # [ARCH-BULK-META-010] WHY: Meta envía webhooks 'statuses' para confirmar el
