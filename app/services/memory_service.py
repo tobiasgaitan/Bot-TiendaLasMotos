@@ -5,6 +5,7 @@ Handles prospect data retrieval and conversation summary updates in Firestore.
 
 import logging
 import asyncio
+from datetime import datetime
 from typing import Dict, Any, Optional, Set
 from google.cloud import firestore
 from app.core.utils import PhoneNormalizer
@@ -576,6 +577,153 @@ class MemoryService:
             return True
         except Exception as e:
             logger.error(f"❌ Error clearing memory for {phone_number}: {e}")
+            return False
+
+    async def update_whatsapp_status(
+        self,
+        phone_number: str,
+        status_value: str,
+        wamid: str,
+        errors: list | None = None,
+    ) -> None:
+        """
+        [ARCH-BULK-META-010] Actualiza el sub-campo metadata.whatsapp del prospecto
+        y el campo top-level `whatsapp_delivery_status` con el último acuse de recibo
+        de Meta (sent/delivered/read/failed).
+
+        WHY dot-notation: Firestore interpreta 'metadata.whatsapp.last_status' como
+        un path de campo anidado. Esto garantiza que otros campos dentro de 'metadata'
+        no sean sobreescritos (merge-safe update).
+
+        WHY top-level `whatsapp_delivery_status`: El dashboard de campañas necesita
+        un campo plano para filtrar/ordenar prospectos por estado de entrega sin
+        depender de la estructura anidada de metadata.
+
+        WHY guardrail IN_PROGRESS: Un acuse de entrega 'read' no debe retrodegradar
+        el `status` CRM si el prospecto ya respondió y está en IN_PROGRESS, DONE
+        o cualquier estado posterior. Los campos de delivery son ortogonales al
+        status de la máquina de estados del CRM.
+
+        Args:
+            phone_number: Teléfono del destinatario (cualquier formato — _find_prospect_ref normaliza).
+            status_value: Literal del acuse — 'sent', 'delivered', 'read' o 'failed'.
+            wamid: ID del mensaje al que corresponde el acuse (wa_message_id).
+            errors: Array de objetos de error de Meta (solo presente si status='failed').
+        """
+        try:
+            doc_ref = await self._find_prospect_ref(phone_number)
+            if not doc_ref:
+                logger.warning(
+                    f"⚠️ [STATUSES] Prospecto no encontrado para acuse '{status_value}' de {phone_number}. "
+                    f"El webhooks se procesó correctamente pero no hay doc de Firestore que actualizar."
+                )
+                return
+
+            # --- GUARDRAIL: Leer status CRM actual antes de escribir ---
+            # WHY: Si el prospecto ya está en IN_PROGRESS (o más avanzado), el acuse
+            # de entrega 'read' no debe retrodegradar ningún campo de estado CRM.
+            # Los campos whatsapp_delivery_status / whatsapp_error_details son
+            # ortogonales y siempre se actualizan.
+            doc_snap = await doc_ref.get()
+            current_data = doc_snap.to_dict() if doc_snap.exists else {}
+            current_crm_status = current_data.get("status", "")
+            protected_statuses = {"IN_PROGRESS", "DONE", "DISCARDED"}
+
+            # Dot-notation: no sobreescribe otros campos de metadata
+            update_payload: dict = {
+                "metadata.whatsapp.last_status": status_value,
+                "metadata.whatsapp.last_status_timestamp": firestore.SERVER_TIMESTAMP,
+                "metadata.whatsapp.last_wamid": wamid,
+                # Top-level para el dashboard de campañas (lectura directa sin path anidado)
+                "whatsapp_delivery_status": status_value,
+                "whatsapp_delivery_updated_at": firestore.SERVER_TIMESTAMP,
+            }
+
+            # --- Idempotencia para whatsapp_read_at ---
+            if status_value == "read" and "whatsapp_read_at" not in current_data:
+                update_payload["whatsapp_read_at"] = firestore.SERVER_TIMESTAMP
+                logger.info(f"⏱️ [STATUSES] Inyectando whatsapp_read_at por primera vez para {phone_number}")
+
+            # --- Error details: solo si Meta reportó un fallo ---
+            if status_value == "failed" and errors:
+                # Preservamos el array completo para auditoría forense.
+                # Ejemplo Meta: [{"code": 131026, "title": "Message Undeliverable", ...}]
+                error_summary = errors[0] if len(errors) == 1 else errors
+                update_payload["whatsapp_error_details"] = error_summary
+                logger.warning(
+                    f"⚠️ [STATUSES] Fallo de entrega reportado por Meta para {phone_number}: {error_summary}"
+                )
+
+            # --- Guardrail de máquina de estados ---
+            # Registramos solo para auditoría interna; nunca tocamos el campo 'status'.
+            if status_value == "read" and current_crm_status in protected_statuses:
+                logger.info(
+                    f"🛡️ [STATUSES] Guardrail activo: status CRM '{current_crm_status}' para {phone_number} "
+                    f"no se sobrescribe por acuse 'read'. Solo se actualiza whatsapp_delivery_status."
+                )
+
+            await doc_ref.update(update_payload)
+            logger.info(
+                f"✅ [STATUSES] Acuse '{status_value}' registrado para {phone_number} (WAMID: {wamid})"
+            )
+        except Exception as e:
+            logger.error(
+                f"❌ [STATUSES] Error actualizando metadata.whatsapp para {phone_number}: {str(e)}",
+                exc_info=True,
+            )
+
+
+    async def transition_to_in_progress(self, phone_number: str) -> bool:
+        """
+        [ARCH-BULK-META-010] Transición atómica PENDING → IN_PROGRESS.
+
+        WHY: El orquestador de campaña (admin.py) ya NO actualiza el status al enviar
+        el template. La transición ocurre aquí cuando se recibe la primera respuesta
+        real del usuario (webhook de tipo 'messages').
+
+        GUARDRAIL: Verifica el status actual antes de escribir para evitar sobreescrituras
+        innecesarias en prospectos que ya están en IN_PROGRESS, DONE o DISCARDED.
+
+        Args:
+            phone_number: Teléfono del usuario que respondió.
+
+        Returns:
+            True si se realizó la transición (era PENDING), False si no era necesaria.
+        """
+        try:
+            doc_ref = await self._find_prospect_ref(phone_number)
+            if not doc_ref:
+                logger.warning(f"⚠️ [STATE] No doc para transición de {phone_number}")
+                return False
+
+            # Verificación bloqueante: leer status actual antes de decidir
+            doc_snap = await doc_ref.get()
+            if not doc_snap.exists:
+                return False
+
+            current_status = doc_snap.to_dict().get("status", "")
+            if current_status != "PENDING":
+                logger.info(
+                    f"⏭️ [STATE] Prospecto {phone_number} ya está en '{current_status}'. "
+                    f"Transición PENDING→IN_PROGRESS omitida."
+                )
+                return False
+
+            # Transición atómica: await bloqueante garantiza commit antes de continuar
+            await doc_ref.update({
+                "status": "IN_PROGRESS",
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
+            logger.info(
+                f"🟢 [STATE] Prospecto {phone_number}: PENDING → IN_PROGRESS (primera respuesta recibida)"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"❌ [STATE] Error en transición PENDING→IN_PROGRESS para {phone_number}: {str(e)}",
+                exc_info=True
+            )
             return False
 
 # Singleton instance (will be initialized in main.py with db)
