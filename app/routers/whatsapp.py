@@ -184,6 +184,9 @@ async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
             )
             return
 
+        from app.core.utils import PhoneNormalizer
+        recipient_id = PhoneNormalizer.normalize(recipient_id)
+
         logger.info(
             f"📬 [STATUSES] Procesando acuse '{status_value}' para {recipient_id} "
             f"(WAMID: {wamid})"
