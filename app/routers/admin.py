@@ -49,6 +49,10 @@ class CampaignRequest(BaseModel):
     template_b: str
     language: str
     limit: int = 50
+    # WHY: Permite al frontend especificar qué número de teléfono de negocio
+    # (phone_number_id de Meta) realiza el envío. Si no se provee, se usa
+    # el fallback a la variable de entorno PHONE_NUMBER_ID.
+    phone_id: Optional[str] = None
 
     class Config:
         json_schema_extra = {
@@ -56,7 +60,8 @@ class CampaignRequest(BaseModel):
                 "template_a": "reactivacion_v1_a",
                 "template_b": "reactivacion_v1_b",
                 "language": "es_CO",
-                "limit": 10
+                "limit": 10,
+                "phone_id": "1021779847693778"
             }
         }
 
@@ -108,7 +113,7 @@ def _set_human_help_status_direct(phone_number: str, status: bool) -> None:
             f"Input: {phone_number} | Normalizado (ID): {normalized_phone}"
         )
         
-        prospectos_ref = db.collection("prospectos")
+        prospectos_ref = db.collection(settings.firestore_collection)
         
         # ATTEMPT 1: Direct document ID lookup
         doc_ref = prospectos_ref.document(normalized_phone)
@@ -340,38 +345,65 @@ async def start_campaign(
     try:
         from app.services.whatsapp_service import whatsapp_service
         from app.services.memory_service import memory_service
+        from app.services.template_service import template_service
         from app.core.utils import PhoneNormalizer
 
         db = firestore.AsyncClient() # Use AsyncClient for better performance in loops
-        prospectos_ref = db.collection("prospectos")
+        prospectos_ref = db.collection(settings.firestore_collection)
         
-        # Query prospects with status 'Pendiente'
-        query = prospectos_ref.where("status", "==", "PENDING").limit(request.limit)
-        docs = await query.get()
+        # Query prospects with status 'PENDING'
+        logger.info(f"Buscando prospectos en la colección {settings.firestore_collection} con estado PENDING")
+        query = prospectos_ref.where("status", "==", "PENDING").where("metadata.source", "==", "BULK_IMPORT_V2.0").limit(request.limit)
+        
+        try:
+            docs_list = [doc async for doc in query.stream()]
+            logger.info(f"🔎 Documentos crudos encontrados en Firestore: {len(docs_list)}")
+            
+            if not docs_list:
+                logger.critical("⚠️ Alerta: La consulta de campaña no encontró prospectos. Verifica el filtro de metadata.source (Actual: BULK_IMPORT_V2.0)")
+                
+        except Exception as e:
+            logger.error(f"❌ Error en consulta Firestore: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
+        
+        # [NO-CODE TEMPLATES] Fetch dynamic fields from Firestore cache
+        fields_a = await template_service.get_template_fields(request.template_a)
+        fields_b = await template_service.get_template_fields(request.template_b)
         
         processed_count = 0
         variants_count = {"a": 0, "b": 0}
         errors = []
 
-        for i, doc in enumerate(docs):
+        for i, doc in enumerate(docs_list):
             prospect_data = doc.to_dict()
-            raw_phone = prospect_data.get("celular", "")
-            phone_id = raw_phone.replace("+", "")
-            
-            if not phone_id:
-                logger.error(f"❌ Documento {doc.id} no posee campo celular. Omitiendo.")
+            raw_phone = prospect_data.get("celular")
+            to_phone = str(raw_phone).strip() if raw_phone else ""
+
+            if not to_phone:
+                logger.warning(f"⚠️ Saltando doc {doc.id}: No posee campo celular válido.")
                 continue
             
             # A/B Logic (50/50 split)
             variant = "a" if i % 2 == 0 else "b"
             template_to_use = request.template_a if variant == "a" else request.template_b
+            fields_to_use = fields_a if variant == "a" else fields_b
             
-            # Mapping Variables
-            prospect_name = prospect_data.get("nombre", "Cliente")
-            moto_model = prospect_data.get("moto_interes", "la moto de tus sueños")
+            # [NO-CODE TEMPLATES] Mapping Variables Strict Extraction
+            parameters = []
+            for field in fields_to_use:
+                # Regla de Negocio: Las celdas nunca vienen vacías, sin fallbacks.
+                val = str(prospect_data.get(field)).strip()
+                parameters.append({"type": "text", "text": val})
             
-            # Componentes posicionales para la plantilla contactos_impulsa
-            components = [prospect_name, moto_model]
+            # Estructura Meta API exacta
+            components = []
+            if parameters:
+                components = [
+                    {
+                        "type": "body",
+                        "parameters": parameters
+                    }
+                ]
             
             try:
                 # [CRITICAL: GREETING BOUNCE FIX & PERSISTENCE FIRST] 
@@ -379,37 +411,47 @@ async def start_campaign(
                 # This ensures that when the user replies, current_history > 1
                 try:
                     await memory_service.save_message(
-                        phone_id, 
+                        to_phone, 
                         "model", 
                         f"[SISTEMA: Campaña de Reactivación Enviada - Variante {variant.upper()}]",
                         blocking=True
                     )
                 except Exception as db_err:
-                    logger.error(f"❌ Error persisting campaign history for {phone_id}: {str(db_err)}")
-                    errors.append({"phone": phone_id, "error": f"Firestore Error: {str(db_err)}"})
+                    logger.error(f"❌ Error persisting campaign history for documento {doc.id} (to_phone: {to_phone}): {str(db_err)}")
+                    errors.append({"doc_id": doc.id, "to_phone": to_phone, "error": f"Firestore Error: {str(db_err)}"})
                     continue
 
                 # [TRANSPORT] Send Meta Template
+                # WHY: `phone_number_id` se propaga desde request.phone_id para
+                # permitir el envío desde un número de negocio específico.
+                # Si es None, whatsapp_service usa el fallback a self.phone_number_id
+                # (var de entorno PHONE_NUMBER_ID). Esto garantiza retrocompatibilidad.
                 await whatsapp_service.send_template_message(
-                    to_phone=phone_id, 
+                    to_phone=to_phone, 
                     template_name=template_to_use,
                     components=components,
-                    language_code=request.language
+                    language_code=request.language,
+                    phone_number_id=request.phone_id
                 )
                 
-                # Update Firestore Document
-                await doc.reference.update({
-                    "ab_template_sent": f"variante_{variant}",
-                    "status": "IN_PROGRESS",
-                    "template_timestamp": firestore.SERVER_TIMESTAMP
-                })
+                # [ARCH-BULK-META-010] Update Firestore Document.
+                # Se restaura la lógica para transición INMEDIATA a IN_PROGRESS tras el 200 OK de Meta.
+                try:
+                    await doc.reference.update({
+                        "ab_template_sent": f"variante_{variant}",
+                        "template_timestamp": firestore.SERVER_TIMESTAMP,
+                        "status": "IN_PROGRESS",
+                        "updated_at": firestore.SERVER_TIMESTAMP
+                    })
+                except Exception as update_err:
+                    logger.critical(f"💥 CRITICAL: Falló la actualización de estado a IN_PROGRESS para {doc.id}: {str(update_err)}")
                 
                 processed_count += 1
                 variants_count[variant] += 1
                 
             except Exception as e:
-                logger.error(f"❌ Error processing prospect {phone_id}: {str(e)}")
-                errors.append({"phone": phone_id, "error": str(e)})
+                logger.error(f"❌ Error processing prospect {doc.id} (to_phone: {to_phone}): {str(e)}")
+                errors.append({"doc_id": doc.id, "to_phone": to_phone, "error": str(e)})
 
         return CampaignResponse(
             success=True,
@@ -437,7 +479,7 @@ async def admin_health_check():
     try:
         db = firestore.Client()
         # Quick test query
-        db.collection("prospectos").limit(1).get()
+        db.collection(settings.firestore_collection).limit(1).get()
         firestore_available = True
     except Exception as e:
         logger.error(f"❌ Admin health check: Firestore unavailable: {str(e)}")

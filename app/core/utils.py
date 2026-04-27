@@ -19,22 +19,20 @@ class PhoneNormalizer:
     @staticmethod
     def normalize(phone: str) -> str:
         """
-        Convert any phone format to 10-digit national format.
+        Convert any phone format to 12-digit international format.
         
         Args:
-            phone: Raw phone string (e.g. "+57 319-256-4288", "573192564288")
+            phone: Raw phone string (e.g. "+57 319-256-4288", "3192564288")
             
         Returns:
-            10-digit string (e.g. "3192564288") or original if length < 10
+            12-digit string starting with 57 (e.g. "573192564288")
         """
         # 1. Remove all non-numeric characters
         clean = re.sub(r'\D', '', str(phone))
         
-        # 2. Strip Colombia country code (57) if present at start
-        # Only valid for mobile numbers which are usually 10 digits
-        # So 57 + 10 digits = 12 digits. But we accept 11 too (57+9) just in case.
-        if clean.startswith('57') and len(clean) > 10:
-            clean = clean[2:]
+        # 2. Add Colombia country code (57) if 10 digits
+        if len(clean) == 10:
+            clean = f"57{clean}"
             
         return clean
 

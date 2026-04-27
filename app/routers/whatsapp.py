@@ -5,6 +5,7 @@ Handles Meta WhatsApp webhook verification and message reception.
 Completely self-contained to avoid ModuleNotFoundError.
 """
 
+import json
 import logging
 import httpx
 import asyncio
@@ -123,14 +124,25 @@ async def webhook_handler(
     request: Request,
     background_tasks: BackgroundTasks,
 ) -> Dict[str, str]:
-    """Recepción de mensajes de WhatsApp"""
+    """Recepción de mensajes y acuses de recibo de WhatsApp."""
     try:
         payload = await request.json()
-        
-        # Validación básica de estructura
+        logger.info(f"📡 RADAR WEBHOOK RAW PAYLOAD: {json.dumps(payload)}")
+
+        # --- RAMA 1: Acuses de recibo Meta (sent/delivered/read/failed) ---
+        # [ARCH-BULK-META-010] WHY: Meta envía webhooks 'statuses' para confirmar el
+        # estado de entrega de los templates de campaña masiva. Antes de este parche,
+        # _is_valid_message() los ignoraba silenciosamente (KeyError silenciado).
+        if _is_valid_statuses(payload):
+            status_data = _extract_status_data(payload)
+            if status_data:
+                background_tasks.add_task(_handle_statuses_background, status_data)
+            return {"status": "received"}
+
+        # --- RAMA 2: Mensajes reales del usuario ---
         if not _is_valid_message(payload):
             return {"status": "ignored"}
-            
+
         msg_data = _extract_message_data(payload)
         if not msg_data:
             return {"status": "ignored"}
@@ -138,7 +150,7 @@ async def webhook_handler(
         # Procesamiento en segundo plano
         background_tasks.add_task(_handle_message_background, msg_data, background_tasks)
         return {"status": "received"}
-        
+
     except Exception as e:
         logger.error(f"Error procesando webhook: {e}")
         return {"status": "error"}
@@ -147,6 +159,60 @@ async def webhook_handler(
 # ============================================================================
 # BACKGROUND LOGIC
 # ============================================================================
+
+async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
+    """
+    [ARCH-BULK-META-010] Handler de acuses de recibo de Meta (sent/delivered/read/failed).
+
+    WHY: Los templates de campaña masiva generan webhooks 'statuses' que deben
+    persistirse en Firestore para auditoría y trazabilidad. El await es bloqueante
+    para garantizar integridad transaccional antes de retornar.
+
+    Zero-Silent-Failures: captura explícita de los errores más comunes para
+    evitar que un fallo de Firestore quede invisible en el log.
+    """
+    _ensure_services()
+    try:
+        recipient_id = status_data.get("recipient_id", "")
+        status_value = status_data.get("status", "")
+        wamid = status_data.get("id", "")
+
+        if not recipient_id or not status_value:
+            logger.warning(
+                f"⚠️ [STATUSES] Payload incompleto ignorado: recipient_id='{recipient_id}', "
+                f"status='{status_value}'"
+            )
+            return
+
+        from app.core.utils import PhoneNormalizer
+        recipient_id = PhoneNormalizer.normalize(recipient_id)
+
+        logger.info(
+            f"📬 [STATUSES] Procesando acuse '{status_value}' para {recipient_id} "
+            f"(WAMID: {wamid})"
+        )
+
+        if status_value == 'read':
+            logger.info(f"👉 Confirmación de lectura recibida para el número {recipient_id}")
+
+        # Persistencia bloqueante (await) — mandato ARCH-BULK-META-010
+        if memory_service_module.memory_service:
+            errors = status_data.get("errors", [])
+            await memory_service_module.memory_service.update_whatsapp_status(
+                phone_number=recipient_id,
+                status_value=status_value,
+                wamid=wamid,
+                errors=errors,
+            )
+        else:
+            logger.warning("⚠️ [STATUSES] MemoryService no inicializado. Acuse no persistido.")
+
+    except Exception as e:
+        logger.error(
+            f"❌ [STATUSES] Error crítico en _handle_statuses_background: {str(e)}",
+            exc_info=True
+        )
+
 
 async def _handle_message_background(msg_data: Dict[str, Any], background_tasks: BackgroundTasks) -> None:
     """Lógica principal del bot (Procesamiento Asíncrono)"""
@@ -508,7 +574,14 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             # 3. NOW update/create timestamps AFTER decision is made
             await ms.create_prospect_if_missing(user_phone)
             await ms.update_last_interaction(user_phone)
-            
+
+            # [ARCH-BULK-META-010] MÁQUINA DE ESTADOS: PENDING → IN_PROGRESS
+            # WHY: Los prospectos de carga masiva arrancan en 'PENDING'. La primera
+            # respuesta real del usuario (este webhook 'messages') activa la transición.
+            # El await bloqueante garantiza commit en Firestore antes de continuar
+            # con la lógica del bot (mandato de sincronía ARCH-BULK-META-010).
+            await ms.transition_to_in_progress(user_phone)
+
             logger.info(f"👤 Prospect Data Processed: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
             
             # Human Gatekeeper Check (Mantenibilidad)
@@ -772,6 +845,54 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
 # LOCAL HELPERS (Defined here to avoid missing dependency errors)
 # ============================================================================
 
+def _is_valid_statuses(payload: Dict[str, Any]) -> bool:
+    """
+    [ARCH-BULK-META-010] Detecta si el payload de Meta contiene acuses de recibo
+    (statuses). Análogo a _is_valid_message pero para el array 'statuses[]'.
+
+    WHY: Antes de este parche, _is_valid_message() retornaba False para estos payloads
+    y eran descartados silenciosamente con {"status": "ignored"}.
+    """
+    try:
+        entry = payload.get("entry", [{}])[0]
+        changes = entry.get("changes", [{}])[0]
+        value = changes.get("value", {})
+        statuses = value.get("statuses", [])
+        return len(statuses) > 0
+    except:
+        return False
+
+
+def _extract_status_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    [ARCH-BULK-META-010] Extrae los campos relevantes del primer acuse de recibo
+    del payload de Meta.
+
+    Returns:
+        Dict con: id (wamid), recipient_id (teléfono), status, timestamp.
+        None si el payload es inválido.
+    """
+    try:
+        value = payload["entry"][0]["changes"][0]["value"]
+        status_obj = value["statuses"][0]
+        metadata = value.get("metadata", {})
+        # WHY: Meta envía el array 'errors' únicamente cuando status='failed'.
+        # Capturamos el objeto completo para preservar code + title + message
+        # sin asumir la estructura interna (puede cambiar entre versiones de la API).
+        errors = status_obj.get("errors", [])
+        return {
+            "id": status_obj.get("id", ""),
+            "recipient_id": status_obj.get("recipient_id", ""),
+            "status": status_obj.get("status", ""),
+            "timestamp": status_obj.get("timestamp", ""),
+            "phone_number_id": metadata.get("phone_number_id"),
+            "errors": errors,  # Lista vacía [] si no hay error
+        }
+    except Exception as e:
+        logger.warning(f"⚠️ [STATUSES] Error extrayendo status_data: {e}")
+        return None
+
+
 def _is_valid_message(payload: Dict[str, Any]) -> bool:
     try:
         entry = payload.get("entry", [{}])[0]
@@ -869,7 +990,8 @@ async def _mark_message_as_read(message_id: str, phone_number_id: Optional[str] 
 async def _download_media(media_id: str) -> Optional[bytes]:
     """Download media from WhatsApp."""
     try:
-        url = f"https://graph.facebook.com/v18.0/{media_id}"
+        # [FIX] Regresión detectada en arqueología: v18.0 → v25.0 (alineado con whatsapp_service.py)
+        url = f"https://graph.facebook.com/v25.0/{media_id}"
         headers = {"Authorization": f"Bearer {settings.whatsapp_token}"}
         
         async with httpx.AsyncClient() as client:
