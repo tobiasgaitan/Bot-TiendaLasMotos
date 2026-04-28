@@ -27,4 +27,4 @@ jobs:
             --region us-central1 \
             --allow-unauthenticated \
             --project tiendalasmotos \
-            --set-env-vars="WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }}"
+            --set-env-vars="WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }},ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }}"
