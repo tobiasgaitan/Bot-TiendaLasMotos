@@ -19,6 +19,7 @@
 | # | Descripción | Fecha | Commit | Directorio |
 |---|-------------|-------|--------|------------|
 | 001 | Restauracion Entorno y Eval (BOT-CORE-770-EVAL) | 2026-04-29 | pendiente | 001-restauracion-entorno-eval |
+| 003 | CLI Environment Isolation | 2026-04-29 | c120cc0 | 003-cli-isolation |
 
 ## Análisis de Fallos del Eval (BOT-CORE-770-EVAL)
 
