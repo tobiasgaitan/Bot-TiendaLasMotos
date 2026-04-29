@@ -29,4 +29,4 @@ jobs:
             --no-confirm-project \
             --region us-central1 \
             --project tiendalasmotos \
-            --allow-unauthenticated
+            -- --allow-unauthenticated
