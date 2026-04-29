@@ -26,6 +26,70 @@ except ImportError:
     SDK_AVAILABLE = False
     logger.warning("⚠️  google-genai SDK not available, using fallback responses")
 
+EXTRACTION_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "summary": {
+            "type": "STRING",
+            "description": "Resumen de la sesión (máx 500 caracteres, sin Markdown)."
+        },
+        "extracted": {
+            "type": "OBJECT",
+            "properties": {
+                "nombre": {
+                    "type": "STRING",
+                    "description": "Nombre del cliente (máx 50 caracteres, saneado)."
+                },
+                "ciudad": {
+                    "type": "STRING",
+                    "description": "Ciudad del cliente (máx 50 caracteres)."
+                },
+                "moto_interes": {
+                    "type": "STRING",
+                    "description": "La primera moto o estilo por el que preguntó el usuario."
+                },
+                "moto_ofrecida": {
+                    "type": "STRING",
+                    "description": "La moto del catálogo (TVS/Victory) que el bot ofreció."
+                },
+                "moto_aceptada": {
+                    "type": "STRING",
+                    "description": "La moto que el usuario aceptó explícitamente comprar o conocer más (Inmutable contra competencia)."
+                },
+                "habeas_data": {
+                    "type": "BOOLEAN",
+                    "description": "Indica si el usuario aceptó el tratamiento de datos (mapeado de afirmaciones o emojis)."
+                },
+                "forma_pago": {
+                    "type": "STRING",
+                    "description": "Método de pago preferido (ej. Crédito - 0 inicial, Contado, Financiado)."
+                },
+                "ocupacion": {
+                    "type": "STRING",
+                    "description": "Ocupación o tipo de contrato laboral si se mencionó (ej. Empleado, Independiente, Estudiante, Pensionado)."
+                },
+                "datacredito": {
+                    "type": "STRING",
+                    "description": "Estado o historial en Datacrédito si se mencionó (ej. Al día, Reportado, Sin experiencia, Castigado)."
+                },
+                "vivienda": {
+                    "type": "STRING",
+                    "description": "Tipo de vivienda o situación de gastos de vivienda si se mencionó (ej. Arriendo, Familiar, Propia)."
+                },
+                "servicios_publicos": {
+                    "type": "STRING",
+                    "description": "Si tiene servicios públicos como Gas Natural a su nombre o plan de celular si se mencionó."
+                },
+                "moto_confirmada": {
+                    "type": "BOOLEAN",
+                    "description": "Indica si el usuario aceptó explícitamente la moto ofrecida o mostró interés cerrado (Shadow State Sync)."
+                }
+            }
+        }
+    },
+    "required": ["summary", "extracted"]
+}
+
 
 class CerebroIA:
     """
@@ -256,8 +320,12 @@ class CerebroIA:
                     conversation_text += parts_text + " "
         
         has_sent_link = "tiendalasmotos.com/politica-de-privacidad" in conversation_text.lower()
+        
         # SI YA ACEPTÓ HABEAS DATA -> PHASE 3 (Profiling)
-        if prospect_data.get("habeas_data_accepted") is True:
+        is_accepted = prospect_data.get("habeas_data") is True
+        is_sent = prospect_data.get("habeas_data_sent") is True
+        
+        if is_accepted and is_sent and has_sent_link:
             has_name = bool(prospect_data.get("nombre") or prospect_data.get("name"))
             has_city = bool(prospect_data.get("ciudad") or prospect_data.get("city"))
             if not has_name or not has_city:
@@ -313,7 +381,7 @@ class CerebroIA:
         # --- PHASE-GATE FÍSICO (Bypass de Habeas Data) ---
         # AUDIT P1 (2.2): Interceptor de Respuesta.
         # Si el usuario NO ha aceptado Habeas Data, bloqueamos cualquier pregunta de crédito.
-        habeas_data_accepted = prospect_data.get("habeas_data_accepted", False) if prospect_data else False
+        habeas_data_accepted = prospect_data.get("habeas_data", False) if prospect_data else False
         
         if not habeas_data_accepted and raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
             # REGLA DE NEGOCIO (Audit v2.0): Permitir "crédito" como explicación, bloquear solo perfilamiento.
@@ -1074,69 +1142,6 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             Moto actual en base de datos: {previous_moto_interes if previous_moto_interes else 'Ninguna'}
             MANDATO: Si la moto actual NO es 'Ninguna', DEBES volver a incluirla en el campo 'moto_interes' del JSON de respuesta, A MENOS que el usuario pida explícitamente cambiarla en este último chat. BAJO NINGUNA CIRCUNSTANCIA debes dejarla vacía o reemplazarla si el usuario solo está respondiendo a una pregunta o no menciona motos.
             """
-            extraction_schema = {
-                "type": "OBJECT",
-                "properties": {
-                    "summary": {
-                        "type": "STRING",
-                        "description": "Resumen de la sesión (máx 500 caracteres, sin Markdown)."
-                    },
-                    "extracted": {
-                        "type": "OBJECT",
-                        "properties": {
-                            "nombre": {
-                                "type": "STRING",
-                                "description": "Nombre del cliente (máx 50 caracteres, saneado)."
-                            },
-                            "ciudad": {
-                                "type": "STRING",
-                                "description": "Ciudad del cliente (máx 50 caracteres)."
-                            },
-                            "moto_interes": {
-                                "type": "STRING",
-                                "description": "La primera moto o estilo por el que preguntó el usuario."
-                            },
-                            "moto_ofrecida": {
-                                "type": "STRING",
-                                "description": "La moto del catálogo (TVS/Victory) que el bot ofreció."
-                            },
-                            "moto_aceptada": {
-                                "type": "STRING",
-                                "description": "La moto que el usuario aceptó explícitamente comprar o conocer más (Inmutable contra competencia)."
-                            },
-                            "habeas_data": {
-                                "type": "BOOLEAN",
-                                "description": "Indica si el usuario aceptó el tratamiento de datos (mapeado de afirmaciones o emojis)."
-                            },
-                            "forma_pago": {
-                                "type": "STRING",
-                                "description": "Método de pago preferido (ej. Crédito - 0 inicial, Contado, Financiado)."
-                            },
-                            "ocupacion": {
-                                "type": "STRING",
-                                "description": "Ocupación o tipo de contrato laboral si se mencionó (ej. Empleado, Independiente, Estudiante, Pensionado)."
-                            },
-                            "datacredito": {
-                                "type": "STRING",
-                                "description": "Estado o historial en Datacrédito si se mencionó (ej. Al día, Reportado, Sin experiencia, Castigado)."
-                            },
-                            "vivienda": {
-                                "type": "STRING",
-                                "description": "Tipo de vivienda o situación de gastos de vivienda si se mencionó (ej. Arriendo, Familiar, Propia)."
-                            },
-                            "servicios_publicos": {
-                                "type": "STRING",
-                                "description": "Si tiene servicios públicos como Gas Natural a su nombre o plan de celular si se mencionó."
-                            },
-                            "moto_confirmada": {
-                                "type": "BOOLEAN",
-                                "description": "Indica si el usuario aceptó explícitamente la moto ofrecida o mostró interés cerrado (Shadow State Sync)."
-                            }
-                        }
-                    }
-                },
-                "required": ["summary", "extracted"]
-            }
 
             # 1. Prepare Content for google-genai
             # Prompt and history consolidated
@@ -1151,7 +1156,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     temperature=0.1,
                     max_output_tokens=2048,
                     response_mime_type="application/json",
-                    response_schema=extraction_schema
+                    response_schema=EXTRACTION_SCHEMA
                 )
             )
             

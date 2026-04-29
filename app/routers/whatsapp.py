@@ -26,7 +26,6 @@ from app.services.ai_brain import CerebroIA
 from app.services.vision_service import VisionService
 from app.services.audio_service import AudioService
 from app.services.catalog_service import CatalogService # Local instantiation class
-from app.services.survey_service import survey_service # Singleton
 from app.services.storage_service import storage_service # Singleton
 from app.services.message_buffer import MessageBuffer # Local instantiation
 
@@ -330,7 +329,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                         await _send_whatsapp_message(user_phone, "No pude procesar el archivo. 😢", phone_number_id=phone_number_id)
                         return
 
-                    image_bytes = await _download_media(media_id)
+                    image_bytes = await storage_service.download_media(media_id)
                     if image_bytes:
                         vision_response = await vision_service.analyze_image(image_bytes, mime_type, user_phone, caption=caption)
                         logger.info(f"🧠 Raw Vision response: {vision_response}")
@@ -680,7 +679,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         elif msg_type == "audio":
             media_id = msg_data.get("media_id")
             mime_type = msg_data.get("mime_type")
-            audio_bytes = await _download_media(media_id)
+            audio_bytes = await storage_service.download_media(media_id)
             
             # GET HISTORY BEFORE AI
             current_history = []
@@ -986,25 +985,6 @@ async def _mark_message_as_read(message_id: str, phone_number_id: Optional[str] 
     except Exception as e:
         logger.error(f"❌ Error inesperado al marcar como leído: {e}")
         return False
-
-async def _download_media(media_id: str) -> Optional[bytes]:
-    """Download media from WhatsApp."""
-    try:
-        # [FIX] Regresión detectada en arqueología: v18.0 → v25.0 (alineado con whatsapp_service.py)
-        url = f"https://graph.facebook.com/v25.0/{media_id}"
-        headers = {"Authorization": f"Bearer {settings.whatsapp_token}"}
-        
-        async with httpx.AsyncClient() as client:
-            r1 = await client.get(url, headers=headers)
-            if r1.status_code != 200: return None
-            media_url = r1.json().get("url")
-            
-            r2 = await client.get(media_url, headers=headers)
-            if r2.status_code != 200: return None
-            return r2.content
-    except Exception as e:
-        logger.error(f"Error downloading media: {e}")
-        return None
 
 async def _get_session(db_client, phone) -> Dict[str, Any]:
     try:

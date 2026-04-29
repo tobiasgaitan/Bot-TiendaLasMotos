@@ -129,6 +129,29 @@ class StorageService:
         """
         return self._bucket.name if self._bucket else settings.storage_bucket
 
+    async def download_media(self, media_id: str) -> Optional[bytes]:
+        """Download media from WhatsApp."""
+        import httpx
+        try:
+            # [FIX] Regresión detectada en arqueología: v18.0 → v25.0 (alineado con whatsapp_service.py)
+            url = f"https://graph.facebook.com/v25.0/{media_id}"
+            headers = {"Authorization": f"Bearer {settings.whatsapp_token}"}
+            
+            async with httpx.AsyncClient() as client:
+                r1 = await client.get(url, headers=headers)
+                r1.raise_for_status()
+                media_url = r1.json().get("url")
+                
+                r2 = await client.get(media_url, headers=headers)
+                r2.raise_for_status()
+                return r2.content
+        except httpx.HTTPStatusError as e:
+            logger.error(f"❌ Error HTTP downloading media ({e.response.status_code}): {e.response.text}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Error downloading media: {e}")
+            return None
+
 
 # Global service instance
 storage_service = StorageService()
