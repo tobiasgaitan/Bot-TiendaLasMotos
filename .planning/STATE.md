@@ -3,16 +3,17 @@
 **Project:** Bot TiendaLasMotos — Refactoring God Nodes & Schema Standardization
 **Ticket principal:** BOT-STRUC-765-EVOLUTION
 **Rama activa:** beta
-**Último commit:** 56b054a — `fix(cicd): install uv before running deployment commands`
+**Último commit:** a9c69a9 — `fix(cicd): decouple IAM policy binding from agents-cli orchestrator`
 
 ## Estado Actual
 
 | Campo | Valor |
 |-------|-------|
-| Fase activa | Post-refactor — Certificación Completa |
+| Fase activa | Sección 10: Optimización de Mocks |
 | Rama | beta |
-| Último deploy | b4471b3 (beta) |
+| Último deploy | a9c69a9 (beta) |
 | Test suite | 51 PASSED / 0 FAILED |
+| CI/CD Status | STABLE ✅ (100% Completed) |
 
 ## Quick Tasks Completadas
 
@@ -22,6 +23,7 @@
 | 003 | CLI Environment Isolation | 2026-04-29 | c120cc0 | 003-cli-isolation |
 | 005 | Fix Test Regressions (Phone & CC) | 2026-04-29 | 7f9c31f | 005-fix-test-regressions |
 | 006 | Fix CICD UV Infrastructure | 2026-04-29 | 56b054a | 006-fix-cicd-uv |
+| 007 | CI/CD Stabilization & ADK 2026 Sync | 2026-04-29 | a9c69a9 | 007-cicd-victory |
 
 ## Análisis de Fallos del Eval (BOT-CORE-770-EVAL)
 
@@ -48,5 +50,13 @@ Tests lógicos core: 51 PASSED / 51 total = 100%
 SCORE ACTUAL: 1.000 — CERTIFICADO ✅
 ESTADO: 🚀 LISTO PARA DESPLIEGUE A PRODUCCIÓN
 ```
+
+## Registro de Victorias Recientes
+
+### CI/CD Victory (Ticket BOT-DEBT-CICD-013 al 017)
+- **Logro:** Estabilización del pipeline de despliegue automatizado hacia Cloud Run.
+- **Lecciones Aprendidas:**
+    - Se requiere el esquema estricto `[tool.agents-cli]` con `create_params` en `pyproject.toml` para compatibilidad con ADK 2026.
+    - El orquestador `google-agents-cli v0.1.2` tiene limitaciones en la propagación de `EXTRA_ARGS`, por lo que se desacopló la política IAM pública a un paso nativo de `gcloud` en el workflow.
 
 *Última actualización: 2026-04-29*
