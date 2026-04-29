@@ -2,8 +2,8 @@
 
 ## Current Position
 **Phase:** 1 — Naming Lock + Hardcode Elimination
-**Status:** Ready to plan → Awaiting user approval on ROADMAP.md
-**Last activity:** 2026-04-28 — Project initialized via /gsd-new-project + PAA completo
+**Status:** Approved by Tobias. Ready for execution in a NEW CONVERSATION.
+**Last activity:** 2026-04-28 — Roadmap approved with conditions (Beta branch deployment, strict async/await for storage, notify Frontend of schema changes).
 
 ## Audit Summary (PAA Completado)
 Archivos verificados físicamente:
