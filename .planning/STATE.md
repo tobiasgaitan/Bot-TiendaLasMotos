@@ -3,7 +3,7 @@
 **Project:** Bot TiendaLasMotos — Refactoring God Nodes & Schema Standardization
 **Ticket principal:** BOT-STRUC-765-EVOLUTION
 **Rama activa:** beta
-**Último commit:** b4471b3 — `refactor(ai-brain): extract God Nodes, elevate schema, standardize HTTP error handling`
+**Último commit:** 56b054a — `fix(cicd): install uv before running deployment commands`
 
 ## Estado Actual
 
@@ -21,6 +21,7 @@
 | 001 | Restauracion Entorno y Eval (BOT-CORE-770-EVAL) | 2026-04-29 | pendiente | 001-restauracion-entorno-eval |
 | 003 | CLI Environment Isolation | 2026-04-29 | c120cc0 | 003-cli-isolation |
 | 005 | Fix Test Regressions (Phone & CC) | 2026-04-29 | 7f9c31f | 005-fix-test-regressions |
+| 006 | Fix CICD UV Infrastructure | 2026-04-29 | 56b054a | 006-fix-cicd-uv |
 
 ## Análisis de Fallos del Eval (BOT-CORE-770-EVAL)
 
