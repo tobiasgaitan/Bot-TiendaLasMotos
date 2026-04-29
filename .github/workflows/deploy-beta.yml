@@ -33,5 +33,12 @@ jobs:
             --no-confirm-project \
             --region us-central1 \
             --project tiendalasmotos \
-            --update-env-vars "PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos" \
-            -- --allow-unauthenticated
+            --update-env-vars "PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos"
+
+      - name: Make Service Public
+        run: |
+          gcloud run services add-iam-policy-binding bot-tiendalasmotos-beta \
+            --member="allUsers" \
+            --role="roles/run.invoker" \
+            --region="us-central1" \
+            --project="tiendalasmotos"
