@@ -1,14 +1,25 @@
 {
   "name": "@tiendalasmotos/agent-cli",
   "version": "1.0.0",
-  "description": "Internal CLI tool for TiendaLasMotos",
-  "main": "index.js",
+  "description": "Internal CLI tool for TiendaLasMotos Agent — GSD Guardrails (Private Scope)",
+  "main": "./bin/agent-cli.js",
   "bin": {
     "agent-cli": "./bin/agent-cli.js"
   },
+  "files": [
+    "bin/"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node ./bin/agent-cli.js --version"
   },
   "author": "TiendaLasMotos",
-  "license": "ISC"
+  "license": "ISC",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/",
+    "access": "restricted"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tiendalasmotos/Bot-TiendaLasMotos.git"
+  }
 }
