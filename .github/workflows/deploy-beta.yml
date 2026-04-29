@@ -25,8 +25,7 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
-          uvx google-agents-cli run deploy bot-tiendalasmotos-beta \
-            --source . \
+          uvx google-agents-cli deploy bot-tiendalasmotos-beta \
             --region us-central1 \
             --allow-unauthenticated \
             --project tiendalasmotos \
