@@ -179,20 +179,14 @@ Por ejemplo: "Doy 1 millón" o "Tengo 500mil".
     
     def _respuesta_generica(self) -> str:
         """Return generic response when no entities are detected."""
-        tasa_banco = 1.87
-        tasa_fintech = 2.22
-        link_brilla = "#"
+        financial_config = self._config_service.get_financial_config() if self._config_service else {}
+        tasa_banco = financial_config.get("tasa_nmv_banco", 1.87)
+        tasa_fintech = financial_config.get("tasa_nmv_fintech", 2.22)
         
+        link_brilla = "#"
         if self._config_service:
-            financial_config = self._config_service.get_financial_config()
-            if financial_config:
-                tasa_banco = financial_config.get("tasa_nmv_banco", 1.87)
-                tasa_fintech = financial_config.get("tasa_nmv_fintech", 2.22)
-            
-            # Aliados links
             partners_config = self._config_service.get_partners_config()
-            if partners_config:
-                link_brilla = partners_config.get("link_brilla", "#")
+            link_brilla = partners_config.get("link_brilla", "#")
             
         return f"""
 🏍️ **Simulación de Crédito - Tienda Las Motos**
@@ -339,11 +333,8 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
             
         # [SSOT] Mandatory v1.3.1: Use Crediorbe for proactive simulation
         entidad_default = "Crediorbe"
-        tasa_mensual = 2.22 
-        
-        if self._config_service:
-             fin_config = self._config_service.get_financial_config()
-             tasa_mensual = fin_config.get("tasa_nmv_fintech", 2.22)
+        financial_config = self._config_service.get_financial_config() if self._config_service else {}
+        tasa_mensual = financial_config.get("tasa_nmv_fintech", 2.22)
         
         # Calculate options using the new matrix-aware method
         plan_24 = self.calcular_cuota(precio_moto, inicial, 24, tasa_mensual, entidad=entidad_default, moto_cc=moto_cc, category=category)

@@ -120,7 +120,7 @@ class MemoryService:
                         "survey_state": data.get("survey_state"),
                         "exists": True,
                         "habeas_data_sent": data.get("habeas_data_sent", False),
-                        "habeas_data": data.get("habeas_data") or data.get("habeasData") or data.get("habeas_data_accepted", False),
+                        "habeas_data": data.get("habeas_data", False),
                         "servicios_publicos": data.get("servicios_publicos") or data.get("serviciosPublicos", None),
                         "total_tokens_consumed": data.get("total_tokens_consumed", 0),
                         "session_cost_usd": data.get("session_cost_usd", 0.0)
