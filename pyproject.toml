@@ -32,3 +32,6 @@ dev-dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.google-agents-cli.deploy]
+target = "cloud_run"

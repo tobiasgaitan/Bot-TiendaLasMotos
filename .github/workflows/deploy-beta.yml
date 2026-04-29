@@ -23,6 +23,9 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Debug Project Structure
+        run: ls -la && cat pyproject.toml
+
       - name: Deploy to Cloud Run
         run: |
           uvx google-agents-cli deploy bot-tiendalasmotos-beta \
