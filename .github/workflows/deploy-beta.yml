@@ -29,8 +29,9 @@ jobs:
           cd ${GITHUB_WORKSPACE}
           pwd
           ls -la
-          uvx google-agents-cli deploy --no-confirm-project -- bot-tiendalasmotos-beta \
+          uvx google-agents-cli deploy \
+            --no-confirm-project \
             --region us-central1 \
-            --allow-unauthenticated \
             --project tiendalasmotos \
-            --set-env-vars="PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos"
+            --update-env-vars "PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos" \
+            --allow-unauthenticated
