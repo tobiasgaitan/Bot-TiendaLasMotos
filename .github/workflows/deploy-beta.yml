@@ -22,7 +22,7 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy bot-tiendalasmotos-beta \
+          uvx google-agents-cli run deploy bot-tiendalasmotos-beta \
             --source . \
             --region us-central1 \
             --allow-unauthenticated \
