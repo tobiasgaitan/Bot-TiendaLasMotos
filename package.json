@@ -1,10 +1,10 @@
 {
-  "name": "@tiendalasmotos/agent-cli",
+  "name": "@tobiasgaitan/agent-cli",
   "version": "1.0.0",
   "description": "Internal CLI tool for TiendaLasMotos Agent — GSD Guardrails (Private Scope)",
   "main": "./bin/agent-cli.js",
   "bin": {
-    "agent-cli": "./bin/agent-cli.js"
+    "agent-cli": "bin/agent-cli.js"
   },
   "files": [
     "bin/"
@@ -21,5 +21,8 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tiendalasmotos/Bot-TiendaLasMotos.git"
+  },
+  "dependencies": {
+    "@tobiasgaitan/agent-cli": "^1.0.0"
   }
 }
