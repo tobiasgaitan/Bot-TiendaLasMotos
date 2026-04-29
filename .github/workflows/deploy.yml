@@ -28,5 +28,12 @@ jobs:
           uvx google-agents-cli deploy \
             --no-confirm-project \
             --region us-central1 \
-            --project tiendalasmotos \
-            -- --allow-unauthenticated
+            --project tiendalasmotos
+
+      - name: Make Service Public
+        run: |
+          gcloud run services add-iam-policy-binding bot-tiendalasmotos \
+            --member="allUsers" \
+            --role="roles/run.invoker" \
+            --region="us-central1" \
+            --project="tiendalasmotos"
