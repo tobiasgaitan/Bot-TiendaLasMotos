@@ -46,7 +46,7 @@ async def test_case_2_short_message_with_anchor(cerebro_mock, mock_prospect_data
         full_prompt = args[1]
         
         # Aserto: Debe contener el anclaje inyectado internamente
-        assert "[CRM ANCHOR: El usuario está interesado en la TVS APACHE 160]" in full_prompt
+        assert "[CRM ANCHOR: El usuario está interesado en la TVS APACHE 160. Mantén el contexto sobre este modelo a menos que el usuario pida conocer otra motocicleta.]" in full_prompt
         assert f"Usuario: {short_text}" in full_prompt
 
 @pytest.mark.asyncio

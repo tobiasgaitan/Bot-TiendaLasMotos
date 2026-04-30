@@ -10,7 +10,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Header, Body
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from google.cloud import firestore
 
 from app.core.config import settings
@@ -26,13 +26,14 @@ class ResetHandoffRequest(BaseModel):
     phone: str
     status: bool
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "phone": "573192564288",
                 "status": False
             }
         }
+    )
 
 
 class ResetHandoffResponse(BaseModel):
@@ -54,8 +55,8 @@ class CampaignRequest(BaseModel):
     # el fallback a la variable de entorno PHONE_NUMBER_ID.
     phone_id: Optional[str] = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "template_a": "reactivacion_v1_a",
                 "template_b": "reactivacion_v1_b",
@@ -64,6 +65,7 @@ class CampaignRequest(BaseModel):
                 "phone_id": "1021779847693778"
             }
         }
+    )
 
 
 class CampaignResponse(BaseModel):
