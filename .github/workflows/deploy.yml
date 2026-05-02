@@ -29,7 +29,7 @@ jobs:
             --no-confirm-project \
             --region us-central1 \
             --project tiendalasmotos \
-            --set-env-vars="WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }},ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }}"
+            --update-env-vars="WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }},ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }}"
 
       - name: Make Service Public
         run: |
