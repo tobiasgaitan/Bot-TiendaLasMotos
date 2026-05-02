@@ -15,8 +15,8 @@ logging.basicConfig(level=logging.INFO)
 async def test_price_consolidation():
     print("🚀 Iniciando Auditoría de Consolidación de Precios...")
     
-    from google.cloud import firestore
-    db = firestore.Client()
+    from unittest.mock import MagicMock
+    db = MagicMock()
     
     # Inyectar DB manualmente si no están inicializadas (entorno de script)
     catalog_service._db = db

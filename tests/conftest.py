@@ -35,3 +35,22 @@ def cerebro_mock():
         cerebro._model_id = "gemini-2.0-flash" 
         cerebro.privacy_policy_url = "https://tiendalasmotos.com/politica-de-privacidad"
         return cerebro
+
+class AsyncStreamMock:
+    """
+    Mock estandarizado para simular firestore.Query.stream().
+    Implementa el protocolo de iteración asíncrona (__aiter__ y __anext__).
+    """
+    def __init__(self, items):
+        self.items = items
+        self.index = 0
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self.index >= len(self.items):
+            raise StopAsyncIteration
+        item = self.items[self.index]
+        self.index += 1
+        return item

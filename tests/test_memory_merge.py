@@ -35,51 +35,51 @@ def test_merge_strategy_preserve_historic_valid(memory_service):
 
 def test_merge_strategy_latch_true_only(memory_service):
     """
-    Test Rule: LATCH_TRUE_ONLY (v6.9.3)
-    Boolean flags cannot transition from True to False.
-    Verify transition to canonical keys (habeasData).
+    Test Rule: LATCH_TRUE_ONLY (v7.7.0 — Canonical Key: habeas_data)
+    Boolean latch: once True, habeas_data must not revert to False.
+    Verifies the canonical key 'habeas_data' used by MemoryService v7.7.0.
     """
     current_data = {
-        "habeasData": True,
+        "habeas_data": True,       # Canonical key (v7.7.0)
         "habeas_data_sent": True,
         "moto_confirmada": False
     }
     
     # AI accidentally sends False for accepted flags
     incoming_extracted = {
-        "habeas_data_accepted": False,
+        "habeas_data": False,       # Canonical key — latch must prevent rollback
         "habeas_data_sent": None,
         "moto_confirmada": True
     }
     
     merged = memory_service._merge_extracted_data(current_data, incoming_extracted)
     
-    # Latch should keep them True in the canonical field
-    assert merged["habeasData"] is True
-    # 'habeas_data_accepted' must be POPPED (Destructive Mutation)
-    assert "habeas_data_accepted" not in merged
+    # Latch must keep habeas_data True (canonical key)
+    assert merged["habeas_data"] is True
     # 'moto_confirmada' should upgrade to True
     assert merged["moto_confirmada"] is True
 
 def test_merge_strategy_pop_destructive(memory_service):
     """
-    Verify that ALL mapped keys are popped from the incoming dict to prevent bleeding.
+    Verify that LATCH_TRUE_ONLY activates correctly when incoming habeas_data is True
+    and current has no prior state (first acceptance).
+    Uses canonical key 'habeas_data' as per MemoryService v7.7.0.
     """
     incoming = {
-        "habeas_data_accepted": True,
+        "habeas_data": True,        # Canonical key (v7.7.0)
         "servicios_publicos": "gas_natural"
     }
     current = {}
     
     merged = memory_service._merge_extracted_data(current, incoming)
     
-    # Check canonical keys exist
-    assert merged["habeasData"] is True
-    assert merged["serviciosPublicos"] == "gas_natural"
+    # Canonical key must be present and True
+    assert merged["habeas_data"] is True
+    assert merged["servicios_publicos"] == "gas_natural"
     
-    # Check legacy/source keys are gone from result
+    # No legacy aliases should bleed into the merged output
+    assert "habeasData" not in merged
     assert "habeas_data_accepted" not in merged
-    assert "servicios_publicos" not in merged
 
 
 def test_merge_strategy_full_mapping_spanish(memory_service):
@@ -128,4 +128,3 @@ def test_is_valid_helper_logic(memory_service):
     case_valid = {"nombre": "Juan"}
     merged_valid = memory_service._merge_extracted_data(current, case_valid)
     assert merged_valid["nombre"] == "Juan"
-

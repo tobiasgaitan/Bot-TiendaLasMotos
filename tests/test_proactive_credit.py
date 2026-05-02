@@ -97,9 +97,10 @@ class TestProactiveCredit(unittest.TestCase):
         # Mock config service
         mock_config = MagicMock()
         mock_config.get_financial_config.return_value = None # Force fallback
+        mock_config.get_financial_entity_config.return_value = {} # Prevent Mock type error
         
         motor = MotorFinanciero(mock_db, config_service=mock_config)
-        res = motor.calcular_cuota(5000000, 1000000, 24, 2.22)
+        res = motor.calcular_cuota(5000000, 1000000, 24, 2.22, entidad="Banco")
         
         self.assertEqual(res["seguro_vida"], 15000, "El seguro de vida debe aplicar el fallback de $15,000.")
 
