@@ -25,6 +25,7 @@
 | 006 | Fix CICD UV Infrastructure | 2026-04-29 | 56b054a | 006-fix-cicd-uv |
 | 007 | CI/CD Stabilization & ADK 2026 Sync | 2026-04-29 | a9c69a9 | 007-cicd-victory |
 | 008 | Refactor Firestore Mocks & Fix Warnings | 2026-04-30 | 598710c | 008-refactor-firestore-mocks |
+| 010 | Fix CI/CD Env Vars Error | 2026-05-02 | d5ac51e | 010-fix-cicd-env-vars |
 
 ## Análisis de Fallos del Eval (BOT-CORE-770-EVAL)
 
@@ -59,5 +60,6 @@ ESTADO: 🚀 LISTO PARA DESPLIEGUE A PRODUCCIÓN
 - **Lecciones Aprendidas:**
     - Se requiere el esquema estricto `[tool.agents-cli]` con `create_params` en `pyproject.toml` para compatibilidad con ADK 2026.
     - El orquestador `google-agents-cli v0.1.2` tiene limitaciones en la propagación de `EXTRA_ARGS`, por lo que se desacopló la política IAM pública a un paso nativo de `gcloud` en el workflow.
+    - **Update 2026-05-02:** El binario `v0.1.2` requiere `--update-env-vars` en lugar de `--set-env-vars`.
 
-*Última actualización: 2026-04-29*
+*Última actualización: 2026-05-02*
