@@ -3,7 +3,7 @@ import logging
 
 # Define logic directly to certify Before applying to CatalogService
 def _extract_cc_logic(data):
-    """
+    r"""
     Simulación de DisplacementExtractorV2
     Regex: r'\d+(?:\.\d+)?'
     Flow: Match -> float() -> int() (Truncate)
