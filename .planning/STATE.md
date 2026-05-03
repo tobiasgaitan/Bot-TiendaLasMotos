@@ -2,16 +2,16 @@
 
 **Project:** Bot TiendaLasMotos — Refactoring God Nodes & Schema Standardization
 **Ticket principal:** BOT-STRUC-765-EVOLUTION
-**Rama activa:** beta
-**Último commit:** a9c69a9 — `fix(cicd): decouple IAM policy binding from agents-cli orchestrator`
+**Rama activa:** main
+**Último commit:** f14527d — `chore(release): certfied merge beta to main v8.0.0`
 
 ## Estado Actual
 
 | Campo | Valor |
 |-------|-------|
-| Fase activa | Sección 11: Despliegue Final |
-| Rama | beta |
-| Último deploy | 5af9fb8 (beta) |
+| Fase activa | PROYECTO COMPLETADO (v8.0.0) |
+| Rama | main |
+| Último deploy | f14527d (main) |
 | Test suite | 53 PASSED / 0 FAILED |
 | Score Coherencia | 1.000 (CERTIFICADO ✅) |
 | CI/CD Status | STABLE ✅ (100% Completed) |
@@ -86,3 +86,8 @@ ESTADO: 🚀 LISTO PARA DESPLIEGUE A PRODUCCIÓN
 - **Resultado:** Eliminación de race conditions en startup y aseguramiento de secretos obligatorios.
 - **Score:** 1.000 (53/53 tests passed) certificado con env vars locales.
 - **Estado:** Sistema estabilizado. Listo para push final.
+
+### 2026-05-03 — Cierre de Epic y Despliegue Final (v8.0.0)
+- **Acción:** Fusión de `beta` a `main` y despliegue exitoso en producción (Cloud Run).
+- **Commit Certificado:** `f14527d`
+- **Estado:** EPIC BOT-STRUC-765-EVOLUTION COMPLETADO EXITOSAMENTE. Sistema estable bajo Python 3.13 con paridad de infraestructura y saneamiento NPM.
