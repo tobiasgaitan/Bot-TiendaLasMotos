@@ -26,6 +26,7 @@
 | 007 | CI/CD Stabilization & ADK 2026 Sync | 2026-04-29 | a9c69a9 | 007-cicd-victory |
 | 008 | Refactor Firestore Mocks & Fix Warnings | 2026-04-30 | 598710c | 008-refactor-firestore-mocks |
 | 009 | Refactor Agent CLI Identity & Version Sync | 2026-05-02 | 9fb731b | 009-refactor-agent-cli-identity |
+| 010 | Fix Hatchling Build & Sync | 2026-05-02 | ee41c2a | 010-fix-hatchling-build |
 
 ## Análisis de Fallos del Eval (BOT-CORE-770-EVAL)
 
