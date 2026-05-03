@@ -17,7 +17,7 @@ y medios a servicios especializados. Estandarizar el EXTRACTION_SCHEMA y reinteg
 | Webhook status tracking | ✅ Done | b210e76 |
 | Phone normalization status | ✅ Done | 2990ef7 |
 
-## Fase 2 — Naming Lock & Contrato de Tests [🔴 BLOQUEADA]
+## Fase 2 — Naming Lock & Contrato de Tests [✅ COMPLETADA]
 
 **Prerequisito:** Resolver las 13 regresiones identificadas en BOT-CORE-770-EVAL.
 

@@ -10,7 +10,9 @@
     "bin/"
   ],
   "scripts": {
-    "test": "node ./bin/agent-cli.js --version"
+    "test": "node ./bin/agent-cli.js --version",
+    "eval": "node ./bin/agent-cli.js eval",
+    "agent-cli": "node ./bin/agent-cli.js"
   },
   "author": "TiendaLasMotos",
   "license": "ISC",
