@@ -33,10 +33,7 @@ jobs:
             --no-confirm-project \
             --region us-central1 \
             --project tiendalasmotos \
-<<<<<<< HEAD
-            --set-env-vars="PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos,WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }},ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }}"
-=======
-            --update-env-vars "PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos"
+            --update-env-vars "PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos,WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }},ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }}"
 
       - name: Make Service Public
         run: |
@@ -45,4 +42,3 @@ jobs:
             --role="roles/run.invoker" \
             --region="us-central1" \
             --project="tiendalasmotos"
->>>>>>> beta
