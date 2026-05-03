@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// @tiendalasmotos/agent-cli — GSD Guardrails CLI v1.0.0
-// Internal tool: NOT for public registry. Scope: @tiendalasmotos
+// @tobiasgaitan/agent-cli — GSD Guardrails CLI
+// Internal tool: NOT for public registry. Scope: @tobiasgaitan
 
 "use strict";
 
@@ -8,8 +8,9 @@ const { execSync, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const VERSION = "1.0.0";
-const PACKAGE_NAME = "@tiendalasmotos/agent-cli";
+const pkg = require("../package.json");
+const VERSION = pkg.version;
+const PACKAGE_NAME = pkg.name;
 
 // ─── ANSI Colors ─────────────────────────────────────────────────────────────
 const C = {
@@ -264,8 +265,8 @@ function cmdVersion() {
  */
 function cmdHelp() {
   log(`
-${C.bold}${C.cyan}@tiendalasmotos/agent-cli${C.reset} v${VERSION}
-${C.gray}Internal GSD Guardrails CLI — TiendaLasMotos${C.reset}
+${C.bold}${C.cyan}${PACKAGE_NAME}${C.reset} v${VERSION}
+${C.gray}Internal GSD Guardrails CLI — Tobias Gaitan${C.reset}
 
 ${C.bold}COMMANDS:${C.reset}
   eval                  Run pytest and calculate coherence score (threshold: 0.9)
@@ -280,9 +281,9 @@ ${C.bold}FLAGS:${C.reset}
   --help, -h            Show this help
 
 ${C.bold}EXAMPLES:${C.reset}
-  npx @tiendalasmotos/agent-cli eval
-  npx @tiendalasmotos/agent-cli scaffold --check
-  npx @tiendalasmotos/agent-cli workflow start BOT-STRUC-765
+  npx @tobiasgaitan/agent-cli eval
+  npx @tobiasgaitan/agent-cli scaffold --check
+  npx @tobiasgaitan/agent-cli workflow start BOT-STRUC-765
 `);
   process.exit(0);
 }
