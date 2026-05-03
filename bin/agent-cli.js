@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// @tobiasgaitan/agent-cli — GSD Guardrails CLI
-// Internal tool: NOT for public registry. Scope: @tobiasgaitan
+// GSD Guardrails CLI — Internal tool
+// Sync: package.json (name & version)
 
 "use strict";
 
@@ -8,7 +8,7 @@ const { execSync, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const pkg = require(path.join(__dirname, "..", "package.json"));
+const pkg = require("../package.json");
 const VERSION = pkg.version;
 const PACKAGE_NAME = pkg.name;
 
@@ -281,9 +281,9 @@ ${C.bold}FLAGS:${C.reset}
   --help, -h            Show this help
 
 ${C.bold}EXAMPLES:${C.reset}
-  npx @tobiasgaitan/agent-cli eval
-  npx @tobiasgaitan/agent-cli scaffold --check
-  npx @tobiasgaitan/agent-cli workflow start BOT-STRUC-765
+  npx ${PACKAGE_NAME} eval
+  npx ${PACKAGE_NAME} scaffold --check
+  npx ${PACKAGE_NAME} workflow start BOT-STRUC-765
 `);
   process.exit(0);
 }
