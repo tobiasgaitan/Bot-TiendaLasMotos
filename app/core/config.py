@@ -25,13 +25,16 @@ class Settings:
         self.firestore_collection: str = os.getenv("FIRESTORE_COLLECTION", "prospectos")
         
         # Admin API Key from Secret Manager
-        self.admin_api_key: str = os.getenv("ADMIN_API_KEY", "moto_master_2026")
+        self.admin_api_key: str = os.getenv("ADMIN_API_KEY")
         
         # WhatsApp Configuration - CRITICAL for message sending
-        self.whatsapp_token: str = os.getenv("WHATSAPP_TOKEN", "EAATOsIH213wBROFiZB7TTPjcemFtNUiDuRbo2mV17MokAlz5ue2hH791CmATXDAjCZBATZCFkcxTuZCf3AINebYEb2ZBQuZC8zSLgTlsbnoaZC3K9EbKbZA6wchpVR5QcBtjtTdQWRheaUE5MXz6sNDWfaCDYsQwaHiuxFhjv3ZBgFPa8adbgsi2PYfI0FF7wbAZDZD")
-        self.phone_number_id: str = os.getenv("PHONE_NUMBER_ID", "1021779847693778")
-        self.webhook_verify_token: str = os.getenv("WEBHOOK_VERIFY_TOKEN", "motos2026")
+        self.whatsapp_token: str = os.getenv("WHATSAPP_TOKEN")
+        self.phone_number_id: str = os.getenv("PHONE_NUMBER_ID")
+        self.webhook_verify_token: str = os.getenv("WEBHOOK_VERIFY_TOKEN")
         
+        # Validate critical settings
+        self._validate_config()
+
         # Server Configuration
         self.port: int = int(os.getenv("PORT", "8080"))
         
@@ -41,6 +44,19 @@ class Settings:
         # Log configuration status (DO NOT log actual tokens)
         self._log_config_status()
     
+    def _validate_config(self) -> None:
+        """Ensure critical configuration variables are present and secure."""
+        critical_vars = {
+            "WHATSAPP_TOKEN": self.whatsapp_token,
+            "PHONE_NUMBER_ID": self.phone_number_id,
+            "ADMIN_API_KEY": self.admin_api_key,
+            "WEBHOOK_VERIFY_TOKEN": self.webhook_verify_token
+        }
+        
+        for name, value in critical_vars.items():
+            if not value or value in ["moto_master_2026", "motos2026"]:
+                raise RuntimeError(f"❌ CRITICAL CONFIGURATION ERROR: {name} is missing or insecure.")
+
     def _log_config_status(self) -> None:
         """Log configuration status without exposing sensitive values."""
         print("=" * 60)
