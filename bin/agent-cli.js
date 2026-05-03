@@ -67,7 +67,7 @@ function cmdEval() {
 
   // Run pytest
   log(`\n${C.gray}Running pytest...${C.reset}`);
-  const result = spawnSync("python3", ["-m", "pytest", "--tb=no", "-q"], {
+  const result = spawnSync("uv", ["run", "pytest", "--tb=no", "-q"], {
     cwd: root,
     encoding: "utf8",
     stdio: "pipe",
