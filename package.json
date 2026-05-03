@@ -23,6 +23,5 @@
     "url": "git+https://github.com/tiendalasmotos/Bot-TiendaLasMotos.git"
   },
   "dependencies": {
-    "@tobiasgaitan/agent-cli": "^1.0.0"
   }
 }
