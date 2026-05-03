@@ -5,6 +5,10 @@ Includes both WhatsApp and Google Cloud Platform configuration.
 
 import os
 from typing import Optional
+from dotenv import load_dotenv
+
+# Load local environment variables from .env if present
+load_dotenv()
 
 
 class Settings:
