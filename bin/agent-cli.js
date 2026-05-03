@@ -8,7 +8,7 @@ const { execSync, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const pkg = require("../package.json");
+const pkg = require(path.join(__dirname, "..", "package.json"));
 const VERSION = pkg.version;
 const PACKAGE_NAME = pkg.name;
 
