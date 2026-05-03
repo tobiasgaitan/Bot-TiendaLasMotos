@@ -31,6 +31,7 @@
 | 011 | Certify Environment Stability | 2026-05-03 | 5af9fb8 | 011-certify-environment |
 | 012 | Optimización de Mocks (Sección 10) | 2026-04-30 | 598710c | 008-refactor-firestore-mocks |
 | 013 | Stabilize Multiorganic Failure | 2026-05-03 | 9c4eec0 | 013-stabilize-multiorganic-failure |
+| 014 | Remediación Deuda NPM (always-auth) | 2026-05-03 | b7e2a4f | .npmrc (Purge) |
 
 ## Análisis de Fallos del Eval (BOT-CORE-770-EVAL)
 
