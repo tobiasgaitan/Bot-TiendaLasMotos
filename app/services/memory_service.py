@@ -87,7 +87,9 @@ class MemoryService:
                 return doc_ref
             
             # 2. Try by field query (Multi-format CRM support)
-            variations = [clean_phone, f"57{clean_phone}", f"+57{clean_phone}", f"+{clean_phone}"]
+            variations = [clean_phone]
+            if clean_phone.startswith("+"):
+                variations.append(clean_phone.replace("+", ""))
             query = prospectos_ref.where("celular", "in", variations).limit(1)
             docs = await query.get()
             if docs:
@@ -192,7 +194,7 @@ class MemoryService:
                 logger.warning(f"⚠️ No prospect found to update for {clean_phone}")
                 new_doc_ref = self._db.collection("prospectos").document(clean_phone)
                 await new_doc_ref.set({
-                    "celular": f"+57{clean_phone}",
+                    "celular": clean_phone,
                     "ai_summary": summary_text,
                     "chatbot_status": "ACTIVE",
                     "created_at": firestore.SERVER_TIMESTAMP,
@@ -331,7 +333,7 @@ class MemoryService:
             logger.warning(f"⚠️ No existing prospect found for {phone_number}, creating new document")
             new_doc_ref = self._db.collection("prospectos").document(normalized_phone)
             await new_doc_ref.set({
-                "celular": f"+57{normalized_phone}",
+                "celular": normalized_phone,
                 "human_help_requested": status,
                 "created_at": firestore.SERVER_TIMESTAMP,
                 "updated_at": firestore.SERVER_TIMESTAMP,
@@ -362,7 +364,7 @@ class MemoryService:
                 return False
                 
             new_data = {
-                "celular": f"+57{clean_phone}",
+                "celular": clean_phone,
                 "nombre": "",
                 "ciudad": "",
                 "moto_interes": "", # UNE v7.0.0 Standard
@@ -451,9 +453,9 @@ class MemoryService:
                 
             # B) Búsqueda Nativa (Inyección Frontend)
             raw_target = str(phone_number).strip()
-            variaciones = [raw_target, clean_phone, f"+{raw_target}"]
-            if clean_phone:
-                variaciones.extend([f"+57{clean_phone}", f"57{clean_phone}"])
+            variaciones = [raw_target, clean_phone]
+            if clean_phone.startswith("+"):
+                variaciones.append(clean_phone.replace("+", ""))
                 
             # Filtrar y dedup (límite de Firestore es 10 para IN array)
             variaciones_unicas = list(set([v for v in variaciones if v]))[:10]

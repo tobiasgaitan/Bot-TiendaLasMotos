@@ -614,11 +614,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             
             response_text = "[Modo Triaje Activo] Hola, soy el asistente inicial. Estoy recabando tus datos antes de pasarte al experto."
             
-            # Simulation of handoff to test the state transition
-            if msg_type == "text" and "quiero finance" in message_body.lower():
-                if memory_service_module.memory_service:
-                    await memory_service_module.memory_service.update_current_agent(user_phone, "finance")
-                response_text = "✅ Transferencia a 'finance' completada. En tu próximo mensaje te responderá CerebroIA."
+
             
             if response_text:
                 await _send_whatsapp_message(user_phone, response_text, phone_number_id=phone_number_id)
