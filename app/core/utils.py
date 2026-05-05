@@ -34,7 +34,7 @@ class PhoneNormalizer:
         if len(clean) == 10:
             clean = f"57{clean}"
             
-        return clean
+        return f"+{clean}"
 
     @staticmethod
     def to_international(phone: str) -> str:
@@ -48,6 +48,4 @@ class PhoneNormalizer:
             12-digit string starting with 57
         """
         check = PhoneNormalizer.normalize(phone)
-        if len(check) == 10:
-            return f"57{check}"
-        return check
+        return check.replace("+", "")
