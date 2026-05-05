@@ -1,64 +1,50 @@
-# BOT-STRUC-765-EVOLUTION — Refactorización Sistémica v2.0
+# BOT-ARQ-801-TRIAJE — Desacoplamiento Monolito CerebroIA
 
 ## Vision
-Eliminar los God Nodes detectados en `ai_brain.py` (1,215 LOC) y `whatsapp.py` (1,018 LOC)
-mediante fragmentación quirúrgica de responsabilidades, blindaje completo de observabilidad
-Zero-Silent-Failures, y resolución del hardcodeo financiero residual en `finance.py`.
-El ticket exige que `SurveyService` sea eliminado del árbol de importaciones activas (ya fue
-removido de la lógica pero su importación singleton persiste), que `_download_media()` sea
-movido a `StorageService`, y que el `EXTRACTION_SCHEMA` se eleve a constante global inmutable
-con Naming Lock garantizado (`habeas_data`).
+Implementar un Agente de Triaje (`triage_agent.py`) para gestionar la captura de intención (Fase 1) y el Gate Legal de Habeas Data (Fase 3). Este agente actuará como el primer punto de contacto, validando Nombre, Ciudad y consentimiento legal antes de delegar la sesión al Agente Especialista Financiero mediante un estado persistido en Firestore.
 
 ## Core Value
-El sistema debe poder procesar mensajes de WhatsApp → AI Brain → Firestore → Meta sin ningún
-bloque `except Exception as e` genérico que silencie el payload nativo del proveedor (38
-ocurrencias auditadas físicamente). Cada fallo de red debe exponer el body HTTP completo.
+El desacoplamiento reduce la carga cognitiva de `CerebroIA` y garantiza que la lógica financiera solo se active cuando los requisitos legales y de perfilamiento básico (Habeas Data, Nombre, Ciudad) estén satisfechos. Se implementa un Gate Legal absoluto con persistencia atómica.
 
 ## Target Users
-- **Auditor (Tobias):** Visibilidad total de fallos de integración Meta/GCP via logs estructurados.
-- **AI Brain (Juan Pablo):** Configuración financiera siempre desde ConfigService (sin magic numbers).
-- **StorageService:** Único responsable de descargas de medios binarios de Meta Graph API.
+- **Usuarios de WhatsApp:** Reciben una atención fluida y transparente sobre el tratamiento de sus datos.
+- **Equipo de Ventas/Finanzas:** Reciben prospectos ya validados legalmente y con datos básicos completos.
+- **Desarrolladores:** Arquitectura modular más fácil de mantener y auditar.
 
 ## Technical Context
 
-### Hallazgos del PAA (Verificados Físicamente)
-| Archivo | LOC | Hallazgo Crítico |
-|---------|-----|-----------------|
-| `app/services/ai_brain.py` | 1,215 | `extraction_schema` definido como local dentro de función (no global inmutable). 18 `except Exception` genéricos. |
-| `app/routers/whatsapp.py` | 1,018 | `_download_media()` vive aquí violando SRP. `survey_service` importado pero **no usado** (línea 29). 20 `except Exception` genéricos. |
-| `app/services/finance.py` | 568 | Hardcoded `tasa_mensual = 2.22` en línea 342 como fallback antes de consultar `config_service`. Patrón correcto (ConfigService) ya existe. |
-| `app/services/survey_service.py` | 369 | Módulo importado en `whatsapp.py` como singleton aunque la state machine fue removida el 2026-03-12 (comentario documentado). |
-| `app/services/config_service.py` | 227 | `DEFAULT_FINANCIAL` dict ya contiene los valores correctos. Es el SSOT. |
-| `app/services/storage_service.py` | 134 | Módulo existe y ya es singleton. Capacidad de extensión disponible. |
-| `app/services/memory_service.py` | 741 | Doble fallback en línea 123: `habeas_data` or `habeasData` or `habeas_data_accepted`. Regresión de nomenclatura activa. |
+### Arquitectura de Delegación (State-Based Handoff)
+- **Persistencia:** Campo `current_agent` en el documento de sesión de Firestore (`triage` | `finance`).
+- **Ruteo:** `whatsapp.py` lee `current_agent` vía `memory_service` y delega el payload.
+- **Gate Legal:** Bloqueo absoluto. No hay transición a `finance` sin `habeas_data=True`, `nombre` y `ciudad`.
 
-### Decisions Tomadas
-| Decisión | Fuente | Racional | Estado |
-|----------|--------|----------|--------|
-| `EXTRACTION_SCHEMA` como constante de módulo en `ai_brain.py` | Ticket | Naming Lock + reutilización | Aprobado |
-| `_download_media()` → `StorageService.download_media()` | Ticket + SRP | Desacoplamiento | Aprobado |
-| Eliminar import `survey_service` de `whatsapp.py` | Arqueología | Código muerto post 2026-03-12 | Aprobado |
-| Reemplazar `except Exception` por `httpx.HTTPStatusError` en rutas HTTP | Ticket | Zero-Silent-Failures | Aprobado |
-| `tasa_mensual` hardcode en `finance.py:342` → eliminar magic number | Ticket | SSOT ConfigService | Aprobado |
+### Saneamiento (Protocolo JSON Voorhees)
+- **Truncamiento:** Nombre y Ciudad truncados a 50 caracteres.
+- **Normalización:** UTF-8 y eliminación de caracteres de control.
+- **Inmutabilidad:** `EXTRACTION_SCHEMA` en `ai_brain.py` permanece bloqueado.
 
 ## Requirements
 
 ### V1 — Must Have
-| ID | Requirement | Fase | Status |
-|----|------------|------|--------|
-| R1 | `EXTRACTION_SCHEMA` elevado a constante global de módulo en `ai_brain.py` | 1 | Planned |
-| R2 | Eliminar import muerto `survey_service` de `whatsapp.py` | 1 | Planned |
-| R3 | `_download_media()` migrado a `StorageService.download_media()` con HTTP explícito | 2 | Planned |
-| R4 | Todos los `except Exception` en rutas HTTP → `httpx.HTTPStatusError` + log body | 2 | Planned |
-| R5 | `tasa_mensual = 2.22` en `finance.py:342` eliminado — siempre vía ConfigService | 1 | Planned |
-| R6 | `memory_service.py:123` unificar a solo `habeas_data` (eliminar alias `habeasData`) | 1 | Planned |
-| R7 | Test de regresión `habeas_data` supera suite `tests/test_habeas_data_regression.py` | 3 | Planned |
+- [ ] **R1:** Crear `app/services/triage_agent.py` como clase independiente (Singleton pattern).
+- [ ] **R2:** Extender `MemoryService` para soportar el campo `current_agent` y la lógica de validación de requisitos de handoff.
+- [ ] **R3:** Refactorizar `whatsapp.py` para implementar el ruteo basado en `current_agent`.
+- [ ] **R4:** Implementar el "Gate Legal" en el Agente de Triaje (Captura de consentimiento afirmativo).
+- [ ] **R5:** Garantizar observabilidad HTTP completa (Zero-Silent-Failures) en las llamadas del Agente de Triaje.
 
 ### Out of Scope
-- Reescritura total de `ai_brain.py` — Solo cambios quirúrgicos por bloques.
-- Cambios en `juan_pablo_personality` — Inmutable por mandato de usuario.
-- Cambios en rutas de Firestore — Contrato de persistencia no se altera.
-- Migración a nueva base de datos.
+- Modificar el `EXTRACTION_SCHEMA` de `ai_brain.py`.
+- Alterar la lógica interna de `MotorFinanciero`.
+- Cambios en la UI del Admin Simulator.
+
+## Key Decisions
+
+| Decision | Source | Rationale | Outcome |
+|----------|--------|-----------|---------|
+| Estado en Firestore | User | Evitar redirecciones en memoria temporal, garantizar resiliencia. | Decidido |
+| TriageAgent independiente | User | Aislamiento de "context window" de la lógica de crédito. | Decidido |
+| Truncamiento PII | User | Cumplimiento estricto de FASE 4 (Saneamiento). | Decidido |
+| Bloqueo Legal Absoluto | User | Seguridad jurídica (Habeas Data) antes de perfilamiento. | Decidido |
 
 ---
-*Inicializado: 2026-04-28 — Ticket BOT-STRUC-765-EVOLUTION*
+*Last updated: 2026-05-05 after initialization — Ticket BOT-ARQ-801-TRIAJE*
