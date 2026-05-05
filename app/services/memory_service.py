@@ -123,7 +123,8 @@ class MemoryService:
                         "habeas_data": data.get("habeas_data", False),
                         "servicios_publicos": data.get("servicios_publicos") or data.get("serviciosPublicos", None),
                         "total_tokens_consumed": data.get("total_tokens_consumed", 0),
-                        "session_cost_usd": data.get("session_cost_usd", 0.0)
+                        "session_cost_usd": data.get("session_cost_usd", 0.0),
+                        "current_agent": data.get("current_agent", "triage")
                     }
                     return prospect_data
             
@@ -134,7 +135,8 @@ class MemoryService:
                 "habeas_data_sent": False, 
                 "habeas_data": False,
                 "servicios_publicos": None,
-                "total_tokens_consumed": 0, "session_cost_usd": 0.0
+                "total_tokens_consumed": 0, "session_cost_usd": 0.0,
+                "current_agent": "triage"
             }
         except Exception as e:
             logger.error(f"❌ Error in get_prospect_data for {phone_number}: {e}")
@@ -373,6 +375,7 @@ class MemoryService:
                 "habeas_data": False,
                 "servicios_publicos": None,
                 "created_at": firestore.SERVER_TIMESTAMP,
+                "current_agent": "triage",
             }
             await doc_ref.set(new_data)
             logger.info(f"✅ Created NEW prospect doc for {clean_phone} (ASYNC)")
@@ -724,6 +727,25 @@ class MemoryService:
                 f"❌ [STATE] Error en transición PENDING→IN_PROGRESS para {phone_number}: {str(e)}",
                 exc_info=True
             )
+            return False
+
+    async def update_current_agent(self, phone_number: str, agent_name: str) -> bool:
+        """
+        Updates the current agent in control of the prospect session.
+        """
+        try:
+            doc_ref = await self._find_prospect_ref(phone_number)
+            if doc_ref:
+                await doc_ref.update({
+                    "current_agent": agent_name, 
+                    "updated_at": firestore.SERVER_TIMESTAMP
+                })
+                logger.info(f"🔄 [HANDOFF] current_agent updated to '{agent_name}' for {phone_number}")
+                return True
+            logger.warning(f"⚠️ [HANDOFF] No prospect found to update current_agent for {phone_number}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Error in update_current_agent for {phone_number}: {e}", exc_info=True)
             return False
 
 # Singleton instance (will be initialized in main.py with db)
