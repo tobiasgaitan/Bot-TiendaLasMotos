@@ -298,7 +298,6 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             
         elif msg_type in ["image", "document", "sticker"]:
             logger.info(f"📸 Media detected from {user_phone} (Type: {msg_type}). Processing immediately...")
-            await _mark_message_as_read(msg_data["id"], phone_number_id=phone_number_id)
             
             # Initialize Vision Service locally if needed
             if db:
@@ -485,9 +484,6 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             
             return  # EARLY EXIT: Stop processing here
             
-        # Marcar como leído locally
-        await _mark_message_as_read(msg_data["id"], phone_number_id=phone_number_id) 
-
         # 1.5 Save User Message to History (PERSISTENCE FIX)
         if memory_service_module.memory_service:
             if msg_type == "text" and message_body:
@@ -994,19 +990,6 @@ async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "",
         return False
     except Exception as e:
         logger.error(f"❌ Error Genérico: El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e}")
-        return False
-
-async def _mark_message_as_read(message_id: str, phone_number_id: Optional[str] = None) -> bool:
-    """Mark as read via WhatsAppService."""
-    from app.services.whatsapp_service import whatsapp_service
-    try:
-        await whatsapp_service.mark_as_read(message_id, phone_number_id=phone_number_id)
-        return True
-    except httpx.HTTPStatusError as e:
-        logger.error(f"❌ Error HTTP al marcar como leído ({e.response.status_code}): {e.response.text}")
-        return False
-    except Exception as e:
-        logger.error(f"❌ Error inesperado al marcar como leído: {e}")
         return False
 
 async def _get_session(db_client, phone) -> Dict[str, Any]:

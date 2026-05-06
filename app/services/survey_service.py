@@ -238,7 +238,9 @@ class SurveyService:
 
         # Update Prospect document with flags and new info
         try:
-            prospect_ref = db_client.collection("prospectos").document(phone)
+            from app.core.utils import PhoneNormalizer
+            clean_phone = PhoneNormalizer.normalize(phone)
+            prospect_ref = db_client.collection("prospectos").document(clean_phone)
             # Fetch current data to preserve other fields if set() is used, or just use update()
             prospect_ref.update({
                 "nombre": answers.get("nombre", ""),
@@ -328,12 +330,15 @@ class SurveyService:
 
         """Helper to update Firestore session and prospect survey_state."""
         try:
+            from app.core.utils import PhoneNormalizer
+            clean_phone = PhoneNormalizer.normalize(phone)
+            
             # 1. Update Session Document (Legacy/Router Sync)
             doc_ref = (
                 db_client.collection("mensajeria")
                 .document("whatsapp")
                 .collection("sesiones")
-                .document(phone)
+                .document(clean_phone)
             )
             data["last_interaction"] = datetime.now(timezone.utc)
             doc_ref.set(data, merge=True)
