@@ -21,6 +21,7 @@
 |---|-------------|------|--------|-----------|
 | 015 | Eliminar concatenación manual f'+57{normalized_phone}' en admin.py y survey_service.py y forzar PhoneNormalizer | 2026-05-06 | b71cc20 | 015-identity-unification |
 | 016 | CORS explicit origins & purge to_international (BOT-FIX-902) | 2026-05-06 | ad1570d | 016-cors-identity-enforcement |
+| 017 | Infrastructure Pipeline Retrigger - Kill Zombie Containers | 2026-05-06 | efe5ef1 | 017-infra-pipeline-retrigger |
 
 ### Blockers/Concerns
 None
