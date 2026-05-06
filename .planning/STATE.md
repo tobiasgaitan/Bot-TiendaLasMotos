@@ -2,7 +2,7 @@
 
 ## Current Position
 **Phase:** 1 — Handoff y Memoria
-**Status:** Planning
+**Status:** COMPLETED
 **Last activity:** 2026-05-05 — Roadmap created
 
 ## Key Decisions
@@ -15,8 +15,14 @@
 | Research Denegado | Init | User | Prevenir Caos de Dependencias |
 | E.164 Strict Format | Quick Task 014 | Fix | PhoneNormalizer yields +57... format universally |
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 015 | Eliminar concatenación manual f'+57{normalized_phone}' en admin.py y survey_service.py y forzar PhoneNormalizer | 2026-05-06 | b71cc20 | 015-identity-unification |
+
 ### Blockers/Concerns
 None
 
 ---
-*Last updated: 2026-05-05*
+*Last updated: 2026-05-06*
