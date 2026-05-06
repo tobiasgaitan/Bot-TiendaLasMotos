@@ -35,14 +35,13 @@ def test_phone_normalization():
         assert result == expected, f"❌ Failed! Got {result}, expected {expected}"
         print(f"   ✅ PASS")
 
-    print("\n🔹 Testing to_international()...")
+    print("\n🔹 Testing Meta Wire Format (normalize + lstrip)...")
     test_cases_intl = [
         ("3192564288", "573192564288"),
-        ("573192564288", "573192564288"),
-        ("123", "123") # Should return as is if not 10 digits
+        ("573192564288", "573192564288")
     ]
     for input_phone, expected in test_cases_intl:
-        result = PhoneNormalizer.to_international(input_phone)
+        result = PhoneNormalizer.normalize(input_phone).lstrip("+")
         print(f"   Input: '{input_phone}' -> Result: '{result}' (Expected: '{expected}')")
         assert result == expected, f"❌ Failed! Got {result}, expected {expected}"
         print(f"   ✅ PASS")

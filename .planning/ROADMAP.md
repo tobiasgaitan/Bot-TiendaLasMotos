@@ -6,7 +6,7 @@
 
 | Phase | Name | Status | Plans | Date |
 |-------|------|--------|-------|------|
-| 1 | Handoff y Memoria | Planned | 2 | 2026-05-05 |
+| 1 | Handoff y Memoria | Completed | 2 | 2026-05-05 |
 | 2 | Agente de Triaje | Planned | 3 | 2026-05-05 |
 
 ### Phases
@@ -14,8 +14,8 @@
 #### Phase 1: Handoff y Memoria
 **Goal:** Establecer la infraestructura de persistencia atómica y el ruteo del orquestador `whatsapp.py`.
 **Requirements:** R1, R2
-- [ ] Modificar `memory_service.py` para soportar `current_agent`.
-- [ ] Refactorizar `whatsapp.py` para leer `current_agent` e inyectar el servicio correspondiente.
+- [x] Modificar `memory_service.py` para soportar `current_agent`.
+- [x] Refactorizar `whatsapp.py` para leer `current_agent` e inyectar el servicio correspondiente.
 
 #### Phase 2: Agente de Triaje
 **Goal:** Construir el `TriageAgent` con validación de FASE 4 y asegurar el Gate Legal.

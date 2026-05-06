@@ -1,5 +1,8 @@
-# Use Python 3.12 slim image for stability and smaller size
-FROM python:3.12-slim
+# Use Python 3.13 slim image for stability and smaller size
+FROM python:3.13-slim
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Set working directory
 WORKDIR /app
@@ -7,7 +10,9 @@ WORKDIR /app
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PORT=8080
+    PORT=8080 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -16,15 +21,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better layer caching
-COPY requirements.txt .
+# Copy uv lock files
+COPY pyproject.toml uv.lock ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Install dependencies using uv sync --frozen
+RUN uv sync --frozen --no-install-project --no-dev
 
 # Copy application code
 COPY ./app ./app
+
+# Install project
+RUN uv sync --frozen --no-dev
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
@@ -38,7 +45,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
+    CMD uv run python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
 
 # Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
