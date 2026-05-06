@@ -120,18 +120,21 @@ app = FastAPI(
 
 
 # ============================================================================
-# CORS CONFIGURATION
+# CORS CONFIGURATION (BOT-FIX-902)
 # ============================================================================
-# Enable cross-origin requests from Admin Panel
-# Using allow_origins=["*"] for immediate testing and flexibility
-# For production, restrict to specific domains:
-# ["https://tiendalasmotos.com", "https://beta.tiendalasmotos.com", "http://localhost:3000"]
+# Explicit origin whitelist for Admin Panel and local development.
+# WHY NOT "*": CORS spec prohibits wildcard origins with allow_credentials=True.
+# Using "*" with credentials causes browsers to block the response with 403.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for testing
+    allow_origins=[
+        "https://tiendalasmotos-beta.web.app",
+        "https://tiendalasmotos.com",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all HTTP methods
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ============================================================================

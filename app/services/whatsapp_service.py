@@ -31,7 +31,7 @@ class WhatsAppService:
         Sends a text message to a WhatsApp user.
         """
         # 1. Normalización Atómica (Protocolo Meta)
-        to = PhoneNormalizer.to_international(to)
+        to = PhoneNormalizer.normalize(to).lstrip("+")
         
         target_id = phone_number_id or self.phone_number_id
         url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{target_id}/messages"
@@ -91,7 +91,7 @@ class WhatsAppService:
         Sends an image message via URL.
         """
         # 1. Normalización Atómica (Protocolo Meta)
-        to = PhoneNormalizer.to_international(to)
+        to = PhoneNormalizer.normalize(to).lstrip("+")
         
         target_id = phone_number_id or self.phone_number_id
         url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{target_id}/messages"
@@ -137,7 +137,7 @@ class WhatsAppService:
         Sends a WhatsApp template message (Meta API).
         """
         # 1. Normalización Atómica (Protocolo Meta)
-        to_phone = PhoneNormalizer.to_international(to_phone)
+        to_phone = PhoneNormalizer.normalize(to_phone).lstrip("+")
         
         target_id = phone_number_id or self.phone_number_id
         url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{target_id}/messages"
