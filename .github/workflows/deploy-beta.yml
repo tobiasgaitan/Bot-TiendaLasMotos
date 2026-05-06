@@ -29,7 +29,8 @@ jobs:
           cd ${GITHUB_WORKSPACE}
           pwd
           ls -la
-          uvx google-agents-cli deploy \
+          uvx google-agents-cli deploy bot-tiendalasmotos-beta \
+            --source . \
             --no-confirm-project \
             --region us-central1 \
             --project tiendalasmotos \
