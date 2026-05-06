@@ -1,5 +1,5 @@
 """
-V6.0 Dynamic Configuration Loader
+v8.0.0 Dynamic Configuration Loader
 Loads and manages dynamic configuration from Firestore for:
 - Juan Pablo personality and system instructions
 - Routing rules for message classification
@@ -61,13 +61,12 @@ class ConfigLoader:
         self._juan_pablo_personality: Optional[Dict[str, Any]] = None
         self._routing_rules: Optional[Dict[str, Any]] = None
         self._catalog_config: Optional[Dict[str, Any]] = None
-        self._partners_config: Optional[Dict[str, Any]] = None
         self._last_loaded: Optional[datetime] = None
         self._initialized = True
     
     def load_all(self) -> None:
         """
-        Load all V6.0 configuration documents from Firestore.
+        Load all v8.0.0 configuration documents from Firestore.
         
         Loads:
             - configuracion/sebas_personality: AI personality configuration
@@ -75,7 +74,7 @@ class ConfigLoader:
             - configuracion/catalog_config: Product catalog settings
         """
         try:
-            logger.info("🧠 Loading V6.0 dynamic configuration...")
+            logger.info("🧠 Loading v8.0.0 dynamic configuration...")
             
             # Load Juan Pablo personality configuration
             self._load_juan_pablo_personality()
@@ -86,14 +85,11 @@ class ConfigLoader:
             # Load catalog configuration
             self._load_catalog_config()
             
-            # Load partners configuration
-            self._load_partners_config()
-            
             self._last_loaded = datetime.now()
-            logger.info("✅ V6.0 configuration loaded successfully")
+            logger.info("✅ v8.0.0 configuration loaded successfully")
             
         except Exception as e:
-            logger.error(f"❌ Error loading V6.0 configuration: {str(e)}")
+            logger.error(f"❌ Error loading v8.0.0 configuration: {str(e)}")
             # Initialize with safe defaults to prevent crashes
             self._initialize_defaults()
     
@@ -148,29 +144,13 @@ class ConfigLoader:
             logger.error(f"❌ Error loading catalog config: {str(e)}")
             self._catalog_config = self._get_default_catalog_config()
             
-    def _load_partners_config(self) -> None:
-        """Load partners configuration from Firestore."""
-        try:
-            doc_ref = self._db.collection("configuracion").document("aliados")
-            doc = doc_ref.get()
-            
-            if doc.exists:
-                self._partners_config = doc.to_dict()
-                logger.info(f"✅ Partners config loaded ({len(self._partners_config)} items)")
-            else:
-                logger.warning("⚠️  Partners config document not found, using defaults")
-                self._partners_config = self._get_default_partners_config()
-                
-        except Exception as e:
-            logger.error(f"❌ Error loading partners config: {str(e)}")
-            self._partners_config = self._get_default_partners_config()
+
     
     def _initialize_defaults(self) -> None:
         """Initialize all configurations with safe defaults."""
         self._juan_pablo_personality = self._get_default_juan_pablo_personality()
         self._routing_rules = self._get_default_routing_rules()
         self._catalog_config = self._get_default_catalog_config()
-        self._partners_config = self._get_default_partners_config()
     
     # ==================== Getters ====================
     
@@ -212,12 +192,14 @@ class ConfigLoader:
 
     def get_partners_config(self) -> Dict[str, Any]:
         """
-        Get partners configuration (e.g. links).
+        Get partners configuration (e.g. links) via ConfigService.
         
         Returns:
             Dictionary containing partners configuration
         """
-        return self._partners_config or self._get_default_partners_config()
+        from app.services.config_service import config_service
+        config = config_service.get_partners_config()
+        return config if config else self._get_default_partners_config()
     
     def refresh(self) -> None:
         """
@@ -226,7 +208,7 @@ class ConfigLoader:
         Can be called to reload configurations without restarting the app.
         Useful for hot-reload of personality or routing rules.
         """
-        logger.info("🔄 Refreshing V6.0 configurations...")
+        logger.info("🔄 Refreshing v8.0.0 configurations...")
         self.load_all()
     
     # ==================== Default Configurations ====================
@@ -243,7 +225,7 @@ class ConfigLoader:
             "name": "Juan Pablo",
             "role": "Asesor experto en financiación y venta de motocicletas",
             "tone": "educado, profesional y empático",
-            "model_version": "gemini-2.5-flash",
+            "model_version": "gemini-3.0-flash",
             "system_instruction": JUAN_PABLO_SYSTEM_INSTRUCTION,
             "catalog_knowledge": [] # CLEANED HALLUCINATIONS
         }
