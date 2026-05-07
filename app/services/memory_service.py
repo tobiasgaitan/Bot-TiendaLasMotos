@@ -126,7 +126,7 @@ class MemoryService:
                         "servicios_publicos": data.get("servicios_publicos") or data.get("serviciosPublicos", None),
                         "total_tokens_consumed": data.get("total_tokens_consumed", 0),
                         "session_cost_usd": data.get("session_cost_usd", 0.0),
-                        "current_agent": data.get("current_agent", "triage")
+                        "current_agent": data.get("current_agent", "expert")
                     }
                     return prospect_data
             
@@ -138,7 +138,7 @@ class MemoryService:
                 "habeas_data": False,
                 "servicios_publicos": None,
                 "total_tokens_consumed": 0, "session_cost_usd": 0.0,
-                "current_agent": "triage"
+                "current_agent": "expert"
             }
         except Exception as e:
             logger.error(f"❌ Error in get_prospect_data for {phone_number}: {e}")
@@ -377,7 +377,7 @@ class MemoryService:
                 "habeas_data": False,
                 "servicios_publicos": None,
                 "created_at": firestore.SERVER_TIMESTAMP,
-                "current_agent": "triage",
+                "current_agent": "expert",
             }
             await doc_ref.set(new_data)
             logger.info(f"✅ Created NEW prospect doc for {clean_phone} (ASYNC)")

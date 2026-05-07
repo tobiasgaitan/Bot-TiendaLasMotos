@@ -513,7 +513,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         current_history = []
         skip_greeting = False
         context = "" # Initialize context to prevent UnboundLocalError
-        current_agent = "triage" # Fallback by default
+        current_agent = "expert" # Fallback by default
         
         # Initialize Services Locally
         logger.info("🧠 Initializing CerebroIA...")
@@ -528,7 +528,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             # 1. Get existing data FIRST to decide on greeting
             prospect_data = await ms.get_prospect_data(user_phone)
             newly_created = not (prospect_data and prospect_data.get("exists", False))
-            current_agent = prospect_data.get("current_agent", "triage") if prospect_data else "triage"
+            current_agent = prospect_data.get("current_agent", "expert") if prospect_data else "expert"
             
             # 2. LOAD HISTORY for Context
             logger.info(f"📜 Loading chat history for {user_phone}...")
@@ -598,25 +598,6 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         # --- END CONTEXT SWITCHING LOGIC ---
 
         logger.info(f"🔀 [ROUTER] Routing session for {user_phone} to Agent: {current_agent}")
-
-        if current_agent == "triage":
-            logger.info(f"🟢 [ROUTER] Processing via Triage Agent...")
-            # [FASE 2 PENDING] Placeholder for TriageAgent integration
-            # try:
-            #     from app.services.triage_agent import TriageAgent
-            #     triage_agent = TriageAgent(...)
-            #     response_text = await triage_agent.process(...)
-            # except:
-            
-            response_text = "[Modo Triaje Activo] Hola, soy el asistente inicial. Estoy recabando tus datos antes de pasarte al experto."
-            
-
-            
-            if response_text:
-                await _send_whatsapp_message(user_phone, response_text, phone_number_id=phone_number_id)
-                if memory_service_module.memory_service:
-                    await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
-            return
 
         # 3. Generar Respuesta (CerebroIA - Rama Finance)
         if msg_type == "text":
