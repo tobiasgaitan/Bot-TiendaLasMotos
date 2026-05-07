@@ -23,7 +23,7 @@
 | 016 | CORS explicit origins & purge to_international (BOT-FIX-902) | 2026-05-06 | ad1570d | 016-cors-identity-enforcement |
 | 017 | Infrastructure Pipeline Retrigger - Kill Zombie Containers | 2026-05-06 | efe5ef1 | 017-infra-pipeline-retrigger |
 | 018 | Fix GitHub Actions Deploy Syntax (Error: No such option: --source) | 2026-05-07 | f7085f8 | 018-fix-gha-deploy-syntax |
-| 020 | AI Forensic Observability - Replace logger.error with logger.exception (BE-FIX-909) | 2026-05-07 | PENDING | 020-ai-forensic-observability |
+| 020 | AI Forensic Observability - Replace logger.error with logger.exception (BE-FIX-909) | 2026-05-07 | f93f4a5 | 020-ai-forensic-observability |
 
 ### Blockers/Concerns
 None
