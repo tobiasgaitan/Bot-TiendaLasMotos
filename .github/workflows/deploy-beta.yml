@@ -26,15 +26,12 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
-          cd ${GITHUB_WORKSPACE}
-          pwd
-          ls -la
-          uvx google-agents-cli deploy bot-tiendalasmotos-beta \
+          gcloud run deploy bot-tiendalasmotos-beta \
             --source . \
-            --no-confirm-project \
             --region us-central1 \
             --project tiendalasmotos \
-            --update-env-vars="PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos,WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }},ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }}"
+            --set-env-vars="PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos,WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }},ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }}" \
+            --allow-unauthenticated
 
       - name: Make Service Public
         run: |
