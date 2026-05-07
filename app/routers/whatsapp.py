@@ -151,7 +151,7 @@ async def webhook_handler(
         return {"status": "received"}
 
     except Exception as e:
-        logger.error(f"Error procesando webhook: {e}")
+        logger.exception(f"Error procesando webhook: {e}")
         return {"status": "error"}
 
 
@@ -391,7 +391,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                                 await _send_whatsapp_message(user_phone, f"¡Recibida tu {nombre_doc}! ✅ Ya solo me falta {faltante} para terminar.", phone_number_id=phone_number_id)
                                         return
                                     except Exception as e:
-                                        logger.error(f"❌ Error uploading document: {e}")
+                                        logger.exception(f"❌ Error uploading document: {e}")
                                         await _send_whatsapp_message(user_phone, "Tuve un problemita guardando tu documento. ¿Podrías intentarlo de nuevo?", phone_number_id=phone_number_id)
                                         return
 
@@ -416,6 +416,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                         return
 
                                     simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
+                                    if prospect_data: prospect_data["phone"] = user_phone
                                     final_response = await cerebro_ia.pensar_respuesta(
                                         simulated_user_msg, 
                                         context="", 
@@ -450,6 +451,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                     if prospect_data and prospect_data.get('human_help_requested', False):
                                         return
                                     
+                                    if prospect_data: prospect_data["phone"] = user_phone
                                     final_response = await cerebro_ia.pensar_respuesta(
                                         vision_response,
                                         context="", 
@@ -479,7 +481,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     else:
                         await _send_whatsapp_message(user_phone, "No pude descargar el archivo. Intenta de nuevo.", phone_number_id=phone_number_id)
                 except Exception as e:
-                    logger.error(f"❌ Error processing media: {e}")
+                    logger.exception(f"❌ Error processing media: {e}")
                     await _send_whatsapp_message(user_phone, "Tuve un problema viendo el archivo. ¿Me cuentas qué es? 😅", phone_number_id=phone_number_id)
             
             return  # EARLY EXIT: Stop processing here
@@ -500,7 +502,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 catalog_service_local.refresh()
                 confirm_msg = "✅ Catálogo actualizado en memoria exitosamente."
             except Exception as e:
-                logger.error(f"❌ Error refreshing catalog: {e}")
+                logger.exception(f"❌ Error refreshing catalog: {e}")
                 confirm_msg = f"❌ Error al actualizar el catálogo: {str(e)}"
                 
             await _send_whatsapp_message(user_phone, confirm_msg, phone_number_id=phone_number_id)
@@ -633,13 +635,15 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 logger.info(f"✅ [LINEAR BLOCKING] Memory Synced. Identity: {prospect_data.get('name')}")
 
             except Exception as e:
-                logger.error(f"❌ Error in Linear Blocking flow: {e}")
+                logger.exception(f"❌ Error in Linear Blocking flow: {e}")
                 # Fallback to local data if sync fails
                 if not prospect_data:
                     prospect_data = await ms.get_prospect_data(user_phone)
 
             # 3. Inferencia de la IA (Solo con datos confirmados)
             logger.info(f"🧠 Calling CerebroIA.pensar_respuesta (Await)...")
+            if prospect_data is not None:
+                prospect_data["phone"] = user_phone # Inject phone for logging context
             response_text = await cerebro_ia.pensar_respuesta(
                 message_body,
                 context=context,
@@ -721,6 +725,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     current_history = await ms.get_chat_history(user_phone, limit=10)
 
                     # 3. AI Inference (Await)
+                    if prospect_data: prospect_data["phone"] = user_phone
                     response_text = await cerebro_ia.pensar_respuesta(
                         transcription,
                         context=context, 
@@ -784,7 +789,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                             await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
                                         return 
                             except Exception as e:
-                                logger.error(f"⚠️ Error injecting dynamic Phase-Gate image: {e}")
+                                logger.exception(f"⚠️ Error injecting dynamic Phase-Gate image: {e}")
                     else:
                         logger.info("⏩ [BYPASS] Skipping image injection: moto already confirmed.")
 
