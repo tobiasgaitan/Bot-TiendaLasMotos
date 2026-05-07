@@ -21,8 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Copy uv lock files
-COPY pyproject.toml uv.lock ./
+# Copy uv lock files and metadata required by build system
+COPY pyproject.toml uv.lock README.md ./
 
 # Install dependencies using uv sync --frozen
 RUN uv sync --frozen --no-install-project --no-dev
