@@ -22,9 +22,11 @@
 | 015 | Eliminar concatenación manual f'+57{normalized_phone}' en admin.py y survey_service.py y forzar PhoneNormalizer | 2026-05-06 | b71cc20 | 015-identity-unification |
 | 016 | CORS explicit origins & purge to_international (BOT-FIX-902) | 2026-05-06 | ad1570d | 016-cors-identity-enforcement |
 | 017 | Infrastructure Pipeline Retrigger - Kill Zombie Containers | 2026-05-06 | efe5ef1 | 017-infra-pipeline-retrigger |
+| 018 | Fix GitHub Actions Deploy Syntax (Error: No such option: --source) | 2026-05-07 | f7085f8 | 018-fix-gha-deploy-syntax |
+| 020 | AI Forensic Observability - Replace logger.error with logger.exception (BE-FIX-909) | 2026-05-07 | PENDING | 020-ai-forensic-observability |
 
 ### Blockers/Concerns
 None
 
 ---
-*Last updated: 2026-05-06*
+*Last updated: 2026-05-07*

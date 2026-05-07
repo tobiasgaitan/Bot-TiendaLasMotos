@@ -141,7 +141,7 @@ class CerebroIA:
 
                 logger.info(f"🧠 CerebroIA initialized with google-genai Client ({'Tools Enabled' if self.tools else 'No Tools'})")
             except Exception as e:
-                logger.error(f"❌ Error initializing GenAI Client: {str(e)}")
+                logger.exception(f"❌ Error initializing GenAI Client: {str(e)}")
                 self.client = None
         else:
             self.client = None
@@ -779,8 +779,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         )
                     )
                 except Exception as e:
-                    logger.error(f"🚨 [AI FALLBACK REASON]: Gemini Inference Failure - {str(e)}")
-                    logger.error(f"❌ Critical Gemini failure after retries: {e}")
+                    logger.exception(f"🚨 [AI FALLBACK REASON]: Gemini Inference Failure for {user_name}: {str(e)}")
                     return self._fallback_response(texto, history)
 
                 if not response.candidates or not response.candidates[0].content.parts:
@@ -814,11 +813,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         )
                         # Re-verify candidates after injection
                         if not response.candidates:
-                            logger.error("🚨 [AI FALLBACK REASON]: Safety Filter Triggered during Forced Turn")
-                            logger.error("⚠️ AI Safety Filter Triggered after forced turn.")
+                            logger.error(f"🚨 [AI FALLBACK REASON]: Safety Filter Triggered during Forced Turn for {user_name}")
                             return self._fallback_response(texto, history)
                 except Exception as e:
-                    logger.error(f"⚠️ Tool Validation Logic Error: {e}", exc_info=True)
+                    logger.exception(f"⚠️ Tool Validation Logic Error for {user_name}: {e}")
                 # ----------------------------------------------------------
                 
                 # --- ROBUST TOOL EXECUTION LOOP ---
@@ -830,8 +828,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 
                 while turns < max_turns:
                     if not response.candidates or not response.candidates[0].content.parts:
-                        logger.error(f"🚨 [AI FALLBACK REASON]: Empty Candidate in Turn {turns+1}")
-                        logger.error(f"⚠️ Turn {turns+1}: No candidates returned.")
+                        logger.error(f"🚨 [AI FALLBACK REASON]: Empty Candidate in Turn {turns+1} for {user_name}")
                         return self._fallback_response(texto, history)
 
                     candidate = response.candidates[0]
@@ -843,8 +840,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             # Safely extract text from components
                             ai_response = "".join([part.text for part in candidate.content.parts if part.text]).strip()
                             if not ai_response:
-                                logger.error("🚨 [AI FALLBACK REASON]: Empty AI Text Response (Turn final)")
-                                logger.warning("⚠️ Empty AI response")
+                                logger.error(f"🚨 [AI FALLBACK REASON]: Empty AI Text Response (Turn final) for {user_name}")
                                 return self._fallback_response(texto, history)
 
                             # --- GUARDRAILS ---
@@ -901,7 +897,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                             return ai_response
                         except Exception as e:
-                            logger.warning(f"⚠️ Error extracting text: {e}")
+                            logger.exception(f"⚠️ Error extracting text for {user_name}: {e}")
                             return self._fallback_response(texto, history)
 
                     # Execute function calls
@@ -965,7 +961,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 else:
                                     search_results = "Error: Servicio de catálogo no disponible."
                             except Exception as e:
-                                logger.error(f"❌ Catalog error: {e}")
+                                logger.exception(f"❌ Catalog error for query '{query}' (Prospect: {user_name}): {e}")
                                 search_results = "Error consultando catálogo."
                                 
                             # Personalización de resultados (v8.3)
@@ -1039,7 +1035,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 else:
                                     credit_res = "Error: Motor financiero no conectado."
                             except Exception as e:
-                                logger.error(f"❌ Credit error: {e}")
+                                logger.exception(f"❌ Credit error for prospect {user_name}: {e}")
                                 credit_res = "Error calculando el crédito."
 
                             credit_res += f"\n\n{funnel_instruction}"
@@ -1061,7 +1057,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 return self._fallback_response(texto, history)
             
             except InvalidArgument as e:
-                logger.error(f"❌ Invalid Argument (400) in AI attempt {attempt+1}: {e}")
+                logger.exception(f"❌ Invalid Argument (400) in AI attempt {attempt+1} for prospect {prospect_data.get('nombre', 'Unknown')}: {e}")
                 break
                 
             except (ResourceExhausted, ServiceUnavailable) as e:
@@ -1070,14 +1066,11 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 await asyncio.sleep(wait_time)
                 
             except Exception as e:
-                import traceback
                 error_type = type(e).__name__
-                logger.error(f"🚨 [AI FALLBACK REASON]: {error_type} - {e}")
-                logger.error(f"❌ [AUDIT FAIL] Error in AI attempt {attempt+1}: {error_type} - {e}")
-                logger.error(traceback.format_exc())
+                logger.exception(f"🚨 [AI FALLBACK REASON]: {error_type} - {e} | Prospect: {prospect_data.get('nombre', 'Unknown')}")
                 break
         
-        logger.error("❌ Failed to generate AI response after retries")
+        logger.error(f"❌ Failed to generate AI response after {max_retries} retries for prospect {prospect_data.get('nombre', 'Unknown') if prospect_data else 'Unknown'}")
         return self._fallback_response(texto, history)
 
     async def detect_sentiment(self, text: str) -> str:
@@ -1094,7 +1087,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             )
             return response.text.strip().upper()
         except Exception as e:
-            logger.error(f"Error detecting sentiment: {e}")
+            logger.exception(f"Error detecting sentiment for text '{text[:50]}...': {e}")
             return "NEUTRAL"
 
     async def generate_summary(self, conversation_text: str, last_bot_question: str = "", session_id: str = "unknown", previous_moto_interes: str = "") -> Dict[str, Any]:
@@ -1198,7 +1191,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             return result
             
         except Exception as e:
-            logger.error(f"❌ Error generating summary: {str(e)}", exc_info=True)
+            logger.exception(f"❌ Error generating summary for session {session_id}: {str(e)}")
             return {
                 "summary": conversation_text[:200] + "..." if len(conversation_text) > 200 else conversation_text,
                 "extracted": {}
