@@ -543,7 +543,7 @@ REGLAS ESTRICTAS DE USO:
             # Define credit calculation function
             credit_function = types.FunctionDeclaration(
                 name="calculate_credit_score",
-                description="ÚNICA herramienta autorizada para calcular el perfil crediticio. Úsala inmediatamente después del Paso 9. Proporciona el score, la entidad asignada y el link de aplicación. Requisitos: ser mayor de edad y contar con ingresos demostrables.",
+                description="ÚNICA herramienta autorizada para calcular el perfil crediticio. ¡DETENTE AQUÍ! No generes respuesta. Espera el resultado interno. Úsala inmediatamente después del Paso 9. Proporciona el score, la entidad asignada y el link de aplicación. Requisitos: ser mayor de edad y contar con ingresos demostrables.",
                 parameters={
                     "type": "object",
                     "properties": {
