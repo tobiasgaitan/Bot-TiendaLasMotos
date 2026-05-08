@@ -344,7 +344,7 @@ class CerebroIA:
 
         # --- BLOQUEO PROTOCOLO COMPETENCIA (Directiva 2026) ---
         # Bloqueamos el avance a fase legal si la moto es de la competencia.
-        moto_interes = str(prospect_data.get("moto_interest", "")).lower()
+        moto_interes = str(prospect_data.get("moto_interes", "")).lower()
         competitors = ["boxer", "nkd", "yamaha", "suzuki", "honda", "akt", "pulsar", "victory", "tvs Apache"] # Apache can be our but Pulsar is competitor? Actually Pulsar is Bajaj.
         # User defined Boxer, NKD, Yamaha explicitly.
         competitor_keywords = ["boxer", "nkd", "yamaha", "suzuki", "honda", "bajaj", "hero"]
@@ -628,8 +628,8 @@ REGLAS ESTRICTAS DE USO:
         # Moving the anchor logic from the router to the brain.
         # This keeps the 'texto' (raw user input) clean for the tool interceptor.
         anchor_context = ""
-        if prospect_data and prospect_data.get("moto_interest"):
-            moto_interes = prospect_data.get("moto_interest")
+        if prospect_data and prospect_data.get("moto_interes"):
+            moto_interes = prospect_data.get("moto_interes")
             # Anchor rule: If message is short (<60 chars) and doesn't imply a shift, reinforce preference.
             if len(texto) < 60 and not any(m in texto.lower() for m in ["otra", "cambiar", "no la"]):
                 anchor_context = f"\n[CRM ANCHOR: El usuario está interesado en la {moto_interes}. Mantén el contexto sobre este modelo a menos que el usuario pida conocer otra motocicleta.]\n"
@@ -648,7 +648,7 @@ REGLAS ESTRICTAS DE USO:
 
             # HARD-GATE DE IDENTIDAD (Requirement 2026.1): Prohibido preguntar si ya existe.
             # v1.3.0: Skip name request if moto is confirmed or in context
-            moto_context = prospect_data.get("moto_interest") or prospect_data.get("moto_confirmada")
+            moto_context = prospect_data.get("moto_interes") or prospect_data.get("moto_confirmada")
             if p_name:
                 pass # Already have it
             elif not moto_context:
@@ -851,7 +851,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 # BYPASS LOGIC: Si la moto ya está confirmada o hay una de interés, el prompt prohíbe imagen/precio 
                                 # para evitar saturación. El guardrail no debe exigir consistencia visual.
                                 moto_confirmada = (prospect_data and prospect_data.get("moto_confirmada") is True)
-                                has_moto_interest = bool(prospect_data.get("moto_interest")) if prospect_data else False
+                                has_moto_interest = bool(prospect_data.get("moto_interes")) if prospect_data else False
                                 requires_visuals = not moto_confirmada and not has_moto_interest
 
                                 hallucinated_model = None
@@ -920,7 +920,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 if self._catalog_service:
                                     import time
                                     # --- INTERCEPTOR DE NEGOCIO (JSON Voorhees v6.6.6) ---
-                                    moto_interest_prev = prospect_data.get("moto_interest") if prospect_data else None
+                                    moto_interest_prev = prospect_data.get("moto_interes") if prospect_data else None
                                     skip_catalog = False
                                     if moto_interest_prev:
                                         import difflib
@@ -1005,7 +1005,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         entity = res.get('entity', 'Crediorbe')
                                         
                                         # Resolve simulation if moto is in context
-                                        moto_name = (prospect_data or {}).get("moto_interest", "")
+                                        moto_name = (prospect_data or {}).get("moto_interes", "")
                                         cuota_str = "$X.XXX"
                                         
                                         if moto_name and self.motor_financiero:
@@ -1054,6 +1054,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     else:
                         break
                 
+                logger.error(f"🚨 [AI FALLBACK REASON]: Tool loop exited without generating text in {turns} turns for {user_name}")
                 return self._fallback_response(texto, history)
             
             except InvalidArgument as e:
@@ -1070,7 +1071,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 logger.exception(f"🚨 [AI FALLBACK REASON]: {error_type} - {e} | Prospect: {prospect_data.get('nombre', 'Unknown')}")
                 break
         
-        logger.error(f"❌ Failed to generate AI response after {max_retries} retries for prospect {prospect_data.get('nombre', 'Unknown') if prospect_data else 'Unknown'}")
+        logger.error(f"🚨 [AI FALLBACK REASON]: Maximum retries ({max_retries}) reached without success for {prospect_data.get('nombre', 'Unknown') if prospect_data else 'Unknown'}")
         return self._fallback_response(texto, history)
 
     async def detect_sentiment(self, text: str) -> str:
