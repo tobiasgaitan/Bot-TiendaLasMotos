@@ -18,7 +18,7 @@ def mock_prospect_data():
     return {
         "exists": True,
         "nombre": "Juan Perez",
-        "moto_interest": "TVS APACHE 160",
+        "moto_interes": "TVS APACHE 160",
         "ciudad": "Bogotá",
         "forma_pago": "Crédito"
     }
