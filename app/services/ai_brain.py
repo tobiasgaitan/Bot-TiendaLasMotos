@@ -411,6 +411,21 @@ class CerebroIA:
         if raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
             final_text = self.clean_parrot_phrases(raw_response)
             
+            # --- COGNITIVE BRAKE GUARDRAIL (BOT-LOGIC-1.2) ---
+            # Detecta y reemplaza placeholders financieros que hayan filtrado
+            # a través del pipeline de generación (ej. $X.XXX, $X.XXX.XXX).
+            # WHY: Si el catálogo no devolvió raw_price, el código antiguo
+            # inyectaba "$X.XXX" literal. Este guardrail es la última línea
+            # de defensa antes de que el mensaje llegue al usuario.
+            placeholder_pattern = r'\$X[\.X]+'
+            if re.search(placeholder_pattern, final_text):
+                logger.warning(f"🛑 [COGNITIVE BRAKE] Placeholder financiero detectado en respuesta final. Sanitizando.")
+                final_text = re.sub(
+                    placeholder_pattern,
+                    'un valor que calcularemos con tus datos',
+                    final_text
+                )
+            
             # PHASE 2 / LEGAL INJECTION (JSON Voorhees v2.1.0 programmatic insertion)
             if re.search(r'(?i)\b(autoriza|tratamiento de datos|habeas data|pol[íi]tica de privacidad|ley\s?1581|datos personales)\b', final_text):
                 if "tiendalasmotos.com/politica-de-privacidad" not in final_text:
@@ -666,7 +681,10 @@ REGLAS ESTRICTAS DE USO:
         
         elif phase == "PHASE_3_CREDIT_PROFILING":
             funnel_instruction = (
-                "Habeas Data Aceptado. Procede con el perfilamiento. "
+                "Habeas Data Aceptado. Procede con el perfilamiento crediticio. "
+                "Ejecuta la herramienta calculate_credit_score. ¡DETENTE AQUÍ! "
+                "No generes texto de respuesta con valores monetarios inventados. "
+                "Espera el resultado interno de la herramienta antes de responder al usuario. "
                 "Si el resultado es Brilla, solicita de inmediato fotos de cédula "
                 "y recibos de gas para que el asesor humano pueda cerrar el trámite."
             )
@@ -999,14 +1017,13 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             f"recibos del gas natural. No cierres la sesión sin pedir esto.]"
                                         )
                                     else:
-                                        # [NO-BREAKDOWN RULE v1.3.2]
-                                        # Consolidating output into a single formatted string.
-                                        label = "Cuota Mensual Total"
+                                        # [COGNITIVE BRAKES v1.2 — BOT-LOGIC-1.2]
+                                        # Consolidating output. PROHIBIDO emitir placeholders ($X.XXX).
                                         entity = res.get('entity', 'Crediorbe')
                                         
                                         # Resolve simulation if moto is in context
                                         moto_name = (prospect_data or {}).get("moto_interes", "")
-                                        cuota_str = "$X.XXX"
+                                        cuota_line = ""  # Omitted by default (Cognitive Brake)
                                         
                                         if moto_name and self.motor_financiero:
                                             # We attempt a quick lookup to get the price
@@ -1025,11 +1042,16 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                     entidad=entity
                                                 )
                                                 cuota_val = sim.get('cuota_mensual', 0)
-                                                cuota_str = f"${cuota_val:,.0f}"
+                                                if cuota_val > 0:
+                                                    cuota_line = f"Cuota Mensual Total: ${cuota_val:,.0f} (Incluye SOAT, Matrícula, Seguros y FNG a 24 meses con {entity})\n"
+                                                else:
+                                                    logger.warning(f"⚠️ [COGNITIVE BRAKE] cuota_val=0 for {moto_name}. Omitting cuota line.")
+                                            else:
+                                                logger.warning(f"⚠️ [COGNITIVE BRAKE] raw_price=0 for '{moto_name}'. Omitting cuota line to prevent placeholder leak.")
 
                                         credit_res = (
                                             f"✅ Score: {res['score']} | {res['strategy']}\n"
-                                            f"{label}: {cuota_str} (Incluye SOAT, Matrícula, Seguros y FNG a 24 meses con {entity})\n"
+                                            f"{cuota_line}"
                                             f"Link de Pre-aprobación: {res['link_url']}"
                                         )
                                 else:
