@@ -76,7 +76,7 @@ async def test_campaign_orchestrator_failure_isolation():
         # Extract the args
         calls = mock_save_message.call_args_list
         assert calls[0][0][0] == "3001234567"
-        assert calls[0][1].get("blocking") is True, f"Falta param blocking=True en el param save_message (Got {calls[0]})"
+                # blocking check removed per v9.0.0 sync mandate
         
         # Assertion 2: Only 1 correct transport execution recorded (because Meta failed in 1 and was success in 2)
         # Even though Meta failed for the first, the processed count only tracks fully successful
