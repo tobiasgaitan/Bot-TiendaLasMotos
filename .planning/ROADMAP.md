@@ -1,28 +1,14 @@
-# Roadmap
+# Roadmap - Bot Tienda Las Motos (Agente Único)
 
-## Milestone 1: Desacoplamiento de CerebroIA
+## Milestone 1: Consolidación y Control Cognitivo
+| Phase | Name | Status | Date |
+|-------|------|--------|------|
+| 1 | Arquitectura de Agente Único | COMPLETED | 2026-05-10 |
+| 2 | Tríada RAG y IA-as-a-Judge | PLANNED | 2026-05-15 |
+| 3 | Infraestructura Event-Driven | PLANNED | 2026-05-20 |
+| 4 | Optimización y Seguridad | PLANNED | 2026-05-25 |
 
-### Progress
-
-| Phase | Name | Status | Plans | Date |
-|-------|------|--------|-------|------|
-| 1 | Handoff y Memoria | Completed | 2 | 2026-05-05 |
-| 2 | Agente de Triaje | Planned | 3 | 2026-05-05 |
-
-### Phases
-
-#### Phase 1: Handoff y Memoria
-**Goal:** Establecer la infraestructura de persistencia atómica y el ruteo del orquestador `whatsapp.py`.
-**Requirements:** R1, R2
-- [x] Modificar `memory_service.py` para soportar `current_agent`.
-- [x] Refactorizar `whatsapp.py` para leer `current_agent` e inyectar el servicio correspondiente.
-
-#### Phase 2: Agente de Triaje
-**Goal:** Construir el `TriageAgent` con validación de FASE 4 y asegurar el Gate Legal.
-**Requirements:** R3, R4, R5, R6
-- [ ] Crear `triage_agent.py` con observabilidad HTTP.
-- [ ] Implementar extracción de Nombre/Ciudad con JSON Voorhees.
-- [ ] Implementar Gate de Habeas Data antes de cambiar `current_agent` a `finance`.
-
----
-*Last updated: 2026-05-05*
+### Phase 1: Arquitectura de Agente Único
+- [x] Tarea 1.1: Consolidación del Enrutador y Muro de Crédito (Backend).
+- [x] Tarea 1.2: Implementación de Frenos Cognitivos y Tool Calling (Backend).
+- [ ] Tarea 1.3: Observabilidad Web y Estados de Herramienta (Frontend).

@@ -22,6 +22,7 @@ dependencies = [
     "ffmpeg-python",
     "protobuf",
     "python-dotenv>=1.0.0",
+    "langfuse>=4.6.1",
 ]
 
 
