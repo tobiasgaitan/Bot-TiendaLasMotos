@@ -30,27 +30,22 @@ except ImportError:
 # WHY: Langfuse keys may not be set in local dev. The guard ensures the app
 # boots and operates normally even without observability configured.
 try:
-    from langfuse import observe, get_client as langfuse_get_client, propagate_attributes
-    _lf = langfuse_get_client()  # Singleton — reads LANGFUSE_* env vars automatically
+    from langfuse.decorators import observe, langfuse_context
     LANGFUSE_AVAILABLE = True
-    logger.info("🔭 [LANGFUSE] Observability client initialized.")
+    logger.info("🔭 [LANGFUSE] Observability context initialized.")
 except Exception as _lf_err:
     LANGFUSE_AVAILABLE = False
-    logger.warning(f"⚠️ [LANGFUSE] Observability disabled: {_lf_err}")
-    # Provide a no-op decorator so the code below is always valid
+    logger.warning(f"⚠️ [LANGFUSE] Observability disabled or langfuse_context not found: {_lf_err}")
+    
+    # Provide no-op fallbacks
     def observe(*args, **kwargs):
-        """No-op fallback when Langfuse is not available."""
-        def decorator(fn):
-            return fn
-        if args and callable(args[0]):
-            return args[0]
-        return decorator
-    class _NoOpPropagateAttrs:
-        """No-op context manager for propagate_attributes."""
-        def __init__(self, **kw): pass
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-    propagate_attributes = _NoOpPropagateAttrs
+        def decorator(fn): return fn
+        return args[0] if args and callable(args[0]) else decorator
+    
+    class _NoOpContext:
+        def update_current_trace(self, **kwargs): pass
+        def update_current_observation(self, **kwargs): pass
+    langfuse_context = _NoOpContext()
 
 EXTRACTION_SCHEMA = {
     "type": "OBJECT",
@@ -121,7 +116,7 @@ class CerebroIA:
     """
     AI Brain for intelligent conversation handling.
     
-    Uses Google Gemini 2.0 Flash model via Vertex AI to generate
+    Uses Google Gemini 2.5 Flash model via Vertex AI to generate
     contextual responses for general inquiries about motorcycles,
     services, and dealership information.
     """
@@ -136,6 +131,7 @@ class CerebroIA:
         """
         self._config_loader = config_loader
         self._catalog_service = catalog_service
+        self._model_id = "gemini-2.5-flash" # Default stable versioning
         self.motor_financiero = None  # Will be injected
         self._model = None
         self._chat_history = {} # In-memory small cache for last turn context
@@ -154,7 +150,6 @@ class CerebroIA:
                     project="tiendalasmotos", 
                     location="us-central1"
                 )
-                self._model_id = "gemini-2.5-flash" # Use stable versioning
                 
                 # [CONFIG INJECTION v1.3.2]
                 self.privacy_policy_url = "https://tiendalasmotos.com/politica-de-privacidad"
@@ -406,15 +401,16 @@ class CerebroIA:
         wall-clock latency, input texto, and output respuesta for the full turn.
         userId is mapped to the prospect's phone (E.164 canonical key).
         """
-        # [BOT-TRACE-201] Propagate userId and session context to all child spans
+        # [BOT-TRACE-FIX-v2.5] Migrate to update_current_trace for better userId propagation
         if LANGFUSE_AVAILABLE and prospect_data:
             _phone = prospect_data.get("phone") or prospect_data.get("id", "unknown")
             _phase = self._determine_funnel_phase(prospect_data, history)
             _session = f"wa_{_phone}"  # Stable session key per WhatsApp thread
-            with propagate_attributes(
+            
+            langfuse_context.update_current_trace(
                 user_id=_phone,
                 session_id=_session,
-                tags=[_phase, "juan_pablo_agent"],
+                tags=[_phase, "juan_pablo_agent", "hotfix-v2.5"],
                 metadata={
                     "funnel_phase": _phase,
                     "nombre": prospect_data.get("nombre", "desconocido"),
@@ -422,8 +418,8 @@ class CerebroIA:
                     "moto_interes": prospect_data.get("moto_interes", ""),
                     "habeas_data": prospect_data.get("habeas_data", False),
                 }
-            ):
-                raw_response = await self._generate_with_retry_async(texto, context, prospect_data, history, skip_greeting)
+            )
+            raw_response = await self._generate_with_retry_async(texto, context, prospect_data, history, skip_greeting)
         else:
             raw_response = await self._generate_with_retry_async(texto, context, prospect_data, history, skip_greeting)
         
