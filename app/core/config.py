@@ -45,6 +45,13 @@ class Settings:
         # WhatsApp API Version Override
         self.whatsapp_api_version: str = os.getenv("WHATSAPP_API_VERSION", "v21.0")
         
+        # Langfuse Observability Configuration
+        # WHY: Optional variables — app boots normally without them.
+        # Langfuse client in ai_brain.py checks LANGFUSE_AVAILABLE before activating.
+        self.langfuse_public_key: Optional[str] = os.getenv("LANGFUSE_PUBLIC_KEY")
+        self.langfuse_secret_key: Optional[str] = os.getenv("LANGFUSE_SECRET_KEY")
+        self.langfuse_host: str = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+        
         # Log configuration status (DO NOT log actual tokens)
         self._log_config_status()
     
