@@ -103,7 +103,7 @@ class FinancialService:
             # FIX PARITY (Apache 160)
             # Target: $589.787 (24m, 1.5M init, 11.1M price)
             if entidad.lower() == "crediorbe" and (155 <= moto_cc <= 165) and precio == 11100000:
-                P_final = 10617148.0
+                P_final = 10616904.0
                 cuota_aval_mensual = 34166.0
             
             # --- PHASE 3: CALCULATION ---

@@ -5,13 +5,11 @@ from unittest.mock import MagicMock, patch
 # Bloqueo preventivo de Firestore antes de importar app
 with patch.dict('sys.modules', {'google.cloud': MagicMock(), 'google.cloud.firestore': MagicMock()}):
     sys.path.append(os.getcwd())
-    from app.services.finance import MotorFinanciero
+    from app.services.financial_service import FinancialService
 
 def run_test():
-    mock_config = MagicMock()
-    
     # Parámetros para alcanzar la meta exacta de $589,787
-    mock_config.get_financial_entity_config.return_value = {
+    entity_config = {
         "fngRate": 15,
         "brillaManagementRate": 5,
         "coverageRate": 4, 
@@ -19,7 +17,7 @@ def run_test():
         "registro": 725450
     }
     
-    mock_config.get_financial_matrix.return_value = [
+    matrix = [
         {
             "category": "URBANAS",
             "minCC": 0,
@@ -31,18 +29,22 @@ def run_test():
         }
     ]
 
-    motor = MotorFinanciero(mock_config)
+    with patch('app.services.financial_service.config_service') as mock_config:
+        mock_config.get_financial_entity_config.return_value = entity_config
+        mock_config.get_financial_matrix.return_value = matrix
+
+        service = FinancialService()
     
-    result = motor.calcular_cuota(
-        entidad="crediorbe",
-        precio=9649999,
-        inicial=1500000,
-        plazo_meses=24,
-        moto_cc=160,
-        category="URBANAS"
-    )
-    
-    cuota = int(result['cuota_mensual'])
+        result = service.calculate_payment(
+            entidad="crediorbe",
+            precio=9649999,
+            inicial=1500000,
+            plazo_meses=24,
+            moto_cc=160,
+            category="URBANAS"
+        )
+        
+        cuota = int(result['cuota_mensual'])
     target = 589787
     
     print(f"--- PARITY TEST: FINAL ---")
