@@ -26,6 +26,32 @@ except ImportError:
     SDK_AVAILABLE = False
     logger.warning("⚠️  google-genai SDK not available, using fallback responses")
 
+# [BOT-TRACE-201] Langfuse Observability — optional, graceful degradation
+# WHY: Langfuse keys may not be set in local dev. The guard ensures the app
+# boots and operates normally even without observability configured.
+try:
+    from langfuse import observe, get_client as langfuse_get_client, propagate_attributes
+    _lf = langfuse_get_client()  # Singleton — reads LANGFUSE_* env vars automatically
+    LANGFUSE_AVAILABLE = True
+    logger.info("🔭 [LANGFUSE] Observability client initialized.")
+except Exception as _lf_err:
+    LANGFUSE_AVAILABLE = False
+    logger.warning(f"⚠️ [LANGFUSE] Observability disabled: {_lf_err}")
+    # Provide a no-op decorator so the code below is always valid
+    def observe(*args, **kwargs):
+        """No-op fallback when Langfuse is not available."""
+        def decorator(fn):
+            return fn
+        if args and callable(args[0]):
+            return args[0]
+        return decorator
+    class _NoOpPropagateAttrs:
+        """No-op context manager for propagate_attributes."""
+        def __init__(self, **kw): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+    propagate_attributes = _NoOpPropagateAttrs
+
 EXTRACTION_SCHEMA = {
     "type": "OBJECT",
     "properties": {
@@ -371,12 +397,35 @@ class CerebroIA:
         # Phase 1: Default (Profiling / Catalog)
         return "PHASE_1_PROFILING"
 
+    @observe()  # [BOT-TRACE-201] Trace the full prospect interaction cycle
     async def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
         """
         Main entry point for AI logic.
         Combines deterministic funnel checks + generative AI (Gemini).
+        [BOT-TRACE-201] @observe() wraps this method so Langfuse captures total
+        wall-clock latency, input texto, and output respuesta for the full turn.
+        userId is mapped to the prospect's phone (E.164 canonical key).
         """
-        raw_response = await self._generate_with_retry_async(texto, context, prospect_data, history, skip_greeting)
+        # [BOT-TRACE-201] Propagate userId and session context to all child spans
+        if LANGFUSE_AVAILABLE and prospect_data:
+            _phone = prospect_data.get("phone") or prospect_data.get("id", "unknown")
+            _phase = self._determine_funnel_phase(prospect_data, history)
+            _session = f"wa_{_phone}"  # Stable session key per WhatsApp thread
+            with propagate_attributes(
+                user_id=_phone,
+                session_id=_session,
+                tags=[_phase, "juan_pablo_agent"],
+                metadata={
+                    "funnel_phase": _phase,
+                    "nombre": prospect_data.get("nombre", "desconocido"),
+                    "ciudad": prospect_data.get("ciudad", ""),
+                    "moto_interes": prospect_data.get("moto_interes", ""),
+                    "habeas_data": prospect_data.get("habeas_data", False),
+                }
+            ):
+                raw_response = await self._generate_with_retry_async(texto, context, prospect_data, history, skip_greeting)
+        else:
+            raw_response = await self._generate_with_retry_async(texto, context, prospect_data, history, skip_greeting)
         
         # --- PHASE-GATE FÍSICO (Bypass de Habeas Data) ---
         # AUDIT P1 (2.2): Interceptor de Respuesta.
@@ -908,10 +957,26 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             if prospect_data is not None:
                                 usage = getattr(response, 'usage_metadata', None)
                                 tokens = getattr(usage, 'total_token_count', 0)
+                                i_tokens = getattr(usage, 'prompt_token_count', 0)
+                                o_tokens = getattr(usage, 'candidates_token_count', 0)
                                 cost = self._calculate_session_cost(usage)
                                 prospect_data['total_tokens_consumed'] = prospect_data.get('total_tokens_consumed', 0) + tokens
                                 prospect_data['session_cost_usd'] = prospect_data.get('session_cost_usd', 0.0) + cost
                                 logger.info(f"📊 [TELEMETRY] Response: {tokens} tokens, Cost: ${cost} USD | Cumulative in session.")
+                                # [BOT-TRACE-201] Send token counts to Langfuse generation
+                                if LANGFUSE_AVAILABLE:
+                                    try:
+                                        _lf.update_current_generation(
+                                            model=self._model_id,
+                                            usage_details={
+                                                "input": i_tokens,
+                                                "output": o_tokens,
+                                                "total": tokens,
+                                            },
+                                            metadata={"cost_usd": cost}
+                                        )
+                                    except Exception as _lf_gen_err:
+                                        logger.warning(f"⚠️ [LANGFUSE] generation update failed: {_lf_gen_err}")
 
                             return ai_response
                         except Exception as e:
@@ -955,6 +1020,20 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         t_end = time.perf_counter()
                                         latency = t_end - t_start
                                         logger.info(f"⏱️ [TELEMETRY] search_catalog latency: {latency:.4f}s for query: '{query}'")
+                                        # [BOT-TRACE-201] Report tool latency to Langfuse as a child span metadata
+                                        if LANGFUSE_AVAILABLE:
+                                            try:
+                                                _lf.update_current_observation(
+                                                    metadata={
+                                                        "tool": "search_catalog",
+                                                        "query": query,
+                                                        "latency_s": round(latency, 4),
+                                                        "results_count": len(matches) if matches else 0,
+                                                    },
+                                                    name="search_catalog_tool"
+                                                )
+                                            except Exception as _lf_tel_err:
+                                                logger.warning(f"⚠️ [LANGFUSE] search_catalog observation failed: {_lf_tel_err}")
                                         
                                         if matches:
                                             catalog_returned_results = True
