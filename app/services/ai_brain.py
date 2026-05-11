@@ -1072,7 +1072,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             credit_res = "No disponible."
                             try:
                                 if self.motor_financiero:
-                                    res = self.motor_financiero.evaluar_perfil(
+                                    res = self.motor_financiero.evaluate_profile(
                                         ocupacion_y_contrato=f_args.get("ocupacion_y_contrato", ""),
                                         ingresos_demostrables=f_args.get("ingresos_demostrables", ""),
                                         historial_datacredito=f_args.get("historial_datacredito", ""),
@@ -1110,7 +1110,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             
                                             if m_price > 0:
                                                 # Use 0 initial as baseline for Crediorbe if not specified
-                                                sim = self.motor_financiero.calcular_cuota(
+                                                sim = self.motor_financiero.calculate_payment(
                                                     precio=m_price,
                                                     inicial=0,
                                                     plazo_meses=24,

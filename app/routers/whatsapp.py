@@ -21,7 +21,7 @@ from app.core.config_loader import ConfigLoader
 from app.core.security import get_firebase_credentials_object
 
 # --- SERVICE CLASSES (INSTANTIATED LOCALLY) ---
-from app.services.finance import MotorFinanciero
+from app.services.financial_service import financial_service
 from app.services.ai_brain import CerebroIA
 from app.services.vision_service import VisionService
 from app.services.audio_service import AudioService
@@ -80,11 +80,10 @@ def _ensure_services():
             config_service.initialize(db)
         except Exception: pass
 
-    # 3. Motor Financiero
+    # 3. Financial Service (Consolidated v1.5.0)
     if db and not motor_financiero:
          try:
-            # v1.3.1: Pass None to use the internal singleton or pass config_service
-            motor_financiero = MotorFinanciero(db, config_service)
+            motor_financiero = financial_service
          except Exception: pass
 
     # 4. Catalog Service

@@ -7,7 +7,6 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from google.cloud import firestore
-from app.services.finance import MotorFinanciero
 from app.services.financial_service import financial_service
 
 logger = logging.getLogger(__name__)
@@ -47,7 +46,6 @@ class SurveyService:
         phone: str,
         message_text: str,
         current_session: Dict[str, Any],
-        motor_finanzas: MotorFinanciero,
     ) -> str:
         """
         Process a survey step with validations and retry logic.

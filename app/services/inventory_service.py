@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional
 import asyncio
 
 from app.services.catalog_service import catalog_service
-from app.services.finance import MotorFinanciero
+from app.services.financial_service import financial_service
 from app.services.config_service import config_service
 
 logger = logging.getLogger(__name__)
@@ -41,9 +41,9 @@ class InventoryService:
         if self._initialized:
             return
 
-        # Init Motor Financiero (lightweight)
+        # Init Financial Service
         if db:
-            self._motor_financiero = MotorFinanciero(db, config_service)
+            self._motor_financiero = financial_service
         
         # Init Vertex AI
         if VERTEX_AI_AVAILABLE:
@@ -104,8 +104,7 @@ class InventoryService:
         * We will assume $0 initial payment to find reachable bikes safely.
         """
         if not self._motor_financiero:
-            # Fallback if not init with db, though ConfigLoader is enough for rates
-            self._motor_financiero = MotorFinanciero(None, self._config_loader)
+            self._motor_financiero = financial_service
 
         # Get Rate from SSOT
         rate = 2.22 # Default
@@ -122,7 +121,8 @@ class InventoryService:
                 continue
                 
             # Calculate quota with 0 initial
-            plan = self._motor_financiero.calcular_cuota(precio=price, inicial=0, plazo_meses=term, tasa_mensual=rate)
+            # Calculate payment with 0 initial
+            plan = self._motor_financiero.calculate_payment(precio=price, inicial=0, plazo_meses=term)
             quota = plan.get("cuota_mensual", 999999999)
             
             if quota <= max_monthly_quota:
