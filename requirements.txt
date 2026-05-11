@@ -23,3 +23,6 @@ pydantic-settings>=2.2.0
 python-multipart
 ffmpeg-python
 protobuf
+
+# Observability
+langfuse>=2.0.0
