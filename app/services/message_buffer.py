@@ -4,8 +4,6 @@ Message Buffer Service - Debounce Logic for WhatsApp Messages
 This service implements message aggregation to reduce AI costs and improve response quality
 by buffering fragmented user messages (e.g., "Hola" ... "Precio" ... "Moto") into a single
 coherent request before processing.
-
-Technical Specification: Section 3.1 - Message Debounce Mechanism
 """
 
 import asyncio
