@@ -20,7 +20,7 @@ from app.core.config import settings
 from app.core.config_loader import ConfigLoader
 from app.core.security import get_firebase_credentials_object
 
-# --- SERVICE CLASSES (INSTANTIATED LOCALLY) ---
+from app.services.judge_service import judge_service
 from app.services.financial_service import financial_service
 from app.services.ai_brain import CerebroIA
 from app.services.vision_service import VisionService
@@ -639,17 +639,58 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 if not prospect_data:
                     prospect_data = await ms.get_prospect_data(user_phone)
 
-            # 3. Inferencia de la IA (Solo con datos confirmados)
-            logger.info(f"🧠 Calling CerebroIA.pensar_respuesta (Await)...")
-            if prospect_data is not None:
-                prospect_data["phone"] = user_phone # Inject phone for logging context
-            response_text = await cerebro_ia.pensar_respuesta(
-                message_body,
-                context=context,
-                prospect_data=prospect_data,
-                history=current_history,
-                skip_greeting=skip_greeting
-            )
+            # 3. Inferencia de la IA con Auditoría de Vida o Muerte (v9.8.0)
+            max_retries = 2
+            attempts = 0
+            is_approved = False
+            rejection_reason = ""
+            
+            # Contexto para el Juez (Catalog Lock)
+            # Obtenemos los top 3 resultados para la consulta actual como "Verdad Absoluta"
+            catalog_results = catalog_service_local.search(message_body)
+            catalog_context = ""
+            for item in catalog_results[:3]:
+                catalog_context += f"- {item['name']}: {item['formatted_price']}. Specs: {item.get('summary')}\n"
+
+            while attempts <= max_retries and not is_approved:
+                attempts += 1
+                logger.info(f"🧠 [JUDGE] Calling CerebroIA.pensar_respuesta (Attempt {attempts}/{max_retries+1})...")
+                
+                # Copy context to avoid mutating the original for other potential uses
+                current_context = context
+                if attempts > 1:
+                    # Inyectar el motivo del rechazo en el contexto para el reintento
+                    current_context += f"\n\n[SISTEMA - ERROR DE CALIDAD]: Tu respuesta anterior fue RECHAZADA por el Juez. Motivo: {rejection_reason}. Por favor, corrige este punto y genera una nueva respuesta válida."
+
+                if prospect_data is not None:
+                    prospect_data["phone"] = user_phone 
+
+                response_text = await cerebro_ia.pensar_respuesta(
+                    message_body,
+                    context=current_context,
+                    prospect_data=prospect_data,
+                    history=current_history,
+                    skip_greeting=skip_greeting
+                )
+
+                # 4. Auditoría del Juez de Fundamentación
+                is_approved, rejection_reason = await judge_service.analyze_response(
+                    user_input=message_body,
+                    ai_response=response_text,
+                    catalog_context=catalog_context,
+                    prospect_data=prospect_data,
+                    history=current_history
+                )
+
+                if not is_approved:
+                    logger.warning(f"⚖️ [JUDGE] Response REJECTED (Attempt {attempts}): {rejection_reason}")
+                else:
+                    logger.info(f"⚖️ [JUDGE] Response APPROVED (Attempt {attempts}).")
+
+            # Fallback if all attempts fail
+            if not is_approved:
+                logger.error(f"❌ [JUDGE] Max retries reached. Forcing fallback response.")
+                response_text = "¡Hola! Estoy teniendo un pequeño problema técnico para darte la información exacta que necesitas. Permíteme un momento o intenta preguntarme de nuevo en unos minutos. ¡Gracias por tu paciencia!"
 
             # TRIGGER_SURVEY interception REMOVED — 2026-03-12
             # WHY: This block replaced the LLM's natural response with hardcoded survey
