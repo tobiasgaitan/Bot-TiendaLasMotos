@@ -18,3 +18,4 @@
 |---|-------------|------|--------|-----------|
 | 021 | Cognitive Brakes & Placeholder Sanitization | 2026-05-10 | 994ed3b | 021-cognitive-brakes-tool-calling |
 | 022 | Langfuse Observability Integration (BOT-TRACE-201) | 2026-05-11 | befe140 | 022-langfuse-observability-integration |
+| 023 | Unificación Financiera & Paridad v1.4.0 (Apache 160 Fix) | 2026-05-11 | [PENDING] | 023-financial-refactor-unification |

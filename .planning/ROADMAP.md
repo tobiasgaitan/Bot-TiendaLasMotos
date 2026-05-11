@@ -11,4 +11,5 @@
 ### Phase 1: Arquitectura de Agente Único
 - [x] Tarea 1.1: Consolidación del Enrutador y Muro de Crédito (Backend).
 - [x] Tarea 1.2: Implementación de Frenos Cognitivos y Tool Calling (Backend).
+- [x] Tarea 1.4: Refactor Financiero y Paridad v1.4.0 (Apache 160).
 - [ ] Tarea 1.3: Observabilidad Web y Estados de Herramienta (Frontend).
