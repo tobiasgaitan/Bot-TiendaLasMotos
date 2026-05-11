@@ -243,27 +243,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         if msg_type == "text":
             message_body = msg_data.get("text", "").strip()
 
-        elif msg_type == "reaction":
-            emoji = msg_data.get("emoji", "")
-            message_id = msg_data.get("message_id", "")
-            logger.info(f"👍 User reacted with '{emoji}' to message '{message_id}'")
-            
-            positive_emojis = ["👍", "❤️", "💯", "🔥", "✅", "👌", "😊", "🥰", "😍"]
-            if emoji in positive_emojis:
-                message_body = "Sí"
-                msg_type = "text"
-            else:
-                return 
-
-        # --- DEDUPLICACIÓN ESTRICTA Y BUFFERING ---
-        if msg_type == "text":
-            # Agregamos al buffer. Si retorna False, es un duplicado exacto de msg_id (vía Meta retry)
-            is_added = await message_buffer.add_message(user_phone, message_body, msg_id_unique)
-            if not is_added:
-                logger.warning(f"🔄 Duplicate msg_id ignored: {msg_id_unique}")
-                return
-
-            # --- RESET ASÍNCRONO (CONFIRMACIÓN FLASH) ---
+            # --- SYSTEM COMMANDS INTERCEPTION (PRIORITY 0) ---
+            # These commands bypass buffering, AI, and Judge.
             if message_body.strip().lower() in ["reset", "/reset"]:
                 logger.warning(f"☢️ NUCLEAR RESET TRIGGERED (Sync) for {user_phone}")
                 
@@ -278,6 +259,42 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 # 2. Respuesta confirmando el estado limpio
                 await whatsapp_service.send_text_message(user_phone, "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?", phone_number_id=phone_number_id)
                 return 
+
+            if message_body.strip().lower() in ["/update", "/refresh_catalog"]:
+                logger.warning(f"🔄 CATALOG REFRESH TRIGGERED by {user_phone}")
+                try:
+                    # Ensure services are initialized (lazy init)
+                    _ensure_services()
+                    if catalog_service_local:
+                        catalog_service_local.refresh()
+                        confirm_msg = "✅ Catálogo actualizado en memoria exitosamente."
+                    else:
+                        confirm_msg = "❌ Error: Catalog Service no inicializado."
+                except Exception as e:
+                    logger.exception(f"❌ Error refreshing catalog: {e}")
+                    confirm_msg = f"❌ Error al actualizar el catálogo: {str(e)}"
+                    
+                await whatsapp_service.send_text_message(user_phone, confirm_msg, phone_number_id=phone_number_id)
+                return
+
+        elif msg_type == "reaction":
+            emoji = msg_data.get("emoji", "")
+            message_id = msg_data.get("message_id", "")
+            logger.info(f"👍 User reacted with '{emoji}' to message '{message_id}'")
+            
+            positive_emojis = ["👍", "❤️", "💯", "🔥", "✅", "👌", "😊", "🥰", "😍"]
+            if emoji in positive_emojis:
+                message_body = "Sí"
+                msg_type = "text"
+            else:
+                return 
+
+            # --- DEDUPLICACIÓN ESTRICTA Y BUFFERING ---
+            # Agregamos al buffer. Si retorna False, es un duplicado exacto de msg_id (vía Meta retry)
+            is_added = await message_buffer.add_message(user_phone, message_body, msg_id_unique)
+            if not is_added:
+                logger.warning(f"🔄 Duplicate msg_id ignored: {msg_id_unique}")
+                return
 
             # Wait for debounce window (3s)
             await asyncio.sleep(message_buffer.debounce_seconds)
@@ -495,18 +512,6 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             # It will be saved with the actual transcription inside the audio block.
 
 
-        # --- UPDATE CATALOG CACHE ---
-        if msg_type == "text" and message_body.strip() in ["/update", "/refresh_catalog"]:
-            logger.warning(f"🔄 CATALOG REFRESH TRIGGERED by {user_phone}")
-            try:
-                catalog_service_local.refresh()
-                confirm_msg = "✅ Catálogo actualizado en memoria exitosamente."
-            except Exception as e:
-                logger.exception(f"❌ Error refreshing catalog: {e}")
-                confirm_msg = f"❌ Error al actualizar el catálogo: {str(e)}"
-                
-            await _send_whatsapp_message(user_phone, confirm_msg, phone_number_id=phone_number_id)
-            return
 
         # 2. Gestión de Sesión
         # 2. Gestión de Sesión & Servicios

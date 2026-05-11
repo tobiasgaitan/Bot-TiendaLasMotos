@@ -260,6 +260,37 @@ class MemoryService:
             logger.exception(f"❌ clear_memory failed for {phone_number}: {e}")
             return False
 
+    async def delete_prospect_completely(self, phone_number: str) -> bool:
+        """
+        Nuclear wipe of a prospect: deletes document, history, and active sessions.
+        
+        Contract (v9.8.1):
+          1. Delete prospect document from 'prospectos' collection.
+          2. Clear chat history via clear_memory().
+          3. Delete the session document in 'mensajeria/whatsapp/sesiones'.
+        """
+        try:
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            logger.warning(f"☢️ [NUCLEAR RESET] Starting wipe for {clean_phone}")
+            
+            # 1. Clear History (Historial sub-collection)
+            await self.clear_memory(clean_phone)
+            
+            # 2. Delete Session Document
+            session_ref = self._db.collection("mensajeria").document("whatsapp") \
+                .collection("sesiones").document(clean_phone)
+            await session_ref.delete()
+            
+            # 3. Delete Prospect Document
+            doc_ref = self._db.collection(self.collection_name).document(clean_phone)
+            await doc_ref.delete()
+            
+            logger.info(f"✅ [NUCLEAR RESET] Finished wipe for {clean_phone}")
+            return True
+        except Exception as e:
+            logger.exception(f"❌ delete_prospect_completely failed for {phone_number}: {e}")
+            return False
+
     async def update_prospect_summary(
         self,
         phone_number: str,

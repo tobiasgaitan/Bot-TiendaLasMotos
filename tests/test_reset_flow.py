@@ -90,3 +90,42 @@ def test_merge_still_latches_true_if_already_true(memory_service):
     }
     merged = memory_service._merge_extracted_data(current_data, incoming_extracted)
     assert merged["habeas_data"] is True, "El latch debe mantener True si el valor existente era True"
+
+
+@pytest.mark.asyncio
+async def test_delete_prospect_completely_flow(memory_service):
+    """
+    Test que verifica que delete_prospect_completely (v9.8.1) realice
+    la purga atómica en las 3 colecciones clave.
+    """
+    phone = "3227303760"
+    
+    # Mock clear_memory
+    memory_service.clear_memory = AsyncMock(return_value=True)
+    
+    # Setup document mocks for session and prospect
+    mock_session_ref = AsyncMock()
+    mock_session_ref.delete = AsyncMock()
+    
+    mock_prospect_ref = AsyncMock()
+    mock_prospect_ref.delete = AsyncMock()
+    
+    def collection_side_effect(name):
+        col_mock = MagicMock()
+        if name == "prospectos":
+            col_mock.document.return_value = mock_prospect_ref
+        elif name == "mensajeria":
+            # Path: mensajeria/whatsapp/sesiones/{phone}
+            col_mock.document.return_value.collection.return_value.document.return_value = mock_session_ref
+        return col_mock
+
+    memory_service._db.collection.side_effect = collection_side_effect
+    
+    # Execute
+    result = await memory_service.delete_prospect_completely(phone)
+    
+    # Verify
+    assert result is True
+    memory_service.clear_memory.assert_called_once_with("+573227303760")
+    mock_session_ref.delete.assert_called_once()
+    mock_prospect_ref.delete.assert_called_once()
