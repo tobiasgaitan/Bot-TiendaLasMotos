@@ -1,10 +1,9 @@
-from app.services.finance import MotorFinanciero
-from app.services.config_service import ConfigService
+from app.services.financial_service import FinancialService
+from app.services.config_service import config_service
 import unittest.mock as mock
 
 def test_neo_nx():
-    cf = ConfigService()
-    cf._financial_config = {
+    config_service._financial_config = {
         "tasa_nmv_banco": 1.87,
         "tasa_nmv_fintech": 2.22,
         "fng_rate": 20.66,
@@ -12,9 +11,9 @@ def test_neo_nx():
         "brillaManagementRate": 5,
         "coverageRate": 4
     }
-    cf._partners_config = {}
+    config_service._partners_config = {}
     
-    m = MotorFinanciero(cf)
+    m = FinancialService()
 
     try:
         res = m.calcular_cuota(

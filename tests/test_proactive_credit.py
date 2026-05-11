@@ -2,13 +2,13 @@
 import unittest
 import sys
 import os
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # Add app to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.services.ai_brain import CerebroIA
-from app.services.finance import MotorFinanciero
+from app.services.financial_service import FinancialService
 
 class TestProactiveCredit(unittest.TestCase):
     def setUp(self):
@@ -89,20 +89,18 @@ class TestProactiveCredit(unittest.TestCase):
 
     def test_deterministic_insurance_fallback(self):
         """
-        GIVEN: El MotorFinanciero se inicializa.
-        THEN: El seguro de vida debe ser $15,000 por defecto.
+        GIVEN: El FinancialService se inicializa.
+        THEN: El seguro de vida debe ser $15,000 por defecto si no hay config.
         """
-        # Mock firestore client
-        mock_db = MagicMock()
-        # Mock config service
-        mock_config = MagicMock()
-        mock_config.get_financial_config.return_value = None # Force fallback
-        mock_config.get_financial_entity_config.return_value = {} # Prevent Mock type error
-        
-        motor = MotorFinanciero(mock_db, config_service=mock_config)
-        res = motor.calcular_cuota(5000000, 1000000, 24, 2.22, entidad="Banco")
-        
-        self.assertEqual(res["seguro_vida"], 15000, "El seguro de vida debe aplicar el fallback de $15,000.")
+        # Mock firestore client y config service
+        with patch('app.services.financial_service.config_service') as mock_config:
+            mock_config.get_financial_entity_config.return_value = {} # Empty config forces fallbacks
+            mock_config.get_financial_matrix.return_value = []
+            
+            service = FinancialService()
+            res = service.calculate_payment(5000000, 1000000, 24, entidad="Banco")
+            
+            self.assertEqual(res["seguro_vida"], 15000.0, "El seguro de vida debe aplicar el fallback de $15,000.")
 
 if __name__ == '__main__':
     unittest.main()
