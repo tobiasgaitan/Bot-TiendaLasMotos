@@ -4,7 +4,7 @@
 | Phase | Name | Status | Date |
 |-------|------|--------|------|
 | 1 | Arquitectura de Agente Único | COMPLETED | 2026-05-10 |
-| 2 | Tríada RAG y IA-as-a-Judge | PLANNED | 2026-05-15 |
+| 2 | Tríada RAG y IA-as-a-Judge | IN_PROGRESS | 2026-05-15 |
 | 3 | Infraestructura Event-Driven | PLANNED | 2026-05-20 |
 | 4 | Optimización y Seguridad | PLANNED | 2026-05-25 |
 
@@ -13,3 +13,9 @@
 - [x] Tarea 1.2: Implementación de Frenos Cognitivos y Tool Calling (Backend).
 - [x] Tarea 1.4: Refactor Financiero y Paridad v1.4.0 (Apache 160).
 - [ ] Tarea 1.3: Observabilidad Web y Estados de Herramienta (Frontend).
+
+### Phase 2: Tríada RAG y IA-as-a-Judge
+- [x] Tarea 2.1: Implementación del Juez de Fundamentación (v9.8.0).
+- [x] Tarea 2.2: Configuración de la Matriz de 9 Criterios.
+- [/] Tarea 2.3: Sincronización de Personalidad y Salida Elegante (Fallback).
+

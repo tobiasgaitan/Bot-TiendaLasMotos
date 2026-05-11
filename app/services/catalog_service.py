@@ -361,7 +361,15 @@ class CatalogService:
             item_search_text = item.get("search_text", "")
             
             # Detect matches in different areas for the adaptor
-            name_match = clean_query in name_clean
+            # --- IDENTITY DETECTION (v9.8.1) ---
+            # Brand exclusion list to focus on model identity
+            brands = {"tvs", "victory", "bajaj", "hero", "yamaha", "honda", "suzuki", "akt", "apache"}
+            name_tokens = self._tokenize(name)
+            # Core tokens: Not a brand, length >= 2, and not purely digits
+            core_name_tokens = [t for t in name_tokens if t not in brands and len(t) >= 2 and not t.isdigit()]
+            
+            # Identity match if query contains any core model token or vice-versa
+            name_match = any(t in query_tokens for t in core_name_tokens) if core_name_tokens else (clean_query in name_clean)
             corpus_match = clean_query in item_search_text
             
             # 1. Exact Substring (Highest Confidence)
@@ -509,35 +517,42 @@ class CatalogService:
     def _apply_scoring_adaptor(self, item: Dict[str, Any], query_tokens: List[str], current_score: float, is_identity_match: bool) -> float:
         """
         Independent adapter layer to apply intent-based bonuses.
-        IMPLEMENTS: business_logic.priority_model contract.
+        IMPLEMENTS: business_logic.priority_model contract (Tiered Scoring v9.8.1).
+        
+        Priority Levels:
+        1. IDENTITY (+20,000): Explicit model match.
+        2. HARD-LOCK (+10,000): "TVS Sport 100" for work intent.
+        3. SEMANTIC (1.5x): Keyword/Tag match.
         """
         item_name = item.get("name", "").lower()
+        new_score = current_score
         
-        # 1. HARD-LOCK: "trabajo/domicilios" -> TVS Sport 100 priority force
+        # --- TIER 1: IDENTITY PRIORITY (+20,000) ---
+        if is_identity_match:
+            new_score += 20000.0
+            logger.info(f"🆔 IDENTITY BOOST: +20k for {item['name']}")
+
+        # --- TIER 2: HARD-LOCK (Intent-Based) ---
+        # "trabajo/domicilios" -> TVS Sport 100 priority force
         work_keywords = ["trabajo", "domicilio", "domicilios", "mensajería", "mensajeria", "moto para cargar"]
         is_work_intent = any(tk.lower() in work_keywords for tk in query_tokens)
         
         if is_work_intent and "tvs sport 100" in item_name:
             # Absolute priority as per contract (id: work_bike_priority_lock)
-            new_score = current_score + 10000.0
-            logger.info(f"🚀 HARD-LOCK: Priority Boost for {item['name']} (Work Intent Detected)")
-            return new_score
+            new_score += 10000.0
+            logger.info(f"🚀 HARD-LOCK: +10k for {item['name']} (Work Intent Detected)")
 
-        if is_identity_match:
-            # Identity search should not be inflated by generic tags
-            return current_score
+        # --- TIER 3: SEMANTIC BONUS (1.5x) ---
+        if not is_identity_match:
+            tags = item.get("search_tokens", [])
+            intent_match = any(token in tags for token in query_tokens)
+            
+            if intent_match:
+                # Apply the 50% Intent Bonus
+                new_score = new_score * 1.5
+                logger.debug(f"⚡ Intent Bonus Applied to {item['name']}: {current_score} -> {new_score}")
 
-        # 2. Existing Semantic Bonus (1.5x)
-        tags = item.get("search_tags", [])
-        intent_match = any(token in tags for token in query_tokens)
-        
-        if intent_match:
-            # Apply the 50% Intent Bonus
-            new_score = current_score * 1.5
-            logger.debug(f"⚡ Intent Bonus Applied to {item['name']}: {current_score} -> {new_score}")
-            return new_score
-
-        return current_score
+        return new_score
 
     def refresh(self) -> None:
         """Refresh catalog from Firestore."""

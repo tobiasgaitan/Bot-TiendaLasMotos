@@ -9,6 +9,7 @@ import json
 import logging
 import httpx
 import asyncio
+import re
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
@@ -644,9 +645,9 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             attempts = 0
             is_approved = False
             rejection_reason = ""
+            last_criteria_id = "UNKNOWN"
             
             # Contexto para el Juez (Catalog Lock)
-            # Obtenemos los top 3 resultados para la consulta actual como "Verdad Absoluta"
             catalog_results = catalog_service_local.search(message_body)
             catalog_context = ""
             for item in catalog_results[:3]:
@@ -656,10 +657,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 attempts += 1
                 logger.info(f"🧠 [JUDGE] Calling CerebroIA.pensar_respuesta (Attempt {attempts}/{max_retries+1})...")
                 
-                # Copy context to avoid mutating the original for other potential uses
                 current_context = context
                 if attempts > 1:
-                    # Inyectar el motivo del rechazo en el contexto para el reintento
                     current_context += f"\n\n[SISTEMA - ERROR DE CALIDAD]: Tu respuesta anterior fue RECHAZADA por el Juez. Motivo: {rejection_reason}. Por favor, corrige este punto y genera una nueva respuesta válida."
 
                 if prospect_data is not None:
@@ -684,13 +683,34 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
 
                 if not is_approved:
                     logger.warning(f"⚖️ [JUDGE] Response REJECTED (Attempt {attempts}): {rejection_reason}")
+                    # Extraer ID del criterio (ej: C1 de C1_VISUAL_LOCK)
+                    match = re.match(r'(C\d)', rejection_reason)
+                    last_criteria_id = match.group(1) if match else "UNKNOWN"
                 else:
                     logger.info(f"⚖️ [JUDGE] Response APPROVED (Attempt {attempts}).")
 
             # Fallback if all attempts fail
             if not is_approved:
-                logger.error(f"❌ [JUDGE] Max retries reached. Forcing fallback response.")
-                response_text = "¡Hola! Estoy teniendo un pequeño problema técnico para darte la información exacta que necesitas. Permíteme un momento o intenta preguntarme de nuevo en unos minutos. ¡Gracias por tu paciencia!"
+                logger.error(f"❌ [JUDGE] Max retries reached. Forcing official fallback response. Criteria: {last_criteria_id}")
+                response_text = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
+                
+                # Observabilidad: Langfuse Tag y Metadata
+                try:
+                    from langfuse.decorators import langfuse_context
+                    langfuse_context.update_current_trace(
+                        tags=["JUDGE_CRITICAL_FALLBACK"],
+                        metadata={
+                            "rejection_criteria": last_criteria_id,
+                            "final_rejection_reason": rejection_reason,
+                            "attempts": attempts
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to update Langfuse trace: {e}")
+
+            # Persistencia de la respuesta final (sea aprobada o fallback)
+            if memory_service_module.memory_service:
+                await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
 
             # TRIGGER_SURVEY interception REMOVED — 2026-03-12
             # WHY: This block replaced the LLM's natural response with hardcoded survey
@@ -764,15 +784,69 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     prospect_data = await ms.get_prospect_data(user_phone)
                     current_history = await ms.get_chat_history(user_phone, limit=10)
 
-                    # 3. AI Inference (Await)
-                    if prospect_data: prospect_data["phone"] = user_phone
-                    response_text = await cerebro_ia.pensar_respuesta(
-                        transcription,
-                        context=context, 
-                        prospect_data=prospect_data,
-                        history=current_history,
-                        skip_greeting=True
-                    )
+                    # 3. AI Inference with Judge Audit (v9.8.0)
+                    max_retries = 2
+                    attempts = 0
+                    is_approved = False
+                    rejection_reason = ""
+                    last_criteria_id = "UNKNOWN"
+                    
+                    # Contexto para el Juez (Catalog Lock)
+                    catalog_results = catalog_service_local.search(transcription)
+                    catalog_context = ""
+                    for item in catalog_results[:3]:
+                        catalog_context += f"- {item['name']}: {item['formatted_price']}. Specs: {item.get('summary')}\n"
+
+                    while attempts <= max_retries and not is_approved:
+                        attempts += 1
+                        logger.info(f"🧠 [JUDGE] Audio Inference (Attempt {attempts}/{max_retries+1})...")
+                        
+                        current_context = context
+                        if attempts > 1:
+                            current_context += f"\n\n[SISTEMA - ERROR DE CALIDAD]: Tu respuesta anterior fue RECHAZADA por el Juez. Motivo: {rejection_reason}. Por favor, corrige este punto y genera una nueva respuesta válida."
+
+                        response_text = await cerebro_ia.pensar_respuesta(
+                            transcription,
+                            context=current_context, 
+                            prospect_data=prospect_data,
+                            history=current_history,
+                            skip_greeting=True
+                        )
+
+                        # 4. Auditoría del Juez
+                        is_approved, rejection_reason = await judge_service.analyze_response(
+                            user_input=transcription,
+                            ai_response=response_text,
+                            catalog_context=catalog_context,
+                            prospect_data=prospect_data,
+                            history=current_history
+                        )
+
+                        if not is_approved:
+                            logger.warning(f"⚖️ [JUDGE] Audio REJECTED (Attempt {attempts}): {rejection_reason}")
+                            match = re.match(r'(C\d)', rejection_reason)
+                            last_criteria_id = match.group(1) if match else "UNKNOWN"
+                        else:
+                            logger.info(f"⚖️ [JUDGE] Audio APPROVED (Attempt {attempts}).")
+
+                    # Fallback if all attempts fail
+                    if not is_approved:
+                        logger.error(f"❌ [JUDGE] Audio Max retries reached. Forcing fallback. Criteria: {last_criteria_id}")
+                        response_text = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
+                        
+                        try:
+                            from langfuse.decorators import langfuse_context
+                            langfuse_context.update_current_trace(
+                                tags=["JUDGE_CRITICAL_FALLBACK"],
+                                metadata={
+                                    "rejection_criteria": last_criteria_id,
+                                    "final_rejection_reason": rejection_reason,
+                                    "attempts": attempts,
+                                    "msg_type": "audio"
+                                }
+                            )
+                        except Exception as e:
+                            logger.warning(f"⚠️ Langfuse update failed: {e}")
                 else:
                     response_text = "Escuché el audio pero no entendí bien. ¿Me repites? 😅"
             else:
