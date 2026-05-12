@@ -114,15 +114,15 @@ class MemoryService:
                     prospect_data = {
                         "nombre": data.get("nombre") or data.get("name") or "",
                         "ciudad": data.get("ciudad") or data.get("city") or "",
-                        "moto_interes": data.get("moto_interes") or data.get("motoInteres") or data.get("moto_interest", ""), 
+                        "moto_interest": data.get("moto_interest", ""), 
                         "moto_confirmada": data.get("moto_confirmada") or data.get("motoConfirmada", False),
                         "forma_pago": data.get("forma_pago") or data.get("formaPago") or "",
                         "summary": data.get("ai_summary") or data.get("summary"),
                         "human_help_requested": data.get("human_help_requested", False),
                         "survey_state": data.get("survey_state"),
                         "exists": True,
-                        "habeas_data_sent": data.get("habeas_data_sent", False),
-                        "habeas_data": data.get("habeas_data", False),
+                        "habeas_data_accepted_sent": data.get("habeas_data_accepted_sent", False),
+                        "habeas_data_accepted": data.get("habeas_data_accepted", False),
                         "servicios_publicos": data.get("servicios_publicos") or data.get("serviciosPublicos", None),
                         "total_tokens_consumed": data.get("total_tokens_consumed", 0),
                         "session_cost_usd": data.get("session_cost_usd", 0.0),
@@ -131,11 +131,11 @@ class MemoryService:
                     return prospect_data
             
             return {
-                "nombre": "", "ciudad": "", "moto_interes": "",
+                "nombre": "", "ciudad": "", "moto_interest": "",
                 "forma_pago": "", "summary": "",
                 "human_help_requested": False, "survey_state": None, "exists": False,
-                "habeas_data_sent": False, 
-                "habeas_data": False,
+                "habeas_data_accepted_sent": False, 
+                "habeas_data_accepted": False,
                 "servicios_publicos": None,
                 "total_tokens_consumed": 0, "session_cost_usd": 0.0,
                 "current_agent": "expert"
@@ -157,14 +157,14 @@ class MemoryService:
             
             # --- INYECCIÓN DE CONTEXTO PREVIO (UNE v7.0.0 Unification) ---
             prospect_data = await self.get_prospect_data(phone_number)
-            moto_interes_prev = prospect_data.get("moto_interes", "") if prospect_data else ""
+            moto_interest_prev = prospect_data.get("moto_interest", "") if prospect_data else ""
 
             # 1. AI Extraction (Async)
             summary_data = await ai_brain.generate_summary(
                 conversation_text, 
                 last_bot_question=last_bot_question,
                 session_id=phone_number,
-                previous_moto_interes=moto_interes_prev
+                previous_moto_interest=moto_interest_prev
             )
             
             # 2. Firestore Persistence (Blocking Await for Data Integrity)
@@ -266,12 +266,12 @@ class MemoryService:
             return s_val not in ["", "null", "none", "n/a", "undefined"]
 
         # List of fields that once True, must never revert to False (Legal/Business Guardrails)
-        latch_fields = ["habeas_data_sent", "habeas_data", "moto_confirmada", "gas_natural"]
+        latch_fields = ["habeas_data_accepted_sent", "habeas_data_accepted", "moto_confirmada", "gas_natural"]
 
         # 1. Merge and Sanitize (Directly using incoming keys)
         for key, val in incoming.items():
             # Boolean Casting for critical flags
-            if key == "habeas_data":
+            if key == "habeas_data_accepted":
                 val = bool(val)
 
             # [JSON Voorhees v6.9.6] PII Guardrail: Truncate to 50 chars
@@ -367,14 +367,14 @@ class MemoryService:
                 "celular": clean_phone,
                 "nombre": "",
                 "ciudad": "",
-                "moto_interes": "", # UNE v7.0.0 Standard
+                "moto_interest": "", # UNE v7.0.0 Standard
                 "forma_pago": "",
                 "chatbot_status": "ACTIVE",
                 "status": "PENDING",
                 "source": "whatsapp_bot",
                 "human_help_requested": False,
-                "habeas_data_sent": False,
-                "habeas_data": False,
+                "habeas_data_accepted_sent": False,
+                "habeas_data_accepted": False,
                 "servicios_publicos": None,
                 "created_at": firestore.SERVER_TIMESTAMP,
                 "current_agent": "expert",

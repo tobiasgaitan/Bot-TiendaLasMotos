@@ -17,7 +17,7 @@ def main():
         
         # Documento 1
         doc1_ref = collection_ref.document("contactos_impulsa")
-        doc1_ref.set({"fields": ["nombre", "moto_interes"]})
+        doc1_ref.set({"fields": ["nombre", "moto_interest"]})
         logger.info("✅ Documento contactos_impulsa creado.")
         
         # Documento 2

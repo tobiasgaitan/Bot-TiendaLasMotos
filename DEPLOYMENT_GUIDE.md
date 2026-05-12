@@ -103,7 +103,7 @@ gcloud run services logs read bot-tiendalasmotos \
   {
     "celular": "3192564288",  // WITHOUT country code!
     "nombre": "Capitán Victoria",
-    "motoInteres": "Victory Black",
+    "moto_interest": "Victory Black",
     "ai_summary": "Cliente VIP interesado en Victory Black",
     "chatbot_status": "PENDING"
   }

@@ -510,30 +510,27 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     
                     _active_resets.add(user_phone)
                     try:
-                        # 2. RE-FETCH for idempotency (v9.8.3)
-                        # Contract: Only the first request to find the prospect 'exists' will process the reset.
-                        fresh_prospect = await ms.get_prospect_data(user_phone)
-                        if not fresh_prospect.get("exists", False):
-                            logger.info(f"⏭️ [RESET] Prospecto ya fue limpiado para {user_phone}. Ignorando duplicado.")
-                            return
-
                         logger.warning(f"☢️ NUCLEAR RESET TRIGGERED (Sync) for {user_phone}")
-                        # Nuclear wipe
+                        # Nuclear wipe (Siempre intentamos limpiar, sea que exista o no en Firestore)
                         success = await ms.delete_prospect_completely(user_phone)
                         if not success:
-                            logger.error(f"❌ [RESET] Fallo crítico al intentar borrar prospecto {user_phone}")
-                            return
+                            logger.error(f"❌ [RESET] Fallo en limpieza profunda para {user_phone}, procediendo con feedback.")
 
+                        # Limpiar buffer de mensajes para evitar duplicados residuales
                         await message_buffer.clear_buffer(user_phone)
                         
-                        # Garantía de entrega: confirmación de reinicio
+                        # Sincronía de Feedback: Garantía de respuesta determinista
                         await whatsapp_service.send_text_message(
                             user_phone, 
                             "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?", 
                             phone_number_id=phone_number_id
                         )
+                    except Exception as e:
+                        logger.exception(f"❌ [RESET] Error inesperado en flujo de reset para {user_phone}: {e}")
                     finally:
-                        _active_resets.remove(user_phone)
+                        # Blindaje de Cleanup: Evita bloqueo permanente de hilos del usuario
+                        if user_phone in _active_resets:
+                            _active_resets.remove(user_phone)
                     return 
 
                 if cmd in ["/update", "/refresh_catalog"]:
@@ -967,8 +964,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     if not moto_confirmada:
                         logger.info("📸 Injecting dynamic image (moto not confirmed).")
                         # Logica v6.3.1: Priorizar interes, sino Raider 125
-                        moto_interes = prospect_data.get("moto_interes") if prospect_data else None
-                        moto_to_search = moto_interes if moto_interes else "RAIDER 125"
+                        moto_interest = prospect_data.get("moto_interest") if prospect_data else None
+                        moto_to_search = moto_interest if moto_interest else "RAIDER 125"
                         
                         if catalog_service_local:
                             try:
@@ -976,8 +973,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                 moto_results = catalog_service_local.search_items(moto_to_search)
                                 
                                 # Fallback if interest search failed (Competitor or not found)
-                                if not moto_results and moto_interes:
-                                    logger.info(f"🔄 No results for '{moto_interes}' (Competitor?). Falling back to Raider 125.")
+                                if not moto_results and moto_interest:
+                                    logger.info(f"🔄 No results for '{moto_interest}' (Competitor?). Falling back to Raider 125.")
                                     moto_results = catalog_service_local.search_items("RAIDER 125")
                                 
                                 if moto_results:

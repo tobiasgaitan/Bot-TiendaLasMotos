@@ -62,7 +62,7 @@ def merge_documents(docs: List[Any], normalized_phone: str) -> Dict[str, Any]:
     merged = {
         "celular": normalized_phone,
         "nombre": "",
-        "motoInteres": "",
+        "moto_interest": "",
         "ai_summary": "",
         "human_help_requested": False,
         "chatbot_status": "ACTIVE",
@@ -82,9 +82,9 @@ def merge_documents(docs: List[Any], normalized_phone: str) -> Dict[str, Any]:
             merged["nombre"] = name
             
         # Moto: Keep longest/most specific
-        moto = data.get("motoInteres", "")
-        if moto and len(moto) > len(merged["motoInteres"]):
-            merged["motoInteres"] = moto
+        moto = data.get("moto_interest", "")
+        if moto and len(moto) > len(merged["moto_interest"]):
+            merged["moto_interest"] = moto
             
         # Human Help: OR logic (safety)
         if data.get("human_help_requested"):

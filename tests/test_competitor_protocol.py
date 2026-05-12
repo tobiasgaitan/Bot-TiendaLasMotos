@@ -24,7 +24,7 @@ class TestCompetitorProtocol(unittest.TestCase):
         prospect_data = {
             "name": "Pedro Picapiedra",
             "ciudad": "Bogotá",
-            "moto_interes": "Boxer CT 100",
+            "moto_interest": "Boxer CT 100",
             "moto_confirmada": True,
             "payment_method": "credito",
             "interest_confirmed_in_alternative": False
@@ -38,7 +38,7 @@ class TestCompetitorProtocol(unittest.TestCase):
         prospect_data = {
             "name": "Pedro Picapiedra",
             "ciudad": "Bogotá",
-            "moto_interes": "TVS Apache 160",
+            "moto_interest": "TVS Apache 160",
             "moto_confirmada": True,
             "payment_method": "credito",
             "interest_confirmed_in_alternative": False
@@ -52,7 +52,7 @@ class TestCompetitorProtocol(unittest.TestCase):
         prospect_data = {
             "name": "Pedro Picapiedra",
             "ciudad": "Bogotá",
-            "moto_interes": "NKD 125", # Competencia
+            "moto_interest": "NKD 125", # Competencia
             "moto_confirmada": True,
             "payment_method": "credito",
             "interest_confirmed_in_alternative": True # Confirmado interés en alternativa

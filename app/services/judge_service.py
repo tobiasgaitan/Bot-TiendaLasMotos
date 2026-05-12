@@ -97,8 +97,8 @@ class JudgeService:
                 return False, "C1_VISUAL_LOCK: Se mencionó una moto pero falta el enlace de imagen Markdown."
 
         # --- CRITERIO 3: Habeas Data Guard (Logic) ---
-        # No financial questions if habeas_data is False.
-        habeas_accepted = prospect_data.get("habeas_data", False)
+        # No financial questions if habeas_data_accepted is False.
+        habeas_accepted = prospect_data.get("habeas_data_accepted", False)
         if not habeas_accepted and self._is_profiling_attempt(ai_response):
             return False, "C3_HABEAS_DATA_VIOLATION: Intento de perfilamiento financiero sin consentimiento Habeas Data."
 

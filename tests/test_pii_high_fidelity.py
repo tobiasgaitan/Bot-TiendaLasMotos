@@ -17,7 +17,7 @@ class TestPIIHighFidelity(unittest.TestCase):
           "extracted": {
             "name": "Juan Pérez",
             "city": "Bogotá",
-            "moto_interes": "Pulsar 200",
+            "moto_interest": "Pulsar 200",
             "moto_ofrecida": "TVS Apache 160",
             "moto_aceptada": "TVS Apache 160",
             "habeas_data_accepted": true,
@@ -31,7 +31,7 @@ class TestPIIHighFidelity(unittest.TestCase):
         """
         result, is_valid = clean_json_voorhees(raw_json)
         self.assertTrue(is_valid)
-        self.assertEqual(result["extracted"]["moto_interes"], "Pulsar 200")
+        self.assertEqual(result["extracted"]["moto_interest"], "Pulsar 200")
         self.assertEqual(result["extracted"]["moto_aceptada"], "TVS Apache 160")
         self.assertTrue(result["extracted"]["habeas_data_accepted"])
         self.assertEqual(result["extracted"]["servicios_publicos"], "Gas Natural")
