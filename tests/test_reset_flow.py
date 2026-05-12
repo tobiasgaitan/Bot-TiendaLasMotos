@@ -10,10 +10,10 @@ def memory_service():
 
 
 @pytest.mark.asyncio
-async def test_create_prospect_initializes_habeas_data_false(memory_service):
+async def test_create_prospect_initializes_habeas_data_accepted_false(memory_service):
     """
     Test que verifica que create_prospect_if_missing inicializa explícitamente
-    habeas_data en False usando la llave canónica (v7.7.0).
+    habeas_data_accepted en False usando la llave canónica (v7.7.0).
     
     WHY async: create_prospect_if_missing es un coroutine — llamarlo sin await
     no ejecuta el código interno y el set() nunca se llama.
@@ -50,69 +50,82 @@ async def test_create_prospect_initializes_habeas_data_false(memory_service):
     call_args = mock_doc_ref.set.call_args
     data = call_args[0][0]  # positional arg
 
-    # Canonical key (v7.7.0): habeas_data — NOT habeas_data_accepted
-    assert "habeas_data" in data, "Must use canonical key 'habeas_data', not legacy alias"
-    assert data["habeas_data"] is False, "habeas_data debe ser False al crear un prospecto"
-    assert data["habeas_data_sent"] is False, "habeas_data_sent debe ser False al crear un prospecto"
+    # Canonical key (v7.7.0): habeas_data_accepted — NOT legacy 'habeas_data'
+    assert "habeas_data_accepted" in data, "Must use canonical key 'habeas_data_accepted', not legacy alias"
+    assert data["habeas_data_accepted"] is False, "habeas_data_accepted debe ser False al crear un prospecto"
+    assert data["habeas_data_accepted_sent"] is False, "habeas_data_accepted_sent debe ser False al crear un prospecto"
     assert "3227303760" in data["celular"], "celular debe contener el número del prospecto"
 
 
 def test_merge_after_reset_does_not_latch_true(memory_service):
     """
     Test que verifica que si el dato actual es False (post-reset), la IA no lo autocompleta como True.
-    Uses canonical key 'habeas_data' (v7.7.0).
+    Uses canonical key 'habeas_data_accepted' (v7.7.0).
     """
     current_data = {
-        "habeas_data": False,       # Estado explícito tras reset (canonical key)
-        "habeas_data_sent": False
+        "habeas_data_accepted": False,       # Estado explícito tras reset (canonical key)
+        "habeas_data_accepted_sent": False
     }
     
     incoming_extracted = {
-        "habeas_data": False        # Canonical key
+        "habeas_data_accepted": False        # Canonical key
     }
     
     merged = memory_service._merge_extracted_data(current_data, incoming_extracted)
     
     # Debe permanecer en False porque existing_val era False (no se activa el latch)
-    assert merged["habeas_data"] is False
+    assert merged["habeas_data_accepted"] is False
 
 
 def test_merge_still_latches_true_if_already_true(memory_service):
     """
     Test de regresión: El latch debe seguir funcionando si el valor ya era True.
-    Uses canonical key 'habeas_data' (v7.7.0).
+    Uses canonical key 'habeas_data_accepted' (v7.7.0).
     """
     current_data = {
-        "habeas_data": True         # Canonical key — already accepted
+        "habeas_data_accepted": True         # Canonical key — already accepted
     }
     incoming_extracted = {
-        "habeas_data": False        # AI attempts to rollback — latch must block
+        "habeas_data_accepted": False        # AI attempts to rollback — latch must block
     }
     merged = memory_service._merge_extracted_data(current_data, incoming_extracted)
-    assert merged["habeas_data"] is True, "El latch debe mantener True si el valor existente era True"
+    assert merged["habeas_data_accepted"] is True, "El latch debe mantener True si el valor existente era True"
 
 
 @pytest.mark.asyncio
 async def test_delete_prospect_completely_flow(memory_service):
     """
-    Test que verifica que delete_prospect_completely (v9.8.1) realice
-    la purga atómica en las 3 colecciones clave.
+    Test que verifica el borrado completo del CRM (nuclear wipe).
+    Debe limpiar memoria, borrar sesión y borrar el documento del prospecto.
     """
     phone = "3227303760"
-    
+
     # Mock clear_memory
     memory_service.clear_memory = AsyncMock(return_value=True)
     
     # Setup document mocks for session and prospect
-    mock_session_ref = AsyncMock()
+    mock_session_ref = MagicMock()
     mock_session_ref.delete = AsyncMock()
     
-    mock_prospect_ref = AsyncMock()
-    mock_prospect_ref.delete = AsyncMock()
+    # history_ref.stream() mock
+    mock_history_ref = MagicMock()
+    mock_history_ref.stream.return_value.__aiter__.return_value = [] # Empty list as async iterator
+    mock_session_ref.collection.return_value = mock_history_ref
+    
+    # Prospect mock
+    mock_prospect_ref = MagicMock()
+    mock_prospect_ref.id = "test_id"
+    mock_prospect_ref.reference.delete = AsyncMock()
+    mock_prospect_ref.delete = AsyncMock() # For direct document().delete() calls
+    
+    # prospectos_ref.where(...).get() mock
+    mock_query = MagicMock()
+    mock_query.get = AsyncMock(return_value=[mock_prospect_ref])
     
     def collection_side_effect(name):
         col_mock = MagicMock()
         if name == "prospectos":
+            col_mock.where.return_value.limit.return_value = mock_query
             col_mock.document.return_value = mock_prospect_ref
         elif name == "mensajeria":
             # Path: mensajeria/whatsapp/sesiones/{phone}
@@ -128,4 +141,4 @@ async def test_delete_prospect_completely_flow(memory_service):
     assert result is True
     memory_service.clear_memory.assert_called_once_with("+573227303760")
     mock_session_ref.delete.assert_called_once()
-    mock_prospect_ref.delete.assert_called_once()
+    mock_prospect_ref.reference.delete.assert_called_once()

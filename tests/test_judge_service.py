@@ -46,10 +46,10 @@ async def test_judge_one_question_rule(judge_service):
     assert "C5_ONE_QUESTION_RULE" in reason
 
 @pytest.mark.asyncio
-async def test_judge_habeas_data_violation(judge_service):
+async def test_judge_habeas_data_accepted_violation(judge_service):
     # Profiling without habeas data
     response = "¿En qué trabajas actualmente?"
-    prospect_data = {"habeas_data": False}
+    prospect_data = {"habeas_data_accepted": False}
     approved, reason = await judge_service.analyze_response("hola", response, prospect_data=prospect_data)
     assert not approved
     assert "C3_HABEAS_DATA_VIOLATION" in reason

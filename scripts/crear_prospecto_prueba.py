@@ -33,7 +33,7 @@ def create_prospect(
     db: firestore.Client,
     celular: str,
     nombre: str,
-    moto_interes: str,
+    moto_interest: str,
     ai_summary: str = None,
     chatbot_status: str = "PENDING",
     merge: bool = True
@@ -45,7 +45,7 @@ def create_prospect(
         db: Firestore client instance
         celular: Phone number (without country code, e.g., "3227303760")
         nombre: Prospect name
-        moto_interes: Motorcycle of interest
+        moto_interest: Motorcycle of interest
         ai_summary: Optional conversation summary
         chatbot_status: Status (PENDING or ACTIVE)
         merge: If True, merge with existing data; if False, overwrite
@@ -80,7 +80,7 @@ def create_prospect(
         prospect_data = {
             "celular": clean_celular,
             "nombre": nombre,
-            "motoInteres": moto_interes,
+            "moto_interest": moto_interest,
             "origen": "SCRIPT",
             "chatbot_status": chatbot_status,
             "updated_at": firestore.SERVER_TIMESTAMP
@@ -101,7 +101,7 @@ def create_prospect(
         logger.info(f"📋 Details:")
         logger.info(f"   - Celular: {clean_celular}")
         logger.info(f"   - Nombre: {nombre}")
-        logger.info(f"   - MotoInteres: {moto_interes}")
+        logger.info(f"   - moto_interest: {moto_interest}")
         logger.info(f"   - Chatbot Status: {chatbot_status}")
         logger.info(f"   - AI Summary: {ai_summary or '(empty)'}")
         logger.info(f"   - Document ID: {doc_ref.id}")
@@ -125,7 +125,7 @@ def interactive_mode(db: firestore.Client) -> None:
     # Get prospect details
     celular = input("📱 Celular (ej: 3227303760): ").strip()
     nombre = input("👤 Nombre (ej: Carlos): ").strip()
-    moto_interes = input("🏍️  Moto de Interés (ej: Viva R): ").strip()
+    moto_interest = input("🏍️  Moto de Interés (ej: Viva R): ").strip()
     
     # Optional fields
     ai_summary_input = input("📝 Resumen AI (opcional, Enter para omitir): ").strip()
@@ -140,7 +140,7 @@ def interactive_mode(db: firestore.Client) -> None:
     print("📋 Resumen:")
     print(f"   Celular: {celular}")
     print(f"   Nombre: {nombre}")
-    print(f"   Moto: {moto_interes}")
+    print(f"   Moto: {moto_interest}")
     print(f"   Status: {chatbot_status}")
     print(f"   Summary: {ai_summary or '(vacío)'}")
     print("-"*60)
@@ -148,7 +148,7 @@ def interactive_mode(db: firestore.Client) -> None:
     confirm = input("\n¿Crear este prospecto? (s/n): ").strip().lower()
     
     if confirm == 's':
-        create_prospect(db, celular, nombre, moto_interes, ai_summary, chatbot_status)
+        create_prospect(db, celular, nombre, moto_interest, ai_summary, chatbot_status)
     else:
         logger.info("❌ Operación cancelada por el usuario")
 
@@ -229,7 +229,7 @@ Ejemplos:
                 db,
                 celular=args.celular,
                 nombre=args.nombre,
-                moto_interes=args.moto,
+                moto_interest=args.moto,
                 ai_summary=args.summary,
                 chatbot_status=args.status,
                 merge=not args.no_merge

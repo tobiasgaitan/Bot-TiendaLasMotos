@@ -13,15 +13,15 @@ extraction_schema = {
         "extracted": {
             "type": "OBJECT",
             "properties": {
-                "name": {
+                "nombre": {
                     "type": "STRING",
                     "description": "Nombre si se mencionó. IGNORA el nombre 'Juan Pablo', 'Auteco' o referencias al bot. SOLO extrae si el usuario se presenta a sí mismo."
                 },
-                "city": {
+                "ciudad": {
                     "type": "STRING",
                     "description": "Ciudad si se mencionó (ej. Bogotá, Medellín)."
                 },
-                "payment_method": {
+                "forma_pago": {
                     "type": "STRING",
                     "description": "Método de pago si se mencionó (ej. crédito, contado, brilla, no sé)."
                 },

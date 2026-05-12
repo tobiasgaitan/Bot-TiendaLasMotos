@@ -21,12 +21,12 @@ async def test_campaign_orchestrator_failure_isolation():
 
     # Creamos un prospect mockeado
     doc_mock_1 = MagicMock()
-    doc_mock_1.to_dict.return_value = {"nombre": "Juan", "moto_interes": "Boxer CT", "celular": "3001234567"}
+    doc_mock_1.to_dict.return_value = {"nombre": "Juan", "moto_interest": "Boxer CT", "celular": "3001234567"}
     doc_mock_1.id = "3001234567"
     doc_mock_1.reference.update = AsyncMock()
 
     doc_mock_2 = MagicMock()
-    doc_mock_2.to_dict.return_value = {"nombre": "Maria", "moto_interes": "Pulsar NS", "celular": "3009876543"}
+    doc_mock_2.to_dict.return_value = {"nombre": "Maria", "moto_interest": "Pulsar NS", "celular": "3009876543"}
     doc_mock_2.id = "3009876543"
     doc_mock_2.reference.update = AsyncMock()
     

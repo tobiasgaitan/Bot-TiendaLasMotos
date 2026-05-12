@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 _INVALID_SENTINELS = {"null", "none", "n/a", "undefined"}
 
 # Canonical latch fields — once True, they must never revert to False
-_LATCH_TRUE_FIELDS = frozenset({"habeas_data", "habeas_data_sent"})
+_LATCH_TRUE_FIELDS = frozenset({"habeas_data_accepted", "habeas_data_accepted_sent"})
 
 
 class MemoryService:
@@ -227,14 +227,14 @@ class MemoryService:
                     "celular": clean_phone,
                     "nombre": "",
                     "ciudad": "",
-                    "moto_interes": "",
+                    "moto_interest": "",
                     "forma_pago": "",
                     "chatbot_status": "ACTIVE",
                     "status": "PENDING", # [SYNC-CRM] Ancla para el Dashboard
                     "source": "whatsapp_bot",
                     "human_help_requested": False,
-                    "habeas_data": False,
-                    "habeas_data_sent": False,
+                    "habeas_data_accepted": False,
+                    "habeas_data_accepted_sent": False,
                     "servicios_publicos": None,
                     "created_at": firestore.SERVER_TIMESTAMP,
                     "updated_at": firestore.SERVER_TIMESTAMP,
@@ -255,14 +255,14 @@ class MemoryService:
 
     # Backward-compat alias
     async def create_prospect(self, phone_number: str, data: Dict[str, Any]) -> None:
-        """Legacy create method — sets arbitrary data with habeas_data default."""
+        """Legacy create method — sets arbitrary data with habeas_data_accepted default."""
         try:
             doc_ref = await self.get_ref(phone_number)
             payload = data.copy()
             payload["celular"] = doc_ref.id
             payload["created_at"] = firestore.SERVER_TIMESTAMP
-            if "habeas_data" not in payload:
-                payload["habeas_data"] = False
+            if "habeas_data_accepted" not in payload:
+                payload["habeas_data_accepted"] = False
             await doc_ref.set(payload)
         except Exception as e:
             logger.exception(f"❌ create_prospect failed for {phone_number}: {e}")
@@ -313,14 +313,10 @@ class MemoryService:
             
             # --- 1. PURGE MENSAJERIA SESSIONS (AI History) ---
             try:
+                await self.clear_memory(clean_phone)
+                
                 session_ref = self._db.collection("mensajeria").document("whatsapp") \
                     .collection("sesiones").document(clean_phone)
-                
-                # Delete historial sub-collection documents
-                history_ref = session_ref.collection("historial")
-                async for doc in history_ref.stream():
-                    await doc.reference.delete()
-                
                 await session_ref.delete()
             except Exception as e:
                 logger.warning(f"⚠️ Failed to purge mensajeria session for {clean_phone}: {e}")

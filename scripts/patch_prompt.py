@@ -2,7 +2,7 @@
 """
 Admin Maintenance Script: Patch Live System Prompt in Firestore (v2.1.0)
 ========================================================================
-Surgically updates <phase_1_profiling> and <phase_2_habeas_data> blocks.
+Surgically updates <phase_1_profiling> and <phase_2_habeas_data_accepted> blocks.
 """
 
 import sys
@@ -25,15 +25,15 @@ PHASE_1_REPLACEMENT = """  <phase_1_profiling>
     - BLOQUEO: Bajo ninguna circunstancia inicies el protocolo de Habeas Data si las variables Ciudad y Forma de Pago son desconocidas.
   </phase_1_profiling>"""
 
-PHASE_2_REPLACEMENT = """  <phase_2_habeas_data>
+PHASE_2_REPLACEMENT = """  <phase_2_habeas_data_accepted>
     Objetivo: Obtener autorización legal.
     - SCRIPT OBLIGATORIO: Solicita autorización de datos de forma natural y entrega el link de la política solo si el usuario acepta y ha confirmado previamente su interés en una moto.
     - Si dicen "No", respeta su decisión y responde dudas generales.
-  </phase_2_habeas_data>"""
+  </phase_2_habeas_data_accepted>"""
 
 def surgical_patch(current_text: str) -> str:
     """
-    Finds and replaces <phase_1_profiling> and <phase_2_habeas_data> blocks.
+    Finds and replaces <phase_1_profiling> and <phase_2_habeas_data_accepted> blocks.
     Ensures that other parts of the prompt (Rules, Persona, Phase 3) are untouched.
     """
     # Patch Phase 1
@@ -44,9 +44,9 @@ def surgical_patch(current_text: str) -> str:
     patched = re.sub(p1_pattern, PHASE_1_REPLACEMENT, current_text, flags=re.DOTALL)
     
     # Patch Phase 2
-    p2_pattern = r'<phase_2_habeas_data>.*?</phase_2_habeas_data>'
+    p2_pattern = r'<phase_2_habeas_data_accepted>.*?</phase_2_habeas_data_accepted>'
     if not re.search(p2_pattern, patched, re.DOTALL):
-        raise ValueError("❌ Error: <phase_2_habeas_data> tag NO encontrado en Firestore.")
+        raise ValueError("❌ Error: <phase_2_habeas_data_accepted> tag NO encontrado en Firestore.")
     
     patched = re.sub(p2_pattern, PHASE_2_REPLACEMENT, patched, flags=re.DOTALL)
     

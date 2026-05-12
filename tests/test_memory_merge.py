@@ -35,38 +35,38 @@ def test_merge_strategy_preserve_historic_valid(memory_service):
 
 def test_merge_strategy_latch_true_only(memory_service):
     """
-    Test Rule: LATCH_TRUE_ONLY (v7.7.0 — Canonical Key: habeas_data)
-    Boolean latch: once True, habeas_data must not revert to False.
-    Verifies the canonical key 'habeas_data' used by MemoryService v7.7.0.
+    Test Rule: LATCH_TRUE_ONLY (v7.7.0 — Canonical Key: habeas_data_accepted)
+    Boolean latch: once True, habeas_data_accepted must not revert to False.
+    Verifies the canonical key 'habeas_data_accepted' used by MemoryService v7.7.0.
     """
     current_data = {
-        "habeas_data": True,       # Canonical key (v7.7.0)
-        "habeas_data_sent": True,
+        "habeas_data_accepted": True,       # Canonical key (v7.7.0)
+        "habeas_data_accepted_sent": True,
         "moto_confirmada": False
     }
     
     # AI accidentally sends False for accepted flags
     incoming_extracted = {
-        "habeas_data": False,       # Canonical key — latch must prevent rollback
-        "habeas_data_sent": None,
+        "habeas_data_accepted": False,       # Canonical key — latch must prevent rollback
+        "habeas_data_accepted_sent": None,
         "moto_confirmada": True
     }
     
     merged = memory_service._merge_extracted_data(current_data, incoming_extracted)
     
-    # Latch must keep habeas_data True (canonical key)
-    assert merged["habeas_data"] is True
+    # Latch must keep habeas_data_accepted True (canonical key)
+    assert merged["habeas_data_accepted"] is True
     # 'moto_confirmada' should upgrade to True
     assert merged["moto_confirmada"] is True
 
 def test_merge_strategy_pop_destructive(memory_service):
     """
-    Verify that LATCH_TRUE_ONLY activates correctly when incoming habeas_data is True
+    Verify that LATCH_TRUE_ONLY activates correctly when incoming habeas_data_accepted is True
     and current has no prior state (first acceptance).
-    Uses canonical key 'habeas_data' as per MemoryService v7.7.0.
+    Uses canonical key 'habeas_data_accepted' as per MemoryService v7.7.0.
     """
     incoming = {
-        "habeas_data": True,        # Canonical key (v7.7.0)
+        "habeas_data_accepted": True,        # Canonical key (v7.7.0)
         "servicios_publicos": "gas_natural"
     }
     current = {}
@@ -74,12 +74,12 @@ def test_merge_strategy_pop_destructive(memory_service):
     merged = memory_service._merge_extracted_data(current, incoming)
     
     # Canonical key must be present and True
-    assert merged["habeas_data"] is True
+    assert merged["habeas_data_accepted"] is True
     assert merged["servicios_publicos"] == "gas_natural"
     
     # No legacy aliases should bleed into the merged output
     assert "habeasData" not in merged
-    assert "habeas_data_accepted" not in merged
+    assert "habeas_data" not in merged
 
 
 def test_merge_strategy_full_mapping_spanish(memory_service):

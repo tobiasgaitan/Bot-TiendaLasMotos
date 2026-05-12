@@ -65,7 +65,7 @@ EXTRACTION_SCHEMA = {
                     "type": "STRING",
                     "description": "Ciudad del cliente (máx 50 caracteres)."
                 },
-                "moto_interes": {
+                "moto_interest": {
                     "type": "STRING",
                     "description": "La primera moto o estilo por el que preguntó el usuario."
                 },
@@ -77,7 +77,7 @@ EXTRACTION_SCHEMA = {
                     "type": "STRING",
                     "description": "La moto que el usuario aceptó explícitamente comprar o conocer más (Inmutable contra competencia)."
                 },
-                "habeas_data": {
+                "habeas_data_accepted": {
                     "type": "BOOLEAN",
                     "description": "Indica si el usuario aceptó el tratamiento de datos (mapeado de afirmaciones o emojis)."
                 },
@@ -343,8 +343,9 @@ class CerebroIA:
         has_sent_link = "tiendalasmotos.com/politica-de-privacidad" in conversation_text.lower()
         
         # SI YA ACEPTÓ HABEAS DATA -> PHASE 3 (Profiling)
-        is_accepted = prospect_data.get("habeas_data") is True
-        is_sent = prospect_data.get("habeas_data_sent") is True
+        # [UNIFICACIÓN] habeas_data_accepted enforced
+        is_accepted = prospect_data.get("habeas_data_accepted") is True
+        is_sent = prospect_data.get("habeas_data_accepted_sent") is True
         
         if is_accepted and is_sent and has_sent_link:
             has_name = bool(prospect_data.get("nombre") or prospect_data.get("name"))
@@ -365,16 +366,16 @@ class CerebroIA:
 
         # --- BLOQUEO PROTOCOLO COMPETENCIA (Directiva 2026) ---
         # Bloqueamos el avance a fase legal si la moto es de la competencia.
-        moto_interes = str(prospect_data.get("moto_interes", "")).lower()
-        competitors = ["boxer", "nkd", "yamaha", "suzuki", "honda", "akt", "pulsar", "victory", "tvs Apache"] # Apache can be our but Pulsar is competitor? Actually Pulsar is Bajaj.
+        moto_interest = str(prospect_data.get("moto_interest", "")).lower()
+        competitors = ["boxer", "nkd", "yamaha", "suzuki", "honda", "akt", "pulsar", "victory", "tvs Apache"] 
         # User defined Boxer, NKD, Yamaha explicitly.
         competitor_keywords = ["boxer", "nkd", "yamaha", "suzuki", "honda", "bajaj", "hero"]
         
-        is_competitor = any(comp in moto_interes for comp in competitor_keywords)
+        is_competitor = any(comp in moto_interest for comp in competitor_keywords)
         alternative_interest = prospect_data.get("interest_confirmed_in_alternative") is True
         
         if is_competitor and not alternative_interest:
-            logger.info(f"🚫 [PROTOCOL] Competitor brand detected: {moto_interes}. Blocking advance to Phase 2.")
+            logger.info(f"🚫 [PROTOCOL] Competitor brand detected: {moto_interest}. Blocking advance to Phase 2.")
             return "PHASE_1_PROFILING"
 
         # --- INTENCIÓN FINANCIERA (v1.3.1) ---
@@ -415,8 +416,8 @@ class CerebroIA:
                     "funnel_phase": _phase,
                     "nombre": prospect_data.get("nombre", "desconocido"),
                     "ciudad": prospect_data.get("ciudad", ""),
-                    "moto_interes": prospect_data.get("moto_interes", ""),
-                    "habeas_data": prospect_data.get("habeas_data", False),
+                    "moto_interest": prospect_data.get("moto_interest", ""),
+                    "habeas_data_accepted": prospect_data.get("habeas_data_accepted", False),
                 }
             )
             raw_response = await self._generate_with_retry_async(texto, context, prospect_data, history, skip_greeting)
@@ -426,7 +427,7 @@ class CerebroIA:
         # --- PHASE-GATE FÍSICO (Bypass de Habeas Data) ---
         # AUDIT P1 (2.2): Interceptor de Respuesta.
         # Si el usuario NO ha aceptado Habeas Data, bloqueamos cualquier pregunta de crédito.
-        habeas_data_accepted = prospect_data.get("habeas_data", False) if prospect_data else False
+        habeas_data_accepted = prospect_data.get("habeas_data_accepted", False) if prospect_data else False
         
         if not habeas_data_accepted and raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
             # REGLA DE NEGOCIO (Audit v2.0): Permitir "crédito" como explicación, bloquear solo perfilamiento.
@@ -687,13 +688,14 @@ REGLAS ESTRICTAS DE USO:
         # --- NEW ADAPTER LAYER: CRM ANCHOR CONTEXT (REF-004) ---
         # Moving the anchor logic from the router to the brain.
         # This keeps the 'texto' (raw user input) clean for the tool interceptor.
+        # [UNIFICACIÓN] moto_interest enforced
         anchor_context = ""
-        if prospect_data and prospect_data.get("moto_interes"):
-            moto_interes = prospect_data.get("moto_interes")
+        if prospect_data and prospect_data.get("moto_interest"):
+            moto_interest = prospect_data.get("moto_interest")
             # Anchor rule: If message is short (<60 chars) and doesn't imply a shift, reinforce preference.
             if len(texto) < 60 and not any(m in texto.lower() for m in ["otra", "cambiar", "no la"]):
-                anchor_context = f"\n[CRM ANCHOR: El usuario está interesado en la {moto_interes}. Mantén el contexto sobre este modelo a menos que el usuario pida conocer otra motocicleta.]\n"
-                logger.info(f"💉 Internal CRM Anchor Context injected: {moto_interes}")
+                anchor_context = f"\n[CRM ANCHOR: El usuario está interesado en la {moto_interest}. Mantén el contexto sobre este modelo a menos que el usuario pida conocer otra motocicleta.]\n"
+                logger.info(f"💉 Internal CRM Anchor Context injected: {moto_interest}")
 
         # 2. Build Instructions block based on State
         funnel_instruction = ""
@@ -708,7 +710,7 @@ REGLAS ESTRICTAS DE USO:
 
             # HARD-GATE DE IDENTIDAD (Requirement 2026.1): Prohibido preguntar si ya existe.
             # v1.3.0: Skip name request if moto is confirmed or in context
-            moto_context = prospect_data.get("moto_interes") or prospect_data.get("moto_confirmada")
+            moto_context = prospect_data.get("moto_interest") or prospect_data.get("moto_confirmada")
             if p_name:
                 pass # Already have it
             elif not moto_context:
@@ -914,7 +916,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 # BYPASS LOGIC: Si la moto ya está confirmada o hay una de interés, el prompt prohíbe imagen/precio 
                                 # para evitar saturación. El guardrail no debe exigir consistencia visual.
                                 moto_confirmada = (prospect_data and prospect_data.get("moto_confirmada") is True)
-                                has_moto_interest = bool(prospect_data.get("moto_interes")) if prospect_data else False
+                                has_moto_interest = bool(prospect_data.get("moto_interest")) if prospect_data else False
                                 requires_visuals = not moto_confirmada and not has_moto_interest
 
                                 hallucinated_model = None
@@ -999,7 +1001,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 if self._catalog_service:
                                     import time
                                     # --- INTERCEPTOR DE NEGOCIO (JSON Voorhees v6.6.6) ---
-                                    moto_interest_prev = prospect_data.get("moto_interes") if prospect_data else None
+                                    # [UNIFICACIÓN] moto_interest enforced
+                                    moto_interest_prev = prospect_data.get("moto_interest") if prospect_data else None
                                     skip_catalog = False
                                     if moto_interest_prev:
                                         import difflib
@@ -1097,7 +1100,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         entity = res.get('entity', 'Crediorbe')
                                         
                                         # Resolve simulation if moto is in context
-                                        moto_name = (prospect_data or {}).get("moto_interes", "")
+                                        moto_name = (prospect_data or {}).get("moto_interest", "")
                                         cuota_line = ""  # Omitted by default (Cognitive Brake)
                                         
                                         if moto_name and self.motor_financiero:
@@ -1188,7 +1191,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             logger.exception(f"Error detecting sentiment for text '{text[:50]}...': {e}")
             return "NEUTRAL"
 
-    async def generate_summary(self, conversation_text: str, last_bot_question: str = "", session_id: str = "unknown", previous_moto_interes: str = "") -> Dict[str, Any]:
+    async def generate_summary(self, conversation_text: str, last_bot_question: str = "", session_id: str = "unknown", previous_moto_interest: str = "") -> Dict[str, Any]:
         """
         Summarize the conversation and extract structured prospect data (Async).
           forzar al modelo de Gemini a generar un JSON garantizado y determinista, en lugar
@@ -1208,7 +1211,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             y devolverla en un JSON válido según el esquema proporcionado.
 
             REGLAS DE EXTRACCIÓN CRÍTICAS:
-            1. habeas_data (STRICT NEGATIVE BIAS): 
+            1. habeas_data_accepted (STRICT NEGATIVE BIAS): 
                - Solo mapea a `true` si el usuario da una respuesta afirmativa DIRECTA y EXPLÍCITA (ej: "Sí", "Acepto", "Dale", "Listo", "👍") tras el script legal.
                - Si el usuario responde con otra pregunta (ej: "¿qué requisitos hay?") o ambigüedad, DEBE ser `false`.
                - NUNCA asumas aceptación por el simple hecho de continuar la charla.
@@ -1216,7 +1219,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                - Este campo es INMUTABLE contra la competencia. Solo guarda modelos de Tienda Las Motos que el usuario haya aceptado explícitamente comprar o ver.
                - PROHIBIDO guardar marcas de la competencia como Bajaj, Yamaha, Honda, Suzuki, AKT.
                - Si el usuario menciona una marca de la competencia, déjalo en blanco.
-            3. moto_interes: La primera moto por la que preguntó el usuario.
+            3. moto_interest: La primera moto por la que preguntó el usuario.
             4. moto_ofrecida: La moto que el bot recomendó del catálogo (sustituye a moto_offered).
             5. Resumen: Un resumen ejecutivo de la situación del cliente enfocado en su perfil crediticio y moto de interés.
             6. moto_confirmada: 
@@ -1230,8 +1233,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             {last_bot_question}
             
             [REGLA DE PERSISTENCIA - MOTO DE INTERÉS]
-            Moto actual en base de datos: {previous_moto_interes if previous_moto_interes else 'Ninguna'}
-            MANDATO: Si la moto actual NO es 'Ninguna', DEBES volver a incluirla en el campo 'moto_interes' del JSON de respuesta, A MENOS que el usuario pida explícitamente cambiarla en este último chat. BAJO NINGUNA CIRCUNSTANCIA debes dejarla vacía o reemplazarla si el usuario solo está respondiendo a una pregunta o no menciona motos.
+            Moto actual en base de datos: {previous_moto_interest if previous_moto_interest else 'Ninguna'}
+            MANDATO: Si la moto actual NO es 'Ninguna', DEBES volver a incluirla en el campo 'moto_interest' del JSON de respuesta, A MENOS que el usuario pida explícitamente cambiarla en este último chat. BAJO NINGUNA CIRCUNSTANCIA debes dejarla vacía o reemplazarla si el usuario solo está respondiendo a una pregunta o no menciona motos.
             """
 
             # 1. Prepare Content for google-genai

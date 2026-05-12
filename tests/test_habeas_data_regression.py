@@ -29,11 +29,11 @@ class TestHabeasDataRegression(unittest.TestCase):
 
     def test_phase_block_without_sent_flag(self):
         """
-        GIVEN: El prospecto tiene habeas_data=True (canonical key v7.7.0).
-        BUT: habeas_data_sent es False.
+        GIVEN: El prospecto tiene habeas_data_accepted=True (canonical key v7.7.0).
+        BUT: habeas_data_accepted_sent es False.
         THEN: El orquestador DEBE inyectar PHASE_2_HABEAS_DATA (no PHASE_3).
 
-        WHY canonical key: _determine_funnel_phase reads prospect_data.get("habeas_data")
+        WHY canonical key: _determine_funnel_phase reads prospect_data.get("habeas_data_accepted")
         as of refactor b4471b3. Tests must use this key to correctly exercise the gate.
         """
         prospect_data = {
@@ -42,8 +42,8 @@ class TestHabeasDataRegression(unittest.TestCase):
             "moto_interest": "TVS Raider",
             "moto_confirmada": True,
             "payment_method": "credito",
-            "habeas_data": True,        # Canonical key (v7.7.0) — was habeas_data_accepted
-            "habeas_data_sent": False   # Gate condition: script not sent yet
+            "habeas_data_accepted": True,        # Canonical key (v7.7.0) — was habeas_data_accepted_accepted
+            "habeas_data_accepted_sent": False   # Gate condition: script not sent yet
         }
         
         # Test con history vacío — no toca la rama de intent financiero (.get("role"))
@@ -52,7 +52,7 @@ class TestHabeasDataRegression(unittest.TestCase):
 
     def test_phase_block_without_physical_link(self):
         """
-        GIVEN: habeas_data=True y habeas_data_sent=True en DB.
+        GIVEN: habeas_data_accepted=True y habeas_data_accepted_sent=True en DB.
         BUT: El link físico de privacidad no está en el historial del chat.
         THEN: El orquestador DEBE bloquear el avance a PHASE_3.
 
@@ -72,8 +72,8 @@ class TestHabeasDataRegression(unittest.TestCase):
             "moto_interest": "TVS Raider",
             "moto_confirmada": True,
             "payment_method": "credito",
-            "habeas_data": True,        # Canonical key (v7.7.0)
-            "habeas_data_sent": True    # Script was sent — but no link in chat
+            "habeas_data_accepted": True,        # Canonical key (v7.7.0)
+            "habeas_data_accepted_sent": True    # Script was sent — but no link in chat
         }
         # history=[] → conversation_text="" → has_sent_link=False → PHASE_2
         # El bloque de intent financiero (línea 361) es omitido (history is falsy)
@@ -85,7 +85,7 @@ class TestHabeasDataRegression(unittest.TestCase):
     def test_phase_allowed_with_sent_and_accepted(self):
         """
         Verifica que el avance a PHASE_3 sea permitido si AMBOS flags son True Y el link está en el historial.
-        Uses canonical key 'habeas_data' (v7.7.0).
+        Uses canonical key 'habeas_data_accepted' (v7.7.0).
         """
         prospect_data = {
             "name": "Test User",
@@ -94,8 +94,8 @@ class TestHabeasDataRegression(unittest.TestCase):
             "moto_interest": "TVS Raider",
             "moto_confirmada": True,
             "payment_method": "credito",
-            "habeas_data": True,        # Canonical key (v7.7.0)
-            "habeas_data_sent": True
+            "habeas_data_accepted": True,        # Canonical key (v7.7.0)
+            "habeas_data_accepted_sent": True
         }
         # History con el link de privacidad en el texto de .parts
         history = [

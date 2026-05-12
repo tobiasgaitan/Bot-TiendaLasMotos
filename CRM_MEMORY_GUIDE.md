@@ -24,7 +24,7 @@ The WhatsApp bot has **persistent memory** that recognizes prospects from Firest
 {
   "celular": "3192564288",           // Without country code!
   "nombre": "Capitán Victoria",
-  "motoInteres": "Victory Black",
+  "moto_interest": "Victory Black",
   "ai_summary": "Cliente VIP...",
   "chatbot_status": "PENDING"
 }
