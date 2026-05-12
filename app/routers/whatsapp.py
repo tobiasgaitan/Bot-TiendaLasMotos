@@ -259,7 +259,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         logger.info(f"🕵️ DEBUG: Received message {msg_id_unique} from {user_phone} | Type: '{msg_type}'")
         
         response_text = None 
-         if msg_type == "reaction":
+        if msg_type == "reaction":
             # La deduplicación ya se hizo al inicio en v9.8.3
             # Wait for debounce window (3s) para permitir agregación si llegaran otros mensajes
             await asyncio.sleep(message_buffer.debounce_seconds)
