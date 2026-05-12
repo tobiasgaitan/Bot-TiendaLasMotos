@@ -8,7 +8,7 @@
 Permitir que la IA actúe como un asesor comercial proactivo cuando los usuarios pregunten por modelos de marcas competidoras que no forman parte del catálogo oficial de Auteco/Tienda Las Motos (TVS, Victory).
 
 ### Definición de "Venta por Equivalencia"
-Cuando un usuario menciona un modelo de competencia, el sistema no debe rechazar la consulta. En su lugar, debe buscar un equivalente en el catálogo interno utilizando los metadatos de búsqueda (`search_by`).
+Cuando un usuario menciona un modelo de competencia, el sistema no debe rechazar la consulta. En su lugar, debe buscar un equivalente en el catálogo interno utilizando los metadatos de búsqueda (`searchBy`).
 
 ### Criterios de Calidad (Actualización C4)
 *   **C4 (Catalog Lock - Flexibilizado):** El bot tiene prohibido inventar especificaciones de productos internos, pero tiene permiso explícito para mencionar modelos externos (ej. Boxer, NKD) con el fin de posicionar una alternativa interna.
