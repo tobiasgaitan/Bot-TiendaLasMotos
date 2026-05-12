@@ -191,8 +191,8 @@ class JudgeService:
         {text}
         
         REGLA DE ORO:
-        - Si el bot menciona una moto de COMPETENCIA (ej. Boxer, NKD, Pulsar) para ofrecer un equivalente de nuestro catálogo, ES VÁLIDO y debe ser APPROVED siempre que la moto ofrecida tenga el término de competencia en sus etiquetas 'search_by'.
-        - Ejemplo: Si el catálogo muestra que 'TVS Sport 100' tiene 'boxer' en 'search_by', y el bot dice 'No manejo la Boxer pero tengo la TVS Sport', es APPROVED.
+        - Si el bot menciona una moto de COMPETENCIA (ej. Boxer, NKD, Pulsar) para ofrecer un equivalente de nuestro catálogo, ES VÁLIDO y debe ser APPROVED siempre que la moto ofrecida tenga el término de competencia en sus etiquetas 'searchBy'.
+        - Ejemplo: Si el catálogo muestra que 'TVS Sport 100' tiene 'boxer' en 'searchBy', y el bot dice 'No manejo la Boxer pero tengo la TVS Sport', es APPROVED.
         - Si el bot menciona CC, frenos (ABS/Disco), potencia (HP), torque (NM) o peso que NO están en el catálogo o son diferentes para nuestras motos, responde: REJECTED: [Motivo]
         - Si la respuesta es consistente, ofrece un equivalente válido o no menciona especificaciones, responde: APPROVED
         

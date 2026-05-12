@@ -205,6 +205,7 @@ class CatalogService:
                     "link": link,
                     "search_tokens": item_search_tokens,
                     "search_text": item_search_text,
+                    "searchBy": search_tags,
                     "cc": cc  # Store numeric CC for late-binding financial logic
                 }
 
@@ -452,7 +453,7 @@ class CatalogService:
                     "formatted_price": formatted_w_soat,
                     "category": item.get("category", "Moto"),
                     "image_url": item.get("image_url"),
-                    "search_by": item.get("search_tokens", []), # Include search tokens for Judge validation
+                    "searchBy": item.get("searchBy", []), # Include search tokens for Judge validation
                     "summary": self._summarize(item.get("description", ""))
                 }
                 unique_results.append(truncated_item)
