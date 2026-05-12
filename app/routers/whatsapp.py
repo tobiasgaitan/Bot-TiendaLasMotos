@@ -50,6 +50,7 @@ config_loader = None
 motor_financiero = None
 catalog_service_local = None
 message_buffer = None
+_active_resets = set() # v9.8.3: Guard against concurrent resets
 
 def _ensure_services():
     """Lazy initialization of services"""
@@ -224,9 +225,29 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         
         raw_phone = msg_data["from"]
         user_phone = PhoneNormalizer.normalize(raw_phone)
-        msg_type = msg_data["type"].lower()
+        msg_type = msg_data.get("type", "text").lower()
         msg_id_unique = msg_data.get("id") or f"{user_phone}_{int(datetime.now().timestamp())}"
         phone_number_id = msg_data.get("phone_number_id")
+
+        # 1.1 Extracción temprana de Body para Idempotencia (v9.8.3)
+        message_body = ""
+        if msg_type == "text":
+            message_body = msg_data.get("text", "").strip()
+        elif msg_type == "reaction":
+            # Extraer emoji para logica de reacción
+            reaction_data = msg_data.get("reaction", {})
+            emoji = reaction_data.get("emoji", "")
+            positive_emojis = ["👍", "❤️", "💯", "🔥", "✅", "👌", "😊", "🥰", "😍"]
+            message_body = "Sí" if emoji in positive_emojis else "[REACTION]"
+        else:
+            message_body = f"[{msg_type.upper()}]"
+
+        # 1.2 Filtro de Idempotencia Global (v9.8.3)
+        # Registramos el mensaje. Si es un duplicado exacto de WAMID, abortamos.
+        is_added = await message_buffer.add_message(user_phone, message_body, msg_id_unique)
+        if not is_added:
+            logger.warning(f"🔄 Duplicate WAMID ignored: {msg_id_unique}")
+            return
 
         # --- PROTOCOLO READ-FIRST (PRIORIDAD 1) ---
         # Marcamos como leído ANTES de cualquier lógica para evitar el 'check gris'
@@ -237,71 +258,15 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         # DEBUG LOG for Image Troubleshooting
         logger.info(f"🕵️ DEBUG: Received message {msg_id_unique} from {user_phone} | Type: '{msg_type}'")
         
-        message_body = ""
         response_text = None 
-        
-        if msg_type == "text":
-            message_body = msg_data.get("text", "").strip()
-
-            # --- SYSTEM COMMANDS INTERCEPTION (PRIORITY 0) ---
-            # These commands bypass buffering, AI, and Judge.
-            if message_body.strip().lower() in ["reset", "/reset"]:
-                logger.warning(f"☢️ NUCLEAR RESET TRIGGERED (Sync) for {user_phone}")
-                
-                # 1. Purga síncrona/esperable (Evita Zombie Data)
-                if memory_service_module.memory_service:
-                    ms = memory_service_module.memory_service
-                    logger.info(f"🧹 [WIPE] Clearing local memory instances for {user_phone}...")
-                    await ms.delete_prospect_completely(user_phone)
-                
-                await message_buffer.clear_buffer(user_phone)
-                
-                # 2. Respuesta confirmando el estado limpio
-                await whatsapp_service.send_text_message(user_phone, "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?", phone_number_id=phone_number_id)
-                return 
-
-            if message_body.strip().lower() in ["/update", "/refresh_catalog"]:
-                logger.warning(f"🔄 CATALOG REFRESH TRIGGERED by {user_phone}")
-                try:
-                    # Ensure services are initialized (lazy init)
-                    _ensure_services()
-                    if catalog_service_local:
-                        catalog_service_local.refresh()
-                        confirm_msg = "✅ Catálogo actualizado en memoria exitosamente."
-                    else:
-                        confirm_msg = "❌ Error: Catalog Service no inicializado."
-                except Exception as e:
-                    logger.exception(f"❌ Error refreshing catalog: {e}")
-                    confirm_msg = f"❌ Error al actualizar el catálogo: {str(e)}"
-                    
-                await whatsapp_service.send_text_message(user_phone, confirm_msg, phone_number_id=phone_number_id)
-                return
-
-        elif msg_type == "reaction":
-            emoji = msg_data.get("emoji", "")
-            message_id = msg_data.get("message_id", "")
-            logger.info(f"👍 User reacted with '{emoji}' to message '{message_id}'")
-            
-            positive_emojis = ["👍", "❤️", "💯", "🔥", "✅", "👌", "😊", "🥰", "😍"]
-            if emoji in positive_emojis:
-                message_body = "Sí"
-                msg_type = "text"
-            else:
-                return 
-
-            # --- DEDUPLICACIÓN ESTRICTA Y BUFFERING ---
-            # Agregamos al buffer. Si retorna False, es un duplicado exacto de msg_id (vía Meta retry)
-            is_added = await message_buffer.add_message(user_phone, message_body, msg_id_unique)
-            if not is_added:
-                logger.warning(f"🔄 Duplicate msg_id ignored: {msg_id_unique}")
-                return
-
-            # Wait for debounce window (3s)
+         if msg_type == "reaction":
+            # La deduplicación ya se hizo al inicio en v9.8.3
+            # Wait for debounce window (3s) para permitir agregación si llegaran otros mensajes
             await asyncio.sleep(message_buffer.debounce_seconds)
             
-            # Check if this task is still active (superseded means another msg arrived)
+            # Check if this task is still active
             if not message_buffer.is_task_active(user_phone, msg_id_unique):
-                logger.info(f"⏭️ Task {msg_id_unique} superseded. Aggregating...")
+                logger.info(f"⏭️ Reaction task {msg_id_unique} superseded. Aggregating...")
                 return
             
             # Get aggregated message
@@ -368,7 +333,6 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                     
                                     await _send_whatsapp_message(user_phone, f"¡Uy {p_name}! 📸 La foto parece {motivo}. ¿Podrías enviarla de nuevo que se vea bien clarita? Así el banco no nos la rechaza.", phone_number_id=phone_number_id)
                                     return
-
                                 elif "QUALITY_CHECK: PASSED" in vision_response:
                                     tipo = "CEDULA" # Default
                                     if "DOCUMENTO_DETECTADO:" in vision_response:
@@ -491,7 +455,6 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                 response_text = f"🏍️ **Catálogo Auteco Las Motos**\n\n{vision_response}"
                                 await _send_whatsapp_message(user_phone, response_text, phone_number_id=phone_number_id)
                                 return
-
                         
                         else:
                             await _send_whatsapp_message(user_phone, "¡Uff! Pero no alcanzo a ver bien los detalles. ¿Me cuentas qué es?", phone_number_id=phone_number_id)
@@ -534,6 +497,61 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             
             # 1. Get existing data FIRST to decide on greeting
             prospect_data = await ms.get_prospect_data(user_phone)
+            
+            # --- SYSTEM COMMANDS INTERCEPTION (v9.8.3) ---
+            # Movemos esto aquí para tener acceso a prospect_data y evitar duplicados
+            if msg_type == "text":
+                cmd = message_body.strip().lower()
+                if cmd in ["reset", "/reset"]:
+                    # 1. Block Concurrency (v9.8.3)
+                    if user_phone in _active_resets:
+                        logger.info(f"⏭️ [RESET] Reset already in progress for {user_phone}. Ignorando duplicado.")
+                        return
+                    
+                    _active_resets.add(user_phone)
+                    try:
+                        # 2. RE-FETCH for idempotency (v9.8.3)
+                        # Contract: Only the first request to find the prospect 'exists' will process the reset.
+                        fresh_prospect = await ms.get_prospect_data(user_phone)
+                        if not fresh_prospect.get("exists", False):
+                            logger.info(f"⏭️ [RESET] Prospecto ya fue limpiado para {user_phone}. Ignorando duplicado.")
+                            return
+
+                        logger.warning(f"☢️ NUCLEAR RESET TRIGGERED (Sync) for {user_phone}")
+                        # Nuclear wipe
+                        success = await ms.delete_prospect_completely(user_phone)
+                        if not success:
+                            logger.error(f"❌ [RESET] Fallo crítico al intentar borrar prospecto {user_phone}")
+                            return
+
+                        await message_buffer.clear_buffer(user_phone)
+                        
+                        # Garantía de entrega: confirmación de reinicio
+                        await whatsapp_service.send_text_message(
+                            user_phone, 
+                            "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?", 
+                            phone_number_id=phone_number_id
+                        )
+                    finally:
+                        _active_resets.remove(user_phone)
+                    return 
+
+                if cmd in ["/update", "/refresh_catalog"]:
+                    logger.warning(f"🔄 CATALOG REFRESH TRIGGERED by {user_phone}")
+                    try:
+                        _ensure_services()
+                        if catalog_service_local:
+                            catalog_service_local.refresh()
+                            confirm_msg = "✅ Catálogo actualizado en memoria exitosamente."
+                        else:
+                            confirm_msg = "❌ Error: Catalog Service no inicializado."
+                    except Exception as e:
+                        logger.exception(f"❌ Error refreshing catalog: {e}")
+                        confirm_msg = f"❌ Error al actualizar el catálogo: {str(e)}"
+                        
+                    await whatsapp_service.send_text_message(user_phone, confirm_msg, phone_number_id=phone_number_id)
+                    return
+
             newly_created = not (prospect_data and prospect_data.get("exists", False))
             current_agent = prospect_data.get("current_agent", "expert") if prospect_data else "expert"
             
@@ -586,7 +604,12 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             # con la lógica del bot (mandato de sincronía ARCH-BULK-META-010).
             await ms.transition_to_in_progress(user_phone)
 
-            logger.info(f"👤 Prospect Data Processed: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
+            # --- [HOTFIX v9.8.3] REFRESH METADATA ---
+            # WHY: If we just created the prospect or transitioned it, the local 
+            # 'prospect_data' object is STALE. We must refresh it so the JudgeService
+            # doesn't reject valid users (C3/C9 rejections).
+            prospect_data = await ms.get_prospect_data(user_phone)
+            logger.info(f"👤 Prospect Data Refreshed: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
             
             # Human Gatekeeper Check (Mantenibilidad)
             if prospect_data and prospect_data.get('human_help_requested', False):
@@ -652,63 +675,105 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             rejection_reason = ""
             last_criteria_id = "UNKNOWN"
             
-            # Contexto para el Juez (Catalog Lock)
-            catalog_results = catalog_service_local.search(message_body)
-            catalog_context = ""
-            for item in catalog_results[:3]:
-                catalog_context += f"- {item['name']}: {item['formatted_price']}. Specs: {item.get('summary')}\n"
+            try:
+                # Contexto para el Juez (Catalog Lock)
+                catalog_results = catalog_service_local.search(message_body)
+                catalog_context = ""
+                for item in catalog_results[:3]:
+                    catalog_context += f"- {item['name']}: {item['formatted_price']}. Specs: {item.get('summary')}\n"
 
-            while attempts <= max_retries and not is_approved:
-                attempts += 1
-                logger.info(f"🧠 [JUDGE] Calling CerebroIA.pensar_respuesta (Attempt {attempts}/{max_retries+1})...")
-                
-                current_context = context
-                if attempts > 1:
-                    current_context += f"\n\n[SISTEMA - ERROR DE CALIDAD]: Tu respuesta anterior fue RECHAZADA por el Juez. Motivo: {rejection_reason}. Por favor, corrige este punto y genera una nueva respuesta válida."
+                while attempts <= max_retries and not is_approved:
+                    attempts += 1
+                    logger.info(f"🧠 [JUDGE] Calling CerebroIA.pensar_respuesta (Attempt {attempts}/{max_retries+1})...")
+                    
+                    current_context = context
+                    if attempts > 1:
+                        current_context += f"\n\n[SISTEMA - ERROR DE CALIDAD]: Tu respuesta anterior fue RECHAZADA por el Juez. Motivo: {rejection_reason}. Por favor, corrige este punto y genera una nueva respuesta válida."
 
-                if prospect_data is not None:
-                    prospect_data["phone"] = user_phone 
+                    if prospect_data is not None:
+                        prospect_data["phone"] = user_phone 
 
-                response_text = await cerebro_ia.pensar_respuesta(
-                    message_body,
-                    context=current_context,
-                    prospect_data=prospect_data,
-                    history=current_history,
-                    skip_greeting=skip_greeting
-                )
+                    response_text = await cerebro_ia.pensar_respuesta(
+                        message_body,
+                        context=current_context,
+                        prospect_data=prospect_data,
+                        history=current_history,
+                        skip_greeting=skip_greeting
+                    )
 
-                # 4. Auditoría del Juez de Fundamentación
-                is_approved, rejection_reason = await judge_service.analyze_response(
-                    user_input=message_body,
-                    ai_response=response_text,
-                    catalog_context=catalog_context,
-                    prospect_data=prospect_data,
-                    history=current_history
-                )
+                    # 4. Auditoría del Juez de Fundamentación
+                    is_approved, rejection_reason = await judge_service.analyze_response(
+                        user_input=message_body,
+                        ai_response=response_text,
+                        catalog_context=catalog_context,
+                        prospect_data=prospect_data,
+                        history=current_history
+                    )
 
+                    if not is_approved:
+                        logger.warning(f"⚖️ [JUDGE] Response REJECTED (Attempt {attempts}): {rejection_reason}")
+                        # Extraer ID del criterio (ej: C1 de C1_VISUAL_LOCK)
+                        match = re.match(r'(C\d)', rejection_reason)
+                        last_criteria_id = match.group(1) if match else "UNKNOWN"
+                    else:
+                        logger.info(f"⚖️ [JUDGE] Response APPROVED (Attempt {attempts}).")
+
+                # Fallback if all attempts fail
                 if not is_approved:
-                    logger.warning(f"⚖️ [JUDGE] Response REJECTED (Attempt {attempts}): {rejection_reason}")
-                    # Extraer ID del criterio (ej: C1 de C1_VISUAL_LOCK)
-                    match = re.match(r'(C\d)', rejection_reason)
-                    last_criteria_id = match.group(1) if match else "UNKNOWN"
-                else:
-                    logger.info(f"⚖️ [JUDGE] Response APPROVED (Attempt {attempts}).")
+                    logger.error(f"❌ [JUDGE] Max retries reached. Forcing official fallback response. Criteria: {last_criteria_id}")
+                    fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
+                    
+                    # [MANDATO v9.8.3] Marcar estado PRIMERO, luego enviar mensaje
+                    # Esto asegura que el CRM se actualice incluso si Meta falla temporalmente.
+                    try:
+                        if memory_service_module.memory_service:
+                            logger.warning(f"🚨 [JUDGE_FALLBACK] Max retries hit for {user_phone}. Marking human_help_requested=True")
+                            await memory_service_module.memory_service.set_human_help_status(user_phone, True)
+                            await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
+                    except Exception as e_ms:
+                        logger.error(f"⚠️ [JUDGE_FALLBACK] Error persistencia fallback: {e_ms}")
 
-            # Fallback if all attempts fail
-            if not is_approved:
-                logger.error(f"❌ [JUDGE] Max retries reached. Forcing official fallback response. Criteria: {last_criteria_id}")
-                response_text = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
-                
-                # [MANDATO v9.8.2] Activar ayuda humana inmediatamente
+                    # Envío INCONDICIONAL del mensaje de fallback
+                    try:
+                        logger.info(f"📤 [JUDGE_FALLBACK] Sending supervisor fallback to {user_phone}...")
+                        sent_ok = await _send_whatsapp_message(user_phone, fallback_msg, phone_number_id=phone_number_id)
+                        if sent_ok:
+                            logger.info(f"✅ [JUDGE_FALLBACK] Supervisor message delivered to {user_phone}")
+                        else:
+                            logger.error(f"❌ [JUDGE_FALLBACK] _send_whatsapp_message returned False for {user_phone}")
+                    except Exception as e_wa:
+                        logger.error(f"❌ [JUDGE_FALLBACK] Error fatal enviando mensaje de fallback a Meta: {e_wa}")
+                    
+                    # Actualizar Langfuse antes de retornar
+                    try:
+                        from langfuse.decorators import langfuse_context
+                        langfuse_context.update_current_trace(
+                            tags=["JUDGE_CRITICAL_FALLBACK"],
+                            metadata={
+                                "rejection_criteria": last_criteria_id,
+                                "final_rejection_reason": rejection_reason,
+                                "attempts": attempts
+                            }
+                        )
+                    except: pass
+
+                    return # Stop processing
+
+            except Exception as e:
+                logger.error(f"🔥 [JUDGE_CRITICAL_ERROR] AI Inference failed: {e}", exc_info=True)
+                fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
                 if memory_service_module.memory_service:
                     await memory_service_module.memory_service.set_human_help_status(user_phone, True)
-                    logger.warning(f"🆘 [JUDGE_CRITICAL_FALLBACK] Human help requested for {user_phone}")
-
-                # Observabilidad: Langfuse Tag y Metadata
+                    await _send_whatsapp_message(user_phone, fallback_msg, phone_number_id=phone_number_id)
+                    await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
+                return
+            
+            # Observabilidad: Langfuse Tag y Metadata
+            if not is_approved or attempts > 1:
                 try:
                     from langfuse.decorators import langfuse_context
                     langfuse_context.update_current_trace(
-                        tags=["JUDGE_CRITICAL_FALLBACK"],
+                        tags=["JUDGE_CRITICAL_FALLBACK"] if not is_approved else ["JUDGE_RETRIED"],
                         metadata={
                             "rejection_criteria": last_criteria_id,
                             "final_rejection_reason": rejection_reason,
@@ -842,13 +907,23 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     # Fallback if all attempts fail
                     if not is_approved:
                         logger.error(f"❌ [JUDGE] Audio Max retries reached. Forcing fallback. Criteria: {last_criteria_id}")
-                        response_text = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
+                        fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
                         
-                        # [MANDATO v9.8.2] Activar ayuda humana inmediatamente
-                        if memory_service_module.memory_service:
-                            await memory_service_module.memory_service.set_human_help_status(user_phone, True)
-                            logger.warning(f"🆘 [JUDGE_CRITICAL_FALLBACK] Human help requested (Audio) for {user_phone}")
+                        # [MANDATO v9.8.3] Marcar estado PRIMERO, luego enviar mensaje
+                        try:
+                            if memory_service_module.memory_service:
+                                await memory_service_module.memory_service.set_human_help_status(user_phone, True)
+                                await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
+                        except Exception as e_ms:
+                            logger.error(f"⚠️ [JUDGE_FALLBACK_AUDIO] Error persistencia fallback: {e_ms}")
 
+                        # Envío INCONDICIONAL
+                        try:
+                            await _send_whatsapp_message(user_phone, fallback_msg, phone_number_id=phone_number_id)
+                        except Exception as e_wa:
+                            logger.error(f"❌ [JUDGE_FALLBACK_AUDIO] Error enviando fallback: {e_wa}")
+
+                        # Actualizar Langfuse antes de retornar
                         try:
                             from langfuse.decorators import langfuse_context
                             langfuse_context.update_current_trace(
@@ -860,8 +935,9 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                     "msg_type": "audio"
                                 }
                             )
-                        except Exception as e:
-                            logger.warning(f"⚠️ Langfuse update failed: {e}")
+                        except: pass
+                        
+                        return 
                 else:
                     response_text = "Escuché el audio pero no entendí bien. ¿Me repites? 😅"
             else:
