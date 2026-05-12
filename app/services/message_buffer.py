@@ -115,6 +115,32 @@ class MessageBuffer:
             )
             
             return True
+
+    async def register_wamid(self, wa_id: str, task_id: str) -> bool:
+        """
+        Register a message ID (wamid) as processed without adding text to the buffer.
+        Used for global idempotency checks at the start of the webhook.
+        
+        Args:
+            wa_id: WhatsApp user ID
+            task_id: Unique identifier for this message
+            
+        Returns:
+            True if newly registered, False if it was already processed.
+        """
+        lock = self._get_lock(wa_id)
+        async with lock:
+            if wa_id not in self._processed_wamids:
+                self._processed_wamids[wa_id] = set()
+
+            if task_id in self._processed_wamids[wa_id]:
+                return False
+
+            self._processed_wamids[wa_id].add(task_id)
+            if len(self._processed_wamids[wa_id]) > 100:
+                self._processed_wamids[wa_id].pop()
+            
+            return True
     
     def is_task_active(self, wa_id: str, task_id: str) -> bool:
         """

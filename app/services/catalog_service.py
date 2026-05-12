@@ -452,6 +452,7 @@ class CatalogService:
                     "formatted_price": formatted_w_soat,
                     "category": item.get("category", "Moto"),
                     "image_url": item.get("image_url"),
+                    "search_by": item.get("search_tokens", []), # Include search tokens for Judge validation
                     "summary": self._summarize(item.get("description", ""))
                 }
                 unique_results.append(truncated_item)
