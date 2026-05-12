@@ -12,7 +12,8 @@ CHANGELOG v9.6.0:
 """
 
 import logging
-from typing import Dict, Any, Optional, List
+import asyncio
+from typing import Dict, Any, Optional, List, Set
 from google.cloud import firestore
 from app.core.utils import PhoneNormalizer
 
@@ -33,7 +34,35 @@ class MemoryService:
         # memory_service._db.collection.side_effect — the underscore is contractual.
         self._db = db
         self.collection_name = "prospectos"
-        logger.info("🧠 MemoryService v9.6.0: Modo de Compatibilidad Total")
+        self._pending_tasks: Set[asyncio.Task] = set()
+        logger.info("🧠 MemoryService v9.8.3: Restauración Quirúrgica + Task Tracking")
+
+    def _track_task(self, coro) -> asyncio.Task:
+        """
+        Register a coroutine as a tracked task to ensure visibility during shutdown.
+        """
+        task = asyncio.create_task(coro)
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+        return task
+
+    async def shutdown(self, timeout: int = 8) -> None:
+        """
+        Graceful Shutdown Mechanism (Atomic Persistence Flush).
+        Waits for all tracked tasks to complete before process termination.
+        """
+        if not self._pending_tasks:
+            logger.info("👋 [SHUTDOWN] No pending persistence tasks. Closing cleanly.")
+            return
+
+        logger.info(f"⏳ [SHUTDOWN] Flushing {len(self._pending_tasks)} pending persistence tasks (Timeout: {timeout}s)...")
+        try:
+            await asyncio.wait_for(asyncio.gather(*self._pending_tasks, return_exceptions=True), timeout=timeout)
+            logger.info("✅ [SHUTDOWN] All persistence tasks flushed successfully.")
+        except asyncio.TimeoutError:
+            logger.warning(f"⚠️ [SHUTDOWN] Persistence flush timed out after {timeout}s. {len(self._pending_tasks)} tasks lost.")
+        except Exception as e:
+            logger.exception(f"❌ [SHUTDOWN] Error during persistence flush: {e}")
 
     # ──────────────────────────────────────────────────────────────────
     # Pure helpers (sync) — called by tests directly
@@ -181,12 +210,12 @@ class MemoryService:
     async def create_prospect_if_missing(self, phone_number: str) -> None:
         """
         Idempotent prospect initialization with zombie session purge.
+        Restored from v9.5.0 logic to ensure full CRM compatibility.
 
         Contract (test_reset_flow.py, test_read_asymmetry.py):
           - If prospect does NOT exist → create with canonical keys
           - Purge any stale mensajeria session document
-          - Canonical keys: habeas_data=False, habeas_data_sent=False,
-            servicios_publicos=None, celular=normalized_phone, status=PENDING
+          - Canonical keys: status=PENDING, chatbot_status=ACTIVE, etc.
         """
         try:
             clean_phone = PhoneNormalizer.normalize(phone_number)
@@ -196,16 +225,28 @@ class MemoryService:
             if not doc_snap.exists:
                 payload = {
                     "celular": clean_phone,
-                    "status": "PENDING", # [SYNC-CRM] Importante para el Dashboard
+                    "nombre": "",
+                    "ciudad": "",
+                    "moto_interes": "",
+                    "forma_pago": "",
+                    "chatbot_status": "ACTIVE",
+                    "status": "PENDING", # [SYNC-CRM] Ancla para el Dashboard
+                    "source": "whatsapp_bot",
+                    "human_help_requested": False,
                     "habeas_data": False,
                     "habeas_data_sent": False,
                     "servicios_publicos": None,
                     "created_at": firestore.SERVER_TIMESTAMP,
+                    "updated_at": firestore.SERVER_TIMESTAMP,
+                    "fecha": firestore.SERVER_TIMESTAMP,
+                    "current_agent": "expert",
+                    "total_tokens_consumed": 0,
+                    "session_cost_usd": 0.0
                 }
                 await doc_ref.set(payload)
                 logger.info(f"✅ Prospect created for {clean_phone} (Status: PENDING)")
 
-            # Zombie session purge — always attempt
+            # Zombie session purge — always attempt (Ensures idempotency for /reset)
             session_ref = self._db.collection("mensajeria").document("whatsapp") \
                 .collection("sesiones").document(clean_phone)
             await session_ref.delete()
@@ -263,30 +304,47 @@ class MemoryService:
 
     async def delete_prospect_completely(self, phone_number: str) -> bool:
         """
-        Nuclear wipe of a prospect: deletes document, history, and active sessions.
-        
-        Contract (v9.8.1):
-          1. Delete prospect document from 'prospectos' collection.
-          2. Clear chat history via clear_memory().
-          3. Delete the session document in 'mensajeria/whatsapp/sesiones'.
+        Nuclear wipe of a prospect and their history (ASYNC).
+        Restored from v9.5.0 with CRM MULTI-SCAN compatibility.
         """
         try:
             clean_phone = PhoneNormalizer.normalize(phone_number)
-            logger.warning(f"☢️ [NUCLEAR RESET] Starting wipe for {clean_phone}")
+            logger.warning(f"☢️ [NUCLEAR RESET] Starting multi-scan wipe for {clean_phone}")
             
-            # 1. Clear History (Historial sub-collection)
-            await self.clear_memory(clean_phone)
+            # --- 1. PURGE MENSAJERIA SESSIONS (AI History) ---
+            try:
+                session_ref = self._db.collection("mensajeria").document("whatsapp") \
+                    .collection("sesiones").document(clean_phone)
+                
+                # Delete historial sub-collection documents
+                history_ref = session_ref.collection("historial")
+                async for doc in history_ref.stream():
+                    await doc.reference.delete()
+                
+                await session_ref.delete()
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to purge mensajeria session for {clean_phone}: {e}")
             
-            # 2. Delete Session Document
-            session_ref = self._db.collection("mensajeria").document("whatsapp") \
-                .collection("sesiones").document(clean_phone)
-            await session_ref.delete()
+            # --- 2. PURGE PROSPECT DATA (CRM MULTI-SCAN) ---
+            prospectos_ref = self._db.collection(self.collection_name)
             
-            # 3. Delete Prospect Document
-            doc_ref = self._db.collection(self.collection_name).document(clean_phone)
-            await doc_ref.delete()
+            # Search by ID, celular field, and Variations
+            variations = [clean_phone]
+            if clean_phone.startswith("+"):
+                variations.append(clean_phone.replace("+", ""))
             
-            logger.info(f"✅ [NUCLEAR RESET] Finished wipe for {clean_phone}")
+            # Search and destroy all matches
+            query = prospectos_ref.where("celular", "in", list(set(variations))).limit(10)
+            docs = await query.get()
+            
+            for doc in docs:
+                logger.info(f"🧹 [NUCLEAR WIPE] Removing record {doc.id}")
+                await doc.reference.delete()
+            
+            # Ensure the normalized ID document is gone
+            await prospectos_ref.document(clean_phone).delete()
+            
+            logger.info(f"✅ [NUCLEAR RESET] Finished multi-scan wipe for {clean_phone}")
             return True
         except Exception as e:
             logger.exception(f"❌ delete_prospect_completely failed for {phone_number}: {e}")
@@ -368,6 +426,7 @@ class MemoryService:
             await doc_ref.update({
                 "status": "IN_PROGRESS",
                 "updated_at": firestore.SERVER_TIMESTAMP,
+                "fecha": firestore.SERVER_TIMESTAMP,
             })
             logger.info(f"🟢 [STATE] Prospecto {phone_number}: PENDING → IN_PROGRESS")
             return True
@@ -379,14 +438,32 @@ class MemoryService:
     async def set_human_help_status(self, phone_number: str, status: bool) -> bool:
         """
         Set the human_help_requested flag. When True, the bot remains silent.
+        Restored from v9.5.0 to handle missing prospects (Auto-Creation).
         """
         try:
             doc_ref = await self._find_prospect_ref(phone_number)
+            
+            if doc_ref:
+                await doc_ref.update({
+                    "human_help_requested": status,
+                    "updated_at": firestore.SERVER_TIMESTAMP,
+                    "fecha": firestore.SERVER_TIMESTAMP
+                })
+                logger.info(f"✅ Updated human_help_requested={status} for {phone_number}")
+                return True
+
+            # No existing document found - create new one (CRITICAL for Judge Fallback)
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            logger.warning(f"⚠️ No prospect found for {phone_number}, creating new document for help request")
+            await self.create_prospect_if_missing(clean_phone)
+            
+            # Re-fetch and update
+            doc_ref = await self._find_prospect_ref(clean_phone)
             await doc_ref.update({
                 "human_help_requested": status,
-                "updated_at": firestore.SERVER_TIMESTAMP
+                "updated_at": firestore.SERVER_TIMESTAMP,
+                "fecha": firestore.SERVER_TIMESTAMP
             })
-            logger.info(f"✅ Updated human_help_requested={status} for {phone_number}")
             return True
         except Exception as e:
             logger.exception(f"❌ Error setting human_help_status for {phone_number}: {e}")
@@ -400,24 +477,43 @@ class MemoryService:
         errors: Optional[List[dict]] = None
     ) -> None:
         """
-        Actualiza el sub-campo metadata.whatsapp y campos de nivel superior para el Dashboard.
+        [ARCH-BULK-META-010] Actualiza el sub-campo metadata.whatsapp y campos de nivel superior.
+        Incluye guardrail para evitar retrodegradación del status CRM.
         """
         try:
             doc_ref = await self._find_prospect_ref(phone_number)
             
+            # --- GUARDRAIL: Leer status CRM actual antes de escribir ---
+            doc_snap = await doc_ref.get()
+            current_data = doc_snap.to_dict() if doc_snap.exists else {}
+            current_crm_status = current_data.get("status", "")
+            protected_statuses = {"IN_PROGRESS", "DONE", "DISCARDED"}
+
             # Sincronía de nivel superior para el Dashboard CRM
             payload = {
                 "metadata.whatsapp.last_status": status_value,
                 "metadata.whatsapp.last_status_timestamp": firestore.SERVER_TIMESTAMP,
                 "metadata.whatsapp.last_wamid": wamid,
                 "whatsapp_delivery_status": status_value, # [SYNC-CRM] Top-level field
+                "whatsapp_delivery_updated_at": firestore.SERVER_TIMESTAMP,
             }
-            
+
+            # Idempotencia para whatsapp_read_at
+            if status_value == "read" and "whatsapp_read_at" not in current_data:
+                payload["whatsapp_read_at"] = firestore.SERVER_TIMESTAMP
+
             if errors:
                 payload["metadata.whatsapp.last_error"] = errors
                 if isinstance(errors, list) and len(errors) > 0:
-                    payload["last_whatsapp_error"] = errors[0].get("message")
+                    # Guardamos el resumen del error para el Dashboard
+                    error_summary = errors[0]
+                    payload["last_whatsapp_error"] = error_summary.get("message")
+                    payload["whatsapp_error_details"] = error_summary
             
+            # Guardrail de máquina de estados: nunca tocamos 'status' desde acuses de recibo
+            if status_value == "read" and current_crm_status in protected_statuses:
+                logger.info(f"🛡️ [STATUSES] Guardrail activo: status '{current_crm_status}' no se altera por acuse 'read'.")
+
             await doc_ref.update(payload)
             logger.info(f"✅ [STATUSES] Acuse '{status_value}' registrado para {phone_number}")
         except Exception as e:
