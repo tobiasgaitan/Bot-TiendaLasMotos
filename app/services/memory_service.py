@@ -186,7 +186,7 @@ class MemoryService:
           - If prospect does NOT exist → create with canonical keys
           - Purge any stale mensajeria session document
           - Canonical keys: habeas_data=False, habeas_data_sent=False,
-            servicios_publicos=None, celular=normalized_phone
+            servicios_publicos=None, celular=normalized_phone, status=PENDING
         """
         try:
             clean_phone = PhoneNormalizer.normalize(phone_number)
@@ -196,13 +196,14 @@ class MemoryService:
             if not doc_snap.exists:
                 payload = {
                     "celular": clean_phone,
+                    "status": "PENDING", # [SYNC-CRM] Importante para el Dashboard
                     "habeas_data": False,
                     "habeas_data_sent": False,
                     "servicios_publicos": None,
                     "created_at": firestore.SERVER_TIMESTAMP,
                 }
                 await doc_ref.set(payload)
-                logger.info(f"✅ Prospect created for {clean_phone}")
+                logger.info(f"✅ Prospect created for {clean_phone} (Status: PENDING)")
 
             # Zombie session purge — always attempt
             session_ref = self._db.collection("mensajeria").document("whatsapp") \
@@ -311,6 +312,127 @@ class MemoryService:
             await doc_ref.set(update_payload, merge=True)
         except Exception as e:
             logger.exception(f"❌ update_prospect_summary failed for {phone_number}: {e}")
+
+    async def generate_and_update_summary(
+        self, 
+        phone_number: str, 
+        conversation_text: str, 
+        ai_brain, 
+        last_bot_question: str = ""
+    ) -> None:
+        """
+        Garantía de Verdad (Linear Blocking):
+        1. Ejecuta la extracción de la IA (Generate Summary).
+        2. Persiste en Firestore inmediatamente.
+        """
+        try:
+            logger.info(f"🧠 [LINEAR BLOCKING] Starting summary generation for {phone_number}...")
+            
+            # 1. AI Extraction (Async)
+            summary_data = await ai_brain.generate_summary(
+                conversation_text, 
+                last_bot_question=last_bot_question,
+                session_id=phone_number
+            )
+            
+            # 2. Firestore Persistence
+            await self.update_prospect_summary(
+                phone_number, 
+                summary_data.get("summary", ""), 
+                summary_data.get("extracted", {})
+            )
+            
+            logger.info(f"✅ Successfully updated prospect summary for {phone_number}")
+            
+        except Exception as e:
+            logger.exception(f"❌ [LINEAR BLOCKING] Failed to generate/update summary for {phone_number}: {e}")
+
+    async def transition_to_in_progress(self, phone_number: str) -> bool:
+        """
+        [ARCH-BULK-META-010] Transición atómica PENDING → IN_PROGRESS con Latch guard.
+        """
+        try:
+            doc_ref = await self._find_prospect_ref(phone_number)
+            doc_snap = await doc_ref.get()
+            
+            if not doc_snap.exists:
+                return False
+
+            current_data = doc_snap.to_dict() or {}
+            current_status = current_data.get("status", "")
+            
+            if current_status != "PENDING":
+                logger.info(f"⏭️ [STATE] Prospecto {phone_number} ya está en '{current_status}'. Transición omitida.")
+                return False
+
+            await doc_ref.update({
+                "status": "IN_PROGRESS",
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
+            logger.info(f"🟢 [STATE] Prospecto {phone_number}: PENDING → IN_PROGRESS")
+            return True
+
+        except Exception as e:
+            logger.exception(f"❌ [STATE] Error in transition_to_in_progress for {phone_number}: {e}")
+            return False
+
+    async def set_human_help_status(self, phone_number: str, status: bool) -> bool:
+        """
+        Set the human_help_requested flag. When True, the bot remains silent.
+        """
+        try:
+            doc_ref = await self._find_prospect_ref(phone_number)
+            await doc_ref.update({
+                "human_help_requested": status,
+                "updated_at": firestore.SERVER_TIMESTAMP
+            })
+            logger.info(f"✅ Updated human_help_requested={status} for {phone_number}")
+            return True
+        except Exception as e:
+            logger.exception(f"❌ Error setting human_help_status for {phone_number}: {e}")
+            return False
+
+    async def update_whatsapp_status(
+        self,
+        phone_number: str,
+        status_value: str,
+        wamid: str,
+        errors: Optional[List[dict]] = None
+    ) -> None:
+        """
+        Actualiza el sub-campo metadata.whatsapp y campos de nivel superior para el Dashboard.
+        """
+        try:
+            doc_ref = await self._find_prospect_ref(phone_number)
+            
+            # Sincronía de nivel superior para el Dashboard CRM
+            payload = {
+                "metadata.whatsapp.last_status": status_value,
+                "metadata.whatsapp.last_status_timestamp": firestore.SERVER_TIMESTAMP,
+                "metadata.whatsapp.last_wamid": wamid,
+                "whatsapp_delivery_status": status_value, # [SYNC-CRM] Top-level field
+            }
+            
+            if errors:
+                payload["metadata.whatsapp.last_error"] = errors
+                if isinstance(errors, list) and len(errors) > 0:
+                    payload["last_whatsapp_error"] = errors[0].get("message")
+            
+            await doc_ref.update(payload)
+            logger.info(f"✅ [STATUSES] Acuse '{status_value}' registrado para {phone_number}")
+        except Exception as e:
+            logger.exception(f"❌ [STATUSES] Error actualizando metadata.whatsapp para {phone_number}: {e}")
+
+    async def update_last_interaction(self, phone_number: str) -> None:
+        """
+        Updates the 'fecha' timestamp to bring user to top of Admin Panel list.
+        """
+        try:
+            doc_ref = await self._find_prospect_ref(phone_number)
+            await doc_ref.update({"fecha": firestore.SERVER_TIMESTAMP})
+            logger.info(f"🕐 Updated last interaction timestamp for {phone_number}")
+        except Exception as e:
+            logger.exception(f"❌ Error updating last interaction for {phone_number}: {e}")
 
 
 # ──────────────────────────────────────────────────────────────────────

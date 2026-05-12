@@ -699,6 +699,11 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 logger.error(f"❌ [JUDGE] Max retries reached. Forcing official fallback response. Criteria: {last_criteria_id}")
                 response_text = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
                 
+                # [MANDATO v9.8.2] Activar ayuda humana inmediatamente
+                if memory_service_module.memory_service:
+                    await memory_service_module.memory_service.set_human_help_status(user_phone, True)
+                    logger.warning(f"🆘 [JUDGE_CRITICAL_FALLBACK] Human help requested for {user_phone}")
+
                 # Observabilidad: Langfuse Tag y Metadata
                 try:
                     from langfuse.decorators import langfuse_context
@@ -839,6 +844,11 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                         logger.error(f"❌ [JUDGE] Audio Max retries reached. Forcing fallback. Criteria: {last_criteria_id}")
                         response_text = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
                         
+                        # [MANDATO v9.8.2] Activar ayuda humana inmediatamente
+                        if memory_service_module.memory_service:
+                            await memory_service_module.memory_service.set_human_help_status(user_phone, True)
+                            logger.warning(f"🆘 [JUDGE_CRITICAL_FALLBACK] Human help requested (Audio) for {user_phone}")
+
                         try:
                             from langfuse.decorators import langfuse_context
                             langfuse_context.update_current_trace(
