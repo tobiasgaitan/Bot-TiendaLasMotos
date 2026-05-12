@@ -680,7 +680,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 catalog_results = catalog_service_local.search(message_body)
                 catalog_context = ""
                 for item in catalog_results[:3]:
-                    catalog_context += f"- {item['name']}: {item['formatted_price']}. Specs: {item.get('summary')}\n"
+                    tags_str = ", ".join(item.get('searchBy', []))
+                    catalog_context += f"- {item['name']}: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
 
                 while attempts <= max_retries and not is_approved:
                     attempts += 1
@@ -870,7 +871,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     catalog_results = catalog_service_local.search(transcription)
                     catalog_context = ""
                     for item in catalog_results[:3]:
-                        catalog_context += f"- {item['name']}: {item['formatted_price']}. Specs: {item.get('summary')}\n"
+                        tags_str = ", ".join(item.get('searchBy', []))
+                        catalog_context += f"- {item['name']}: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
 
                     while attempts <= max_retries and not is_approved:
                         attempts += 1
