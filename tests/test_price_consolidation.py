@@ -37,7 +37,7 @@ async def test_price_consolidation():
     # 3. Simular búsqueda de una moto conocida
     query = "Apache 160"
     print(f"🔍 Buscando: '{query}'")
-    results = catalog_service.search_items(query)
+    results = catalog_service.search_catalog(query)
     
     if not results:
         print("❌ No se encontraron resultados.")

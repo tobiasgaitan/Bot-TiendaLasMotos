@@ -970,12 +970,12 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                         if catalog_service_local:
                             try:
                                 # Search for interested bike or default
-                                moto_results = catalog_service_local.search_items(moto_to_search)
+                                moto_results = catalog_service_local.search_catalog(moto_to_search)
                                 
                                 # Fallback if interest search failed (Competitor or not found)
                                 if not moto_results and moto_interest:
                                     logger.info(f"🔄 No results for '{moto_interest}' (Competitor?). Falling back to Raider 125.")
-                                    moto_results = catalog_service_local.search_items("RAIDER 125")
+                                    moto_results = catalog_service_local.search_catalog("RAIDER 125")
                                 
                                 if moto_results:
                                     moto = moto_results[0]

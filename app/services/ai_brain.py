@@ -1015,7 +1015,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         search_results = f"[SISTEMA: El usuario ya tiene en contexto la moto '{moto_interest_prev}'. REGLA OBLIGATORIA: NO listes otras motos ni ofrezcas más opciones. Enfócate en concretar la venta de '{moto_interest_prev}' (preguntar forma de pago o iniciar crédito).]"
                                     else:
                                         t_start = time.perf_counter()
-                                        matches = self._catalog_service.search_items(query)
+                                        matches = self._catalog_service.search_catalog(query)
                                         t_end = time.perf_counter()
                                         latency = t_end - t_start
                                         logger.info(f"⏱️ [TELEMETRY] search_catalog latency: {latency:.4f}s for query: '{query}'")
@@ -1107,7 +1107,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             # We attempt a quick lookup to get the price
                                             m_price = 0
                                             if self._catalog_service:
-                                                m_results = self._catalog_service.search_items(moto_name)
+                                                m_results = self._catalog_service.search_catalog(moto_name)
                                                 if m_results: 
                                                     m_price = m_results[0].get('raw_price', 0)
                                             
