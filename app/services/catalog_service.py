@@ -461,10 +461,10 @@ class CatalogService:
                 
         return unique_results[:3]
 
-    def search(self, query: str) -> List[Dict[str, Any]]:
+    def search_catalog(self, query: str) -> List[Dict[str, Any]]:
         """
-        Alias for search_items to maintain backward compatibility 
-        and satisfy the contract expected by ai_brain.py.
+        Public entry point for motorcycle search.
+        Matches the tool name defined in the Gemini SDK and ai_brain.py.
         """
         return self.search_items(query)
 
