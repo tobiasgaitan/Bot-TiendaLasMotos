@@ -58,10 +58,14 @@ class CatalogService:
             # Initialize or retrieve dynamic config for aliases
             # Mantenibilidad: Se inyectan dinámicamente desde Firestore para 
             # permitir actualizaciones sin redespliegues (QA Baseline).
-            from app.core.config_loader import ConfigLoader
-            config_loader = ConfigLoader()
-            catalog_config = config_loader.get_catalog_config()
-            self._category_aliases = catalog_config.get("category_aliases", {})
+            try:
+                from app.core.config_loader import ConfigLoader
+                config_loader = ConfigLoader()
+                catalog_config = config_loader.get_catalog_config()
+                self._category_aliases = catalog_config.get("category_aliases", {})
+            except Exception:
+                logger.warning("⚠️ ConfigLoader not ready. Using empty category aliases.")
+                self._category_aliases = {}
 
             # Query all items from sub-collection 'pagina/catalogo/items'
             items_ref = self._db.collection("pagina").document("catalogo").collection("items")

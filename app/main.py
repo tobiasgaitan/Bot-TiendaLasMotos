@@ -57,13 +57,13 @@ async def lifespan(app: FastAPI):
         logger.info("📋 Loading configuration...")
         config_service.initialize(db)
         
-        # 4. Load V6.0 dynamic configuration
-        logger.info("🧠 Loading V6.0 dynamic configuration...")
+        # 4. Configuración dinámica (SSOT)
+        logger.info("🧠 Loading dynamic configuration (SSOT)...")
         config_loader = ConfigLoader(db)
         config_loader.load_all()
 
-        # 4.5 Load catalog into memory
-        logger.info("🏍️  Loading catalog...")
+        # 5. Servicios dependientes (🏍️ Catalog)
+        logger.info("🏍️  Loading catalog service...")
         catalog_service.initialize(db)
         
         # 4.6 Load Financial Config (Fase 1)
