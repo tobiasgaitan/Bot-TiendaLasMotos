@@ -104,3 +104,5 @@ class Settings:
 
 # Global settings instance
 settings = Settings()
+
+VERSION = "9.8.7"

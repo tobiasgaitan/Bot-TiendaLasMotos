@@ -92,7 +92,13 @@ async def test_update_whatsapp_status_top_level_sync():
     wamid = "ABC.123"
     errors = [{"message": "Account not registered", "code": 131030}]
 
+    # Mock doc snap for guardrail check
+    mock_doc_snap = MagicMock()
+    mock_doc_snap.exists = True
+    mock_doc_snap.to_dict.return_value = {"status": "PENDING"}
+
     mock_doc_ref = AsyncMock()
+    mock_doc_ref.get.return_value = mock_doc_snap
     mock_doc_ref.update = AsyncMock()
     memory_service._find_prospect_ref = AsyncMock(return_value=mock_doc_ref)
 
