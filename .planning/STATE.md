@@ -2,7 +2,7 @@
 ## Current Position
 **Phase:** 1 — Agente Único
 **Status:** COMPLETED (v9.8.7 Certified)
-**Last activity:** 2026-05-13 — Documentation sync to v9.8.7 and Phase 1 closure.
+**Last activity:** 2026-05-14 — BOT-BUG-2.1: JudgeService C2 real parity validation + ScoringService word-boundary fix (commit 2a91c11).
 
 ## Key Decisions
 | Decision | Phase | Rationale |
@@ -21,6 +21,7 @@
 | 022 | Langfuse Observability Integration (BOT-TRACE-201) | 2026-05-11 | befe140 | 022-langfuse-observability-integration |
 | 023 | Unificación Financiera & Paridad v1.4.0 (Apache 160 Fix) | 2026-05-11 | 40312c7 | 023-financial-refactor-unification |
 | 024 | Sync Docs v9.8.7 & Forensic Audit | 2026-05-13 | [current] | 024-sync-docs-v9.8.7 |
+| 025 | BOT-BUG-2.1: JudgeService C2 Parity + Scoring Word-Boundary | 2026-05-14 | 2a91c11 | 025-bot-bug-2.1-judge-parity-fix |
 
 ### Historical Critical Commits (v9.8.7 Sync)
 - `bc6e8e4`: fix(catalog): surgical rename of search to search_catalog and unification of references.
