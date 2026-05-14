@@ -151,10 +151,105 @@ class JudgeService:
         return any(kw.lower() in text.lower() for kw in keywords)
 
     def _check_financial_parity(self, text: str, prospect_data: Dict[str, Any]) -> Tuple[bool, str]:
-        # Detect placeholders that shouldn't be there
-        placeholder_pattern = r'\$X[\.X]+'
-        if re.search(placeholder_pattern, text):
+        """
+        C2 — Financial Parity (Math v2.0).
+        Validates quoted amounts against FinancialService.calculate_payment.
+        WHY: The previous implementation only caught literal '$X.XXX' placeholders.
+             A hallucinated quote like '$9.999.999' would pass unchecked.
+        """
+        # --- Guard 1: Detect raw placeholders ($X.XXX) ---
+        if re.search(r'\$X[\.X]+', text):
             return False, "Se detectó un placeholder financiero ($X.XXX)."
+
+        # --- Guard 2: Cross-validation against FinancialService ---
+        # Only activate when we have the financial context required for computation.
+        financial_context = prospect_data.get("financial_context", {})
+        precio = financial_context.get("precio")
+        inicial = financial_context.get("inicial")
+        plazo_meses = financial_context.get("plazo_meses")
+
+        if not (precio and inicial and plazo_meses):
+            # Cannot validate without financial context — pass through.
+            return True, ""
+
+        try:
+            # Extract all monetary amounts in the format $X.XXX.XXX or $X.XXX
+            # Matches: $589.787 / $1.250.000 / $589,787 (Colombian notation)
+            amount_matches = re.findall(
+                r'\$([\d]{1,3}(?:[.,]\d{3})+)',
+                text
+            )
+            if not amount_matches:
+                return True, ""
+
+            # Normalize extracted amounts to float (handle both dot and comma separators)
+            extracted_amounts = []
+            for raw in amount_matches:
+                # Remove thousands separators (both . and ,) — Colombian format uses '.'
+                normalized = raw.replace('.', '').replace(',', '')
+                try:
+                    extracted_amounts.append(float(normalized))
+                except ValueError:
+                    continue
+
+            # Compute the canonical expected quote from FinancialService
+            result = financial_service.calculate_payment(
+                precio=float(precio),
+                inicial=float(inicial),
+                plazo_meses=int(plazo_meses)
+            )
+            expected_cuota = result.get("cuota_mensual", 0)
+
+            if expected_cuota <= 0:
+                # Calculation failed or returned zero — cannot validate, pass through.
+                return True, ""
+
+            # Check if ANY of the extracted amounts deviates > 1% from the expected quote.
+            # We use a tolerance window: the bot may present multi-plan quotes (24/36/48m),
+            # so we only flag if the extracted amount is in the cuota range (not a price).
+            MARGIN_PCT = 1.0
+            # A cuota is typically < 15% of the motorcycle price.
+            # We use the price from context to bound the cuota range.
+            precio_float = float(precio)
+            MAX_CUOTA_BOUND = precio_float * 0.20  # No cuota should exceed 20% of price
+            MIN_CUOTA_BOUND = expected_cuota * 0.05  # Floor: 5% of expected (catches very low)
+
+            deviating = []
+            for amount in extracted_amounts:
+                # Skip amounts that clearly represent the moto price itself
+                if amount > MAX_CUOTA_BOUND:
+                    # BUT if it's still way too high (e.g. $9.999.999 on a $11M bike),
+                    # flag it since no cuota should equal or exceed the price.
+                    if amount >= precio_float * 0.80:
+                        deviating.append((amount, 999.0))  # Sentinel: extreme deviation
+                    continue
+                # Skip amounts that are clearly too low to be cuotas
+                if amount < MIN_CUOTA_BOUND:
+                    continue
+                deviation_pct = abs(amount - expected_cuota) / expected_cuota * 100
+                if deviation_pct > MARGIN_PCT:
+                    deviating.append((amount, deviation_pct))
+
+
+            if deviating:
+                worst = max(deviating, key=lambda x: x[1])
+                logger.warning(
+                    f"⚖️ [C2] Parity failure: amount=${worst[0]:,.0f} "
+                    f"vs expected=${expected_cuota:,.0f} "
+                    f"(deviation={worst[1]:.2f}%)"
+                )
+                return False, (
+                    f"Cuota citada (${worst[0]:,.0f}) difiere en {worst[1]:.1f}% "
+                    f"del cálculo real (${expected_cuota:,.0f}). "
+                    f"Plazo: {plazo_meses}m."
+                )
+
+        except Exception as e:
+            # MANDATO Zero-Silent-Failures: log completo del error, no silenciar.
+            logger.exception(f"❌ [C2] Error during financial parity cross-validation: {e}")
+            # On unexpected error, pass through to avoid false positives.
+            return True, ""
+
         return True, ""
 
     def _check_scoring_consistency(self, text: str, prospect_data: Dict[str, Any]) -> Tuple[bool, str]:

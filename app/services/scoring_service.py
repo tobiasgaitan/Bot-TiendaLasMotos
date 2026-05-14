@@ -109,26 +109,39 @@ class ScoringService:
         return text.lower().strip()
 
     def _get_points(self, mapping: Dict[str, int], key: str, default: int) -> int:
-        """Find best matching key in mapping using strict logic to avoid substrings errors."""
+        """Find best matching key in mapping. Prevents substring false-positives.
+        WHY: A plain `if k in key` causes 'reportado' to fire on 'no reportado' (0 pts).
+             We use word-boundary match + negation-prefix guard to fix this.
+        """
+        import re as _re
         key = self._normalize_input(key)
-        
-        # 1. Exact match (Highest priority)
+
+        # 1. Exact match (Highest priority — fastest path)
         if key in mapping:
             return mapping[key]
-        
-        # 2. Word-based match to avoid "no reportado" matching "reportado"
-        # We iterate and check if the mapping key is exactly the normalized input
-        # or if we should trust the specific mappings more.
-        for k, v in mapping.items():
-            if k == key:
-                return v
-        
-        # 3. Fallback to partial match only for non-ambiguous cases
-        # But for 'habits', we want to be very strict
-        for k, v in mapping.items():
-            if k in key:
-                return v
-                
+
+        # 2. Word-boundary match with negation-prefix guard.
+        # Sort by key length (longest first) to prefer more-specific matches.
+        # e.g. "mora < 30" should win over "mora" if both match.
+        NEGATION_PREFIX = r'(?<!\b(?:no|sin|nunca|jamás|jamas)\s)'
+        for k, v in sorted(mapping.items(), key=lambda x: len(x[0]), reverse=True):
+            try:
+                # Build pattern: word-boundary match, preceded by optional negation guard.
+                # We use a negative lookbehind that ensures the key is NOT preceded by a
+                # negation word at the same word boundary.
+                pattern = r'(?<!\b(?:no|sin|nunca)\s)' + r'\b' + _re.escape(k) + r'\b'
+                # Simpler and more reliable: check word boundary and then verify
+                # that the character before the match is not a negation word.
+                if _re.search(r'\b' + _re.escape(k) + r'\b', key):
+                    # Secondary check: if the key is immediately preceded by a negation, skip.
+                    neg_pattern = r'\b(?:no|sin|nunca|jamas|jamás)\s+' + _re.escape(k) + r'\b'
+                    if _re.search(neg_pattern, key):
+                        # This is a negated form — do NOT match this mapping key.
+                        continue
+                    return v
+            except _re.error:
+                continue
+
         return default
 
     def determine_strategy(self, score: int, tiene_gas_natural: bool = False, historial_datacredito: str = "", mora_y_paz_salvo: str = "") -> Dict[str, Any]:
