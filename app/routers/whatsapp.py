@@ -998,7 +998,6 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                         logger.info("⏩ [BYPASS] Skipping image injection: moto already confirmed.")
 
                 # --- NATIVE IMAGE INTEGRATION ---
-                import re
                 # Support both Markdown ![alt](url) and legacy [IMAGE: url]
                 # RESILIENCE FIX: Handle optional ! and spaces between ] and ( to catch degraded LLM formatting
                 image_pattern = r'!?\[.*?\]\s*\((https?://[^\s\)]+)\)|\[IMAGE:\s*(https?://[^\s\]]+)\]'
