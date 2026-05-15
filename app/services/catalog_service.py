@@ -98,29 +98,20 @@ class CatalogService:
                 # Category: categoria -> category -> machine_name -> 'general'
                 category = data.get("categoria") or data.get("category") or data.get("machine_name") or "general"
                 
-                # Image Selection: Prioritize imagen_url (the designated CMS field)
-                # ULTIMATUM: Only allow Firebase Storage links. Block all others including media.autecomobility.com.
-                image_url = ""
-                potential_fields = ["imagen_url", "imagenUrl", "imagen", "foto", "image"]
-                
-                for field in potential_fields:
-                    val = data.get(field)
-                    if val:
-                        raw = str(val).strip()
-                        # If its a list or dict, extract first string
-                        if isinstance(val, list) and len(val) > 0:
-                            raw = str(val[0]).strip()
-                        elif isinstance(val, dict):
-                            raw = str(next(iter(val.values()))).strip()
-                            
-                        if "firebasestorage.googleapis.com" in raw:
-                            # Sanity check: Ensure it's a valid Firebase link
-                            image_url = raw
-                            logger.info(f"✅ Image Found for {ref} in {field}: {image_url}")
-                            break 
-                
+                # [BOT-BE-4.2] Canonical Image Extraction — Schema-Hardened
+                # ÚNICA fuente de verdad: la llave canónica 'imagen_url' post-migración.
+                # Zero-Silent-Failure: ítems activos sin imagen_url son rechazados del catálogo
+                # para proteger el Price Consistency Check (PCC Pro).
+                raw_image_url = data.get("imagen_url", "")
+                image_url = str(raw_image_url).strip() if raw_image_url else ""
+
                 if not image_url:
-                    logger.warning(f"⚠️ No valid Firebase link found for {ref}. Checked: {potential_fields}")
+                    logger.error(
+                        f"❌ [PCC-GUARD] Ítem activo '{doc.id}' (ref='{ref}') omitido del catálogo: "
+                        f"no posee la llave canónica 'imagen_url'. "
+                        f"Ejecuta el script de normalización para corregir el esquema en Firestore."
+                    )
+                    continue
 
                 # Search Tags: searchBy (list)
                 search_tags = data.get("searchBy", [])
@@ -302,26 +293,9 @@ class CatalogService:
         
         return 0
 
-    def _get_first_image(self, val: Any) -> str:
-        """
-        Helper to extract the first valid image URL.
-        Handles both string URLs and lists of URLs.
-        Args:
-            val: The value from Firestore (str, list, or None)
-        """
-        if not val:
-            return ""
-            
-        if isinstance(val, list):
-            # Return first non-empty string in list
-            for item in val:
-                if isinstance(item, str) and item.strip():
-                    return item.strip()
-        
-        elif isinstance(val, str) and val.strip():
-            return val.strip()
-            
-        return ""
+    # [BOT-BE-4.2] _get_first_image eliminado — Dead Code Post-Migración.
+    # La extracción de imagen ahora ocurre exclusivamente en load_catalog()
+    # mediante lectura directa de la llave canónica 'imagen_url'.
 
     def get_all_items(self) -> List[Dict[str, Any]]:
         """Get all catalog items."""
