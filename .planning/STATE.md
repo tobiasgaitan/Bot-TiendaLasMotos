@@ -1,8 +1,11 @@
 # Project State
 ## Current Position
 **Last Activity:** 2026-05-14 — BOT-DB-4.3-FIX: Normalización final 60/60 y optimización de Recall [EXITOSO].
+**Last Activity (Hotfixes v9.9.1):** 2026-05-15 — Validación End-to-End exitosa. Se lograron 3 hitos críticos:n1. **Contrato de Interfaz:** Patrón adaptador en `CatalogService` para compatibilidad AI/Router.n2. **Estabilidad de Router:** Fix de `UnboundLocalError` (Scope del módulo `re`) en `whatsapp.py`.n3. **Calibración de Juez:** Flexibilización de la regla C5 (One-Question-Rule) a máximo 2 para permitir saludos naturales sin falsos positivos.n
 **Last Activity:** 2026-05-14 — BOT-BE-4.2: Simplificación de CatalogService y Blindaje PCC-GUARD [CERTIFICADO].
+**Last Activity (Hotfixes v9.9.1):** 2026-05-15 — Validación End-to-End exitosa. Se lograron 3 hitos críticos:n1. **Contrato de Interfaz:** Patrón adaptador en `CatalogService` para compatibilidad AI/Router.n2. **Estabilidad de Router:** Fix de `UnboundLocalError` (Scope del módulo `re`) en `whatsapp.py`.n3. **Calibración de Juez:** Flexibilización de la regla C5 (One-Question-Rule) a máximo 2 para permitir saludos naturales sin falsos positivos.n
 **Last Activity:** 2026-05-14 — BOT-DB-4.3: Normalización imagen_url (8 docs corregidos) [APROBADO].
+**Last Activity (Hotfixes v9.9.1):** 2026-05-15 — Validación End-to-End exitosa. Se lograron 3 hitos críticos:n1. **Contrato de Interfaz:** Patrón adaptador en `CatalogService` para compatibilidad AI/Router.n2. **Estabilidad de Router:** Fix de `UnboundLocalError` (Scope del módulo `re`) en `whatsapp.py`.n3. **Calibración de Juez:** Flexibilización de la regla C5 (One-Question-Rule) a máximo 2 para permitir saludos naturales sin falsos positivos.n
 **Phase:** 1 — Agente Único
 **Status:** COMPLETED (v9.9.0 Certified)
 **Last activity:** 2026-05-14 — BOT-BUG-2.1: JudgeService C2 real parity validation + ScoringService word-boundary fix (commit 2a91c11).
