@@ -248,7 +248,7 @@ class CatalogService:
         
         # Tokenize and remove stop words
         tokens = text.split()
-        stop_words = {"quiero", "una", "un", "moto", "motos", "busco", "la", "el", "de", "las", "los", "con", "en", "para", "y", "o"}
+        stop_words = {"quiero", "una", "un", "moto", "motos", "busco", "la", "el", "de", "las", "los", "con", "en", "para", "y", "o", "tienen", "tiene", "contas", "disponible", "venden"}
         return [t for t in tokens if t not in stop_words]
 
     def _parse_specs(self, specs_input: Any) -> str:

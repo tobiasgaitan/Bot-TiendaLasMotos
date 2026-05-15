@@ -140,13 +140,6 @@ def normalize_catalog(dry_run: bool = True) -> dict:
         doc_id = doc.id
         data = doc.to_dict()
 
-        # ─── Verificar si ya está normalizado (imagen_url String válida)
-        existing = data.get("imagen_url")
-        if isinstance(existing, str) and existing.strip() and VALID_IMAGE_DOMAIN in existing:
-            already_ok += 1
-            logger.info(f"  ✅ [{doc_id}] — Ya normalizado. imagen_url OK.")
-            continue
-
         # ─── Extraer URL válida desde campos candidatos/legacy
         extracted_url = _extract_valid_firebase_url(data)
 
