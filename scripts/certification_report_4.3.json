@@ -1,0 +1,11 @@
+{
+  "mode": "EXECUTED",
+  "total_documents": 60,
+  "already_normalized": 52,
+  "normalized_in_this_run": 8,
+  "no_image_url_found": 0,
+  "write_errors": 0,
+  "certification_passed": true,
+  "failed_documents": [],
+  "change_plan": []
+}
