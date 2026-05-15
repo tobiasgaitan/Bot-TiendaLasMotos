@@ -1,0 +1,84 @@
+2026-05-14 21:21:47,150 [INFO] 🔑 Usando credenciales: /Users/tobiasgaitangallego/Bot-TiendaLasMotos/scripts/../key.json
+2026-05-14 21:21:47,433 [INFO] 🚀 Iniciando BOT-DB-4.3 — Modo: ⚠️  EJECUCIÓN REAL (Firestore será modificado)
+2026-05-14 21:21:47,433 [INFO] 📍 Colección destino: projects/tiendalasmotos/.../pagina/catalogo/items
+2026-05-14 21:21:49,017 [INFO] 📊 Total documentos encontrados: 60
+2026-05-14 21:21:49,018 [INFO]   🔧 [390_duke_ng] — imagen_url extraída desde 'imagenUrl'. Llaves a borrar: ['imagenUrl', 'galeria']
+2026-05-14 21:21:49,326 [INFO]   ✅ [390_duke_ng] — Normalizado y llaves legacy eliminadas.
+2026-05-14 21:21:49,326 [INFO]   ✅ [advance_r_125] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,327 [INFO]   ✅ [advance_r_125_trakku] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,327 [INFO]   ✅ [advance_x1] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,327 [INFO]   ✅ [agility_fusion] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,327 [INFO]   ✅ [agility_fusion_trakku] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,328 [INFO]   ✅ [apache_160_carburada_abs] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,328 [INFO]   ✅ [apache_200_4v_fi_abs] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,328 [INFO]   ✅ [apache_rtr_160_4v_xc_fi] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,328 [INFO]   ✅ [apache_rtr_200_4v] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,328 [INFO]   ✅ [apache_rtr_310] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,329 [INFO]   ✅ [bet_abs] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,329 [INFO]   ✅ [bomber_125] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,329 [INFO]   ✅ [ceronte_tricargo_300_gato_hidrulico] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,329 [INFO]   ✅ [combat_100] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,329 [INFO]   ✅ [cool_joy] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,329 [INFO]   ✅ [dazz_110] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,329 [INFO]   🔧 [ecomad] — imagen_url extraída desde 'imagenUrl'. Llaves a borrar: ['imagenUrl']
+2026-05-14 21:21:49,670 [INFO]   ✅ [ecomad] — Normalizado y llaves legacy eliminadas.
+2026-05-14 21:21:49,671 [INFO]   ✅ [iqube] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,671 [INFO]   ✅ [king_gs+] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,672 [INFO]   ✅ [mrx_125] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,672 [INFO]   ✅ [mrx_125_s] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,673 [INFO]   ✅ [mrx_150_tk] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,673 [INFO]   ✅ [mrx_200] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,673 [INFO]   ✅ [mrx_arizona_200] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,673 [INFO]   ✅ [mrx_arizona_xplore] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,674 [INFO]   ✅ [neo_nx_110] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,674 [INFO]   ✅ [new_life_125_tk] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,674 [INFO]   ✅ [new_life_urban_tk] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,674 [INFO]   🔧 [ninja_500] — imagen_url extraída desde 'imagenUrl'. Llaves a borrar: ['imagenUrl']
+2026-05-14 21:21:49,913 [INFO]   ✅ [ninja_500] — Normalizado y llaves legacy eliminadas.
+2026-05-14 21:21:49,913 [INFO]   ✅ [nitro_125] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,914 [INFO]   ✅ [nitro_125_trakku] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,914 [INFO]   ✅ [ntorq_125] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,914 [INFO]   ✅ [ntorq_125_xconnect_fi] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,914 [INFO]   ✅ [one_mp] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,914 [INFO]   ✅ [one_mp_tk] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:49,914 [INFO]   🔧 [one_st100] — imagen_url extraída desde 'imagenUrl'. Llaves a borrar: ['imagenUrl', 'galeria']
+2026-05-14 21:21:50,321 [INFO]   ✅ [one_st100] — Normalizado y llaves legacy eliminadas.
+2026-05-14 21:21:50,322 [INFO]   ✅ [raider_125] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,322 [INFO]   ✅ [raider_125_fi] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,322 [INFO]   ✅ [raider_125_racing] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,322 [INFO]   ✅ [ronin_225_td] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,322 [INFO]   🔧 [sport_els_spoke_sin_maletero] — imagen_url extraída desde 'imagenUrl'. Llaves a borrar: ['imagenUrl', 'galeria']
+2026-05-14 21:21:50,510 [INFO]   ✅ [sport_els_spoke_sin_maletero] — Normalizado y llaves legacy eliminadas.
+2026-05-14 21:21:50,511 [INFO]   ✅ [star_kids] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,511 [INFO]   ✅ [star_kids_pro] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,511 [INFO]   🔧 [stryker_125] — imagen_url extraída desde 'imagenUrl'. Llaves a borrar: ['imagenUrl', 'galeria']
+2026-05-14 21:21:50,914 [INFO]   ✅ [stryker_125] — Normalizado y llaves legacy eliminadas.
+2026-05-14 21:21:50,914 [INFO]   ✅ [switch_125] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,914 [INFO]   ✅ [switch_125_tk] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,915 [INFO]   ✅ [tnt_25n] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,915 [INFO]   ✅ [tricargo_200] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,915 [INFO]   ✅ [tricargo_300] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,915 [INFO]   ✅ [trk_251] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,915 [INFO]   ✅ [tvs_sport_100] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,916 [INFO]   ✅ [tvs_sport_100_kls] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,916 [INFO]   ✅ [venom_14] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,916 [INFO]   ✅ [venom_18] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,916 [INFO]   ✅ [venom_250] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:50,916 [INFO]   🔧 [versys_300_abs] — imagen_url extraída desde 'imagenUrl'. Llaves a borrar: ['imagenUrl']
+2026-05-14 21:21:51,107 [INFO]   ✅ [versys_300_abs] — Normalizado y llaves legacy eliminadas.
+2026-05-14 21:21:51,107 [INFO]   ✅ [volta_350] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:51,108 [INFO]   ✅ [z500] — Ya normalizado. imagen_url OK.
+2026-05-14 21:21:51,108 [INFO]   🔧 [zontes_155u] — imagen_url extraída desde 'imagenUrl'. Llaves a borrar: ['imagenUrl', 'galeria']
+2026-05-14 21:21:51,564 [INFO]   ✅ [zontes_155u] — Normalizado y llaves legacy eliminadas.
+2026-05-14 21:21:51,565 [INFO] 
+======================================================================
+2026-05-14 21:21:51,565 [INFO] 📋 REPORTE DE CERTIFICACIÓN BOT-DB-4.3
+2026-05-14 21:21:51,565 [INFO] ======================================================================
+2026-05-14 21:21:51,565 [INFO]   Modo              : EXECUTED
+2026-05-14 21:21:51,565 [INFO]   Total documentos  : 60
+2026-05-14 21:21:51,565 [INFO]   Ya normalizados   : 52
+2026-05-14 21:21:51,565 [INFO]   Normalizados  : 8
+2026-05-14 21:21:51,565 [INFO]   Sin URL Firebase  : 0
+2026-05-14 21:21:51,565 [INFO]   Errores escritura : 0
+2026-05-14 21:21:51,565 [INFO]   CERTIFICACIÓN     : ✅ APROBADA
+2026-05-14 21:21:51,565 [INFO] ======================================================================
