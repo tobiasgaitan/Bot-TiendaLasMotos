@@ -82,10 +82,10 @@ class JudgeService:
         if is_moving_to_credit and not has_city:
             return False, "C9_CITY_MISSING: El bot intenta avanzar a crédito sin haber preguntado la ciudad."
 
-        # --- CRITERIO 5: One-Question-Rule (Heuristic) ---
-        # Count question marks. Max 1.
-        if ai_response.count("?") > 1:
-            return False, "C5_ONE_QUESTION_RULE: La respuesta contiene más de una pregunta."
+        # --- CRITERIO 5: Two-Question-Rule (Heuristic) ---
+        # Count question marks. Max 2.
+        if ai_response.count("?") > 2:
+            return False, "C5_TWO_QUESTION_RULE: La respuesta contiene más de dos pregunta."
 
         # --- CRITERIO 1: Visual-Lock (Heuristic) ---
         # If a bike is mentioned, it must have $ and image link.
