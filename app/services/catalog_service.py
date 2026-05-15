@@ -439,10 +439,21 @@ class CatalogService:
                 
         return unique_results[:3]
 
+# =========================================================================
+    # PUBLIC API INTERFACES (CONTRACTS)
+    # =========================================================================
+
+    def search(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Legacy/Internal entry point for motorcycle search.
+        Maintains strict contract compatibility with whatsapp.py and JudgeService.
+        """
+        return self.search_items(query)
+
     def search_catalog(self, query: str) -> List[Dict[str, Any]]:
         """
-        Public entry point for motorcycle search.
-        Matches the tool name defined in the Gemini SDK and ai_brain.py.
+        AI Agent entry point for motorcycle search.
+        Strictly matches the tool name defined in the Gemini SDK and ai_brain.py.
         """
         return self.search_items(query)
 
