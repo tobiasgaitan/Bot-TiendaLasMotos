@@ -20,9 +20,9 @@
 #### Phase 2: Intercepción y Verificación PCC
 **Goal:** Acoplar la caché en `CatalogService` de forma quirúrgica, manteniendo PCC y verificando con tests.
 **Requirements:** R2, R4, R5
-- [ ] Intercepción en `search_items`.
-- [ ] Tests de variaciones tipográficas.
-- [ ] Validación con `npx agent-cli eval`.
+- [x] Intercepción en `search_items`.
+- [x] Tests de variaciones tipográficas.
+- [x] Validación con `npx agent-cli eval`.
 
 #### Phase 4.2: Optimización de Costos y Seguridad
 **Goal:** Validar resistencia algorítmica frente a inyecciones de prompts (Red Teaming), asegurando el bloqueo de la herramienta `calculate_credit_score` si `habeas_data_accepted` es False.
