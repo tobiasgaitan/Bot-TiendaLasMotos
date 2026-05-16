@@ -1,5 +1,5 @@
-🛡️ Documento Maestro: Estado de Desarrollo Bot-TiendaLasMotos (v9.9.6)
-Versión Actual: v9.9.6 (Paridad de Datos, Estabilización de Enrutador, Caché Semántica In-Memory, y Red Teaming/Zero-Silent-Failures).
+🛡️ Documento Maestro: Estado de Desarrollo Bot-TiendaLasMotos (v9.9.7)
+Versión Actual: v9.9.7 (Paridad de Datos, Estabilización de Enrutador, Caché Semántica In-Memory, y Red Teaming/Zero-Silent-Failures).
 Último Hito: Cierre de Tarea 4.3 (BOT-PERF-43): Implementación de compresión de contexto en el servicio de catálogo mediante truncamiento algorítmico del campo specs a 10 palabras.
 Score de Coherencia: .000 (87/87 Tests PASSED) bajo Python 3.13.
 
