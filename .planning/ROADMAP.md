@@ -21,5 +21,5 @@
 
 ### Phase 3: Infraestructura Event-Driven
 - [x] Tarea 3.1: Modelo de Datos Compartido y Bloqueo de Concurrencia (Backend).
-- [ ] Tarea 3.2: Refactorización de submitLead (Frontend).
-- [ ] Tarea 3.3: Observabilidad de Fallos de Red y APIs (Backend).
+- [x] Tarea 3.2: Refactorización de submitLead (Frontend).
+- [x] Tarea 3.3: Observabilidad de Fallos de Red y APIs (Backend). [BOT-INFRA-33 b698551]
