@@ -8,6 +8,6 @@ from app.services.catalog_service import catalog_service
 db = firestore.Client()
 catalog_service.initialize(db)
 
-res = catalog_service.search_catalog("Tienen la Boxer")
+res = catalog_service.search_items("Tienen la Boxer")
 for r in res:
     print(r["name"], r["price"], r["searchBy"], r.get("raw_price"))

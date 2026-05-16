@@ -64,7 +64,7 @@ class TestCatalogScoring(unittest.TestCase):
 
     def test_intent_bonus_trabajo(self):
         """Test that searching for 'trabajo' applies bonus to TVS Sport."""
-        results = self.service.search_catalog("trabajo")
+        results = self.service.search_items("trabajo")
         
         # TVS Sport should be first because of the 1.5x bonus for the 'trabajo' tag
         self.assertEqual(results[0]["name"], "TVS Sport 100")
@@ -72,7 +72,7 @@ class TestCatalogScoring(unittest.TestCase):
 
     def test_identity_preservation_raider(self):
         """Test that exact model search (Raider) is not displaced by tag bonuses."""
-        results = self.service.search_catalog("Raider")
+        results = self.service.search_items("Raider")
         
         # TVS Raider should be first even if other bikes have more tags
         self.assertEqual(results[0]["name"], "TVS Raider 125")

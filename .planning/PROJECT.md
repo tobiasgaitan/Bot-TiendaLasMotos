@@ -1,43 +1,35 @@
-# Master Project Document - Bot-TiendaLasMotos (v9.9.3)
+# Proyecto: Caché Semántica de Catálogo (BOT-PERF-41)
 
 ## Vision
-Implementar y consolidar a "Juan Pablo" como un Agente Único de contacto directo en WhatsApp, eliminando por completo las latencias de triaje y delegación de estados. El sistema opera de manera integrada y reactiva en tiempo real sobre una única base de datos compartida (Colección: `prospectos`) con la plataforma web de administración (CRM Next.js).
+Implementar una capa de Caché Semántica desacoplada en `CatalogService` para optimizar drásticamente el consumo de tokens y reducir la latencia en las consultas repetitivas de inventario y tags de intención.
 
 ## Core Value
-El desacoplamiento orgánico y la persistencia lineal bloqueante aseguran que el motor de extracción de la IA y la gestión humana de los asesores comerciales coexistan pacíficamente sin colisiones de datos ni sobreescrituras sucias de cuotas financieras reales.
-
-## Technical Context
-* **Backend Core:** Python 3.13 / FastAPI / Gemini 2.5 Flash.
-* **Persistencia:** Firestore AsyncClient (`prospectos` como colección central).
-* **Observabilidad Forense:** Trazado de costos y latencias vinculado vía Langfuse SDK.
-* **Frontend CRM:** React / Next.js (App Router) en paridad absoluta v8.3.1.
+Garantizar una respuesta inmediata y formateada sin invocar la inferencia del LLM (Gemini) cuando la similitud de cadenas (N-gramas/Levenshtein) de la consulta del usuario supere el 0.85 respecto a una consulta previamente indexada, protegiendo el Price Consistency Check (PCC Pro) al 100%.
 
 ## Target Users
-* **Usuarios de WhatsApp:** Reciben una atención comercial fluida, empática y blindada bajo el script estricto de Habeas Data.
-* **Equipo de Ventas/Finanzas (CRM):** Visualizan en tiempo real los 8 datos del perfilamiento conforme la IA los extrae, con la capacidad exclusiva de actualizar el estatus de crédito final.
-* **Desarrolladores:** Arquitectura modular desacoplada basada en la Ley de Gall.
+* **Usuarios de WhatsApp:** Experimentarán latencia casi nula en consultas frecuentes.
+* **Sistema/Negocio:** Reducción drástica de costos por token y latencia cero de red externa.
 
-## Project Phases & Roadmap
+## Technical Context
+* **Backend:** Python 3.13 / FastAPI.
+* **Similitud Local:** Algoritmos nativos en Python puro (TF-IDF ligero, Levenshtein, N-gramas). PROHIBIDO llamar a Google GenAI para embeddings.
+* **Almacenamiento Local:** Diccionario en memoria RAM hidratado sincrónicamente durante el arranque (`ConfigLoader -> load_all() -> CatalogService.initialize()`). PROHIBIDO archivo JSON en disco.
+* **Preservación Visual:** La caché guarda y retorna directamente el bloque Markdown final con precio (`$`) y la imagen canónica (`![]`), no el JSON crudo.
 
-### Fase 1: Arquitectura de Agente Único y Embudo Progresivo (COMPLETED)
-* Consolidación de Juan Pablo como único punto de contacto.
-* Implementación de Frenos Cognitivos en `calculate_credit_score` para erradicar placeholders.
-* Sincronización del Dashboard de Scoring y Estados en la UI.
+## Requirements
 
-### Fase 2: Tríada RAG y IA-as-a-Judge (COMPLETED)
-* Integración de Langfuse con decoradores `@observe` para trazabilidad forense.
-* Configuración del Juez de Fundamentación para auditar la calidad conversacional.
-* Sincronización de personalidad y salida elegante parametrizada.
+### Active
+- [ ] R1: Crear un servicio de vectores (SemanticCacheService) para generar y almacenar embeddings y respuestas.
+- [ ] R2: Interceptar `search_items`, `search` y `search_catalog` en `CatalogService`.
+- [ ] R3: Calcular similitud de coseno > 0.85 para retornar hits de caché inmediatamente.
+- [ ] R4: Preservar el formateo de Price Consistency Check (Regex con $ y Markdown de imagen).
 
-### Fase 3: Infraestructura Nativa Firebase y Sincronización Reactiva (IN PROGRESS)
-* **Tarea 3.1 (COMPLETED):** Modelo de Datos Compartido y Bloqueo de Concurrencia en Backend mediante `_CRM_PROTECTED_FIELDS`.
-* **Tarea 3.2 (PLANNED):** Reactividad en Tiempo Real vía `onSnapshot` en Next.js.
-* **Tarea 3.3 (PLANNED):** Observabilidad de Transacciones y alertas de Timeouts de Firestore.
-
-### Fase 4: Optimización de Costos y Seguridad / Red Teaming (PLANNED)
-* Implementación de Caché Semántica con similitud coseno > 0.85.
-* Pruebas de estrés adversarial contra Prompt Injection.
-* Compresión de contexto y payload del catálogo inyectado.
+## Key Decisions
+| Decision | Source | Rationale | Outcome |
+|----------|--------|-----------|---------|
+| Similitud Coseno > 0.85 | User | Threshold para considerar un hit sin alucinar | Decided |
+| Desacoplamiento | User | No alterar la lógica de búsqueda normal | Decided |
+| Preservar PCC | User | Mantener formato de Regex y $ para consistencia | Decided |
 
 ---
-*Última Certificación de Sincronía: 2026-05-15 (v9.9.3)*
+*Last updated: 2026-05-16*
