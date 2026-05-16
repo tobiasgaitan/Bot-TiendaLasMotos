@@ -41,6 +41,12 @@ class Settings:
 
         # Server Configuration
         self.port: int = int(os.getenv("PORT", "8080"))
+
+        # Firestore I/O Timeout (BOT-INFRA-33)
+        # WHY: Previene el congelamiento del orquestador de webhooks ante degradación de red GCP.
+        # El valor de 5s es el umbral de detección: p99 normal de Firestore es <1s.
+        # Configurable vía Cloud Run: --set-env-vars='DB_TIMEOUT=10'
+        self.db_timeout: int = int(os.getenv("DB_TIMEOUT", "5"))
         
         # WhatsApp API Version Override
         self.whatsapp_api_version: str = os.getenv("WHATSAPP_API_VERSION", "v21.0")
