@@ -1,50 +1,43 @@
-# BOT-ARQ-801-TRIAJE — Desacoplamiento Monolito CerebroIA
+# Master Project Document - Bot-TiendaLasMotos (v9.9.3)
 
 ## Vision
-Implementar un Agente de Triaje (`triage_agent.py`) para gestionar la captura de intención (Fase 1) y el Gate Legal de Habeas Data (Fase 3). Este agente actuará como el primer punto de contacto, validando Nombre, Ciudad y consentimiento legal antes de delegar la sesión al Agente Especialista Financiero mediante un estado persistido en Firestore.
+Implementar y consolidar a "Juan Pablo" como un Agente Único de contacto directo en WhatsApp, eliminando por completo las latencias de triaje y delegación de estados. El sistema opera de manera integrada y reactiva en tiempo real sobre una única base de datos compartida (Colección: `prospectos`) con la plataforma web de administración (CRM Next.js).
 
 ## Core Value
-El desacoplamiento reduce la carga cognitiva de `CerebroIA` y garantiza que la lógica financiera solo se active cuando los requisitos legales y de perfilamiento básico (Habeas Data, Nombre, Ciudad) estén satisfechos. Se implementa un Gate Legal absoluto con persistencia atómica.
-
-## Target Users
-- **Usuarios de WhatsApp:** Reciben una atención fluida y transparente sobre el tratamiento de sus datos.
-- **Equipo de Ventas/Finanzas:** Reciben prospectos ya validados legalmente y con datos básicos completos.
-- **Desarrolladores:** Arquitectura modular más fácil de mantener y auditar.
+El desacoplamiento orgánico y la persistencia lineal bloqueante aseguran que el motor de extracción de la IA y la gestión humana de los asesores comerciales coexistan pacíficamente sin colisiones de datos ni sobreescrituras sucias de cuotas financieras reales.
 
 ## Technical Context
+* **Backend Core:** Python 3.13 / FastAPI / Gemini 2.5 Flash.
+* **Persistencia:** Firestore AsyncClient (`prospectos` como colección central).
+* **Observabilidad Forense:** Trazado de costos y latencias vinculado vía Langfuse SDK.
+* **Frontend CRM:** React / Next.js (App Router) en paridad absoluta v8.3.1.
 
-### Arquitectura de Delegación (State-Based Handoff)
-- **Persistencia:** Campo `current_agent` en el documento de sesión de Firestore (`triage` | `finance`).
-- **Ruteo:** `whatsapp.py` lee `current_agent` vía `memory_service` y delega el payload.
-- **Gate Legal:** Bloqueo absoluto. No hay transición a `finance` sin `habeas_data=True`, `nombre` y `ciudad`.
+## Target Users
+* **Usuarios de WhatsApp:** Reciben una atención comercial fluida, empática y blindada bajo el script estricto de Habeas Data.
+* **Equipo de Ventas/Finanzas (CRM):** Visualizan en tiempo real los 8 datos del perfilamiento conforme la IA los extrae, con la capacidad exclusiva de actualizar el estatus de crédito final.
+* **Desarrolladores:** Arquitectura modular desacoplada basada en la Ley de Gall.
 
-### Saneamiento (Protocolo JSON Voorhees)
-- **Truncamiento:** Nombre y Ciudad truncados a 50 caracteres.
-- **Normalización:** UTF-8 y eliminación de caracteres de control.
-- **Inmutabilidad:** `EXTRACTION_SCHEMA` en `ai_brain.py` permanece bloqueado.
+## Project Phases & Roadmap
 
-## Requirements
+### Fase 1: Arquitectura de Agente Único y Embudo Progresivo (COMPLETED)
+* Consolidación de Juan Pablo como único punto de contacto.
+* Implementación de Frenos Cognitivos en `calculate_credit_score` para erradicar placeholders.
+* Sincronización del Dashboard de Scoring y Estados en la UI.
 
-### V1 — Must Have
-- [ ] **R1:** Crear `app/services/triage_agent.py` como clase independiente (Singleton pattern).
-- [ ] **R2:** Extender `MemoryService` para soportar el campo `current_agent` y la lógica de validación de requisitos de handoff.
-- [ ] **R3:** Refactorizar `whatsapp.py` para implementar el ruteo basado en `current_agent`.
-- [ ] **R4:** Implementar el "Gate Legal" en el Agente de Triaje (Captura de consentimiento afirmativo).
-- [ ] **R5:** Garantizar observabilidad HTTP completa (Zero-Silent-Failures) en las llamadas del Agente de Triaje.
+### Fase 2: Tríada RAG y IA-as-a-Judge (COMPLETED)
+* Integración de Langfuse con decoradores `@observe` para trazabilidad forense.
+* Configuración del Juez de Fundamentación para auditar la calidad conversacional.
+* Sincronización de personalidad y salida elegante parametrizada.
 
-### Out of Scope
-- Modificar el `EXTRACTION_SCHEMA` de `ai_brain.py`.
-- Alterar la lógica interna de `MotorFinanciero`.
-- Cambios en la UI del Admin Simulator.
+### Fase 3: Infraestructura Nativa Firebase y Sincronización Reactiva (IN PROGRESS)
+* **Tarea 3.1 (COMPLETED):** Modelo de Datos Compartido y Bloqueo de Concurrencia en Backend mediante `_CRM_PROTECTED_FIELDS`.
+* **Tarea 3.2 (PLANNED):** Reactividad en Tiempo Real vía `onSnapshot` en Next.js.
+* **Tarea 3.3 (PLANNED):** Observabilidad de Transacciones y alertas de Timeouts de Firestore.
 
-## Key Decisions
-
-| Decision | Source | Rationale | Outcome |
-|----------|--------|-----------|---------|
-| Estado en Firestore | User | Evitar redirecciones en memoria temporal, garantizar resiliencia. | Decidido |
-| TriageAgent independiente | User | Aislamiento de "context window" de la lógica de crédito. | Decidido |
-| Truncamiento PII | User | Cumplimiento estricto de FASE 4 (Saneamiento). | Decidido |
-| Bloqueo Legal Absoluto | User | Seguridad jurídica (Habeas Data) antes de perfilamiento. | Decidido |
+### Fase 4: Optimización de Costos y Seguridad / Red Teaming (PLANNED)
+* Implementación de Caché Semántica con similitud coseno > 0.85.
+* Pruebas de estrés adversarial contra Prompt Injection.
+* Compresión de contexto y payload del catálogo inyectado.
 
 ---
-*Last updated: 2026-05-05 after initialization — Ticket BOT-ARQ-801-TRIAJE*
+*Última Certificación de Sincronía: 2026-05-15 (v9.9.3)*
