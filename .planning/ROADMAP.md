@@ -19,3 +19,7 @@
 - [x] Tarea 2.2: Configuración de la Matriz de 9 Criterios.
 - [x] Tarea 2.3: Sincronización de Personalidad y Salida Elegante (Fallback).
 
+### Phase 3: Infraestructura Event-Driven
+- [x] Tarea 3.1: Modelo de Datos Compartido y Bloqueo de Concurrencia (Backend).
+- [ ] Tarea 3.2: Refactorización de submitLead (Frontend).
+- [ ] Tarea 3.3: Observabilidad de Fallos de Red y APIs (Backend).
