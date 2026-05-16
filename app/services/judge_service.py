@@ -100,6 +100,8 @@ class JudgeService:
         # No financial questions if habeas_data_accepted is False.
         habeas_accepted = prospect_data.get("habeas_data_accepted", False)
         if not habeas_accepted and self._is_profiling_attempt(ai_response):
+            _phone = prospect_data.get("phone") or prospect_data.get("id", "unknown") if prospect_data else "unknown"
+            logger.warning(f"SECURITY ALERT [Prompt Injection]: Judge Service intercepted unauthorized financial profiling. Phone: {_phone}")
             return False, "C3_HABEAS_DATA_VIOLATION: Intento de perfilamiento financiero sin consentimiento Habeas Data."
 
         # --- CRITERIO 2: Financial Parity (Math) ---

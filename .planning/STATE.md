@@ -1,9 +1,9 @@
 # Project State
 
 ## Current Position
-**Phase:** Finalizada.
-**Status:** Status: Completed (v9.9.5).
-**Last activity:** 2026-05-16 — despliegue exitoso
+**Phase:** Fase 4.2 - Pruebas de Estrés Adversarial.
+**Status:** Completed (v9.9.6).
+**Last activity:** Cierre exitoso de ticket BOT-SEC-42 (Zero-Silent-Failures asegurado).
 
 ## Key Decisions
 

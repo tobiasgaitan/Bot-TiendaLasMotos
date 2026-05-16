@@ -434,6 +434,10 @@ class CerebroIA:
             is_profiling = self._is_profiling_attempt(raw_response)
             
             if is_profiling:
+                # [BOT-SEC-42] Forensic Security Log for Prompt Injection Attempt
+                _phone = prospect_data.get("phone") or prospect_data.get("id", "unknown") if prospect_data else "unknown"
+                logger.warning(f"SECURITY ALERT [Prompt Injection]: Attempted financial profiling without Habeas Data consent. Phone: {_phone}")
+
                 # [PHASE-GATE PASSTHROUGH v1.3.2]
                 # Filtramos el contenido intrusivo pero permitimos visuales ($ e imágenes)
                 filtered_text = self._filter_profiling_content(raw_response)

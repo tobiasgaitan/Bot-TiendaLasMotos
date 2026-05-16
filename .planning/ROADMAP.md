@@ -24,5 +24,11 @@
 - [ ] Tests de variaciones tipográficas.
 - [ ] Validación con `npx agent-cli eval`.
 
+#### Phase 4.2: Optimización de Costos y Seguridad
+**Goal:** Validar resistencia algorítmica frente a inyecciones de prompts (Red Teaming), asegurando el bloqueo de la herramienta `calculate_credit_score` si `habeas_data_accepted` es False.
+**Requirements:** Ticket BOT-SEC-42
+- [x] Desarrollar suite de estrés adversarial en pytest.
+- [x] Garantizar política de Zero-Silent-Failures registrando logs forenses ante fallas de seguridad.
+
 ---
 *Last updated: 2026-05-16*
