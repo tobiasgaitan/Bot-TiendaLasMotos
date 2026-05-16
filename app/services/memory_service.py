@@ -35,6 +35,7 @@ class MemoryService:
         self._db = db
         self.collection_name = "prospectos"
         self._pending_tasks: Set[asyncio.Task] = set()
+        self._status_semaphore = asyncio.Semaphore(5)
         logger.info("🧠 MemoryService v9.8.3: Restauración Quirúrgica + Task Tracking")
 
     def _track_task(self, coro) -> asyncio.Task:
@@ -477,41 +478,42 @@ class MemoryService:
         Incluye guardrail para evitar retrodegradación del status CRM.
         """
         try:
-            doc_ref = await self._find_prospect_ref(phone_number)
-            
-            # --- GUARDRAIL: Leer status CRM actual antes de escribir ---
-            doc_snap = await doc_ref.get()
-            current_data = doc_snap.to_dict() if doc_snap.exists else {}
-            current_crm_status = current_data.get("status", "")
-            protected_statuses = {"IN_PROGRESS", "DONE", "DISCARDED"}
+            async with self._status_semaphore:
+                doc_ref = await self._find_prospect_ref(phone_number)
+                
+                # --- GUARDRAIL: Leer status CRM actual antes de escribir ---
+                doc_snap = await doc_ref.get()
+                current_data = doc_snap.to_dict() if doc_snap.exists else {}
+                current_crm_status = current_data.get("status", "")
+                protected_statuses = {"IN_PROGRESS", "DONE", "DISCARDED"}
 
-            # Sincronía de nivel superior para el Dashboard CRM
-            payload = {
-                "metadata.whatsapp.last_status": status_value,
-                "metadata.whatsapp.last_status_timestamp": firestore.SERVER_TIMESTAMP,
-                "metadata.whatsapp.last_wamid": wamid,
-                "whatsapp_delivery_status": status_value, # [SYNC-CRM] Top-level field
-                "whatsapp_delivery_updated_at": firestore.SERVER_TIMESTAMP,
-            }
+                # Sincronía de nivel superior para el Dashboard CRM
+                payload = {
+                    "metadata.whatsapp.last_status": status_value,
+                    "metadata.whatsapp.last_status_timestamp": firestore.SERVER_TIMESTAMP,
+                    "metadata.whatsapp.last_wamid": wamid,
+                    "whatsapp_delivery_status": status_value, # [SYNC-CRM] Top-level field
+                    "whatsapp_delivery_updated_at": firestore.SERVER_TIMESTAMP,
+                }
 
-            # Idempotencia para whatsapp_read_at
-            if status_value == "read" and "whatsapp_read_at" not in current_data:
-                payload["whatsapp_read_at"] = firestore.SERVER_TIMESTAMP
+                # Idempotencia para whatsapp_read_at
+                if status_value == "read" and "whatsapp_read_at" not in current_data:
+                    payload["whatsapp_read_at"] = firestore.SERVER_TIMESTAMP
 
-            if errors:
-                payload["metadata.whatsapp.last_error"] = errors
-                if isinstance(errors, list) and len(errors) > 0:
-                    # Guardamos el resumen del error para el Dashboard
-                    error_summary = errors[0]
-                    payload["last_whatsapp_error"] = error_summary.get("message")
-                    payload["whatsapp_error_details"] = error_summary
-            
-            # Guardrail de máquina de estados: nunca tocamos 'status' desde acuses de recibo
-            if status_value == "read" and current_crm_status in protected_statuses:
-                logger.info(f"🛡️ [STATUSES] Guardrail activo: status '{current_crm_status}' no se altera por acuse 'read'.")
+                if errors:
+                    payload["metadata.whatsapp.last_error"] = errors
+                    if isinstance(errors, list) and len(errors) > 0:
+                        # Guardamos el resumen del error para el Dashboard
+                        error_summary = errors[0]
+                        payload["last_whatsapp_error"] = error_summary.get("message")
+                        payload["whatsapp_error_details"] = error_summary
+                
+                # Guardrail de máquina de estados: nunca tocamos 'status' desde acuses de recibo
+                if status_value == "read" and current_crm_status in protected_statuses:
+                    logger.info(f"🛡️ [STATUSES] Guardrail activo: status '{current_crm_status}' no se altera por acuse 'read'.")
 
-            await doc_ref.update(payload)
-            logger.info(f"✅ [STATUSES] Acuse '{status_value}' registrado para {phone_number}")
+                await doc_ref.update(payload)
+                logger.info(f"✅ [STATUSES] Acuse '{status_value}' registrado para {phone_number}")
         except Exception as e:
             logger.exception(f"❌ [STATUSES] Error actualizando metadata.whatsapp para {phone_number}: {e}")
 

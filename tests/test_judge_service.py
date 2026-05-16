@@ -40,11 +40,11 @@ async def test_judge_visual_lock_success(judge_service):
 
 @pytest.mark.asyncio
 async def test_judge_one_question_rule(judge_service):
-    # Two questions
-    response = "¿Cómo estás? ¿Te interesa alguna moto?"
+    # Three questions to trigger the C5 rule (limit is 2)
+    response = "¿Cómo estás? ¿Te interesa alguna moto? ¿Cuál es tu presupuesto?"
     approved, reason = await judge_service.analyze_response("hola", response)
     assert not approved
-    assert "C5_ONE_QUESTION_RULE" in reason
+    assert "C5_TWO_QUESTION_RULE" in reason
 
 @pytest.mark.asyncio
 async def test_judge_habeas_data_accepted_violation(judge_service):
