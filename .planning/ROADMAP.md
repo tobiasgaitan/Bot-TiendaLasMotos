@@ -1,25 +1,28 @@
-# Roadmap - Bot Tienda Las Motos (Agente Único)
+# Roadmap
 
-## Milestone 1: Consolidación y Control Cognitivo
-| Phase | Name | Status | Date |
-|-------|------|--------|------|
-| 1 | Arquitectura de Agente Único | COMPLETED | 2026-05-10 |
-| 2 | Tríada RAG y IA-as-a-Judge | COMPLETED | 2026-05-11 |
-| 3 | Infraestructura Event-Driven | PLANNED | 2026-05-20 |
-| 4 | Optimización y Seguridad | PLANNED | 2026-05-25 |
+## Milestone 1: Caché Semántica de Catálogo
 
-### Phase 1: Arquitectura de Agente Único
-- [x] Tarea 1.1: Consolidación del Enrutador y Muro de Crédito (Backend).
-- [x] Tarea 1.2: Implementación de Frenos Cognitivos y Tool Calling (Backend).
-- [x] Tarea 1.4: Refactor Financiero y Paridad v1.4.0 (Apache 160).
-- [x] Tarea 1.3: Observabilidad Web y Estados de Herramienta (Frontend).
+### Progress
 
-### Phase 2: Tríada RAG y IA-as-a-Judge
-- [x] Tarea 2.1: Implementación del Juez de Fundamentación (v9.8.0).
-- [x] Tarea 2.2: Configuración de la Matriz de 9 Criterios.
-- [x] Tarea 2.3: Sincronización de Personalidad y Salida Elegante (Fallback).
+| Phase | Name | Status | Plans | Date |
+|-------|------|--------|-------|------|
+| 1 | Arquitectura Core (Pure Python Math) | Completed | — | — |
+| 2 | Intercepción en CatalogService y Pruebas | Completed | — | — |
 
-### Phase 3: Infraestructura Event-Driven
-- [x] Tarea 3.1: Modelo de Datos Compartido y Bloqueo de Concurrencia (Backend).
-- [x] Tarea 3.2: Refactorización de submitLead (Frontend).
-- [x] Tarea 3.3: Observabilidad de Fallos de Red y APIs (Backend). [BOT-INFRA-33 b698551]
+### Phases
+
+#### Phase 1: Arquitectura Core
+**Goal:** Implementar `SemanticCacheService` capaz de usar algoritmos de similitud locales puros (N-gramas/Levenshtein) sobre un diccionario en RAM.
+**Requirements:** R1, R3
+- [x] Construir y testear similitud de cadenas sin dependencias externas.
+- [x] Implementar hidratación síncrona en memoria.
+
+#### Phase 2: Intercepción y Verificación PCC
+**Goal:** Acoplar la caché en `CatalogService` de forma quirúrgica, manteniendo PCC y verificando con tests.
+**Requirements:** R2, R4, R5
+- [ ] Intercepción en `search_items`.
+- [ ] Tests de variaciones tipográficas.
+- [ ] Validación con `npx agent-cli eval`.
+
+---
+*Last updated: 2026-05-16*
