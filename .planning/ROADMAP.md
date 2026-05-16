@@ -37,9 +37,8 @@
 - [x] Aprobación de despliegue mediante `npx agent-cli eval`.
 
 **Quality Control & Anti-Null Masking (v9.9.7):**
-- [ ] [BOT-PERF-45] Refactorizar la resolución de herramientas en `ai_brain.py` para consumir `search_items` y unificar la llave canónica `price`.
-- [ ] Inyectar suite de aserción en `pytest` que prohíba de forma estricta los retornos vacíos o fallbacks silenciosos en la entrega de cuotas.
-
+- [x] [BOT-PERF-45] Refactorizar la resolución de herramientas en `ai_brain.py` para consumir `search_items` y unificar la llave canónica `price`.
+- [x] Inyectar suite de aserción en `pytest` que prohíba de forma estricta los retornos vacíos o fallbacks silenciosos en la entrega de cuotas.
 
 ---
 *Last updated: 2026-05-16*
