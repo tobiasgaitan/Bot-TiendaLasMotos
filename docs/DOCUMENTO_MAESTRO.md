@@ -1,7 +1,7 @@
-🛡️ Documento Maestro: Estado de Desarrollo Bot-TiendaLasMotos (v9.9.5)
-Versión Actual: v9.9.5 (Paridad de Datos, Estabilización de Enrutador, Gobernanza de Base de Datos Compartida, Observabilidad de Transacciones con Interceptor de Timeouts y Aceleración de Catálogo mediante Caché Semántica In-Memory).
-Último Hito: Cierre de BOT-PERF-41 (Implementación de capa de Caché Semántica desacoplada local mediante Fuzzy Matching síncrono en RAM, eliminando latencias de red y optimizando el consumo de tokens en consultas de inventario recurrentes).
-Score de Coherencia: 1.000 (85/85 Tests PASSED) bajo Python 3.13 en ~3.63s.
+🛡️ Documento Maestro: Estado de Desarrollo Bot-TiendaLasMotos (v9.9.6)
+Versión Actual: v9.9.6 (Paridad de Datos, Estabilización de Enrutador, Caché Semántica In-Memory, y Red Teaming/Zero-Silent-Failures).
+Último Hito: Cierre de BOT-SEC-42 (Implementación de suite de estrés adversarial y trazabilidad forense con identidad telefónica para mitigar inyecciones de prompts en el motor financiero).
+Score de Coherencia: 1.000 (87/87 Tests PASSED) bajo Python 3.13.
 
 1. Contexto y Persona (Juan Pablo)
     • Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
