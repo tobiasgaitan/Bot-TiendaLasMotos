@@ -15,7 +15,9 @@ import logging
 import asyncio
 from typing import Dict, Any, Optional, List, Set
 from google.cloud import firestore
+from google.api_core import exceptions as gcp_exceptions
 from app.core.utils import PhoneNormalizer
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,36 @@ _LATCH_TRUE_FIELDS = frozenset({"habeas_data_accepted", "habeas_data_accepted_se
 
 # CRM protected fields — the bot must NEVER overwrite these if they already exist
 _CRM_PROTECTED_FIELDS = frozenset({"approved_amount", "monthly_quota", "current_agent"})
+
+# [BOT-INFRA-33] Texto de contingencia aprobado — NO modificar sin orden explícita del Auditor
+_CONTINGENCY_MSG = (
+    "Disculpa la demora, estamos experimentando una alta congestión en nuestro sistema. "
+    "Permíteme un momento mientras se estabiliza la conexión."
+)
+
+
+async def _dispatch_contingency_message(phone: str) -> None:
+    """
+    [BOT-INFRA-33] Despacha el mensaje de contingencia al lead afectado.
+
+    WHY lazy import: memory_service.py es importado por whatsapp.py.
+    whatsapp_service.py también es importado por whatsapp.py.
+    Un import directo en el módulo crearía un ciclo de dependencias.
+    El import lazy dentro de la función es el patrón canónico para este caso.
+
+    WHY silencia su propio fallo: si el transporte de WhatsApp también está degradado,
+    no queremos enmascarar la excepción original de Firestore con un nuevo error.
+    """
+    try:
+        from app.services.whatsapp_service import whatsapp_service as _wa_svc
+        if _wa_svc:
+            await _wa_svc.send_text_message(phone, _CONTINGENCY_MSG)
+            logger.info(f"📤 [BOT-INFRA-33] Mensaje de contingencia enviado a {phone}")
+        else:
+            logger.warning(f"⚠️ [BOT-INFRA-33] whatsapp_service no inicializado — contingencia no enviada a {phone}")
+    except Exception as dispatch_err:
+        logger.error(f"❌ [BOT-INFRA-33] Fallo secundario al enviar contingencia a {phone}: {dispatch_err}")
+
 
 class MemoryService:
     def __init__(self, db: firestore.AsyncClient):
@@ -48,6 +80,39 @@ class MemoryService:
         self._pending_tasks.add(task)
         task.add_done_callback(self._pending_tasks.discard)
         return task
+
+    @staticmethod
+    async def _firestore_io(coro, phone: str, label: str, timeout: Optional[int] = None):
+        """
+        [BOT-INFRA-33] Interceptor de timeout asíncrono para operaciones I/O de Firestore.
+
+        WHY: Sin este guardrail, una degradación de red GCP congela indefinidamente
+        el event loop de FastAPI, silenciando el fallo y violando Zero-Silent-Failures.
+
+        Comportamiento:
+          - Envuelve cualquier corutina de Firestore en asyncio.wait_for.
+          - Si TimeoutError o error de conectividad GCP:
+              1. Inyecta log forense con traceback completo.
+              2. Despacha mensaje de contingencia profesional al lead (await, bloqueante).
+              3. Re-raise para detener ai_brain.py inmediatamente.
+        """
+        effective_timeout = timeout if timeout is not None else settings.db_timeout
+        try:
+            return await asyncio.wait_for(coro, timeout=effective_timeout)
+        except asyncio.TimeoutError as e:
+            logger.exception(
+                f"⏱️ [BOT-INFRA-33] FIRESTORE TIMEOUT ({effective_timeout}s) en '{label}' "
+                f"para phone='{phone}'. El orquestador se detiene para evitar degradación conversacional."
+            )
+            await _dispatch_contingency_message(phone)
+            raise
+        except (gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
+            logger.exception(
+                f"🔌 [BOT-INFRA-33] FIRESTORE CONNECTIVITY ERROR en '{label}' "
+                f"para phone='{phone}'. Detalle nativo GCP: {e}"
+            )
+            await _dispatch_contingency_message(phone)
+            raise
 
     async def shutdown(self, timeout: int = 8) -> None:
         """
@@ -168,27 +233,33 @@ class MemoryService:
             doc_ref = self._db.collection("mensajeria").document("whatsapp") \
                 .collection("sesiones").document(clean_phone) \
                 .collection("historial").document()
-            await doc_ref.set({
-                "role": role,
-                "content": content,
-                "timestamp": firestore.SERVER_TIMESTAMP,
-            })
+            await self._firestore_io(
+                doc_ref.set({"role": role, "content": content, "timestamp": firestore.SERVER_TIMESTAMP}),
+                phone=clean_phone, label="save_message"
+            )
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+            raise  # Propagar para detener ai_brain.py
         except Exception as e:
             logger.exception(f"❌ save_message failed for {phone_number}: {e}")
 
     async def get_chat_history(self, phone_number: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Retrieve last N messages from historial, ordered ascending."""
+        clean_phone = PhoneNormalizer.normalize(phone_number)
         try:
-            clean_phone = PhoneNormalizer.normalize(phone_number)
-            docs = self._db.collection("mensajeria").document("whatsapp") \
+            query_ref = self._db.collection("mensajeria").document("whatsapp") \
                 .collection("sesiones").document(clean_phone) \
                 .collection("historial") \
                 .order_by("timestamp", direction=firestore.Query.DESCENDING) \
-                .limit(limit).stream()
+                .limit(limit)
+            # WHY: stream() devuelve AsyncGenerator — se consuma dentro del timeout
             history = []
-            async for doc in docs:
-                history.append(doc.to_dict())
+            async def _collect():
+                async for doc in query_ref.stream():
+                    history.append(doc.to_dict())
+            await self._firestore_io(_collect(), phone=clean_phone, label="get_chat_history")
             return history[::-1]
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+            raise
         except Exception as e:
             logger.exception(f"❌ get_chat_history failed for {phone_number}: {e}")
             return []
@@ -202,7 +273,7 @@ class MemoryService:
         """
         try:
             doc_ref = await self._find_prospect_ref(phone_number)
-            doc_snap = await doc_ref.get()
+            doc_snap = await self._firestore_io(doc_ref.get(), phone=phone_number, label="get_prospect_data")
             if doc_snap.exists:
                 data = doc_snap.to_dict() or {}
                 data["exists"] = True
@@ -210,6 +281,8 @@ class MemoryService:
                     data["celular"] = doc_ref.id
                 return data
             return {"exists": False}
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+            raise
         except Exception as e:
             logger.exception(f"❌ get_prospect_data failed for {phone_number}: {e}")
             return {"exists": False}
@@ -227,7 +300,7 @@ class MemoryService:
         try:
             clean_phone = PhoneNormalizer.normalize(phone_number)
             doc_ref = self._db.collection(self.collection_name).document(clean_phone)
-            doc_snap = await doc_ref.get()
+            doc_snap = await self._firestore_io(doc_ref.get(), phone=clean_phone, label="create_prospect_if_missing.get")
 
             if not doc_snap.exists:
                 payload = {
@@ -250,13 +323,15 @@ class MemoryService:
                     "total_tokens_consumed": 0,
                     "session_cost_usd": 0.0
                 }
-                await doc_ref.set(payload)
+                await self._firestore_io(doc_ref.set(payload), phone=clean_phone, label="create_prospect_if_missing.set")
                 logger.info(f"✅ Prospect created for {clean_phone} (Status: PENDING)")
 
             # Zombie session purge — always attempt (Ensures idempotency for /reset)
             session_ref = self._db.collection("mensajeria").document("whatsapp") \
                 .collection("sesiones").document(clean_phone)
-            await session_ref.delete()
+            await self._firestore_io(session_ref.delete(), phone=clean_phone, label="create_prospect_if_missing.delete_session")
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+            raise
         except Exception as e:
             logger.exception(f"❌ create_prospect_if_missing failed for {phone_number}: {e}")
 
@@ -362,7 +437,7 @@ class MemoryService:
         """Merge AI-extracted data into prospect and update summary."""
         try:
             doc_ref = await self.get_ref(phone_number)
-            doc_snap = await doc_ref.get()
+            doc_snap = await self._firestore_io(doc_ref.get(), phone=phone_number, label="update_prospect_summary.get")
             current_data = doc_snap.to_dict() if doc_snap.exists else {}
 
             # Use centralized merge logic
@@ -370,7 +445,9 @@ class MemoryService:
             update_payload["ai_summary"] = summary_text
             update_payload["last_updated"] = firestore.SERVER_TIMESTAMP
 
-            await doc_ref.set(update_payload, merge=True)
+            await self._firestore_io(doc_ref.set(update_payload, merge=True), phone=phone_number, label="update_prospect_summary.set")
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+            raise
         except Exception as e:
             logger.exception(f"❌ update_prospect_summary failed for {phone_number}: {e}")
 
@@ -414,7 +491,7 @@ class MemoryService:
         """
         try:
             doc_ref = await self._find_prospect_ref(phone_number)
-            doc_snap = await doc_ref.get()
+            doc_snap = await self._firestore_io(doc_ref.get(), phone=phone_number, label="transition_to_in_progress.get")
             
             if not doc_snap.exists:
                 return False
@@ -426,14 +503,15 @@ class MemoryService:
                 logger.info(f"⏭️ [STATE] Prospecto {phone_number} ya está en '{current_status}'. Transición omitida.")
                 return False
 
-            await doc_ref.update({
-                "status": "IN_PROGRESS",
-                "updated_at": firestore.SERVER_TIMESTAMP,
-                "fecha": firestore.SERVER_TIMESTAMP,
-            })
+            await self._firestore_io(
+                doc_ref.update({"status": "IN_PROGRESS", "updated_at": firestore.SERVER_TIMESTAMP, "fecha": firestore.SERVER_TIMESTAMP}),
+                phone=phone_number, label="transition_to_in_progress.update"
+            )
             logger.info(f"🟢 [STATE] Prospecto {phone_number}: PENDING → IN_PROGRESS")
             return True
 
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+            raise
         except Exception as e:
             logger.exception(f"❌ [STATE] Error in transition_to_in_progress for {phone_number}: {e}")
             return False
@@ -447,11 +525,10 @@ class MemoryService:
             doc_ref = await self._find_prospect_ref(phone_number)
             
             if doc_ref:
-                await doc_ref.update({
-                    "human_help_requested": status,
-                    "updated_at": firestore.SERVER_TIMESTAMP,
-                    "fecha": firestore.SERVER_TIMESTAMP
-                })
+                await self._firestore_io(
+                    doc_ref.update({"human_help_requested": status, "updated_at": firestore.SERVER_TIMESTAMP, "fecha": firestore.SERVER_TIMESTAMP}),
+                    phone=phone_number, label="set_human_help_status.update"
+                )
                 logger.info(f"✅ Updated human_help_requested={status} for {phone_number}")
                 return True
 
@@ -462,12 +539,13 @@ class MemoryService:
             
             # Re-fetch and update
             doc_ref = await self._find_prospect_ref(clean_phone)
-            await doc_ref.update({
-                "human_help_requested": status,
-                "updated_at": firestore.SERVER_TIMESTAMP,
-                "fecha": firestore.SERVER_TIMESTAMP
-            })
+            await self._firestore_io(
+                doc_ref.update({"human_help_requested": status, "updated_at": firestore.SERVER_TIMESTAMP, "fecha": firestore.SERVER_TIMESTAMP}),
+                phone=clean_phone, label="set_human_help_status.update_refetch"
+            )
             return True
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+            raise
         except Exception as e:
             logger.exception(f"❌ Error setting human_help_status for {phone_number}: {e}")
             return False
@@ -488,7 +566,7 @@ class MemoryService:
                 doc_ref = await self._find_prospect_ref(phone_number)
                 
                 # --- GUARDRAIL: Leer status CRM actual antes de escribir ---
-                doc_snap = await doc_ref.get()
+                doc_snap = await self._firestore_io(doc_ref.get(), phone=phone_number, label="update_whatsapp_status.get")
                 current_data = doc_snap.to_dict() if doc_snap.exists else {}
                 current_crm_status = current_data.get("status", "")
                 protected_statuses = {"IN_PROGRESS", "DONE", "DISCARDED"}
@@ -518,8 +596,10 @@ class MemoryService:
                 if status_value == "read" and current_crm_status in protected_statuses:
                     logger.info(f"🛡️ [STATUSES] Guardrail activo: status '{current_crm_status}' no se altera por acuse 'read'.")
 
-                await doc_ref.update(payload)
+                await self._firestore_io(doc_ref.update(payload), phone=phone_number, label="update_whatsapp_status.update")
                 logger.info(f"✅ [STATUSES] Acuse '{status_value}' registrado para {phone_number}")
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+            raise
         except Exception as e:
             logger.exception(f"❌ [STATUSES] Error actualizando metadata.whatsapp para {phone_number}: {e}")
 
@@ -529,8 +609,13 @@ class MemoryService:
         """
         try:
             doc_ref = await self._find_prospect_ref(phone_number)
-            await doc_ref.update({"fecha": firestore.SERVER_TIMESTAMP})
+            await self._firestore_io(
+                doc_ref.update({"fecha": firestore.SERVER_TIMESTAMP}),
+                phone=phone_number, label="update_last_interaction"
+            )
             logger.info(f"🕐 Updated last interaction timestamp for {phone_number}")
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+            raise
         except Exception as e:
             logger.exception(f"❌ Error updating last interaction for {phone_number}: {e}")
 
