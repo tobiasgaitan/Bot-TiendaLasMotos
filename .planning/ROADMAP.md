@@ -34,7 +34,12 @@
 **Goal:** Reducir el payload del catálogo inyectado en el prompt para optimizar la ventana de contexto y los costos operativos.
 **Requirements:** Ticket BOT-PERF-43
 - [x] Intervención quirúrgica en `catalog_service.py` limitando el campo `specs` a 10 palabras mediante `_summarize()`.
-- [x] Aprobación de despliegue mediante `npx agent-cli eval` (Score: 1.000).
+- [x] Aprobación de despliegue mediante `npx agent-cli eval`.
+
+**Quality Control & Anti-Null Masking (v9.9.7):**
+- [ ] [BOT-PERF-45] Refactorizar la resolución de herramientas en `ai_brain.py` para consumir `search_items` y unificar la llave canónica `price`.
+- [ ] Inyectar suite de aserción en `pytest` que prohíba de forma estricta los retornos vacíos o fallbacks silenciosos en la entrega de cuotas.
+
 
 ---
 *Last updated: 2026-05-16*
