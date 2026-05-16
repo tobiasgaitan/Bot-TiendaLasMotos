@@ -27,6 +27,8 @@ _INVALID_SENTINELS = {"null", "none", "n/a", "undefined"}
 # Canonical latch fields — once True, they must never revert to False
 _LATCH_TRUE_FIELDS = frozenset({"habeas_data_accepted", "habeas_data_accepted_sent"})
 
+# CRM protected fields — the bot must NEVER overwrite these if they already exist
+_CRM_PROTECTED_FIELDS = frozenset({"approved_amount", "monthly_quota", "current_agent"})
 
 class MemoryService:
     def __init__(self, db: firestore.AsyncClient):
@@ -115,6 +117,10 @@ class MemoryService:
             return merged
 
         for key, value in incoming_data.items():
+            # --- GUARDRAIL TAREA 3.1: Proteger la escritura del asesor humano ---
+            if key in _CRM_PROTECTED_FIELDS and key in current_data:
+                continue
+
             # ── Latch check: once True, stays True ──
             if key in _LATCH_TRUE_FIELDS and current_data.get(key) is True:
                 merged[key] = True
@@ -127,7 +133,7 @@ class MemoryService:
             merged[key] = value
 
         return merged
-
+        
     # Backward-compat alias used by update_prospect_summary
     def merge_data(self, current_data: Dict[str, Any], new_data: Dict[str, Any]) -> Dict[str, Any]:
         """Legacy alias — delegates to _merge_extracted_data."""
