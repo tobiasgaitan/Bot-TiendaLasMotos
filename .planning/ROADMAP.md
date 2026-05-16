@@ -30,5 +30,11 @@
 - [x] Desarrollar suite de estrés adversarial en pytest.
 - [x] Garantizar política de Zero-Silent-Failures registrando logs forenses ante fallas de seguridad.
 
+#### Phase 4.3: Optimización de Prompts y Compresión de Contexto
+**Goal:** Reducir el payload del catálogo inyectado en el prompt para optimizar la ventana de contexto y los costos operativos.
+**Requirements:** Ticket BOT-PERF-43
+- [x] Intervención quirúrgica en `catalog_service.py` limitando el campo `specs` a 10 palabras mediante `_summarize()`.
+- [x] Aprobación de despliegue mediante `npx agent-cli eval` (Score: 1.000).
+
 ---
 *Last updated: 2026-05-16*
