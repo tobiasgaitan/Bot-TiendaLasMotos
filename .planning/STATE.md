@@ -2,13 +2,11 @@
 
 ## Current Position
 **Phase:** Fase 4.3 - Optimización de Prompts y Compresión de Contexto.
-**Status:** Completed (v9.9.7).
-**Last activity:** Cierre de ticket BOT-PERF-44 (Fix de serialización de especificaciones del catálogo).
-
-## Key Decisions
+**Status:** In-Bake (Audited for Null Masking).
+**Last activity:** Detección y aislamiento de fallo de alineación de llaves (raw_price vs price) en BOT-PERF-45.
 
 | Decision | Phase | Source | Rationale |
-|----------|-------|--------|-----------|
+| Serialization Lock | Tarea 4.3 | Auditor | Prohibir el uso de .get() sin logs forenses en llaves requeridas por el LLM. |
 | Similitud Cadenas > 0.85 | Init | User | Evitar llamadas de red y latencia de embeddings externos. Uso de TF-IDF/Levenshtein puro. |
 | RAM Hydration | Init | User | Almacenamiento 100% en memoria para cero I/O disk calls. |
 | Formato Markdown Strict | Init | User | Cache devuelve directamente el bloque visual (PCC Pro) y no un objeto JSON. |
