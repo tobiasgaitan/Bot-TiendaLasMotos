@@ -13,6 +13,11 @@
 * **Observabilidad:** Langfuse SDK con decoradores `@observe()` para monitoreo de latencia, costo de tokens y trazas de razonamiento.
 * **Gestión:** Orquestación de dependencias mediante `uv`.
 
+### Quick Tasks Completed
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 026 | Hotfix Firestore Timeout | 2026-05-15 | pending | 026-hotfix-firestore-timeout |
+
 #### 3. Arquitectura de Infraestructura (GCP & Comandos)
 * **Intercepción de Comandos:** Lógica de `/reset` refactorizada para ser lineal, bloqueante e idempotente frente a concurrencias (`_active_resets`).
 * **Tracing:** Cada interacción genera un Trace único vinculado al userId (Teléfono E.164).
