@@ -1015,7 +1015,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         search_results = f"[SISTEMA: El usuario ya tiene en contexto la moto '{moto_interest_prev}'. REGLA OBLIGATORIA: NO listes otras motos ni ofrezcas más opciones. Enfócate en concretar la venta de '{moto_interest_prev}' (preguntar forma de pago o iniciar crédito).]"
                                     else:
                                         t_start = time.perf_counter()
-                                        matches = self._catalog_service.search_catalog(query)
+                                        catalog_response_str = self._catalog_service.search_catalog(query)
                                         t_end = time.perf_counter()
                                         latency = t_end - t_start
                                         logger.info(f"⏱️ [TELEMETRY] search_catalog latency: {latency:.4f}s for query: '{query}'")
@@ -1027,33 +1027,23 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                         "tool": "search_catalog",
                                                         "query": query,
                                                         "latency_s": round(latency, 4),
-                                                        "results_count": len(matches) if matches else 0,
+                                                        "result_length": len(catalog_response_str),
                                                     },
                                                     name="search_catalog_tool"
                                                 )
                                             except Exception as _lf_tel_err:
                                                 logger.warning(f"⚠️ [LANGFUSE] search_catalog observation failed: {_lf_tel_err}")
                                         
-                                        if matches:
+                                        if "No encontré motos" not in catalog_response_str:
                                             catalog_returned_results = True
-                                            search_results = f"Encontré {len(matches)} motos relacionados:\n"
-                                            for m in matches: 
-                                                name = m.get('name', 'Moto')
-                                                catalog_models_found.append(name)
-                                                # Using .get for category and price for maximum robustness
-                                                category = m.get('category', 'Moto')
-                                                price = m.get('price', m.get('formatted_price', 'Consultar'))
-                                                
-                                                search_results += f"- {name} ({category}): {price}\n"
-                                                if m.get('image_url'): search_results += f"  Image URL: {m['image_url']}\n"
-                                                if m.get('link'): search_results += f"  Link: {m['link']}\n"
-                                                if m.get('specs'): search_results += f"  Ficha Tecnica: {m['specs']}\n"
-                                                
-                                            competitor_brands = ["boxer", "nkd", "pulsar", "yamaha", "honda", "suzuki", "akt"]
-                                            if any(b in query.lower() for b in competitor_brands):
-                                                search_results = f"[SISTEMA: El usuario preguntó por la competencia. ESTÁS OBLIGADO a pivotar a nuestras alternativas...]\n\n" + search_results
+                                            search_results = catalog_response_str
+                                            
+                                            # Extrayendo los nombres de las motos del string de markdown para el guardrail
+                                            import re
+                                            extracted_names = re.findall(r"- (.*?) \(", search_results)
+                                            catalog_models_found.extend([name.strip() for name in extracted_names])
                                         else:
-                                            search_results = "No encontré motos en el catálogo para esa búsqueda."
+                                            search_results = catalog_response_str
                                 else:
                                     search_results = "Error: Servicio de catálogo no disponible."
                             except Exception as e:
