@@ -18,7 +18,7 @@ ENV PYTHONUNBUFFERED=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libmagic-dev \
-    gcc \
+    gcc \n    git \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy uv lock files and metadata required by build system
