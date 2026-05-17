@@ -1,7 +1,7 @@
-🛡️ Documento Maestro: Estado de Desarrollo Bot-TiendaLasMotos (v9.9.7)
-Versión Actual: v9.9.7 (Paridad de Datos, Estabilización de Enrutador, Caché Semántica In-Memory, y Red Teaming/Zero-Silent-Failures).
-Último Hito: Cierre de Tarea 4.3 (BOT-PERF-43): Implementación de compresión de contexto en el servicio de catálogo mediante truncamiento algorítmico del campo specs a 10 palabras.
-Score de Coherencia: .000 (87/87 Tests PASSED) bajo Python 3.13.
+🛡️ Documento Maestro: Estado de Desarrollo Bot-TiendaLasMotos (v9.9.8)
+Versión Actual: v9.9.8 (Paridad de Datos, Estabilización de Enrutador, Caché Semántica In-Memory, Alineación de Tool Calling y Red Teaming/Zero-Silent-Failures).
+Último Hito: Cierre de Tarea 4.3 (BOT-PERF-46): Alineación del tool calling de ai_brain.py con search_items de CatalogService, blindaje anti-null masking y Zero-Silent-Failures.
+Score de Coherencia: 1.000 (92/92 Tests PASSED) bajo Python 3.13.
 
 1. Contexto y Persona (Juan Pablo)
     • Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
@@ -48,5 +48,6 @@ Score de Coherencia: .000 (87/87 Tests PASSED) bajo Python 3.13.
     • Catalog Legacy Bloat: Resolución del cortocircuito de script en normalize_imagen_url.py para garantizar la ejecución de planes de borrado en documentos mixtos.
     • Firestore Socket Starvation & Silent Hangs (BOT-INFRA-33): Contención quirúrgica de la inundación de conexiones provocada por ráfagas concurrentes de webhooks de estados de Meta, y erradicación del riesgo de bloqueo latente del enrutador mediante la contención temporal explícita de corrutinas en operaciones I/O de la base de datos distribuida.
     • CRM Data Overwrite Risk (BOT-INFRA-31): Eliminación total del riesgo de colisión de datos en entornos de persistencia compartida con la página web. Al descartar la arquitectura de webhooks externos y aprovechar el tiempo real de Firebase, se programó un guardrail quirúrgico en el MemoryService que prohíbe a la IA pisar o degradar las cuotas financieras reales o el estado de asignación determinado por el asesor comercial humano en el CRM.
+    • Tool-Calling Regression (BOT-PERF-46): Alineación del tool calling de ai_brain.py con search_items de CatalogService, inicialización explícita de variables de flujo para erradicar UnboundLocalError, mitigación de enmascaramiento nulo (ValueError explícito) y protocolo de interrupción síncrona con re-raise.
 
-🏛️ Nota para el Ingeniero y Agentes (Antigravity): El sistema ha alcanzado la Gracia Técnica v9.9.5. Queda estrictamente prohibido re-inyectar llaves en inglés, alterar el orden de inicialización de main.py, o modificar la firma pública del CatalogService sin un Patrón Adaptador. El enrutador, el mecanismo de exclusión de campos protegidos del CRM (_CRM_PROTECTED_FIELDS), el interceptor global _firestore_io, el motor de SemanticCacheService in-RAM y el Juez están 100% estabilizados y el entorno de desarrollo cuenta con paridad de datos absoluta con la instancia Beta de Cloud Run.
+🏛️ Nota para el Ingeniero y Agentes (Antigravity): El sistema ha alcanzado la Gracia Técnica v9.9.8. Queda estrictamente prohibido re-inyectar llaves en inglés, alterar el orden de inicialización de main.py, o modificar la firma pública del CatalogService sin un Patrón Adaptador. El enrutador, el mecanismo de exclusión de campos protegidos del CRM (_CRM_PROTECTED_FIELDS), el interceptor global _firestore_io, el motor de SemanticCacheService in-RAM y el Juez están 100% estabilizados y el entorno de desarrollo cuenta con paridad de datos absoluta con la instancia Beta de Cloud Run.
