@@ -8,6 +8,9 @@
 |-------|------|--------|-------|------|
 | 1 | Arquitectura Core (Pure Python Math) | Completed | — | — |
 | 2 | Intercepción en CatalogService y Pruebas | Completed | — | — |
+| 4.2 | Optimización de Costos y Seguridad | Completed | — | 2026-05-16 |
+| 4.3 | Optimización de Prompts y Compresión de Contexto | Completed | — | 2026-05-16 |
+| 4.4 | Alineación de Tool Calling y Robustez de Errores | Completed | — | 2026-05-17 |
 
 ### Phases
 
@@ -40,5 +43,14 @@
 - [x] [BOT-PERF-45] Refactorizar la resolución de herramientas en `ai_brain.py` para consumir `search_items` y unificar la llave canónica `price`.
 - [x] Inyectar suite de aserción en `pytest` que prohíba de forma estricta los retornos vacíos o fallbacks silenciosos en la entrega de cuotas.
 
+#### Phase 4.4: Alineación de Tool Calling y Robustez de Errores
+**Goal:** Contener la regresión crítica en `ai_brain.py` y blindar el flujo de tool-calling de catálogo con validación nula y Zero-Silent-Failures.
+**Requirements:** Ticket BOT-PERF-46
+- [x] [BOT-PERF-46] Alinear `search_catalog` con `search_items` de `CatalogService`.
+- [x] Inicializar explícitamente variables del scope condicional para evitar `UnboundLocalError`.
+- [x] Validar de forma estricta que no exista enmascaramiento nulo en llaves críticas y lanzar `ValueError`.
+- [x] Forzar interrupción síncrona con re-raise en fallas del catálogo.
+- [x] Suite de no-regresión en `pytest` y validación con `npx agent-cli eval` al 100%.
+
 ---
-*Last updated: 2026-05-16*
+*Last updated: 2026-05-17*
