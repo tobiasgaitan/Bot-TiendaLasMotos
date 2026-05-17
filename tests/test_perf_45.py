@@ -223,3 +223,132 @@ def test_catalog_retains_ficha_tecnica():
         summary_text = match.group(1).strip()
         assert len(summary_text) > 0
         assert "Moto" in summary_text
+
+@pytest.mark.asyncio
+async def test_search_catalog_tool_execution_retains_ficha_tecnica():
+    """
+    Test Case 4:
+    - Verify that executing the search_catalog tool inside CerebroIA.pensar_respuesta
+      uses search_items, and the tool output (search_results) formatted into response_parts
+      contains 'Ficha Tecnica:' and the payload summary.
+    """
+    cerebro = CerebroIA()
+    cerebro.client = MagicMock()
+    cerebro._model_id = "gemini-2.0-flash"
+    
+    # Mock catalog service
+    mock_catalog = MagicMock()
+    mock_catalog.search_items.return_value = [
+        {
+            "name": "Victory Life",
+            "price": "$ 5.800.000",
+            "category": "Scooter",
+            "image_url": "https://img.url/life",
+            "summary": "Excelente scooter para ciudad"
+        }
+    ]
+    cerebro._catalog_service = mock_catalog
+    
+    # Mock LLM calls
+    fc = MockFunctionCall(name="search_catalog", args={"query": "Victory Life"})
+    candidate1 = MockCandidate(content=MockContent(parts=[MockPart(function_call=fc)]))
+    response1 = MockResponse(candidates=[candidate1])
+    
+    # Second turn reply
+    candidate2 = MockCandidate(content=MockContent(parts=[MockPart(text="La Victory Life es perfecta. Vale $ 5.800.000 y puedes verla aquí: ![Life](https://img.url/life)")]))
+    response2 = MockResponse(candidates=[candidate2])
+    
+    call_count = 0
+    captured_response_parts = None
+    
+    async def mock_call(*args, **kwargs):
+        nonlocal call_count, captured_response_parts
+        call_count += 1
+        if call_count == 1:
+            return response1
+        # Intercept the second call arguments to inspect the response_parts
+        captured_response_parts = args[1]
+        return response2
+        
+    with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
+         patch('app.services.ai_brain.SDK_AVAILABLE', True):
+         
+        prospect = {
+            "nombre": "Sofia",
+            "ciudad": "Medellín",
+            "forma_pago": "Contado"
+        }
+        await cerebro.pensar_respuesta("Quiero información de la Victory Life", prospect_data=prospect)
+        
+        # Verify search_items was called
+        mock_catalog.search_items.assert_called_once_with("Victory Life")
+        
+        # Verify that response_parts contains the tool output with Ficha Tecnica
+        assert captured_response_parts is not None
+        assert len(captured_response_parts) == 1
+        
+        # The part response is under .function_response.response
+        part = captured_response_parts[0]
+        part_result = part.function_response.response.get("result", "")
+        
+        assert "Ficha Tecnica:" in part_result
+        assert "Excelente scooter para ciudad" in part_result
+
+
+@pytest.mark.asyncio
+async def test_search_catalog_tool_execution_raises_error_on_missing_critical_keys():
+    """
+    Test Case 5:
+    - Verify that if the catalog matches are missing critical keys like name or summary or price,
+      a ValueError is raised and logged via logger.exception, and not silently swallowed.
+    """
+    cerebro = CerebroIA()
+    cerebro.client = MagicMock()
+    cerebro._model_id = "gemini-2.0-flash"
+    
+    # Mock catalog service to return item with no summary key
+    mock_catalog = MagicMock()
+    mock_catalog.search_items.return_value = [
+        {
+            "name": "TVS Sport 100",
+            "price": "$ 6.200.000",
+            "category": "Urban"
+            # summary is missing!
+        }
+    ]
+    cerebro._catalog_service = mock_catalog
+    
+    # Mock LLM calls
+    fc = MockFunctionCall(name="search_catalog", args={"query": "TVS Sport"})
+    candidate1 = MockCandidate(content=MockContent(parts=[MockPart(function_call=fc)]))
+    response1 = MockResponse(candidates=[candidate1])
+    
+    call_count = 0
+    async def mock_call(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return response1
+        
+    with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
+         patch('app.services.ai_brain.SDK_AVAILABLE', True), \
+         patch('app.services.ai_brain.logger.exception') as mock_log_exception:
+         
+        prospect = {
+            "nombre": "Pedro",
+            "ciudad": "Cali",
+            "forma_pago": "Crédito"
+        }
+        
+        # Call thinking logic
+        await cerebro.pensar_respuesta("Muéstrame la TVS Sport", prospect_data=prospect)
+        
+        # Verify that logger.exception was called with Catalog error and NULL MASKING message
+        mock_log_exception.assert_called()
+        exc_args = [call[0][0] for call in mock_log_exception.call_args_list]
+        
+        # We assert that the tool error was logged and raised
+        assert any("❌ Catalog error for query" in arg for arg in exc_args)
+        # Check that it contains NULL MASKING description in the traceback or message
+        tb_strings = [str(call[0]) for call in mock_log_exception.call_args_list]
+        assert any("NULL MASKING DETECTED" in s for s in tb_strings)
+

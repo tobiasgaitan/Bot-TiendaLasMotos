@@ -993,21 +993,29 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         f_name = fc.name
                         f_args = fc.args
                         
-                        if f_name == "trigger_human_handoff":
-                            reason = f_args.get("reason", "unknown")
-                            return f"HANDOFF_TRIGGERED:{reason}"
-                        
-                        elif f_name == "search_catalog":
-                            search_catalog_called = True
+                        if f_name == "search_catalog":
+                            # Inicialización explícita para evitar UnboundLocalError y fugas de variables
                             query = f_args.get("query", "")
+                            search_catalog_called = True
+                            catalog_returned_results = False
                             search_results = "No se encontraron resultados."
+                            skip_catalog = False
+                            moto_interest_prev = None
+                            ratio = 0.0
+                            t_start = 0.0
+                            t_end = 0.0
+                            latency = 0.0
+                            cost = 0.0
+                            catalog_response_str = ""
+                            extracted_names = []
+                            matches = []
+                            
                             try:
                                 if self._catalog_service:
                                     import time
                                     # --- INTERCEPTOR DE NEGOCIO (JSON Voorhees v6.6.6) ---
                                     # [UNIFICACIÓN] moto_interest enforced
                                     moto_interest_prev = prospect_data.get("moto_interest") if prospect_data else None
-                                    skip_catalog = False
                                     if moto_interest_prev:
                                         import difflib
                                         ratio = difflib.SequenceMatcher(None, str(query).lower(), str(moto_interest_prev).lower()).ratio()
@@ -1019,10 +1027,50 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         search_results = f"[SISTEMA: El usuario ya tiene en contexto la moto '{moto_interest_prev}'. REGLA OBLIGATORIA: NO listes otras motos ni ofrezcas más opciones. Enfócate en concretar la venta de '{moto_interest_prev}' (preguntar forma de pago o iniciar crédito).]"
                                     else:
                                         t_start = time.perf_counter()
-                                        catalog_response_str = self._catalog_service.search_catalog(query)
+                                        
+                                        # Llamada estructurada certificada en v9.9.7
+                                        matches = self._catalog_service.search_items(query)
+                                        
                                         t_end = time.perf_counter()
                                         latency = t_end - t_start
-                                        logger.info(f"⏱️ [TELEMETRY] search_catalog latency: {latency:.4f}s for query: '{query}'")
+                                        logger.info(f"⏱️ [TELEMETRY] search_items latency: {latency:.4f}s for query: '{query}'")
+                                        
+                                        # Formateo de los resultados a Markdown con aserción estricta de llaves
+                                        if matches:
+                                            catalog_response_str = f"Encontré {len(matches)} motos relacionados:\n"
+                                            for m in matches:
+                                                # Validaciones estrictas de Anti-Null Masking
+                                                name = m.get("name")
+                                                summary = m.get("summary")
+                                                price = m.get("price") or m.get("formatted_price")
+                                                
+                                                if not name or not summary or not price:
+                                                    # Forzar error explícito si hay ausencia de llaves críticas
+                                                    raise ValueError(f"[NULL MASKING DETECTED] Llave crítica nula o vacía en catálogo: name={name}, summary={summary}, price={price}")
+                                                
+                                                catalog_response_str += f"- {name} ({m.get('category', 'Moto')}): {price}\n"
+                                                if m.get('image_url'):
+                                                    catalog_response_str += f"  Image URL: {m['image_url']}\n"
+                                                if m.get('link'):
+                                                    catalog_response_str += f"  Link: {m['link']}\n"
+                                                
+                                                # Aserción obligatoria de Ficha Tecnica
+                                                catalog_response_str += f"  Ficha Tecnica: {summary}\n"
+                                                
+                                            # Pivotar a la competencia si aplica
+                                            competitor_brands = ["boxer", "nkd", "pulsar", "yamaha", "honda", "suzuki", "akt"]
+                                            if any(b in query.lower() for b in competitor_brands):
+                                                catalog_response_str = f"[SISTEMA: El usuario preguntó por la competencia. ESTÁS OBLIGADO a pivotar a nuestras alternativas...]\n\n" + catalog_response_str
+                                                
+                                            catalog_returned_results = True
+                                            search_results = catalog_response_str
+                                            
+                                            # Extraer nombres para guardrail de alucinaciones
+                                            catalog_models_found.extend([m["name"].strip() for m in matches])
+                                        else:
+                                            catalog_response_str = "No encontré motos en el catálogo para esa búsqueda."
+                                            search_results = catalog_response_str
+                                            
                                         # [BOT-TRACE-201] Report tool latency to Langfuse as a child span metadata
                                         if LANGFUSE_AVAILABLE:
                                             try:
@@ -1037,21 +1085,14 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                 )
                                             except Exception as _lf_tel_err:
                                                 logger.warning(f"⚠️ [LANGFUSE] search_catalog observation failed: {_lf_tel_err}")
-                                        
-                                        if "No encontré motos" not in catalog_response_str:
-                                            catalog_returned_results = True
-                                            search_results = catalog_response_str
-                                            
-                                            # Extrayendo los nombres de las motos del string de markdown para el guardrail
-                                            extracted_names = re.findall(r"- (.*?) \(", search_results)
-                                            catalog_models_found.extend([name.strip() for name in extracted_names])
-                                        else:
-                                            search_results = catalog_response_str
+                                                
                                 else:
                                     search_results = "Error: Servicio de catálogo no disponible."
+                                    
                             except Exception as e:
                                 logger.exception(f"❌ Catalog error for query '{query}' (Prospect: {user_name}): {e}")
-                                search_results = "Error consultando catálogo."
+                                # Protocolo de interrupción síncrona con re-raise
+                                raise e
                                 
                             # Personalización de resultados (v8.3)
                             if catalog_returned_results:
