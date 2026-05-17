@@ -23,6 +23,8 @@ dependencies = [
     "protobuf",
     "python-dotenv>=1.0.0",
     "langfuse>=4.6.1",
+    "toons>=0.6.0",
+    "stoon",
 ]
 
 
@@ -44,3 +46,6 @@ name = "bot-tiendalasmotos"
 
 [tool.agents-cli.create_params]
 deployment_target = "cloud_run"
+
+[tool.uv.sources]
+stoon = { git = "https://github.com/azimuth-logic-research/S-TOON-Protocol.git" }
