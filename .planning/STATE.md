@@ -20,6 +20,7 @@ None
 |---|-------------|------|--------|-----------|
 | 029 | Fix specs serialization by using pre-summarized summary | 2026-05-16 | fb09334 | 029-fix-specs-serialization |
 | 031 | Align search_catalog with search_items and avoid UnboundLocalError | 2026-05-17 | e9eb5dc | 031-hotfix-ai-brain-alignment |
+| 032 | Corregir sintaxis de COPY en Dockerfile e instalar git | 2026-05-17 | 7c7769d | 032-corregir-sintaxis-dockerfile |
 
 ---
 *Last updated: 2026-05-17*
