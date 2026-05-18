@@ -1,1 +1,0 @@
-- [v10.0.0] Resolución de regresión nomenclatural (price vs precio) en CatalogService y limpieza de caché. Inyección de bonos de contado validados (bonusAmount, bonusEndDate). Score certificado: 1.000.
