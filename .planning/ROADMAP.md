@@ -54,3 +54,4 @@
 
 ---
 *Last updated: 2026-05-17*
+- [x] BOT-BE-53: Paridad restaurada (price/precio) e integración de bonos de contado (Score 1.000).
