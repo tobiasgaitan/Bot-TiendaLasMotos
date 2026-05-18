@@ -1,7 +1,7 @@
 🛡️ Documento Maestro: Estado de Desarrollo Bot-TiendaLasMotos (v9.9.9)
-Versión Actual: v9.9.9 (Integración TOON, Middleware S-TOON y Resolución de Infraestructura en Cloud Build).
+Versión Actual: v10.0.0 (Integración TOON, Middleware S-TOON y Resolución de Infraestructura en Cloud Build).
 Último Hito: Cierre de tickets BOT-PERF-46, BOT-ARQ-46 y BOT-INFRA-DOCKER-52. Se unificó la herramienta search_catalog con search_items eliminando regresiones. Se integraron la librería nativa de Rust toons [1] y el middleware de protección contra inyecciones stoon [2] en la capa superior del Webhook de Meta. Se solventó la falla de compilación en GCP Cloud Build mediante la instalación síncrona del binario git en la imagen base python:3.13-slim, previniendo de forma determinista el error "Git executable not found" durante la resolución de uv sync.
-Score de Coherencia: 1.000 (93/93 Tests PASSED) bajo Python 3.13.
+Score de Coherencia: 1.000 (97 Tests PASSED) bajo Python 3.13.
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
@@ -61,3 +61,4 @@ Tool Calling Regression & Scope Leak (BOT-PERF-46): Se eliminó de raíz la regr
 Cloud Build Compilación Fail (BOT-INFRA-52): Resolución de la regresión de construcción de la imagen en GCP provocada por la falta del binario git para clonar de forma asíncrona la dependencia del protocolo S-TOON de Azimuth Logic Research.
 
 🏛️ Nota para el Ingeniero y Agentes (Antigravity): El sistema ha alcanzado la Gracia Técnica v9.9.9. Queda estrictamente prohibido re-inyectar llaves en inglés, alterar el orden de inicialización de main.py, o modificar las firmas de los diccionarios devueltos por search_items sin un Patrón Adaptador. Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELDS), interceptores de base de datos, el protocolo anti-null masking de herramientas y las dependencias compiladas de Rust de toons y stoon están 100% estabilizados y en paridad con la instancia Beta.
+- [v10.0.0] Resolución de regresión nomenclatural (price vs precio) en CatalogService y limpieza de caché. Inyección de bonos de contado validados (bonusAmount, bonusEndDate). Score certificado: 1.000.
