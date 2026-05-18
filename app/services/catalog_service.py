@@ -7,6 +7,7 @@ Provides in-memory access to catalog items with category filtering.
 import logging
 import re
 import unicodedata
+from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
 
 from google.cloud import firestore
@@ -94,8 +95,8 @@ class CatalogService:
                 # Name: Construct "Brand Reference" if brand exists, else just Reference
                 name = f"{brand} {ref}".strip() if brand else str(ref).strip()
                 
-                # Price: precio -> price
-                price_val = data.get("precio") or data.get("price") or 0
+                # Price: price (canonical)
+                price_val = data.get("price") or 0
                 price = self._parse_price(price_val)
                 
                 # Category: categoria -> category -> machine_name -> 'general'
@@ -190,6 +191,13 @@ class CatalogService:
                 item_search_text = " ".join(item_search_tokens)
 
                 # Create standardized item
+                bonus_amount = 0
+                try:
+                    bonus_amount = int(float(data.get("bonusAmount") or 0))
+                except (ValueError, TypeError):
+                    pass
+                bonus_end_date = data.get("bonusEndDate")
+
                 mapped_item = {
                     "id": doc.id,
                     "name": name,
@@ -204,7 +212,9 @@ class CatalogService:
                     "search_tokens": item_search_tokens,
                     "search_text": item_search_text,
                     "searchBy": search_tags,
-                    "cc": cc  # Store numeric CC for late-binding financial logic
+                    "cc": cc,  # Store numeric CC for late-binding financial logic
+                    "bonusAmount": bonus_amount,
+                    "bonusEndDate": bonus_end_date
                 }
 
                 self._items.append(mapped_item)
@@ -454,6 +464,8 @@ class CatalogService:
                 # Strict Rule: No assumptions, logic handles reg_cost=0 naturally.
                 formatted_w_soat = f"${total_price:,.0f} (incluye SOAT, Matrícula, y tramites)".replace(",", ".")
                 
+                bonus_info = self._get_active_bonus_info(item.get("bonusAmount"), item.get("bonusEndDate"))
+                
                 # Truncate according to objective: Name, Price, Category, Image URL, and 10-word summary
                 truncated_item = {
                     "name": item.get("name"),
@@ -465,6 +477,14 @@ class CatalogService:
                     "searchBy": item.get("searchBy", []), # Include search tokens for Judge validation
                     "summary": self._summarize(item.get("description", ""))
                 }
+                
+                if bonus_info:
+                    truncated_item["bonusAmount"] = bonus_info["amount"]
+                    truncated_item["bonusEndDate"] = bonus_info["end_date"]
+                else:
+                    truncated_item["bonusAmount"] = 0
+                    truncated_item["bonusEndDate"] = None
+                    
                 unique_results.append(truncated_item)
                 seen_ids.add(item["id"])
                 
@@ -502,7 +522,14 @@ class CatalogService:
                 category = m.get('category', 'Moto')
                 price = m.get('price', m.get('formatted_price', 'Consultar'))
                 
-                search_results += f"- {name} ({category}): {price}\n"
+                bonus_str = ""
+                b_amt = m.get("bonusAmount", 0)
+                b_end = m.get("bonusEndDate")
+                if b_amt > 0 and b_end:
+                    formatted_amt = f"${b_amt:,.0f}".replace(",", ".")
+                    bonus_str = f" [BONO EXCLUSIVO DE CONTADO: {formatted_amt} válido hasta {b_end}]"
+                
+                search_results += f"- {name} ({category}): {price}{bonus_str}\n"
                 if m.get('image_url'): search_results += f"  Image URL: {m['image_url']}\n"
                 if m.get('link'): search_results += f"  Link: {m['link']}\n"
                 if m.get('summary'): search_results += f"  Ficha Tecnica: {m['summary']}\n"
@@ -526,6 +553,99 @@ class CatalogService:
         if len(words) <= max_words:
             return clean_text
         return " ".join(words[:max_words]) + "..."
+
+    def _get_active_bonus_info(self, bonus_amount: Any, bonus_end_date: Any) -> Optional[Dict[str, Any]]:
+        """
+        Validates the bonus and returns formatted amount and date if active.
+        """
+        try:
+            amt = int(float(bonus_amount or 0))
+            if amt <= 0:
+                return None
+        except (ValueError, TypeError):
+            return None
+
+        if not bonus_end_date:
+            return None
+
+        try:
+            now = datetime.now()
+            dt = None
+            
+            # 1. Handle objects with 'timestamp' or 'to_datetime' (like Firestore Timestamp or datetime)
+            if hasattr(bonus_end_date, 'timestamp'):
+                dt = bonus_end_date
+                if hasattr(dt, 'to_datetime'):
+                    dt = dt.to_datetime()
+                if dt.tzinfo is not None:
+                    # Make now tz-aware using the same timezone
+                    now_tz = datetime.now(dt.tzinfo)
+                    if now_tz <= dt:
+                        pass
+                    else:
+                        return None
+                else:
+                    if now <= dt:
+                        pass
+                    else:
+                        return None
+                        
+            # 2. Handle string formats
+            elif isinstance(bonus_end_date, str):
+                parsed = False
+                for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S.%fZ"):
+                    try:
+                        dt_parsed = datetime.strptime(bonus_end_date.split('.')[0].replace('Z', ''), fmt[:len(bonus_end_date.split('.')[0].replace('Z', ''))])
+                        if now <= dt_parsed:
+                            dt = dt_parsed
+                            parsed = True
+                            break
+                        else:
+                            return None
+                    except ValueError:
+                        continue
+                if not parsed:
+                    match = re.match(r'(\d{4})-(\d{2})-(\d{2})', bonus_end_date)
+                    if match:
+                        dt = datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+                        dt = dt.replace(hour=23, minute=59, second=59)
+                        if now <= dt:
+                            pass
+                        else:
+                            return None
+                    else:
+                        return None
+            # 3. Handle epoch timestamp
+            elif isinstance(bonus_end_date, (int, float)):
+                dt = datetime.fromtimestamp(bonus_end_date)
+                if now <= dt:
+                    pass
+                else:
+                    return None
+            else:
+                return None
+
+            if dt:
+                # Format date Y: YYYY-MM-DD
+                date_str = dt.strftime("%Y-%m-%d")
+                # Format amount X: e.g. $500.000 (Colombia format)
+                amt_str = f"${amt:,.0f}".replace(",", ".")
+                return {
+                    "amount": amt,
+                    "formatted_amount": amt_str,
+                    "end_date": date_str,
+                    "raw_end_date": bonus_end_date
+                }
+        except Exception as e:
+            logger.error(f"⚠️ Error evaluating bonusEndDate '{bonus_end_date}': {str(e)}")
+            return None
+        return None
+
+    def _is_bonus_active(self, bonus_amount: Any, bonus_end_date: Any) -> bool:
+        """
+        Validates if the bonus is greater than 0 and active (current date <= bonus_end_date).
+        """
+        return self._get_active_bonus_info(bonus_amount, bonus_end_date) is not None
 
     def _extract_cc(self, data: Dict[str, Any]) -> int:
         """
