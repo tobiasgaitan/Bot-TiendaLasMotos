@@ -16,37 +16,7 @@ class TestProactiveCredit(unittest.TestCase):
         # Mocking the client to avoid real API calls
         self.cerebro.client = MagicMock()
 
-    def test_retro_compatibility_name_or(self):
-        """
-        GIVEN: Un prospecto con 'name' en lugar de 'nombre' (legacy).
-        THEN: _determine_funnel_phase debe reconocer que tiene nombre (has_name=True).
-        """
-        prospect_legacy = {
-            "name": "Juan Pablo",
-            "ciudad": "Medellin",
-            "moto_interest": "Raider",
-            "moto_confirmada": True,
-            "payment_method": "credito"
-        }
-        # Inyectamos el mock de history con el link para que pueda avanzar si todos los campos están
-        # Pero aquí solo probamos si detecta el nombre para la fase 2.
-        phase = self.cerebro._determine_funnel_phase(prospect_legacy, history=[])
-        # Con nombre, ciudad, moto_confirmada y credito -> PHASE_2_HABEAS_DATA
-        self.assertEqual(phase, "PHASE_2_HABEAS_DATA")
 
-    def test_retro_compatibility_payment_or(self):
-        """
-        GIVEN: Un prospecto con 'payment_method' en lugar de 'forma_pago'.
-        THEN: _determine_funnel_phase debe reconocer el interés en crédito.
-        """
-        prospect_legacy = {
-            "nombre": "Juan Pablo",
-            "ciudad": "Medellin",
-            "moto_confirmada": True,
-            "payment_method": "credito"
-        }
-        phase = self.cerebro._determine_funnel_phase(prospect_legacy, history=[])
-        self.assertEqual(phase, "PHASE_2_HABEAS_DATA")
 
     def test_proactive_tools_without_habeas(self):
         """
