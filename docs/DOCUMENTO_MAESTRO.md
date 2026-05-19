@@ -1,7 +1,7 @@
-🛡️ Documento Maestro: Estado de Desarrollo Bot-TiendaLasMotos (v9.9.9)
-Versión Actual: v10.0.0 (Integración TOON, Middleware S-TOON y Resolución de Infraestructura en Cloud Build).
-Último Hito: Cierre de tickets BOT-PERF-46, BOT-ARQ-46 y BOT-INFRA-DOCKER-52. Se unificó la herramienta search_catalog con search_items eliminando regresiones. Se integraron la librería nativa de Rust toons [1] y el middleware de protección contra inyecciones stoon [2] en la capa superior del Webhook de Meta. Se solventó la falla de compilación en GCP Cloud Build mediante la instalación síncrona del binario git en la imagen base python:3.13-slim, previniendo de forma determinista el error "Git executable not found" durante la resolución de uv sync.
-Score de Coherencia: 1.000 (97 Tests PASSED) bajo Python 3.13.
+🛡️ Documento Maestro: Estado de Desarrollo Bot-TiendaLasMotos (v10.1.0)
+Versión Actual: v10.1.0 (Purga de Llaves Legacy y Firma de calculate_credit_score).
+Último Hito: Cierre de ticket BOT-BE-035 (Quick Task 035). Se purgaron físicamente los fallbacks legacy ('name', 'city', 'payment_method') en ai_brain.py y se alineó la firma de la herramienta calculate_credit_score con 'entidad' y 'reportes' pasándolos al motor financiero de forma limpia. Se aseguraron las directivas del Auditor con la aserción de no enmascaramiento nulo de 'Ficha Tecnica:'.
+Score de Coherencia: 1.000 (95 Tests PASSED, 2 skipped) bajo Python 3.13.
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
