@@ -37,11 +37,11 @@ class TestHabeasDataRegression(unittest.TestCase):
         as of refactor b4471b3. Tests must use this key to correctly exercise the gate.
         """
         prospect_data = {
-            "name": "Test User",
+            "nombre": "Test User",
             "ciudad": "Medellin",
             "moto_interest": "TVS Raider",
             "moto_confirmada": True,
-            "payment_method": "credito",
+            "forma_pago": "credito",
             "habeas_data_accepted": True,        # Canonical key (v7.7.0) — was habeas_data_accepted_accepted
             "habeas_data_accepted_sent": False   # Gate condition: script not sent yet
         }
@@ -66,12 +66,11 @@ class TestHabeasDataRegression(unittest.TestCase):
         El behavior de no-link es agnóstico al tipo de los objetos del historial.
         """
         prospect_data = {
-            "name": "Test User",
             "nombre": "Test User",
             "ciudad": "Medellin",
             "moto_interest": "TVS Raider",
             "moto_confirmada": True,
-            "payment_method": "credito",
+            "forma_pago": "credito",
             "habeas_data_accepted": True,        # Canonical key (v7.7.0)
             "habeas_data_accepted_sent": True    # Script was sent — but no link in chat
         }
@@ -88,12 +87,11 @@ class TestHabeasDataRegression(unittest.TestCase):
         Uses canonical key 'habeas_data_accepted' (v7.7.0).
         """
         prospect_data = {
-            "name": "Test User",
             "nombre": "Test User",     # Required by has_name check (line 329)
             "ciudad": "Medellin",
             "moto_interest": "TVS Raider",
             "moto_confirmada": True,
-            "payment_method": "credito",
+            "forma_pago": "credito",
             "habeas_data_accepted": True,        # Canonical key (v7.7.0)
             "habeas_data_accepted_sent": True
         }

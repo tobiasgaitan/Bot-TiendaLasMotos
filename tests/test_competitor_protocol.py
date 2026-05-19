@@ -22,11 +22,11 @@ class TestCompetitorProtocol(unittest.TestCase):
         """Verifica que el funnel NO avance a Fase 2 si hay una marca de competencia."""
         # Escenario: Tenemos nombre y ciudad, pero la moto es competencia (Boxer)
         prospect_data = {
-            "name": "Pedro Picapiedra",
+            "nombre": "Pedro Picapiedra",
             "ciudad": "Bogotá",
             "moto_interest": "Boxer CT 100",
             "moto_confirmada": True,
-            "payment_method": "credito",
+            "forma_pago": "credito",
             "interest_confirmed_in_alternative": False
         }
         
@@ -36,11 +36,11 @@ class TestCompetitorProtocol(unittest.TestCase):
     def test_determine_phase_allows_friendly_brand(self):
         """Verifica que el funnel AVANCE a Fase 2 si la moto es de la casa (TVS)."""
         prospect_data = {
-            "name": "Pedro Picapiedra",
+            "nombre": "Pedro Picapiedra",
             "ciudad": "Bogotá",
             "moto_interest": "TVS Apache 160",
             "moto_confirmada": True,
-            "payment_method": "credito",
+            "forma_pago": "credito",
             "interest_confirmed_in_alternative": False
         }
         
@@ -50,11 +50,11 @@ class TestCompetitorProtocol(unittest.TestCase):
     def test_determine_phase_allows_competitor_if_alternative_confirmed(self):
         """Verifica que el funnel AVANCE si el usuario confirmó interés en la alternativa."""
         prospect_data = {
-            "name": "Pedro Picapiedra",
+            "nombre": "Pedro Picapiedra",
             "ciudad": "Bogotá",
             "moto_interest": "NKD 125", # Competencia
             "moto_confirmada": True,
-            "payment_method": "credito",
+            "forma_pago": "credito",
             "interest_confirmed_in_alternative": True # Confirmado interés en alternativa
         }
         

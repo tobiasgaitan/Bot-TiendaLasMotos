@@ -188,12 +188,18 @@ class FinancialService:
     # Alias for legacy compatibility
     calcular_cuota = calculate_payment
 
-    def evaluate_profile(self, profile_data: Optional[Dict[str, Any]] = None, **kwargs) -> Dict[str, Any]:
+    def evaluate_profile(self, profile_data: Optional[Dict[str, Any]] = None, entidad: Optional[str] = None, reportes: Optional[str] = None, **kwargs) -> Dict[str, Any]:
         """
         Evaluate financial profile and determine best strategy (SSOT).
         Supports both dict input and direct keyword arguments.
         """
         data = profile_data or kwargs
+        # Capture from parameters if not present in profile_data/kwargs
+        entidad = entidad or data.get("entidad")
+        reportes = reportes or data.get("reportes")
+        
+        logger.info(f"Evaluating profile with explicit entidad: {entidad}, reportes: {reportes}")
+
         score = self._scoring_service.calculate_score(
             ocupacion_y_contrato=data.get("ocupacion_y_contrato", data.get("labor_type", "")),
             historial_datacredito=data.get("historial_datacredito", data.get("credit_history", "")),
@@ -225,7 +231,9 @@ class FinancialService:
             "requires_aval": strategy_info["requires_aval"],
             "is_fallback": strategy_info.get("is_fallback", False),
             "requires_documents": requires_documents,
-            "explanation": f"Basado en tu perfil (Score: {score}), la mejor opción es {strategy_info['entity']}."
+            "explanation": f"Basado en tu perfil (Score: {score}), la mejor opción es {strategy_info['entity']}.",
+            "entidad": entidad,
+            "reportes": reportes
         }
 
     # Alias for legacy compatibility

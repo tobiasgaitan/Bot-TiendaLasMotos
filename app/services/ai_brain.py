@@ -348,8 +348,8 @@ class CerebroIA:
         is_sent = prospect_data.get("habeas_data_accepted_sent") is True
         
         if is_accepted and is_sent and has_sent_link:
-            has_name = bool(prospect_data.get("nombre") or prospect_data.get("name"))
-            has_city = bool(prospect_data.get("ciudad") or prospect_data.get("city"))
+            has_name = bool(prospect_data.get("nombre"))
+            has_city = bool(prospect_data.get("ciudad"))
             if not has_name or not has_city:
                 # Regla v1.3.2: No avanzar a perfilamiento sin nombre ni ciudad (Guardrail de Vitrina)
                 logger.warning(f"⚠️ Prospecto aceptó Habeas Data pero falta nombre o ciudad. Re-enrutando a Phase 1.")
@@ -359,10 +359,10 @@ class CerebroIA:
         # Phase 2: Habeas Data Request (Legal Script)
         # Condition: User selected 'credito' AND we have name AND city AND moto_confirmada is True.
         # CRITICAL FIX: Extraction of moto_interest is not enough; explicit confirmation is required.
-        has_name = bool(prospect_data.get("nombre") or prospect_data.get("name"))
-        has_city = bool(prospect_data.get("ciudad") or prospect_data.get("city"))
+        has_name = bool(prospect_data.get("nombre"))
+        has_city = bool(prospect_data.get("ciudad"))
         moto_confirmada = prospect_data.get("moto_confirmada") is True
-        is_credit = bool(prospect_data.get("forma_pago") == "credito" or prospect_data.get("payment_method") == "credito")
+        is_credit = bool(prospect_data.get("forma_pago") == "credito")
 
         # --- BLOQUEO PROTOCOLO COMPETENCIA (Directiva 2026) ---
         # Bloqueamos el avance a fase legal si la moto es de la competencia.
@@ -643,6 +643,14 @@ REGLAS ESTRICTAS DE USO:
                         "plan_celular": {
                             "type": "string",
                             "description": "¿Tiene plan de celular postpago activo? (Otorga bono de +50 pts). MÁPEALO a 'Sí' o 'No'."
+                        },
+                        "entidad": {
+                            "type": "string",
+                            "description": "Entidad financiera con la que se simula el crédito (ej. Sufi, Finesa, Brilla)."
+                        },
+                        "reportes": {
+                            "type": "string",
+                            "description": "Detalles adicionales sobre reportes financieros si los tiene."
                         }
                     },
                     "required": ["ocupacion_y_contrato", "ingresos_demostrables", "historial_datacredito"]
@@ -704,9 +712,9 @@ REGLAS ESTRICTAS DE USO:
         # 2. Build Instructions block based on State
         funnel_instruction = ""
         if phase == "PHASE_1_PROFILING":
-            p_name = prospect_data.get("nombre") or prospect_data.get("name") if prospect_data else None
-            p_ciudad = prospect_data.get("ciudad") or prospect_data.get("city") if prospect_data else None
-            p_payment = prospect_data.get("forma_pago") or prospect_data.get("payment_method") if prospect_data else None
+            p_name = prospect_data.get("nombre") if prospect_data else None
+            p_ciudad = prospect_data.get("ciudad") if prospect_data else None
+            p_payment = prospect_data.get("forma_pago") if prospect_data else None
             
             # Sincronización Protegida: Confiamos en prospect_data actualizado por el socket síncrono.
             # Se eliminan detecciones manuales por Regex para evitar falsos positivos y bloqueos de lógica.
@@ -823,8 +831,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 full_prompt += f"[SISTEMA: Recuerda la ONE-SHOT RULE. Tu respuesta debe terminar con UNA (1) sola pregunta. Tienes prohibido repreguntar por los datos que ya están en <datos_ya_capturados>.]\n\n"
                 
                 # --- REFUERZO DE IDENTIDAD v8.3 (Ventana de Atención Final) ---
-                if prospect_data and prospect_data.get("name"):
-                    p_name = prospect_data.get("name")
+                if prospect_data and prospect_data.get("nombre"):
+                    p_name = prospect_data.get("nombre")
                     full_prompt += f"\n[CRITICAL IDENTITY RULE: Estás hablando con {p_name}. Tu respuesta DEBE empezar con un saludo personalizado hacia él. Ignorar esto es un fallo de seguridad.]\n"
                 
                 full_prompt += "Juan Pablo:"
@@ -835,7 +843,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 # 💎 [FULL PROMPT AUDIT] (Requirement v2)
                 # We log the consolidated prompt to verify that PII and Phase are correctly injected.
                 audit_log = f"\n--- PROMPT AUDIT START ---\nPHASE: {phase}\nINSTRUCTION: {funnel_instruction}\nPROSPECT: {prospect_data}\nPROMPT: {full_prompt[:1500]}...\n--- PROMPT AUDIT END ---\n"
-                logger.info(f"💎 [FULL PROMPT AUDIT] sending to Gemini for {prospect_data.get('name') if prospect_data else 'None'}: {audit_log}")
+                logger.info(f"💎 [FULL PROMPT AUDIT] sending to Gemini for {prospect_data.get('nombre') if prospect_data else 'None'}: {audit_log}")
 
                 try:
                     response = await self._call_gemini_with_retry_async(
@@ -1116,7 +1124,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         mora_y_paz_salvo=f_args.get("mora_y_paz_salvo", ""),
                                         gastos_vivienda=f_args.get("gastos_vivienda", ""),
                                         tiene_gas_natural=f_args.get("tiene_gas_natural", False),
-                                        plan_celular=f_args.get("plan_celular", "No")
+                                        plan_celular=f_args.get("plan_celular", "No"),
+                                        entidad=f_args.get("entidad"),
+                                        reportes=f_args.get("reportes")
                                     )
                                     if res.get('entity') == "Brilla de Gases":
                                         credit_res = (
