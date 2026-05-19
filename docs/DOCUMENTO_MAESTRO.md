@@ -1,6 +1,6 @@
-🛡️ Documento Maestro: Estado de Desarrollo Bot-TiendaLasMotos (v10.2.0)
-Versión Actual: v10.2.0 (Purga de Deuda Técnica Documental).
-Último Hito: Cierre de ticket BOT-AUDIT-102 (Quick Task 036). Se purgaron físicamente 8 archivos legados e inútiles de la iteración V6 (CLOUD_SHELL_DEPLOYMENT, DEPLOYMENT, DEPLOYMENT_ALTERNATIVE, V6_CONFIG_FIX, V6_DEPLOYMENT_GUIDE, V6_EXECUTIVE_SUMMARY, V6_ROUTER_ACTIVATION, V6_SIMPLIFIED_CONFIG), garantizando la no existencia de variables huérfanas en el sistema y manteniendo el directorio raíz limpio.
+🛡️ Documento Maestro: Estado de Desarrollo Bot-TiendaLasMotos (v10.3.0)
+Versión Actual: v10.3.0 (Resolución FASTAPI FREEZE y Telemetría Langfuse v4).
+Último Hito: Cierre de ticket BOT-AUDIT-103. Refactorización asíncrona estricta de 'generate_summary' erradicando el bloqueo del Event Loop. Implementación de '_LangfuseContextShim' para paridad con SDK v4. Blindaje Zero-Silent-Failures en '_call_gemini_with_retry_async'.
 Score de Coherencia: 1.000 (95 Tests PASSED, 2 skipped) bajo Python 3.13.
 
 1. Contexto y Persona (Juan Pablo)
@@ -63,3 +63,4 @@ Cloud Build Compilación Fail (BOT-INFRA-52): Resolución de la regresión de co
 🏛️ Nota para el Ingeniero y Agentes (Antigravity): El sistema ha alcanzado la Gracia Técnica v9.9.9. Queda estrictamente prohibido re-inyectar llaves en inglés, alterar el orden de inicialización de main.py, o modificar las firmas de los diccionarios devueltos por search_items sin un Patrón Adaptador. Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELDS), interceptores de base de datos, el protocolo anti-null masking de herramientas y las dependencias compiladas de Rust de toons y stoon están 100% estabilizados y en paridad con la instancia Beta.
 - [v10.0.0] Resolución de regresión nomenclatural (price vs precio) en CatalogService y limpieza de caché. Inyección de bonos de contado validados (bonusAmount, bonusEndDate). Score certificado: 1.000.
 - [v10.2.0] Purga completa de 8 archivos de documentación legacy V6 del directorio raíz. Verificación con scaffold y test unitario de no-regresión de Ficha Tecnica. Score certificado: 1.000.
+- [v10.3.0] Cierre de ticket BOT-AUDIT-103. Refactorización asíncrona estricta de 'generate_summary' erradicando el bloqueo del Event Loop. Implementación de '_LangfuseContextShim' para paridad con SDK v4. Blindaje Zero-Silent-Failures en '_call_gemini_with_retry_async'. Score de Coherencia: 1.000 (95 Tests PASSED, 2 skipped) bajo Python 3.13.

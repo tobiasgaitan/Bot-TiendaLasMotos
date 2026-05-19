@@ -29,23 +29,52 @@ except ImportError:
 # [BOT-TRACE-201] Langfuse Observability — optional, graceful degradation
 # WHY: Langfuse keys may not be set in local dev. The guard ensures the app
 # boots and operates normally even without observability configured.
+import sys
+import types as py_types
+
 try:
-    from langfuse.decorators import observe, langfuse_context
+    from langfuse import observe
     LANGFUSE_AVAILABLE = True
     logger.info("🔭 [LANGFUSE] Observability context initialized.")
 except Exception as _lf_err:
     LANGFUSE_AVAILABLE = False
-    logger.warning(f"⚠️ [LANGFUSE] Observability disabled or langfuse_context not found: {_lf_err}")
+    logger.warning(f"⚠️ [LANGFUSE] Observability disabled: {_lf_err}")
     
-    # Provide no-op fallbacks
+    # Provide no-op fallback
     def observe(*args, **kwargs):
         def decorator(fn): return fn
         return args[0] if args and callable(args[0]) else decorator
-    
-    class _NoOpContext:
-        def update_current_trace(self, **kwargs): pass
-        def update_current_observation(self, **kwargs): pass
-    langfuse_context = _NoOpContext()
+
+class _LangfuseContextShim:
+    def update_current_trace(self, user_id=None, session_id=None, tags=None, metadata=None):
+        try:
+            from opentelemetry import trace
+            from langfuse._client.attributes import LangfuseOtelSpanAttributes
+            
+            span = trace.get_current_span()
+            if span is not None and span.is_recording():
+                if user_id is not None:
+                    span.set_attribute(LangfuseOtelSpanAttributes.TRACE_USER_ID, str(user_id)[:200])
+                if session_id is not None:
+                    span.set_attribute(LangfuseOtelSpanAttributes.TRACE_SESSION_ID, str(session_id)[:200])
+                if tags is not None:
+                    span.set_attribute(LangfuseOtelSpanAttributes.TRACE_TAGS, [str(t) for t in tags])
+                if metadata is not None:
+                    for k, v in metadata.items():
+                        span.set_attribute(f"{LangfuseOtelSpanAttributes.TRACE_METADATA}.{k}", str(v)[:200])
+        except Exception as e:
+            logger.warning(f"⚠️ [LANGFUSE_SHIM] Failed to update current trace: {e}")
+
+    def update_current_observation(self, **kwargs):
+        pass
+
+langfuse_context = _LangfuseContextShim()
+
+# Inject into sys.modules to satisfy any inline imports of langfuse.decorators
+decorators_mock = py_types.ModuleType("langfuse.decorators")
+decorators_mock.observe = observe
+decorators_mock.langfuse_context = langfuse_context
+sys.modules["langfuse.decorators"] = decorators_mock
 
 EXTRACTION_SCHEMA = {
     "type": "OBJECT",
@@ -181,8 +210,6 @@ class CerebroIA:
             try:
                 return await func(*args, **kwargs)
             except Exception as e:
-                # Note: google-genai SDK maps some errors to APIError or ClientError
-                # We look for 429 (Resource Exhausted) and 503 (Service Unavailable)
                 err_str = str(e).lower()
                 is_quota_error = "429" in err_str or "resource_exhausted" in err_str
                 is_service_error = "503" in err_str or "service_unavailable" in err_str
@@ -192,6 +219,14 @@ class CerebroIA:
                     logger.warning(f"⏳ [EXP BACKOFF] Attempt {attempt+1} failed ({type(e).__name__}). Retrying in {wait_time:.2f}s...")
                     await asyncio.sleep(wait_time)
                     continue
+                
+                # [Zero-Silent-Failures] Final retry failure or non-retryable error
+                logger.exception(f"🚨 [GEMINI ASYNC ERROR] Final failure in _call_gemini_with_retry_async: {e}")
+                if hasattr(e, "response") and hasattr(e.response, "text"):
+                    logger.error(f"🚨 [GEMINI HTTP DETAIL] Response text: {e.response.text}")
+                elif hasattr(e, "message"):
+                    logger.error(f"🚨 [GEMINI ERROR MESSAGE] Message: {e.message}")
+                
                 raise e
 
     def _calculate_session_cost(self, usage: Any) -> float:
@@ -1310,8 +1345,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             logger.info(f"🔍 [AUDIT PII] conversation_text enviado a Gemini: {conversation_text}")
             
             # 2. Generation with Structured Output (Response Schema)
-            response = self._call_gemini_with_retry(
-                self.client.models.generate_content,
+            response = await self._call_gemini_with_retry_async(
+                self.client.aio.models.generate_content,
                 model=self._model_id,
                 contents=prompt,
                 config=types.GenerateContentConfig(

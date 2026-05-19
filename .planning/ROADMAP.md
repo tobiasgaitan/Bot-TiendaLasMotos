@@ -56,3 +56,4 @@
 *Last updated: 2026-05-19*
 - [x] BOT-BE-53: Paridad restaurada (price/precio) e integración de bonos de contado (Score 1.000).
 - [x] BOT-BE-035: Purga de llaves legacy y alineación de firma de calculate_credit_score (Score 1.000).
+- [x] BOT-AUDIT-103: Resolución de latencia crítica en WhatsApp webhook, refactorización asíncrona de generate_summary y shim de compatibilidad para Langfuse v4 (Score 1.000).
