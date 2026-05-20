@@ -1015,7 +1015,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 # [BOT-TRACE-201] Send token counts to Langfuse generation
                                 if LANGFUSE_AVAILABLE:
                                     try:
-                                        _lf.update_current_generation(
+                                        langfuse_context.update_current_generation(
                                             model=self._model_id,
                                             usage_details={
                                                 "input": i_tokens,
@@ -1125,7 +1125,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         # [BOT-TRACE-201] Report tool latency to Langfuse as a child span metadata
                                         if LANGFUSE_AVAILABLE:
                                             try:
-                                                _lf.update_current_observation(
+                                                langfuse_context.update_current_observation(
                                                     metadata={
                                                         "tool": "search_catalog",
                                                         "query": query,

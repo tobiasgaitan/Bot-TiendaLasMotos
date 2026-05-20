@@ -59,3 +59,5 @@
 - [x] BOT-AUDIT-103: Resolución de latencia crítica en WhatsApp webhook, refactorización asíncrona de generate_summary y shim de compatibilidad para Langfuse v4 (Score 1.000).
 - [x] BOT-FIN-104: Conmutación a Brilla de Gases, captura de cédula e intercepción de Crediorbe (Score 1.000).
 - [x] BOT-FIN-104 (Corrección): Adaptar búsqueda de catálogo a propiedades reales en español de Firestore (Score 1.000).
+- [x] BOT-HOTFIX-39: Corrección de variable inexistente _lf por langfuse_context en telemetry de ai_brain.py (Score 1.000).
+
