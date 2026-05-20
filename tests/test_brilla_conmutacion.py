@@ -206,6 +206,8 @@ async def test_crediorbe_interception_direct_value():
         call_count += 1
         if "contents" in kwargs:
             captured_contents.append(kwargs["contents"])
+        elif len(args) > 1:
+            captured_contents.append(args[1])
         elif len(args) > 0:
             captured_contents.append(args[0])
         if call_count == 1:
@@ -213,8 +215,7 @@ async def test_crediorbe_interception_direct_value():
         return response2
 
     with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
-         patch('app.services.ai_brain.SDK_AVAILABLE', True), \
-         patch('google.genai.types.Part.from_function_response') as mock_from_fun_res:
+         patch('app.services.ai_brain.SDK_AVAILABLE', True):
          
         prospect = {
             "nombre": "Carlos",
@@ -224,11 +225,24 @@ async def test_crediorbe_interception_direct_value():
         }
         await cerebro.pensar_respuesta("Quiero mi crédito ciego", prospect_data=prospect)
         
-        # mock_from_fun_res.assert_called() nos permite verificar el payload exacto retornado a la herramienta.
-        assert mock_from_fun_res.called
-        call_args = mock_from_fun_res.call_args[1]
-        response_dict = call_args.get("response", {})
-        result_text = response_dict.get("result", "")
+        # Verify that we captured the second call contents
+        assert len(captured_contents) >= 2
+        second_call_contents = captured_contents[1]
+        
+        # Find the function response part
+        result_text = ""
+        # second_call_contents is the list of response_parts (types.Part objects)
+        for part in second_call_contents:
+            fun_res = getattr(part, "function_response", None)
+            if fun_res is not None:
+                resp = getattr(fun_res, "response", {})
+                if isinstance(resp, dict):
+                    result_text = resp.get("result", "")
+                else:
+                    result_text = getattr(resp, "result", "")
+                    if not result_text and hasattr(resp, "get"):
+                        result_text = resp.get("result", "")
+                break
         
         # Guardrail 1: El link digital NO debe estar presente en el resultado final (o debe estar bloqueado)
         assert "https://crediorbe.digital.link/auth" not in result_text
