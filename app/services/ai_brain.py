@@ -133,6 +133,10 @@ EXTRACTION_SCHEMA = {
                 "moto_confirmada": {
                     "type": "BOOLEAN",
                     "description": "Indica si el usuario aceptó explícitamente la moto ofrecida o mostró interés cerrado (Shadow State Sync)."
+                },
+                "cedula_usuario": {
+                    "type": "STRING",
+                    "description": "Número de cédula del usuario (extraer ÚNICAMENTE si el usuario lo escribe de forma explícita y voluntaria; bias negativo estricto: si no está seguro o no está presente, dejar vacío)."
                 }
             }
         }
@@ -1172,6 +1176,70 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             f"Como NO hay link digital, ESTÁS OBLIGADO a solicitar en este "
                                             f"mensaje las FOTOS de: 1. Cédula original y 2. Los dos últimos "
                                             f"recibos del gas natural. No cierres la sesión sin pedir esto.]"
+                                        )
+                                    elif res.get('entity') == "Crediorbe":
+                                        # [INTERCEPCIÓN CREDIORBE — BOT-FIN-104]
+                                        res['link_url'] = None
+                                        
+                                        moto_name = (prospect_data or {}).get("moto_interest", "")
+                                        cuota_line = ""
+                                        
+                                        if moto_name and self.motor_financiero:
+                                            # We attempt a quick lookup to get the price
+                                            m_price = 0
+                                            if self._catalog_service:
+                                                m_results = self._catalog_service.search_items(moto_name)
+                                                if m_results: 
+                                                    first_match = m_results[0]
+                                                    raw_val = first_match.get('raw_price')
+                                                    if raw_val is not None:
+                                                        try:
+                                                            m_price = float(raw_val)
+                                                        except (ValueError, TypeError):
+                                                            m_price = 0.0
+                                                    
+                                                    # FALLBACK DE PARSEO MONETARIO ROBUSTO (BOT-PERF-45 Condition 1)
+                                                    if not m_price or m_price <= 0:
+                                                        fallback_price = first_match.get('price')
+                                                        if fallback_price:
+                                                            try:
+                                                                clean_p = re.sub(r'[^\d]', '', str(fallback_price))
+                                                                m_price = float(clean_p) if clean_p else 0.0
+                                                            except (ValueError, TypeError) as parse_err:
+                                                                logger.warning(
+                                                                    f"⚠️ [MONETARY PARSING FAIL] No se pudo parsear fallback price '{fallback_price}': {parse_err}"
+                                                                )
+                                                                m_price = 0.0
+                                            
+                                            if m_price <= 0:
+                                                import traceback
+                                                stack = "".join(traceback.format_stack())
+                                                logger.warning(
+                                                    f"⚠️ [NULL MASKING DETECTED] Ambos campos raw_price y price están ausentes o vacíos para '{moto_name}'.\nTraceback:\n{stack}"
+                                                )
+                                                raise ValueError(f"Precio no disponible para la simulación financiera de la moto '{moto_name}'.")
+
+                                            # Use 0 initial as baseline for Crediorbe if not specified
+                                            sim = self.motor_financiero.calculate_payment(
+                                                precio=m_price,
+                                                inicial=0,
+                                                plazo_meses=24,
+                                                entidad="Crediorbe"
+                                            )
+                                            cuota_val = sim.get('cuota_mensual', 0)
+                                            if cuota_val > 0:
+                                                cuota_line = f"Cuota Mensual Total: ${cuota_val:,.0f} (Incluye SOAT, Matrícula, Seguros y FNG a 24 meses con Crediorbe)\n"
+                                            else:
+                                                logger.warning(f"⚠️ [COGNITIVE BRAKE] cuota_val=0 for {moto_name}. Omitting cuota line.")
+
+                                        credit_res = (
+                                            f"✅ Score: {res['score']} | {res['strategy']}\n"
+                                            f"{cuota_line}"
+                                            f"\n[SISTEMA: MANDATO DE CONTINGENCIA DE CREDIORBE: "
+                                            f"El link digital de Crediorbe ha sido bloqueado. ESTÁS OBLIGADO a "
+                                            f"solicitar una foto de la cédula del usuario y coordinar el agendamiento "
+                                            f"de una cita presencial en nuestras sedes físicas de Riohacha, Santa Marta o Zona Bananera. "
+                                            f"No envíes ningún enlace digital.]"
                                         )
                                     else:
                                         # [COGNITIVE BRAKES v1.2 — BOT-LOGIC-1.2]
