@@ -273,3 +273,81 @@ def test_financial_service_default_entity_is_brilla():
     # Debe mencionar "Brilla de Gases" o usar sus factores/nombre
     assert "Brilla de Gases" in res
     assert "Crediorbe" not in res
+
+
+@pytest.mark.asyncio
+async def test_spanish_catalog_keys_interception():
+    """
+    Verifica que la herramienta search_catalog extraiga correctamente Nombre del producto TVS,
+    Descripción del producto TVS y precio de Firestore sin levantar ValueError.
+    """
+    cerebro = CerebroIA()
+    cerebro.client = MagicMock()
+    cerebro._model_id = "gemini-2.0-flash"
+    
+    mock_catalog = MagicMock()
+    # Retornamos llaves preferentes en español
+    mock_catalog.search_items.return_value = [
+        {
+            "Nombre del producto TVS": "TVS Apache 160",
+            "Descripción del producto TVS": "Moto deportiva y ágil",
+            "precio": "$ 9.500.000",
+            "category": "Urban"
+        }
+    ]
+    cerebro._catalog_service = mock_catalog
+    
+    fc = MockFunctionCall(name="search_catalog", args={"query": "Apache 160"})
+    candidate1 = MockCandidate(content=MockContent(parts=[MockPart(function_call=fc)]))
+    response1 = MockResponse(candidates=[candidate1])
+    
+    candidate2 = MockCandidate(content=MockContent(parts=[MockPart(text="Ok")]))
+    response2 = MockResponse(candidates=[candidate2])
+    
+    call_count = 0
+    captured_contents = []
+    
+    async def mock_call(*args, **kwargs):
+        nonlocal call_count, captured_contents
+        call_count += 1
+        if "contents" in kwargs:
+            captured_contents.append(kwargs["contents"])
+        elif len(args) > 1:
+            captured_contents.append(args[1])
+        elif len(args) > 0:
+            captured_contents.append(args[0])
+        if call_count == 1:
+            return response1
+        return response2
+
+    with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
+         patch('app.services.ai_brain.SDK_AVAILABLE', True):
+         
+        prospect = {
+            "nombre": "Carlos",
+            "ciudad": "Santa Marta",
+            "forma_pago": "Contado"
+        }
+        await cerebro.pensar_respuesta("Qué precio tiene la Apache 160?", prospect_data=prospect)
+        
+        # Debe haber capturado el segundo llamado con los resultados del catálogo procesados
+        assert len(captured_contents) >= 2
+        second_call_contents = captured_contents[1]
+        
+        result_text = ""
+        for part in second_call_contents:
+            fun_res = getattr(part, "function_response", None)
+            if fun_res is not None:
+                resp = getattr(fun_res, "response", {})
+                if isinstance(resp, dict):
+                    result_text = resp.get("result", "")
+                else:
+                    result_text = getattr(resp, "result", "")
+                break
+        
+        # Validar que Nombre, Descripción y Precio en español se formatearon correctamente
+        assert "TVS Apache 160" in result_text
+        assert "Moto deportiva y ágil" in result_text
+        assert "$ 9.500.000" in result_text
+        assert "Ficha Tecnica: Moto deportiva y ágil" in result_text
+
