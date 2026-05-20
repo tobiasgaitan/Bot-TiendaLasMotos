@@ -58,3 +58,4 @@
 - [x] BOT-BE-035: Purga de llaves legacy y alineación de firma de calculate_credit_score (Score 1.000).
 - [x] BOT-AUDIT-103: Resolución de latencia crítica en WhatsApp webhook, refactorización asíncrona de generate_summary y shim de compatibilidad para Langfuse v4 (Score 1.000).
 - [x] BOT-FIN-104: Conmutación a Brilla de Gases, captura de cédula e intercepción de Crediorbe (Score 1.000).
+- [x] BOT-FIN-104 (Corrección): Adaptar búsqueda de catálogo a propiedades reales en español de Firestore (Score 1.000).
