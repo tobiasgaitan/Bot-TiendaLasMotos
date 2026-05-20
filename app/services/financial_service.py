@@ -367,7 +367,7 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
         loan_amount = precio_moto - inicial
         if loan_amount <= 0: return f"¡Genial! Con esa inicial cubres el valor total de la {nombre_moto}."
             
-        entidad_default = "Crediorbe"
+        entidad_default = "Brilla de Gases"
         financial_config = self._config_service.get_financial_config()
         tasa_mensual = financial_config.get("tasa_nmv_fintech", 2.22)
         
