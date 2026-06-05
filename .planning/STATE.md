@@ -13,3 +13,5 @@ Posición: Cierre de ticket BOT-BUG-040 — resiliencia ante fallo en cascada y 
 | 039 | Corrección de variable inexistente _lf a langfuse_context en ai_brain.py | 2026-05-20 | 8726fdf | 039-langfuse-context-fix |
 | 040 | Resiliencia ante fallo en cascada: skip de ítems corruptos y absorción de gRPC en update_whatsapp_status | 2026-06-04 | 82709ca | 040-cascade-failure-denial-of-service |
 
+- [2026-06-04] v10.3.1: Hotfix finalizado para BOT-BUG-043. Estabilización de persistencia Firestore mediante ContingencySnapshot.
+- [2026-06-04] v10.3.1: Hotfix finalizado para BOT-BUG-043. Estabilización de persistencia Firestore mediante ContingencySnapshot.

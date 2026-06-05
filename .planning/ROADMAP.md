@@ -62,3 +62,5 @@
 - [x] BOT-HOTFIX-39: Corrección de variable inexistente _lf por langfuse_context en telemetry de ai_brain.py (Score 1.000).
 - [x] BOT-BUG-040: Resiliencia ante fallo en cascada — skip de ítems corruptos en catálogo y absorción de gRPC en update_whatsapp_status (97/97 tests passed).
 
+- [x] BOT-BUG-040
+- [x] BOT-BUG-043
