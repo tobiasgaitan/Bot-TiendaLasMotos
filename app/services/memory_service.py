@@ -62,6 +62,15 @@ async def _dispatch_contingency_message(phone: str) -> None:
         logger.error(f"❌ [BOT-INFRA-33] Fallo secundario al enviar contingencia a {phone}: {dispatch_err}")
 
 
+class _ContingencySnapshot:
+    """Objeto mock de contingencia (Quick Task 042) para prevenir AttributeError cuando _firestore_io falla."""
+    @property
+    def exists(self) -> bool:
+        return False
+    def to_dict(self) -> dict:
+        return {}
+
+
 class MemoryService:
     def __init__(self, db: firestore.AsyncClient):
         # WHY _db: tests (test_read_asymmetry, test_reset_flow) wire mocks via
@@ -70,7 +79,7 @@ class MemoryService:
         self.collection_name = "prospectos"
         self._pending_tasks: Set[asyncio.Task] = set()
         self._status_semaphore = asyncio.Semaphore(5)
-        logger.info("🧠 MemoryService v9.8.3: Restauración Quirúrgica + Task Tracking")
+        logger.info("🧠 MemoryService v9.8.4: Quick Task 042 Async Resilience")
 
     def _track_task(self, coro) -> asyncio.Task:
         """
@@ -85,73 +94,40 @@ class MemoryService:
         """
         [BOT-INFRA-33] Interceptor de timeout asíncrono para operaciones I/O de Firestore.
 
-        WHY: Sin este guardrail, una degradación de red GCP congela indefinidamente
-        el event loop de FastAPI, silenciando el fallo y violando Zero-Silent-Failures.
-
-        Comportamiento:
+        Comportamiento (Quick Task 042):
           - Envuelve cualquier corutina de Firestore en asyncio.wait_for.
-          - Si TimeoutError: 
-              1. Registra un warning por la caída del socket.
-              2. Fuerza re-inicialización limpia de self._db.
-              3. Intenta un (1) reintento de la corrutina original.
-          - Si el reintento o la conexión fallan definitivamente:
-              1. Inyecta log forense con traceback completo.
-              2. Despacha mensaje de contingencia al lead.
-              3. Re-raise para detener ai_brain.py.
+          - Atrapa CUALQUIER excepción de red o Google usando except Exception as e.
+          - Registra log forense con logger.exception(e).
+          - Fuerza re-inicialización limpia de self._db para curar el socket.
+          - Despacha mensaje de contingencia.
+          - Elimina la lógica de reintento para evitar RuntimeError de corrutina agotada.
+          - Retorna un _ContingencySnapshot para no abortar de inmediato.
         """
         effective_timeout = timeout if timeout is not None else settings.db_timeout
         try:
             return await asyncio.wait_for(coro, timeout=effective_timeout)
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"⚠️ [BOT-INFRA-33] FIRESTORE TIMEOUT ({effective_timeout}s) en '{label}' "
-                f"para phone='{phone}'. Socket caído, forzando re-inicialización y reintento."
-            )
-            # Re-inicialización limpia del cliente de Firestore
-            self._db = firestore.AsyncClient(
-                project=self._db.project,
-                credentials=self._db._credentials
-            )
-            # Reintento (1) de la corrutina original
-            try:
-                return await asyncio.wait_for(coro, timeout=effective_timeout)
-            except asyncio.TimeoutError:
-                logger.exception(
-                    f"⏱️ [BOT-INFRA-33] FIRESTORE TIMEOUT FATAL en reintento ({effective_timeout}s) en '{label}' "
-                    f"para phone='{phone}'. El orquestador se detiene."
-                )
-                await _dispatch_contingency_message(phone)
-                raise
-            except RuntimeError as e_rt:
-                if "cannot reuse already awaited coroutine" in str(e_rt):
-                    # Las corrutinas de Python no se pueden reusar. Registramos el error fatal y despachamos contingencia.
-                    logger.exception(
-                        f"⏱️ [BOT-INFRA-33] FIRESTORE TIMEOUT FATAL en reintento ({effective_timeout}s) en '{label}' "
-                        f"para phone='{phone}'. No se pudo reintentar porque la corrutina ya fue ejecutada (RuntimeError)."
-                    )
-                    await _dispatch_contingency_message(phone)
-                    raise asyncio.TimeoutError("Firestore timeout (cannot reuse coroutine for retry)") from e_rt
-                else:
-                    logger.exception(
-                        f"🔌 [BOT-INFRA-33] ERROR en reintento de '{label}' "
-                        f"para phone='{phone}'. Detalle: {e_rt}"
-                    )
-                    await _dispatch_contingency_message(phone)
-                    raise
-            except Exception as e_retry:
-                logger.exception(
-                    f"🔌 [BOT-INFRA-33] ERROR en reintento de '{label}' "
-                    f"para phone='{phone}'. Detalle: {e_retry}"
-                )
-                await _dispatch_contingency_message(phone)
-                raise
-        except (gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
+        except Exception as e:
             logger.exception(
-                f"🔌 [BOT-INFRA-33] FIRESTORE CONNECTIVITY ERROR en '{label}' "
-                f"para phone='{phone}'. Detalle nativo GCP: {e}"
+                f"🔌 [BOT-INFRA-33] ERROR o TIMEOUT ({effective_timeout}s) en '{label}' "
+                f"para phone='{phone}'. Fallo en Firestore (Red/GCP/Timeout). "
+                f"Forzando re-inicialización y emitiendo contingencia. Detalle: {e}"
             )
+            
+            # Re-inicialización limpia del cliente de Firestore (curar socket)
+            try:
+                self._db = firestore.AsyncClient(
+                    project=self._db.project,
+                    credentials=self._db._credentials
+                )
+                logger.info(f"🔄 [BOT-INFRA-33] Cliente Firestore re-inicializado exitosamente.")
+            except Exception as reinit_err:
+                logger.error(f"❌ [BOT-INFRA-33] Fallo al re-inicializar Firestore AsyncClient para {phone}: {reinit_err}")
+                
+            # Despachar contingencia (lazy load para evitar dependencias circulares)
             await _dispatch_contingency_message(phone)
-            raise
+            
+            # Devolver valor seguro en lugar de re-raise que destruya la ejecución
+            return _ContingencySnapshot()
 
     async def shutdown(self, timeout: int = 8) -> None:
         """
