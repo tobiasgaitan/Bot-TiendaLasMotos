@@ -124,42 +124,15 @@ async def test_timeout_triggers_on_slow_firestore_get(slow_memory_service, caplo
     assert any("ERROR o TIMEOUT" in r.message for r in caplog.records), \
         "El log debe contener 'ERROR o TIMEOUT'"
 
-    # Verificar despacho de contingencia al número correcto
-    mock_wa_svc.send_text_message.assert_called_once()
-    call_args = mock_wa_svc.send_text_message.call_args
-    assert call_args[0][0] == phone or call_args[1].get("phone") == phone or phone in str(call_args), \
-        f"El mensaje de contingencia debe enviarse a {phone}"
+    # Verificar que NO se despacha contingencia (cumplimiento SRP)
+    mock_wa_svc.send_text_message.assert_not_called()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TC-02: El texto de contingencia es el literal aprobado
 # ──────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.asyncio
-async def test_contingency_message_is_exact_literal(slow_memory_service):
-    """
-    DADO: Timeout en Firestore.
-    CUANDO: se despacha el mensaje de contingencia.
-    ENTONCES: el texto es exactamente el literal aprobado en _CONTINGENCY_MSG.
-    """
-    from app.services.memory_service import _CONTINGENCY_MSG
-
-    phone = "+573009876543"
-    mock_wa_svc = AsyncMock()
-    mock_wa_svc.send_text_message = AsyncMock()
-
-    with patch("app.services.memory_service.settings") as mock_settings, \
-         patch("app.services.whatsapp_service.whatsapp_service", mock_wa_svc):
-
-        mock_settings.db_timeout = 1
-
-        result = await slow_memory_service.get_prospect_data(phone)
-        assert result.get("exists") is False
-
-    mock_wa_svc.send_text_message.assert_called_once()
-    _, sent_text = mock_wa_svc.send_text_message.call_args[0]
-    assert sent_text == _CONTINGENCY_MSG, \
-        f"El texto enviado debe ser el literal aprobado. Recibido: '{sent_text}'"
+# TC-02 Eliminado por cumplimiento SRP: el interceptor ya no despacha contingencia
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -196,7 +169,7 @@ async def test_timeout_exception_is_handled_safely():
 # ──────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_gcp_service_unavailable_triggers_contingency(memory_service_instance, caplog):
+async def test_gcp_service_unavailable_handled_safely(memory_service_instance, caplog):
     """
     DADO: Firestore lanza ServiceUnavailable (degradación de red GCP).
     CUANDO: se llama a get_prospect_data.
@@ -227,7 +200,8 @@ async def test_gcp_service_unavailable_triggers_contingency(memory_service_insta
     assert any("ERROR o TIMEOUT" in r.message for r in caplog.records), \
         "El log debe registrar ERROR o TIMEOUT"
 
-    mock_wa_svc.send_text_message.assert_called_once()
+    # Verificar que NO se despacha contingencia
+    mock_wa_svc.send_text_message.assert_not_called()
 
 
 # ──────────────────────────────────────────────────────────────────────────────

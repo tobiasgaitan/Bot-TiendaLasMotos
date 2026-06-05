@@ -32,35 +32,6 @@ _LATCH_TRUE_FIELDS = frozenset({"habeas_data_accepted", "habeas_data_accepted_se
 # CRM protected fields — the bot must NEVER overwrite these if they already exist
 _CRM_PROTECTED_FIELDS = frozenset({"approved_amount", "monthly_quota", "current_agent"})
 
-# [BOT-INFRA-33] Texto de contingencia aprobado — NO modificar sin orden explícita del Auditor
-_CONTINGENCY_MSG = (
-    "Disculpa la demora, estamos experimentando una alta congestión en nuestro sistema. "
-    "Permíteme un momento mientras se estabiliza la conexión."
-)
-
-
-async def _dispatch_contingency_message(phone: str) -> None:
-    """
-    [BOT-INFRA-33] Despacha el mensaje de contingencia al lead afectado.
-
-    WHY lazy import: memory_service.py es importado por whatsapp.py.
-    whatsapp_service.py también es importado por whatsapp.py.
-    Un import directo en el módulo crearía un ciclo de dependencias.
-    El import lazy dentro de la función es el patrón canónico para este caso.
-
-    WHY silencia su propio fallo: si el transporte de WhatsApp también está degradado,
-    no queremos enmascarar la excepción original de Firestore con un nuevo error.
-    """
-    try:
-        from app.services.whatsapp_service import whatsapp_service as _wa_svc
-        if _wa_svc:
-            await _wa_svc.send_text_message(phone, _CONTINGENCY_MSG)
-            logger.info(f"📤 [BOT-INFRA-33] Mensaje de contingencia enviado a {phone}")
-        else:
-            logger.warning(f"⚠️ [BOT-INFRA-33] whatsapp_service no inicializado — contingencia no enviada a {phone}")
-    except Exception as dispatch_err:
-        logger.error(f"❌ [BOT-INFRA-33] Fallo secundario al enviar contingencia a {phone}: {dispatch_err}")
-
 
 class _ContingencySnapshot:
     """Objeto mock de contingencia (Quick Task 042) para prevenir AttributeError cuando _firestore_io falla."""
@@ -123,9 +94,6 @@ class MemoryService:
             except Exception as reinit_err:
                 logger.error(f"❌ [BOT-INFRA-33] Fallo al re-inicializar Firestore AsyncClient para {phone}: {reinit_err}")
                 
-            # Despachar contingencia (lazy load para evitar dependencias circulares)
-            await _dispatch_contingency_message(phone)
-            
             # Devolver valor seguro en lugar de re-raise que destruya la ejecución
             return _ContingencySnapshot()
 
