@@ -69,11 +69,21 @@ def slow_db():
     return db
 
 
+@pytest.fixture(autouse=True)
+def mock_google_auth():
+    """Mock google.auth.default para evitar que intente cargar /tmp/fake-key.json."""
+    from google.auth.credentials import AnonymousCredentials
+    with patch("google.auth.default", return_value=(AnonymousCredentials(), "test-project")):
+        yield
+
+
 @pytest.fixture
 def slow_memory_service(slow_db):
     """MemoryService con DB de latencia artificial."""
     from app.services.memory_service import MemoryService
     svc = MemoryService(slow_db)
+    svc._db.project = 'test-project'
+    svc._db._credentials = None
     # Forzar timeout corto para que el test sea rápido (0.1s en lugar de 5s)
     return svc
 
@@ -283,6 +293,11 @@ async def test_timeout_uses_settings_db_timeout():
     with patch("app.services.memory_service.settings") as mock_settings:
         mock_settings.db_timeout = 999  # Configurado muy alto
 
-        result = await MemoryService._firestore_io(mock_coro(), phone="+573000000000", label="test")
+        db_mock = MagicMock()
+        db_mock.project = 'test-project'
+        db_mock._credentials = None
+        svc = MemoryService(db_mock)
+
+        result = await svc._firestore_io(mock_coro(), phone="+573000000000", label="test")
         assert result == "ok"
         assert "called" in calls_recorded

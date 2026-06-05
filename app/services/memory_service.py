@@ -81,8 +81,7 @@ class MemoryService:
         task.add_done_callback(self._pending_tasks.discard)
         return task
 
-    @staticmethod
-    async def _firestore_io(coro, phone: str, label: str, timeout: Optional[int] = None):
+    async def _firestore_io(self, coro, phone: str, label: str, timeout: Optional[int] = None):
         """
         [BOT-INFRA-33] Interceptor de timeout asíncrono para operaciones I/O de Firestore.
 
@@ -91,21 +90,61 @@ class MemoryService:
 
         Comportamiento:
           - Envuelve cualquier corutina de Firestore en asyncio.wait_for.
-          - Si TimeoutError o error de conectividad GCP:
+          - Si TimeoutError: 
+              1. Registra un warning por la caída del socket.
+              2. Fuerza re-inicialización limpia de self._db.
+              3. Intenta un (1) reintento de la corrutina original.
+          - Si el reintento o la conexión fallan definitivamente:
               1. Inyecta log forense con traceback completo.
-              2. Despacha mensaje de contingencia profesional al lead (await, bloqueante).
-              3. Re-raise para detener ai_brain.py inmediatamente.
+              2. Despacha mensaje de contingencia al lead.
+              3. Re-raise para detener ai_brain.py.
         """
         effective_timeout = timeout if timeout is not None else settings.db_timeout
         try:
             return await asyncio.wait_for(coro, timeout=effective_timeout)
-        except asyncio.TimeoutError as e:
-            logger.exception(
-                f"⏱️ [BOT-INFRA-33] FIRESTORE TIMEOUT ({effective_timeout}s) en '{label}' "
-                f"para phone='{phone}'. El orquestador se detiene para evitar degradación conversacional."
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"⚠️ [BOT-INFRA-33] FIRESTORE TIMEOUT ({effective_timeout}s) en '{label}' "
+                f"para phone='{phone}'. Socket caído, forzando re-inicialización y reintento."
             )
-            await _dispatch_contingency_message(phone)
-            raise
+            # Re-inicialización limpia del cliente de Firestore
+            self._db = firestore.AsyncClient(
+                project=self._db.project,
+                credentials=self._db._credentials
+            )
+            # Reintento (1) de la corrutina original
+            try:
+                return await asyncio.wait_for(coro, timeout=effective_timeout)
+            except asyncio.TimeoutError:
+                logger.exception(
+                    f"⏱️ [BOT-INFRA-33] FIRESTORE TIMEOUT FATAL en reintento ({effective_timeout}s) en '{label}' "
+                    f"para phone='{phone}'. El orquestador se detiene."
+                )
+                await _dispatch_contingency_message(phone)
+                raise
+            except RuntimeError as e_rt:
+                if "cannot reuse already awaited coroutine" in str(e_rt):
+                    # Las corrutinas de Python no se pueden reusar. Registramos el error fatal y despachamos contingencia.
+                    logger.exception(
+                        f"⏱️ [BOT-INFRA-33] FIRESTORE TIMEOUT FATAL en reintento ({effective_timeout}s) en '{label}' "
+                        f"para phone='{phone}'. No se pudo reintentar porque la corrutina ya fue ejecutada (RuntimeError)."
+                    )
+                    await _dispatch_contingency_message(phone)
+                    raise asyncio.TimeoutError("Firestore timeout (cannot reuse coroutine for retry)") from e_rt
+                else:
+                    logger.exception(
+                        f"🔌 [BOT-INFRA-33] ERROR en reintento de '{label}' "
+                        f"para phone='{phone}'. Detalle: {e_rt}"
+                    )
+                    await _dispatch_contingency_message(phone)
+                    raise
+            except Exception as e_retry:
+                logger.exception(
+                    f"🔌 [BOT-INFRA-33] ERROR en reintento de '{label}' "
+                    f"para phone='{phone}'. Detalle: {e_retry}"
+                )
+                await _dispatch_contingency_message(phone)
+                raise
         except (gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
             logger.exception(
                 f"🔌 [BOT-INFRA-33] FIRESTORE CONNECTIVITY ERROR en '{label}' "
