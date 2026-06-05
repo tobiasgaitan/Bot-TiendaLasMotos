@@ -298,9 +298,10 @@ async def test_search_catalog_tool_execution_retains_ficha_tecnica():
 @pytest.mark.asyncio
 async def test_search_catalog_tool_execution_raises_error_on_missing_critical_keys():
     """
-    Test Case 5:
+    Test Case 5 (Updated BOT-BUG-040):
     - Verify that if the catalog matches are missing critical keys like name or summary or price,
-      a ValueError is raised and logged via logger.exception, and not silently swallowed.
+      a logger.warning is emitted with NULL MASKING DETECTED tag, and the item is SKIPPED
+      without crashing the iteration (continue instead of raise ValueError).
     """
     cerebro = CerebroIA()
     cerebro.client = MagicMock()
@@ -331,7 +332,7 @@ async def test_search_catalog_tool_execution_raises_error_on_missing_critical_ke
         
     with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
          patch('app.services.ai_brain.SDK_AVAILABLE', True), \
-         patch('app.services.ai_brain.logger.exception') as mock_log_exception:
+         patch('app.services.ai_brain.logger.warning') as mock_log_warn:
          
         prospect = {
             "nombre": "Pedro",
@@ -339,16 +340,13 @@ async def test_search_catalog_tool_execution_raises_error_on_missing_critical_ke
             "forma_pago": "Crédito"
         }
         
-        # Call thinking logic
+        # Call thinking logic — MUST NOT crash
         await cerebro.pensar_respuesta("Muéstrame la TVS Sport", prospect_data=prospect)
         
-        # Verify that logger.exception was called with Catalog error and NULL MASKING message
-        mock_log_exception.assert_called()
-        exc_args = [call[0][0] for call in mock_log_exception.call_args_list]
-        
-        # We assert that the tool error was logged and raised
-        assert any("❌ Catalog error for query" in arg for arg in exc_args)
-        # Check that it contains NULL MASKING description in the traceback or message
-        tb_strings = [str(call[0]) for call in mock_log_exception.call_args_list]
-        assert any("NULL MASKING DETECTED" in s for s in tb_strings)
+        # [BOT-BUG-040] Verify that logger.warning (NOT exception) was called
+        # with NULL MASKING DETECTED tag, indicating the corrupted item was skipped
+        mock_log_warn.assert_called()
+        warn_args = [call[0][0] for call in mock_log_warn.call_args_list]
+        assert any("NULL MASKING DETECTED" in arg for arg in warn_args), \
+            "logger.warning DEBE contener '[NULL MASKING DETECTED]' indicando ítem omitido"
 

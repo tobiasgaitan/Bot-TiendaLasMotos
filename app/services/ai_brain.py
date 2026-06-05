@@ -1092,8 +1092,15 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                 price = m.get('precio') or m.get('price') or m.get('formatted_price')
                                                 
                                                 if not name or not summary or not price:
-                                                    # Forzar error explícito si hay ausencia de llaves críticas
-                                                    raise ValueError(f"[NULL MASKING DETECTED] Llave crítica nula o vacía en catálogo: name={name}, summary={summary}, price={price}")
+                                                    # [BOT-BUG-040] Anti-Null Masking resiliente: omitir ítem corrupto
+                                                    # WHY: Un solo ítem con llave vacía (ej. TVS APACHE 160 sin 'summary')
+                                                    # NO debe destruir la iteración completa del catálogo.
+                                                    logger.warning(
+                                                        f"⚠️ [NULL MASKING DETECTED] Ítem de catálogo omitido por llave crítica nula o vacía: "
+                                                        f"name={name!r}, summary={summary!r}, price={price!r}. "
+                                                        f"Raw item keys: {list(m.keys())}"
+                                                    )
+                                                    continue
                                                 
                                                 catalog_response_str += f"- {name} ({m.get('category', 'Moto')}): {price}\n"
                                                 if m.get('image_url'):
@@ -1141,9 +1148,15 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     search_results = "Error: Servicio de catálogo no disponible."
                                     
                             except Exception as e:
-                                logger.exception(f"❌ Catalog error for query '{query}' (Prospect: {user_name}): {e}")
-                                # Protocolo de interrupción síncrona con re-raise
-                                raise e
+                                # [BOT-BUG-040] Degradación controlada: log forense SIN re-raise
+                                # WHY: Un error de catálogo (ej. ítem corrupto) no debe matar el God Node.
+                                # El orquestador debe seguir operativo con un resultado degradado.
+                                logger.exception(
+                                    f"❌ [BOT-BUG-040] Catalog error for query '{query}' (Prospect: {user_name}): {e}. "
+                                    f"Response body: {getattr(e, 'response', None)!r}. "
+                                    f"Degrading to fallback search_results."
+                                )
+                                search_results = f"[SISTEMA: Error temporal consultando el catálogo para '{query}'. Pídele al usuario que intente de nuevo.]"
                                 
                             # Personalización de resultados (v8.3)
                             if catalog_returned_results:
