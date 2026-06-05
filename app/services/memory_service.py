@@ -598,8 +598,17 @@ class MemoryService:
 
                 await self._firestore_io(doc_ref.update(payload), phone=phone_number, label="update_whatsapp_status.update")
                 logger.info(f"✅ [STATUSES] Acuse '{status_value}' registrado para {phone_number}")
-        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
-            raise
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
+            # [BOT-BUG-040] NO re-raise: update_whatsapp_status corre en background task.
+            # WHY: Este método procesa acuses de recibo Meta (sent/delivered/read/failed).
+            # Un re-raise aquí mata el hilo de background sin path de recuperación,
+            # rompiendo el orquestador para los siguientes webhooks de ese lead.
+            # Zero-Silent-Failures se cumple con el log forense explícito.
+            logger.exception(
+                f"❌ [BOT-BUG-040] gRPC/Timeout error en update_whatsapp_status para {phone_number}: {e}. "
+                f"Status: '{status_value}', WAMID: '{wamid}'. "
+                f"El acuse NO fue persistido pero el orquestador continúa."
+            )
         except Exception as e:
             logger.exception(f"❌ [STATUSES] Error actualizando metadata.whatsapp para {phone_number}: {e}")
 
