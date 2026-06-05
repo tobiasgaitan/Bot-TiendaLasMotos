@@ -1,5 +1,5 @@
-Versión: v10.4.2
-Posición: Cierre de ticket de corrección de sintaxis Langfuse en ai_brain.py
+Versión: v10.4.3
+Posición: Cierre de ticket BOT-BUG-040 — resiliencia ante fallo en cascada y denegación de servicio
 
 ### Quick Tasks Completed
 
@@ -11,4 +11,5 @@ Posición: Cierre de ticket de corrección de sintaxis Langfuse en ai_brain.py
 | 037 | Conmutación a Brilla de Gases, captura de cédula e intercepción de Crediorbe | 2026-05-20 | ef6e6c4 | 037-brilla-entity-switch |
 | 038 | Adaptar búsqueda de catálogo a propiedades reales en español de Firestore | 2026-05-20 | 5894d99 | 038-spanish-catalog-keys-fix |
 | 039 | Corrección de variable inexistente _lf a langfuse_context en ai_brain.py | 2026-05-20 | 8726fdf | 039-langfuse-context-fix |
+| 040 | Resiliencia ante fallo en cascada: skip de ítems corruptos y absorción de gRPC en update_whatsapp_status | 2026-06-04 | 82709ca | 040-cascade-failure-denial-of-service |
 
