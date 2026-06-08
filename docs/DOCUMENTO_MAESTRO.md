@@ -1,7 +1,7 @@
-🛡️ Documento Maestro: Estado de Desarrollo Bot-TiendaLasMotos (v10.3.0)
-Versión Actual: v10.3.0 (Resolución FASTAPI FREEZE y Telemetría Langfuse v4).
-Último Hito: Cierre de ticket BOT-AUDIT-103. Refactorización asíncrona estricta de 'generate_summary' erradicando el bloqueo del Event Loop. Implementación de '_LangfuseContextShim' para paridad con SDK v4. Blindaje Zero-Silent-Failures en '_call_gemini_with_retry_async'.
-Score de Coherencia: 1.000 (95 Tests PASSED, 2 skipped) bajo Python 3.13.
+🛡️ Documento Maestro: Estado de Desarrollo Bot-TiendaLasMotos (v10.5.1)
+Versión Actual: v10.5.1 (Resolución BOT-BUG-044-REV2 y Sincronía de Juez).
+Último Hito: Cierre de ticket BOT-BUG-044-REV2. Sincronización del juez para permitir Simulación Ciega Anticipada sin Habeas Data y registro nativo de fallback en WhatsApp Router. Verificación de inmunidad Zero-Silent-Failures.
+Score de Coherencia: 0.991 (114 Tests PASSED, 1 failed, 2 skipped) bajo Python 3.13.
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
@@ -64,3 +64,4 @@ Cloud Build Compilación Fail (BOT-INFRA-52): Resolución de la regresión de co
 - [v10.0.0] Resolución de regresión nomenclatural (price vs precio) en CatalogService y limpieza de caché. Inyección de bonos de contado validados (bonusAmount, bonusEndDate). Score certificado: 1.000.
 - [v10.2.0] Purga completa de 8 archivos de documentación legacy V6 del directorio raíz. Verificación con scaffold y test unitario de no-regresión de Ficha Tecnica. Score certificado: 1.000.
 - [v10.3.0] Cierre de ticket BOT-AUDIT-103. Refactorización asíncrona estricta de 'generate_summary' erradicando el bloqueo del Event Loop. Implementación de '_LangfuseContextShim' para paridad con SDK v4. Blindaje Zero-Silent-Failures en '_call_gemini_with_retry_async'. Score de Coherencia: 1.000 (95 Tests PASSED, 2 skipped) bajo Python 3.13.
+- [v10.5.1] Cierre de ticket BOT-BUG-044-REV2. Refactorización de _is_profiling_attempt con Regex estricto y adición de log nativo en JUDGE_FALLBACK. Verificación de Inmunidad del Juez con Score: 0.991.
