@@ -240,7 +240,7 @@ class SurveyService:
             clean_phone = PhoneNormalizer.normalize(phone)
             prospect_ref = db_client.collection("prospectos").document(clean_phone)
             # Fetch current data to preserve other fields if set() is used, or just use update()
-            prospect_ref.update({
+            await prospect_ref.update({
                 "nombre": answers.get("nombre", ""),
                 "ciudad": answers.get("ciudad", ""),
                 "chatbot_status": "survey_completed",
@@ -294,8 +294,8 @@ class SurveyService:
                 if doc_ref.get().exists:
                     # Recursive history wipe
                     hist = doc_ref.collection("historial").limit(50).stream()
-                    for h in hist: h.reference.delete()
-                    doc_ref.delete()
+                    async for h in hist: await h.reference.delete()
+                    await doc_ref.delete()
                     logger.info(f"🗑️ Deleted session by ID: {pid}")
 
             # 3. DELETE BY FIELD (The Ghost Hunter)
@@ -312,9 +312,9 @@ class SurveyService:
                         # Recursive history wipe for found docs
                         try:
                             hist = doc.reference.collection("historial").limit(50).stream()
-                            for h in hist: h.reference.delete()
+                            async for h in hist: await h.reference.delete()
                         except: pass
-                        doc.reference.delete()
+                        await doc.reference.delete()
                         logger.info(f"🗑️ Deleted session by FIELD {field}={val}: {doc.id}")
             
             return True
@@ -335,7 +335,7 @@ class SurveyService:
                 .document(clean_phone)
             )
             data["last_interaction"] = datetime.now(timezone.utc)
-            doc_ref.set(data, merge=True)
+            await doc_ref.set(data, merge=True)
 
             # Survey state sync REMOVED (Sprint 1) — save_survey_state/clear_survey_state
             # were deleted from MemoryService when SurveyService was removed.
