@@ -12,7 +12,9 @@ Posición: Cierre de ticket BOT-ARQ-837 — unificación de persistencia bajo co
 | 038 | Adaptar búsqueda de catálogo a propiedades reales en español de Firestore | 2026-05-20 | 5894d99 | 038-spanish-catalog-keys-fix |
 | 039 | Corrección de variable inexistente _lf a langfuse_context en ai_brain.py | 2026-05-20 | 8726fdf | 039-langfuse-context-fix |
 | 040 | Resiliencia ante fallo en cascada: skip de ítems corruptos y absorción de gRPC en update_whatsapp_status | 2026-06-04 | 82709ca | 040-cascade-failure-denial-of-service |
-| 041 | Unificación de persistencia bajo colección prospectos (BOT-ARQ-837) | 2026-06-07 | a140e02 | 041-unificar-persistencia-prospectos |
+| 041 | Unificación de persistencia bajo colección prospectos (BOT-ARQ-837) | 2026-06-07 | a140e02 |
+041-unificar-persistencia-prospectos |
+| 042 | Cierre BOT-DEBT-042: Sincronía bloqueante y blindaje PCC Pro | 2026-06-07 | 35ba089 |
 
 - [2026-06-07] v10.5.0: BOT-ARQ-837 completado. Colección 'mensajeria' eliminada de todos los módulos de producción. 104/104 tests passed.
 - [2026-06-04] v10.3.1: Hotfix finalizado para BOT-BUG-043. Estabilización de persistencia Firestore mediante ContingencySnapshot.

@@ -69,7 +69,8 @@ class TestIdentityHardGate(unittest.TestCase):
 
     def test_regex_is_still_gone(self):
         """Doble verificación de que el regex peligroso sigue fuera del código."""
-        content = open(os.path.abspath(os.path.join(os.path.dirname(__file__), '../app/services/ai_brain.py'))).read()
+        with open(os.path.abspath(os.path.join(os.path.dirname(__file__), '../app/services/ai_brain.py'))) as f:
+            content = f.read()
         self.assertNotIn('Detectado_en_texto', content)
 
 if __name__ == '__main__':

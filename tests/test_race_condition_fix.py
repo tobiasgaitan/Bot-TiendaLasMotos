@@ -35,7 +35,8 @@ class TestRaceConditionFix(unittest.TestCase):
     def test_no_regex_amnesia(self):
         """Verifica que ya NO existe la detección por regex que causaba amnesia/redundancia."""
         import re
-        content = open(os.path.abspath(os.path.join(os.path.dirname(__file__), '../app/services/ai_brain.py'))).read()
+        with open(os.path.abspath(os.path.join(os.path.dirname(__file__), '../app/services/ai_brain.py'))) as f:
+            content = f.read()
         
         # Buscamos el bloque que eliminamos
         regex_pattern = r"if not p_name and re\.search\(r\"\(soy\|mi nombre es\|me llamo\)\\s\+\", texto_lower\):"
