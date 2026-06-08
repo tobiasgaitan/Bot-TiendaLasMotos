@@ -2,6 +2,7 @@ import pytest
 import asyncio
 from unittest.mock import MagicMock, AsyncMock, patch
 from app.services.memory_service import MemoryService
+from tests.conftest import AsyncStreamMock
 
 @pytest.fixture
 def memory_service():
@@ -27,21 +28,27 @@ async def test_create_prospect_initializes_habeas_data_accepted_false(memory_ser
     mock_doc_ref.get.return_value = mock_doc_snap
     mock_doc_ref.set = AsyncMock()
 
-    # Mock zombie session purge (mensajeria path)
-    mock_session_ref = AsyncMock()
-    mock_session_ref.delete = AsyncMock()
-
     # Wire up _db.collection().document() chains
     def collection_side_effect(name):
         col_mock = MagicMock()
         if name == "prospectos":
-            col_mock.document.return_value = mock_doc_ref
-        elif name == "mensajeria":
-            # mensajeria/whatsapp/sesiones/{phone}
-            col_mock.document.return_value.collection.return_value.document.return_value = mock_session_ref
+            # Support both document-level and historial subcollection access
+            doc_mock = MagicMock()
+            doc_mock.get = mock_doc_ref.get
+            doc_mock.set = mock_doc_ref.set
+            # historial subcollection for clear_memory zombie purge
+            historial_mock = MagicMock()
+            historial_mock.stream.return_value = AsyncStreamMock([])
+            doc_mock.collection.return_value = historial_mock
+            col_mock.document.return_value = doc_mock
         return col_mock
 
     memory_service._db.collection.side_effect = collection_side_effect
+
+    # Mock batch for clear_memory
+    batch_mock = MagicMock()
+    batch_mock.commit = AsyncMock()
+    memory_service._db.batch.return_value = batch_mock
 
     await memory_service.create_prospect_if_missing("3227303760")
 
@@ -103,33 +110,21 @@ async def test_delete_prospect_completely_flow(memory_service):
     # Mock clear_memory
     memory_service.clear_memory = AsyncMock(return_value=True)
     
-    # Setup document mocks for session and prospect
-    mock_session_ref = MagicMock()
-    mock_session_ref.delete = AsyncMock()
-    
-    # history_ref.stream() mock
-    mock_history_ref = MagicMock()
-    mock_history_ref.stream.return_value.__aiter__.return_value = [] # Empty list as async iterator
-    mock_session_ref.collection.return_value = mock_history_ref
-    
-    # Prospect mock
+    # Setup document mocks for prospect
     mock_prospect_ref = MagicMock()
     mock_prospect_ref.id = "test_id"
     mock_prospect_ref.reference.delete = AsyncMock()
     mock_prospect_ref.delete = AsyncMock() # For direct document().delete() calls
-    
+
     # prospectos_ref.where(...).get() mock
     mock_query = MagicMock()
     mock_query.get = AsyncMock(return_value=[mock_prospect_ref])
-    
+
     def collection_side_effect(name):
         col_mock = MagicMock()
         if name == "prospectos":
             col_mock.where.return_value.limit.return_value = mock_query
             col_mock.document.return_value = mock_prospect_ref
-        elif name == "mensajeria":
-            # Path: mensajeria/whatsapp/sesiones/{phone}
-            col_mock.document.return_value.collection.return_value.document.return_value = mock_session_ref
         return col_mock
 
     memory_service._db.collection.side_effect = collection_side_effect
@@ -140,5 +135,4 @@ async def test_delete_prospect_completely_flow(memory_service):
     # Verify
     assert result is True
     memory_service.clear_memory.assert_called_once_with("+573227303760")
-    mock_session_ref.delete.assert_called_once()
     mock_prospect_ref.reference.delete.assert_called_once()

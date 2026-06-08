@@ -210,11 +210,10 @@ class MemoryService:
     # ──────────────────────────────────────────────────────────────────
 
     async def save_message(self, phone_number: str, role: str, content: str) -> None:
-        """Persist a single chat message to mensajeria/whatsapp/sesiones/{phone}/historial."""
+        """Persist a single chat message to prospectos/{phone}/historial."""
         try:
             clean_phone = PhoneNormalizer.normalize(phone_number)
-            doc_ref = self._db.collection("mensajeria").document("whatsapp") \
-                .collection("sesiones").document(clean_phone) \
+            doc_ref = self._db.collection(self.collection_name).document(clean_phone) \
                 .collection("historial").document()
             await self._firestore_io(
                 doc_ref.set({"role": role, "content": content, "timestamp": firestore.SERVER_TIMESTAMP}),
@@ -229,8 +228,7 @@ class MemoryService:
         """Retrieve last N messages from historial, ordered ascending."""
         clean_phone = PhoneNormalizer.normalize(phone_number)
         try:
-            query_ref = self._db.collection("mensajeria").document("whatsapp") \
-                .collection("sesiones").document(clean_phone) \
+            query_ref = self._db.collection(self.collection_name).document(clean_phone) \
                 .collection("historial") \
                 .order_by("timestamp", direction=firestore.Query.DESCENDING) \
                 .limit(limit)
@@ -277,7 +275,7 @@ class MemoryService:
 
         Contract (test_reset_flow.py, test_read_asymmetry.py):
           - If prospect does NOT exist → create with canonical keys
-          - Purge any stale mensajeria session document
+          - Purge any stale historial subcollection docs
           - Canonical keys: status=PENDING, chatbot_status=ACTIVE, etc.
         """
         try:
@@ -309,10 +307,9 @@ class MemoryService:
                 await self._firestore_io(doc_ref.set(payload), phone=clean_phone, label="create_prospect_if_missing.set")
                 logger.info(f"✅ Prospect created for {clean_phone} (Status: PENDING)")
 
-            # Zombie session purge — always attempt (Ensures idempotency for /reset)
-            session_ref = self._db.collection("mensajeria").document("whatsapp") \
-                .collection("sesiones").document(clean_phone)
-            await self._firestore_io(session_ref.delete(), phone=clean_phone, label="create_prospect_if_missing.delete_session")
+            # Zombie purge — clear stale historial docs under prospectos/{phone}/historial
+            # WHY: Ensures idempotency for /reset by wiping orphan history
+            await self.clear_memory(clean_phone)
         except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
             raise
         except Exception as e:
@@ -344,8 +341,7 @@ class MemoryService:
         """
         try:
             clean_phone = PhoneNormalizer.normalize(phone_number)
-            history_ref = self._db.collection("mensajeria").document("whatsapp") \
-                .collection("sesiones").document(clean_phone) \
+            history_ref = self._db.collection(self.collection_name).document(clean_phone) \
                 .collection("historial")
 
             batch = self._db.batch()
@@ -376,15 +372,11 @@ class MemoryService:
             clean_phone = PhoneNormalizer.normalize(phone_number)
             logger.warning(f"☢️ [NUCLEAR RESET] Starting multi-scan wipe for {clean_phone}")
             
-            # --- 1. PURGE MENSAJERIA SESSIONS (AI History) ---
+            # --- 1. PURGE HISTORIAL (Subcolección bajo prospectos) ---
             try:
                 await self.clear_memory(clean_phone)
-                
-                session_ref = self._db.collection("mensajeria").document("whatsapp") \
-                    .collection("sesiones").document(clean_phone)
-                await session_ref.delete()
             except Exception as e:
-                logger.warning(f"⚠️ Failed to purge mensajeria session for {clean_phone}: {e}")
+                logger.warning(f"⚠️ Failed to purge historial for {clean_phone}: {e}")
             
             # --- 2. PURGE PROSPECT DATA (CRM MULTI-SCAN) ---
             prospectos_ref = self._db.collection(self.collection_name)

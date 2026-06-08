@@ -9,7 +9,7 @@ async def test_clear_memory_batch_execution():
     """
     Valida que clear_memory itere correctamente sobre el stream() 
     y ejecute las eliminaciones en un batch de Firestore.
-    Ruta real: mensajeria/whatsapp/sesiones/[phone]/historial
+    Ruta real: prospectos/[phone]/historial
     """
     mock_db = MagicMock()
     ms = MemoryService(db=mock_db)
@@ -30,8 +30,8 @@ async def test_clear_memory_batch_execution():
     historial_collection_mock = MagicMock()
     historial_collection_mock.stream.return_value = stream_mock
     
-    # Configuramos la ruta profunda
-    mock_db.collection.return_value.document.return_value.collection.return_value.document.return_value.collection.return_value = historial_collection_mock
+    # Configuramos la ruta: collection("prospectos").document(phone).collection("historial")
+    mock_db.collection.return_value.document.return_value.collection.return_value = historial_collection_mock
     
     # Mock del batch
     batch_mock = MagicMock()
@@ -73,8 +73,8 @@ async def test_get_chat_history_stream_iteration():
     historial_collection_mock = MagicMock()
     historial_collection_mock.order_by.return_value.limit.return_value = query_mock
     
-    # Configuramos la ruta profunda
-    mock_db.collection.return_value.document.return_value.collection.return_value.document.return_value.collection.return_value = historial_collection_mock
+    # Configuramos la ruta: collection("prospectos").document(phone).collection("historial")
+    mock_db.collection.return_value.document.return_value.collection.return_value = historial_collection_mock
     
     history = await ms.get_chat_history(phone_number, limit=10)
     

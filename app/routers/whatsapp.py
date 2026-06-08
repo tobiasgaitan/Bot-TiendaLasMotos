@@ -1184,7 +1184,7 @@ async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "",
 async def _get_session(db_client, phone) -> Dict[str, Any]:
     try:
         if not db_client: return {}
-        ref = db_client.collection("mensajeria").document("whatsapp").collection("sesiones").document(phone)
+        ref = db_client.collection("prospectos").document(phone)
         doc = ref.get()
         if doc.exists:
             return doc.to_dict()

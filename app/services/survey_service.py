@@ -290,7 +290,7 @@ class SurveyService:
             # 2. DELETE BY ID VARIANTS
             variants = list(set([phone, clean_phone, phone.replace("57", "", 1)]))
             for pid in variants:
-                doc_ref = db_client.collection("mensajeria").document("whatsapp").collection("sesiones").document(pid)
+                doc_ref = db_client.collection("prospectos").document(pid)
                 if doc_ref.get().exists:
                     # Recursive history wipe
                     hist = doc_ref.collection("historial").limit(50).stream()
@@ -304,9 +304,7 @@ class SurveyService:
             for field in ["celular", "telefono"]:
                 for val in field_variants:
                     docs = (
-                        db_client.collection("mensajeria")
-                        .document("whatsapp")
-                        .collection("sesiones")
+                        db_client.collection("prospectos")
                         .where(field, "==", val)
                         .stream()
                     )
@@ -333,9 +331,7 @@ class SurveyService:
             
             # 1. Update Session Document (Legacy/Router Sync)
             doc_ref = (
-                db_client.collection("mensajeria")
-                .document("whatsapp")
-                .collection("sesiones")
+                db_client.collection("prospectos")
                 .document(clean_phone)
             )
             data["last_interaction"] = datetime.now(timezone.utc)
