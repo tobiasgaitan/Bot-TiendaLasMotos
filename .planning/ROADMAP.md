@@ -63,3 +63,4 @@
 - [x] BOT-BUG-040: Resiliencia ante fallo en cascada - skip de ítems corruptos en catálogo y absorción de gRPC en update_whatsapp_status (97/97 tests passed).
 - [x] BOT-BUG-043: Estabilización de persistencia Firestore mediante ContingencySnapshot.
 - [x] BOT-ARQ-837: Unificación de persistencia bajo colección prospectos (Score 1.000).
+- [x] BOT-BUG-044-REV2: Sincronización del juez para permitir Simulación Ciega Anticipada y log nativo de fallback (Score 0.991).
