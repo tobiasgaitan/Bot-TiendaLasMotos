@@ -16,6 +16,7 @@ WHY este archivo fue reescrito:
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 from app.services.memory_service import MemoryService
+from tests.conftest import AsyncStreamMock
 
 
 @pytest.fixture
@@ -43,18 +44,26 @@ async def test_template_sanitization_initialization(memory_service):
     mock_doc_ref.get.return_value = mock_doc_snap
     mock_doc_ref.set = AsyncMock()
 
-    mock_session_ref = AsyncMock()
-    mock_session_ref.delete = AsyncMock()
-
     def collection_side_effect(name):
         col_mock = MagicMock()
         if name == "prospectos":
-            col_mock.document.return_value = mock_doc_ref
-        elif name == "mensajeria":
-            col_mock.document.return_value.collection.return_value.document.return_value = mock_session_ref
+            # Support both document-level and historial subcollection access
+            doc_mock = MagicMock()
+            doc_mock.get = mock_doc_ref.get
+            doc_mock.set = mock_doc_ref.set
+            # historial subcollection for clear_memory zombie purge
+            historial_mock = MagicMock()
+            historial_mock.stream.return_value = AsyncStreamMock([])
+            doc_mock.collection.return_value = historial_mock
+            col_mock.document.return_value = doc_mock
         return col_mock
 
     memory_service._db.collection.side_effect = collection_side_effect
+
+    # Mock batch for clear_memory
+    batch_mock = MagicMock()
+    batch_mock.commit = AsyncMock()
+    memory_service._db.batch.return_value = batch_mock
 
     phone = "573001234567"
     await memory_service.create_prospect_if_missing(phone)
