@@ -149,8 +149,13 @@ class JudgeService:
         return any(kw.lower() in text.lower() for kw in keywords)
 
     def _is_profiling_attempt(self, text: str) -> bool:
-        keywords = ["trabaja", "ingresos", "gana", "datacrédito", "reportado", "vivienda", "arriendo", "celular"]
-        return any(kw.lower() in text.lower() for kw in keywords)
+        if not text: return False
+        profiling_patterns = [
+            r"(cuánto?s?|qué|cuále?s?|en qué).*(gana|devenga|ingresa|ingresos?|sueldo|salario|gastos?|egresos?|labora|trabaja|hace|puesto|cargo|empresa|ocupación|oficio|profesión)",
+            r"(independiente|empleado|pensionado)",
+            r"(historial|reporte|datacrédito|cifin|experiencia.*crediticia)"
+        ]
+        return any(re.search(pattern, text.lower()) for pattern in profiling_patterns)
 
     def _check_financial_parity(self, text: str, prospect_data: Dict[str, Any]) -> Tuple[bool, str]:
         """
