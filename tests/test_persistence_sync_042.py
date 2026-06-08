@@ -39,35 +39,35 @@ async def test_memory_service_sync_and_content_assertion():
     
     # Simulamos el payload del catálogo con una mutación maliciosa
     # El catalog service debe garantizar la cadena.
-    catalog_service.search_items = MagicMock(return_value=[
+    from unittest.mock import patch
+    
+    with patch.object(catalog_service, 'search_items', MagicMock(return_value=[
         {
             "name": "TVS Sport 100",
             "price": "$5.000.000",
             "summary": "100cc" # El campo summary se convierte en Ficha Tecnica
         }
-    ])
-    
-    # Disable cache to hit the mock
-    catalog_service._cache_service.get = MagicMock(return_value=(None, 0))
-    
-    mock_catalog_payload = catalog_service.search_catalog("tvs sport")
-    
-    # Verificar que el formateador incluye explícitamente "Ficha Tecnica:" 
-    # y no es un string vacío.
-    assert mock_catalog_payload is not None, "❌ Payload mutado resultó en None silencioso"
-    assert mock_catalog_payload.strip() != "", "❌ Payload mutado resultó en string vacío silencioso"
-    assert "Ficha Tecnica:" in mock_catalog_payload, "❌ Ausencia de 'Ficha Tecnica:' en el payload (Anti-Null Masking Falló)"
+    ])), patch.object(catalog_service._cache_service, 'get', MagicMock(return_value=(None, 0))):
+        
+        mock_catalog_payload = catalog_service.search_catalog("tvs sport")
+        
+        # Verificar que el formateador incluye explícitamente "Ficha Tecnica:" 
+        # y no es un string vacío.
+        assert mock_catalog_payload is not None, "❌ Payload mutado resultó en None silencioso"
+        assert mock_catalog_payload.strip() != "", "❌ Payload mutado resultó en string vacío silencioso"
+        assert "Ficha Tecnica:" in mock_catalog_payload, "❌ Ausencia de 'Ficha Tecnica:' en el payload (Anti-Null Masking Falló)"
     
     # Adicional: Verificar Anti-Null Masking
     # Si simulamos que un campo crítico falta, no debe enmascararse
-    catalog_service.search_items = MagicMock(return_value=[{"name": "TVS Sport 100", "summary": "100cc"}]) # Falta precio
-    
-    try:
-        # El validador debe arrojar error y no tragar la excepción silenciosamente
-        formatted = catalog_service.search_catalog("tvs sport")
-        # Si de todos modos formatea, debe contener "Ficha Tecnica:" o lanzar error.
-        if formatted:
-            assert "Ficha Tecnica:" in formatted
-    except Exception as e:
-        # Esto es aceptable (Zero-Silent-Failures)
-        pass
+    with patch.object(catalog_service, 'search_items', MagicMock(return_value=[{"name": "TVS Sport 100", "summary": "100cc"}])), \
+         patch.object(catalog_service._cache_service, 'get', MagicMock(return_value=(None, 0))):
+        
+        try:
+            # El validador debe arrojar error y no tragar la excepción silenciosamente
+            formatted = catalog_service.search_catalog("tvs sport")
+            # Si de todos modos formatea, debe contener "Ficha Tecnica:" o lanzar error.
+            if formatted:
+                assert "Ficha Tecnica:" in formatted
+        except Exception as e:
+            # Esto es aceptable (Zero-Silent-Failures)
+            pass

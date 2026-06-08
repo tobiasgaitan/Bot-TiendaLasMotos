@@ -15,8 +15,10 @@ Posición: Cierre de ticket BOT-ARQ-837 — unificación de persistencia bajo co
 | 041 | Unificación de persistencia bajo colección prospectos (BOT-ARQ-837) | 2026-06-07 | a140e02 | 041-unificar-persistencia-prospectos |
 | 042 | Cierre BOT-DEBT-042: Sincronía bloqueante y blindaje PCC Pro | 2026-06-07 | 35ba089 | 042-sincronia-pcc-pro |
 | 043 | BOT-BUG-044-REV2 Judge Sync and Fallback Log | 2026-06-08 | 797c584 | 043-bot-bug-044-rev2 |
-| 044 | BOT-COMPLIANCE-044 Eval and Doc Sync | 2026-06-08 | pending | 044-bot-compliance-044 |
+| 044 | BOT-COMPLIANCE-044 Eval and Doc Sync | 2026-06-08 | d19997c | 044-bot-compliance-044 |
+| 045 | BOT-BUG-045 KeyError Fix | 2026-06-08 | pending | 045-bot-bug-045 |
 
+- [2026-06-08] v10.5.1: Hotfix finalizado para BOT-BUG-045. Reparación de test pollution (Mock Leak) en test de sincronía y obtención de score 1.000.
 - [2026-06-08] v10.5.1: Cierre BOT-COMPLIANCE-044 con eval score 0.991 garantizando inmunidad del juez.
 - [2026-06-08] v10.5.1: Hotfix finalizado para BOT-BUG-044-REV2. Sincronización del juez para permitir Simulación Ciega Anticipada y log nativo de fallback.
 - [2026-06-07] v10.5.0: BOT-ARQ-837 completado. Colección 'mensajeria' eliminada de todos los módulos de producción. 104/104 tests passed.
