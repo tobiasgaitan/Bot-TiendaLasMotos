@@ -718,7 +718,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
 
                 # Fallback if all attempts fail
                 if not is_approved:
-                    logger.error(f"❌ [JUDGE] Max retries reached. Forcing official fallback response. Criteria: {last_criteria_id}")
+                    logger.error(f"❌ [JUDGE] Max retries reached. Forcing official fallback response. Criteria: {last_criteria_id}. Rejection Reason: {rejection_reason}")
                     fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
                     
                     # [MANDATO v9.8.3] Marcar estado PRIMERO, luego enviar mensaje
