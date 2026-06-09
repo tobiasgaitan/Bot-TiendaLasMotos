@@ -98,8 +98,7 @@ async def test_timeout_triggers_on_slow_firestore_get(slow_memory_service, caplo
     DADO: Firestore tarda más que DB_TIMEOUT en responder.
     CUANDO: se llama a get_prospect_data.
     ENTONCES:
-      - NO se lanza excepción (Zero-Silent-Failures silencioso hacia el llamador).
-      - Retorna un diccionario con exists=False.
+      - SI se lanza excepción TimeoutError hacia el llamador (Zero-Silent-Failures).
       - El log forense contiene 'BOT-INFRA-33' y 'ERROR o TIMEOUT'.
       - whatsapp_service.send_text_message recibe el número de teléfono del lead.
     """
@@ -115,8 +114,8 @@ async def test_timeout_triggers_on_slow_firestore_get(slow_memory_service, caplo
 
         import logging
         with caplog.at_level(logging.ERROR, logger="app.services.memory_service"):
-            result = await slow_memory_service.get_prospect_data(phone)
-            assert result.get("exists") is False, "Debe asumir contexto vacío (contingencia)"
+            with pytest.raises(asyncio.TimeoutError):
+                await slow_memory_service.get_prospect_data(phone)
 
     # Verificar log forense
     assert any("BOT-INFRA-33" in r.message for r in caplog.records), \
@@ -144,7 +143,7 @@ async def test_timeout_exception_is_handled_safely():
     """
     DADO: una operación simulada (ej. save_message) lanza TimeoutError.
     CUANDO: _firestore_io atrapa el error.
-    ENTONCES: se devuelve el _ContingencySnapshot sin propagar la excepción.
+    ENTONCES: la excepción TimeoutError se propaga hacia el llamador (Zero-Silent-Failures).
     """
     from app.services.memory_service import MemoryService, _ContingencySnapshot
 
@@ -158,10 +157,8 @@ async def test_timeout_exception_is_handled_safely():
         raise asyncio.TimeoutError("Fake timeout")
 
     with patch("app.services.whatsapp_service.whatsapp_service", mock_wa_svc):
-        result = await svc._firestore_io(mock_coro(), phone=phone, label="save_message")
-        
-        assert isinstance(result, _ContingencySnapshot), "Debe devolver el objeto de contingencia seguro"
-        assert result.exists is False
+        with pytest.raises(asyncio.TimeoutError):
+            await svc._firestore_io(mock_coro(), phone=phone, label="save_message")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -174,10 +171,7 @@ async def test_gcp_service_unavailable_handled_safely(memory_service_instance, c
     DADO: Firestore lanza ServiceUnavailable (degradación de red GCP).
     CUANDO: se llama a get_prospect_data.
     ENTONCES:
-      - La excepción NO se propaga.
-      - El log forense contiene 'ERROR o TIMEOUT'.
-      - whatsapp_service.send_text_message es invocado.
-      - Retorna existe=False.
+      - La excepción SI se propaga.
     """
     from google.api_core import exceptions as gcp_exceptions
 
@@ -194,8 +188,8 @@ async def test_gcp_service_unavailable_handled_safely(memory_service_instance, c
     with caplog.at_level(logging.ERROR, logger="app.services.memory_service"), \
          patch("app.services.whatsapp_service.whatsapp_service", mock_wa_svc):
 
-        result = await memory_service_instance.get_prospect_data(phone)
-        assert result.get("exists") is False
+        with pytest.raises(gcp_exceptions.ServiceUnavailable):
+            await memory_service_instance.get_prospect_data(phone)
 
     assert any("ERROR o TIMEOUT" in r.message for r in caplog.records), \
         "El log debe registrar ERROR o TIMEOUT"
