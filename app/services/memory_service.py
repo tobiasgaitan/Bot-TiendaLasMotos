@@ -94,8 +94,7 @@ class MemoryService:
             except Exception as reinit_err:
                 logger.error(f"❌ [BOT-INFRA-33] Fallo al re-inicializar Firestore AsyncClient para {phone}: {reinit_err}")
                 
-            # Devolver valor seguro en lugar de re-raise que destruya la ejecución
-            return _ContingencySnapshot()
+            raise
 
     async def shutdown(self, timeout: int = 8) -> None:
         """
