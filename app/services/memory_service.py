@@ -180,6 +180,12 @@ class MemoryService:
 
             merged[key] = value
 
+        # [HOTFIX] Inyección de valor por defecto para esquema estricto
+        # Permite el guardado parcial de la memoria en el PASO 2 de Simulación Ciega
+        # Solo inyecta False si el documento actual no tiene la llave y la IA tampoco la extrajo
+        if current_data.get("habeas_data_accepted") is None and "habeas_data_accepted" not in merged:
+            merged["habeas_data_accepted"] = False
+
         return merged
         
     # Backward-compat alias used by update_prospect_summary
