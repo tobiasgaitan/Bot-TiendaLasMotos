@@ -470,7 +470,12 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         if memory_service_module.memory_service:
             if msg_type == "text" and message_body:
                 # Optimistic save (don't block too long)
-                await memory_service_module.memory_service.save_message(user_phone, "user", message_body)
+                try:
+                    await memory_service_module.memory_service.save_message(user_phone, "user", message_body)
+                except Exception as e:
+                    logger.error(f"❌ [CONTINGENCY] Fallo al guardar mensaje del usuario {user_phone}. Abortando flujo. Detalle: {e}", exc_info=True)
+                    await _send_whatsapp_message(user_phone, "Disculpa, estamos experimentando intermitencias en nuestro sistema. Intenta de nuevo en unos minutos.", phone_number_id=phone_number_id)
+                    return
             # AUDIO: [Mensaje de Voz] removed here to avoid blinding the extractor.
             # It will be saved with the actual transcription inside the audio block.
 
@@ -495,122 +500,128 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         if memory_service_module.memory_service:
             ms = memory_service_module.memory_service
             
-            # 1. Get existing data FIRST to decide on greeting
-            prospect_data = await ms.get_prospect_data(user_phone)
-            
-            # --- SYSTEM COMMANDS INTERCEPTION (v9.8.3) ---
-            # Movemos esto aquí para tener acceso a prospect_data y evitar duplicados
-            if msg_type == "text":
-                cmd = message_body.strip().lower()
-                if cmd in ["reset", "/reset"]:
-                    # 1. Block Concurrency (v9.8.3)
-                    if user_phone in _active_resets:
-                        logger.info(f"⏭️ [RESET] Reset already in progress for {user_phone}. Ignorando duplicado.")
-                        return
-                    
-                    _active_resets.add(user_phone)
-                    try:
-                        logger.warning(f"☢️ NUCLEAR RESET TRIGGERED (Sync) for {user_phone}")
-                        # Nuclear wipe (Siempre intentamos limpiar, sea que exista o no en Firestore)
-                        success = await ms.delete_prospect_completely(user_phone)
-                        if not success:
-                            logger.error(f"❌ [RESET] Fallo en limpieza profunda para {user_phone}, procediendo con feedback.")
-
-                        # Limpiar buffer de mensajes para evitar duplicados residuales
-                        await message_buffer.clear_buffer(user_phone)
-                        
-                        # Sincronía de Feedback: Garantía de respuesta determinista
-                        await whatsapp_service.send_text_message(
-                            user_phone, 
-                            "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?", 
-                            phone_number_id=phone_number_id
-                        )
-                    except Exception as e:
-                        logger.exception(f"❌ [RESET] Error inesperado en flujo de reset para {user_phone}: {e}")
-                    finally:
-                        # Blindaje de Cleanup: Evita bloqueo permanente de hilos del usuario
+            try:
+                # 1. Get existing data FIRST to decide on greeting
+                prospect_data = await ms.get_prospect_data(user_phone)
+                
+                # --- SYSTEM COMMANDS INTERCEPTION (v9.8.3) ---
+                # Movemos esto aquí para tener acceso a prospect_data y evitar duplicados
+                if msg_type == "text":
+                    cmd = message_body.strip().lower()
+                    if cmd in ["reset", "/reset"]:
+                        # 1. Block Concurrency (v9.8.3)
                         if user_phone in _active_resets:
-                            _active_resets.remove(user_phone)
-                    return 
-
-                if cmd in ["/update", "/refresh_catalog"]:
-                    logger.warning(f"🔄 CATALOG REFRESH TRIGGERED by {user_phone}")
-                    try:
-                        _ensure_services()
-                        if catalog_service_local:
-                            catalog_service_local.refresh()
-                            confirm_msg = "✅ Catálogo actualizado en memoria exitosamente."
-                        else:
-                            confirm_msg = "❌ Error: Catalog Service no inicializado."
-                    except Exception as e:
-                        logger.exception(f"❌ Error refreshing catalog: {e}")
-                        confirm_msg = f"❌ Error al actualizar el catálogo: {str(e)}"
+                            logger.info(f"⏭️ [RESET] Reset already in progress for {user_phone}. Ignorando duplicado.")
+                            return
                         
-                    await whatsapp_service.send_text_message(user_phone, confirm_msg, phone_number_id=phone_number_id)
+                        _active_resets.add(user_phone)
+                        try:
+                            logger.warning(f"☢️ NUCLEAR RESET TRIGGERED (Sync) for {user_phone}")
+                            # Nuclear wipe (Siempre intentamos limpiar, sea que exista o no en Firestore)
+                            success = await ms.delete_prospect_completely(user_phone)
+                            if not success:
+                                logger.error(f"❌ [RESET] Fallo en limpieza profunda para {user_phone}, procediendo con feedback.")
+    
+                            # Limpiar buffer de mensajes para evitar duplicados residuales
+                            await message_buffer.clear_buffer(user_phone)
+                            
+                            # Sincronía de Feedback: Garantía de respuesta determinista
+                            await whatsapp_service.send_text_message(
+                                user_phone, 
+                                "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?", 
+                                phone_number_id=phone_number_id
+                            )
+                        except Exception as e:
+                            logger.exception(f"❌ [RESET] Error inesperado en flujo de reset para {user_phone}: {e}")
+                        finally:
+                            # Blindaje de Cleanup: Evita bloqueo permanente de hilos del usuario
+                            if user_phone in _active_resets:
+                                _active_resets.remove(user_phone)
+                        return 
+    
+                    if cmd in ["/update", "/refresh_catalog"]:
+                        logger.warning(f"🔄 CATALOG REFRESH TRIGGERED by {user_phone}")
+                        try:
+                            _ensure_services()
+                            if catalog_service_local:
+                                catalog_service_local.refresh()
+                                confirm_msg = "✅ Catálogo actualizado en memoria exitosamente."
+                            else:
+                                confirm_msg = "❌ Error: Catalog Service no inicializado."
+                        except Exception as e:
+                            logger.exception(f"❌ Error refreshing catalog: {e}")
+                            confirm_msg = f"❌ Error al actualizar el catálogo: {str(e)}"
+                            
+                        await whatsapp_service.send_text_message(user_phone, confirm_msg, phone_number_id=phone_number_id)
+                        return
+    
+                newly_created = not (prospect_data and prospect_data.get("exists", False))
+                current_agent = prospect_data.get("current_agent", "expert") if prospect_data else "expert"
+                
+                # 2. LOAD HISTORY for Context
+                logger.info(f"📜 Loading chat history for {user_phone}...")
+                current_history = await ms.get_chat_history(user_phone, limit=10)
+                
+                # GREETING BYPASS LOGIC (Time-Based)
+                # ULTIMATUM: If it's a new prospect or history is empty, skip_greeting MUST be False.
+                if len(current_history) <= 1 or newly_created:
+                    skip_greeting = False
+                    logger.info(f"🆕 Fresh start detected (Newly created: {newly_created}). Full greeting enabled.")
+                else:
+                    # Check the second to last message (the previous interaction)
+                    prev_msg = current_history[-2]
+                    last_ts = prev_msg.get("timestamp")
+                    
+                    # Normalize timestamp to datetime
+                    last_time = None
+                    if hasattr(last_ts, 'timestamp'): # Firestore Timestamp
+                        last_time = datetime.fromtimestamp(last_ts.timestamp(), tz=timezone.utc)
+                    elif isinstance(last_ts, datetime):
+                        last_time = last_ts
+                    elif isinstance(last_ts, str): # String ISO format fallback
+                        try:
+                            last_time = datetime.fromisoformat(last_ts.replace('Z', '+00:00'))
+                        except: pass
+                    
+                    if last_time:
+                        # Calculate duration since previous message
+                        now = datetime.now(timezone.utc)
+                        if last_time.tzinfo is None:
+                            last_time = last_time.replace(tzinfo=timezone.utc)
+                            
+                        delta = now - last_time
+                        diff_seconds = delta.total_seconds()
+                        
+                        if diff_seconds < 43200: # 12 hours
+                            skip_greeting = True
+                            logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
+    
+                # 3. NOW update/create timestamps AFTER decision is made
+                await ms.create_prospect_if_missing(user_phone)
+                await ms.update_last_interaction(user_phone)
+    
+                # [ARCH-BULK-META-010] MÁQUINA DE ESTADOS: PENDING → IN_PROGRESS
+                # WHY: Los prospectos de carga masiva arrancan en 'PENDING'. La primera
+                # respuesta real del usuario (este webhook 'messages') activa la transición.
+                # El await bloqueante garantiza commit en Firestore antes de continuar
+                # con la lógica del bot (mandato de sincronía ARCH-BULK-META-010).
+                await ms.transition_to_in_progress(user_phone)
+    
+                # --- [HOTFIX v9.8.3] REFRESH METADATA ---
+                # WHY: If we just created the prospect or transitioned it, the local 
+                # 'prospect_data' object is STALE. We must refresh it so the JudgeService
+                # doesn't reject valid users (C3/C9 rejections).
+                prospect_data = await ms.get_prospect_data(user_phone)
+                logger.info(f"👤 Prospect Data Refreshed: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
+                
+                # Human Gatekeeper Check (Mantenibilidad)
+                if prospect_data and prospect_data.get('human_help_requested', False):
+                    logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
                     return
 
-            newly_created = not (prospect_data and prospect_data.get("exists", False))
-            current_agent = prospect_data.get("current_agent", "expert") if prospect_data else "expert"
-            
-            # 2. LOAD HISTORY for Context
-            logger.info(f"📜 Loading chat history for {user_phone}...")
-            current_history = await ms.get_chat_history(user_phone, limit=10)
-            
-            # GREETING BYPASS LOGIC (Time-Based)
-            # ULTIMATUM: If it's a new prospect or history is empty, skip_greeting MUST be False.
-            if len(current_history) <= 1 or newly_created:
-                skip_greeting = False
-                logger.info(f"🆕 Fresh start detected (Newly created: {newly_created}). Full greeting enabled.")
-            else:
-                # Check the second to last message (the previous interaction)
-                prev_msg = current_history[-2]
-                last_ts = prev_msg.get("timestamp")
-                
-                # Normalize timestamp to datetime
-                last_time = None
-                if hasattr(last_ts, 'timestamp'): # Firestore Timestamp
-                    last_time = datetime.fromtimestamp(last_ts.timestamp(), tz=timezone.utc)
-                elif isinstance(last_ts, datetime):
-                    last_time = last_ts
-                elif isinstance(last_ts, str): # String ISO format fallback
-                    try:
-                        last_time = datetime.fromisoformat(last_ts.replace('Z', '+00:00'))
-                    except: pass
-                
-                if last_time:
-                    # Calculate duration since previous message
-                    now = datetime.now(timezone.utc)
-                    if last_time.tzinfo is None:
-                        last_time = last_time.replace(tzinfo=timezone.utc)
-                        
-                    delta = now - last_time
-                    diff_seconds = delta.total_seconds()
-                    
-                    if diff_seconds < 43200: # 12 hours
-                        skip_greeting = True
-                        logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
-
-            # 3. NOW update/create timestamps AFTER decision is made
-            await ms.create_prospect_if_missing(user_phone)
-            await ms.update_last_interaction(user_phone)
-
-            # [ARCH-BULK-META-010] MÁQUINA DE ESTADOS: PENDING → IN_PROGRESS
-            # WHY: Los prospectos de carga masiva arrancan en 'PENDING'. La primera
-            # respuesta real del usuario (este webhook 'messages') activa la transición.
-            # El await bloqueante garantiza commit en Firestore antes de continuar
-            # con la lógica del bot (mandato de sincronía ARCH-BULK-META-010).
-            await ms.transition_to_in_progress(user_phone)
-
-            # --- [HOTFIX v9.8.3] REFRESH METADATA ---
-            # WHY: If we just created the prospect or transitioned it, the local 
-            # 'prospect_data' object is STALE. We must refresh it so the JudgeService
-            # doesn't reject valid users (C3/C9 rejections).
-            prospect_data = await ms.get_prospect_data(user_phone)
-            logger.info(f"👤 Prospect Data Refreshed: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
-            
-            # Human Gatekeeper Check (Mantenibilidad)
-            if prospect_data and prospect_data.get('human_help_requested', False):
-                logger.info(f"🛑 Human Help Requested flag active for {user_phone}. Silencing bot.")
+            except Exception as e:
+                logger.error(f"❌ [CONTINGENCY] Fallo en recuperación/actualización de memoria para {user_phone}. Abortando. Detalle: {e}", exc_info=True)
+                await _send_whatsapp_message(user_phone, "Disculpa, estamos experimentando intermitencias en nuestro sistema. Intenta de nuevo en unos minutos.", phone_number_id=phone_number_id)
                 return
         else:
             logger.warning("⚠️ Memory Service is NOT initialized. Skipping persistence.")
