@@ -16,8 +16,10 @@ Posición: Cierre de ticket BOT-ARQ-837 — unificación de persistencia bajo co
 | 042 | Cierre BOT-DEBT-042: Sincronía bloqueante y blindaje PCC Pro | 2026-06-07 | 35ba089 | 042-sincronia-pcc-pro |
 | 043 | BOT-BUG-044-REV2 Judge Sync and Fallback Log | 2026-06-08 | 797c584 | 043-bot-bug-044-rev2 |
 | 044 | BOT-COMPLIANCE-044 Eval and Doc Sync | 2026-06-08 | d19997c | 044-bot-compliance-044 |
-| 045 | BOT-BUG-045 KeyError Fix | 2026-06-08 | pending | 045-bot-bug-045 |
+| 045 | BOT-BUG-045 KeyError Fix | 2026-06-08 | 647a9ff | 045-bot-bug-045 |
+| 046 | Crear archivo whap.json en la raíz | 2026-06-18 | 2b200b1 | 046-crear-whap-json |
 
+- [2026-06-18] v10.5.2: Creación de archivo de configuración whap.json.
 - [2026-06-08] v10.5.1: Hotfix finalizado para BOT-BUG-045. Reparación de test pollution (Mock Leak) en test de sincronía y obtención de score 1.000.
 - [2026-06-08] v10.5.1: Cierre BOT-COMPLIANCE-044 con eval score 0.991 garantizando inmunidad del juez.
 - [2026-06-08] v10.5.1: Hotfix finalizado para BOT-BUG-044-REV2. Sincronización del juez para permitir Simulación Ciega Anticipada y log nativo de fallback.
