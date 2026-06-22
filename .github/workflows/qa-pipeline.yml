@@ -1,0 +1,54 @@
+name: Antigravity WA Bot CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  qa-gate:
+    runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: |
+          npm ci
+          npx playwright install --with-deps
+
+      - name: Run Scaffold Check
+        run: npx agent-cli scaffold --check
+
+      - name: Spin up Whap Mock Server
+        run: |
+          npm run whap:server &
+          sleep 3
+
+      - name: Execute Playwright Integration Tests
+        run: npx playwright test tests/integration/whatsapp_webhook.spec.js
+
+      - name: Run Conversational Regression (Botium)
+        run: npm test -- --botium tests/conversational/TC_simulacion_ciega.convo.txt
+
+      - name: Execute Performance Test (Grafana k6)
+        uses: grafana/run-k6-action@v1
+        with:
+          path: tests/performance/test_k6.js
+
+      - name: Evaluate Coherence Score Final Gate
+        run: npx agent-cli eval

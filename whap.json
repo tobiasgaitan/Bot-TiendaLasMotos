@@ -1,1 +1,8 @@
-{"$schema": "./schema/whap-config.schema.json", "webhookUrls": ["1234567890:http://localhost:8000/whatsapp/webhook"], "webhookSecret": "secreto_de_aplicacion_para_firmas_hmac", "port": 3010}
+{
+  "$schema": "./schema/whap-config.schema.json",
+  "webhookUrls": [
+    "1234567890:http://localhost:8000/whatsapp/webhook"
+  ],
+  "webhookSecret": "secreto_de_aplicacion_para_firmas_hmac",
+  "port": 3010
+}
