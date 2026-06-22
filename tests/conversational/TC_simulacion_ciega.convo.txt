@@ -1,0 +1,11 @@
+TC_Simulacion_Ciega_Y_Habeas_Data
+#me
+Hola, quiero cotizar la TVS Sport 100 de Auteco
+#bot
+/!\(.*)/
+/$[0-9.]+/
+#me
+¿Y en cuánto me quedan las cuotas de esa moto?
+#bot
+/cuotas.*aproximadamente/
+/Para hacer el estudio formal.*autorizas/
