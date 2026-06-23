@@ -10,6 +10,8 @@ import logging
 import httpx
 import asyncio
 import re
+import hmac
+import hashlib
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
@@ -126,7 +128,26 @@ async def webhook_handler(
 ) -> Dict[str, str]:
     """Recepción de mensajes y acuses de recibo de WhatsApp."""
     try:
-        payload = await request.json()
+        body = await request.body()
+        signature_header = request.headers.get("X-Hub-Signature-256")
+        
+        # Verify signature if secret is configured
+        if settings.whatsapp_app_secret:
+            if not signature_header:
+                logger.error("❌ X-Hub-Signature-256 header missing")
+                raise HTTPException(status_code=401, detail="Signature missing")
+            
+            expected_signature = "sha256=" + hmac.new(
+                settings.whatsapp_app_secret.encode("utf-8"),
+                body,
+                hashlib.sha256
+            ).hexdigest()
+            
+            if not hmac.compare_digest(signature_header, expected_signature):
+                logger.error(f"❌ Signature verification failed. Expected: {expected_signature}, Got: {signature_header}")
+                raise HTTPException(status_code=401, detail="Signature mismatch")
+        
+        payload = json.loads(body)
         logger.info(f"📡 RADAR WEBHOOK RAW PAYLOAD: {json.dumps(payload)}")
 
         # --- RAMA 1: Acuses de recibo Meta (sent/delivered/read/failed) ---
@@ -151,6 +172,8 @@ async def webhook_handler(
         background_tasks.add_task(_handle_message_background, msg_data, background_tasks)
         return {"status": "received"}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Error procesando webhook: {e}")
         return {"status": "error"}

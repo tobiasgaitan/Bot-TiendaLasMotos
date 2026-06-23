@@ -35,6 +35,7 @@ class Settings:
         self.whatsapp_token: str = os.getenv("WHATSAPP_TOKEN")
         self.phone_number_id: str = os.getenv("PHONE_NUMBER_ID")
         self.webhook_verify_token: str = os.getenv("WEBHOOK_VERIFY_TOKEN")
+        self.whatsapp_app_secret: str = os.getenv("WHATSAPP_APP_SECRET", "secreto_de_aplicacion_para_firmas_hmac")
         
         # Validate critical settings
         self._validate_config()
@@ -89,6 +90,7 @@ class Settings:
         print(f"Webhook Verify Token: {'✅ SET' if self.webhook_verify_token else '❌ MISSING'}")
         print(f"WhatsApp Token: {'✅ FOUND' if self.whatsapp_token else '❌ MISSING'}")
         print(f"Phone Number ID: {'✅ FOUND' if self.phone_number_id else '❌ MISSING'}")
+        print(f"WhatsApp App Secret: {'✅ SET' if self.whatsapp_app_secret else '❌ MISSING'}")
         print(f"WhatsApp API Version: {self.whatsapp_api_version}")
         
         # Server
