@@ -57,3 +57,5 @@ bot-tiendalasmotos.zip
 *.json
 *.json
 graphify-out/
+node_modules/
+S-TOON-Protocol/
