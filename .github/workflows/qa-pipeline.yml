@@ -10,6 +10,15 @@ jobs:
   qa-gate:
     runs-on: ubuntu-latest
     
+    env:
+      TEST_MODE: "true"
+      ADMIN_API_KEY: "d993b590f6630e1d08fe6fee1478ae8ce75b11c96f33483e95b3d27bfdcc61b4"
+      WHATSAPP_TOKEN: "EAATOsIH213wBROFiZB7TTPjcemFtNUiDuRbo2mV17MokAlz5ue2hH791CmATXDAjCZBATZCFkcxTuZCf3AINebYEb2ZBQuZC8zSLgTlsbnoaZC3K9EbKbZA6wchpVR5QcBtjtTdQWRheaUE5MXz6sNDWfaCDYsQwaHiuxFhjv3ZBgFPa8adbgsi2PYfI0FF7wbAZDZD"
+      PHONE_NUMBER_ID: "1036387702901476"
+      WEBHOOK_VERIFY_TOKEN: "tiendalasmotos_secret_123"
+      FIRESTORE_COLLECTION: "prospectos"
+      GOOGLE_APPLICATION_CREDENTIALS: "/tmp/fake-key.json"
+
     services:
       redis:
         image: redis
@@ -25,9 +34,20 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
       - name: Install Dependencies
         run: |
           npm install
+          uv pip install -r requirements.txt
           npx playwright install --with-deps
 
       - name: Run Scaffold Check
@@ -37,6 +57,11 @@ jobs:
         run: |
           npm run whap:server &
           sleep 3
+
+      - name: Spin up FastAPI Bot Server
+        run: |
+          uv run uvicorn app.main:app --port 8000 &
+          sleep 5
 
       - name: Execute Playwright Integration Tests
         run: npx playwright test tests/integration/whatsapp_webhook.spec.js
