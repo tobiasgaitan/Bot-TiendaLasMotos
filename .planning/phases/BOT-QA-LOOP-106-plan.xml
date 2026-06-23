@@ -1,0 +1,19 @@
+<gsd_plan ticket="BOT-QA-LOOP-106" version="v10.7.0">
+    <phase_1_scaffold_isolation>
+        <task id="1">Crear el módulo independiente app/services/agentic_loop_service.py</task>
+        <task id="2">Implementar la clase interna AgenticOrchestrator con inicialización CLI-Ready</task>
+        <guardrail>PROHIBIDO importar este servicio dentro de main.py o whatsapp.py para evitar SRP Violation y dependencias circulares.</guardrail>
+    </phase_1_scaffold_isolation>
+    
+    <phase_2_git_worktree_subprocesses>
+        <task id="3">Implementar métodos síncronos usando subprocess.run para ejecutar 'git worktree add -b'</task>
+        <task id="4">Garantizar bloque try-except-finally para asegurar la destrucción del sandbox efímero ('git worktree remove --force') ante cualquier excepción</task>
+        <guardrail>Zero-Silent-Failures: Todo fallo de comandos Git debe capturar y registrar el stderr crudo mediante logger.exception.</guardrail>
+    </phase_2_git_worktree_subprocesses>
+
+    <phase_3_checker_assertions>
+        <task id="5">Implementar motor de validación Regex secuencial para aserciones rígidas de negocio</task>
+        <task id="6">Validar de forma mandatoria la presencia de: símbolo '$', formato de imagen Markdown y prefijo exacto 'Ficha Tecnica:'</task>
+        <verification>Lanzar un test de caracterización que simule un string vacío o None y fuerce un error explícito (Anti-Null Masking).</verification>
+    </phase_3_checker_assertions>
+</gsd_plan>
