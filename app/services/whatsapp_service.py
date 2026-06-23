@@ -151,22 +151,47 @@ class WhatsAppService:
             },
         }
         
+        # Payload Sanity: Conditionally omit 'components' key if there are no dynamic variables
+        final_components = []
         if components:
-            # Lógica de auto-formateo del wrapper (Detectar strings planos vs JSON)
-            if all(isinstance(c, str) or c is None for c in components):
+            if all(isinstance(c, (str, type(None))) for c in components):
                 parameters = []
                 for c in components:
-                    safe_text = str(c).strip() if c else "tu consulta"
-                    parameters.append({"type": "text", "text": safe_text})
-                    
-                payload["template"]["components"] = [
-                    {
-                        "type": "body",
-                        "parameters": parameters
-                    }
-                ]
+                    if c is not None:
+                        safe_text = str(c).strip()
+                        if safe_text:
+                            parameters.append({"type": "text", "text": safe_text})
+                if parameters:
+                    final_components = [
+                        {
+                            "type": "body",
+                            "parameters": parameters
+                        }
+                    ]
             else:
-                payload["template"]["components"] = components
+                for comp in components:
+                    if isinstance(comp, dict):
+                        params = comp.get("parameters", [])
+                        valid_params = []
+                        for p in params:
+                            if isinstance(p, dict):
+                                text_val = p.get("text")
+                                if text_val is not None:
+                                    safe_text = str(text_val).strip()
+                                    if safe_text:
+                                        valid_params.append({"type": p.get("type", "text"), "text": safe_text})
+                            elif isinstance(p, str):
+                                safe_text = str(p).strip()
+                                if safe_text:
+                                    valid_params.append({"type": "text", "text": safe_text})
+                        if valid_params:
+                            final_components.append({
+                                "type": comp.get("type", "body"),
+                                "parameters": valid_params
+                            })
+        
+        if final_components:
+            payload["template"]["components"] = final_components
 
         try:
             logger.debug(f"📤 Enviando Template a Meta: {payload}")
