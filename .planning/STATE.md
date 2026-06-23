@@ -14,3 +14,4 @@ Coherence Score: 1.000 (Certificado de No-Regresión)
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 047 | Meta webhook signature validation and template payload sanity | 2026-06-23 | 7f1e8a8 | 047-api-boundary-optimization |
+| 048 | GCP Cloud Run version alignment and offline stoon compilation | 2026-06-23 | 0c08197 | 048-hotfix-gcp-pipeline |
