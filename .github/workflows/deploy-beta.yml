@@ -20,6 +20,7 @@ jobs:
       - name: Pre-clone S-TOON Protocol
         run: |
           git clone https://github.com/azimuth-logic-research/S-TOON-Protocol.git S-TOON-Protocol
+          mv S-TOON-Protocol/.git S-TOON-Protocol/git_dir
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5

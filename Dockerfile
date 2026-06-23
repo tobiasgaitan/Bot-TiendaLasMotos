@@ -26,6 +26,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml uv.lock README.md ./
 COPY S-TOON-Protocol ./S-TOON-Protocol
 
+# Restore S-TOON-Protocol git repository metadata
+RUN mv ./S-TOON-Protocol/git_dir ./S-TOON-Protocol/.git
+
 # Configure git to use the local clone offline
 RUN git config --global url."/app/S-TOON-Protocol".insteadOf "https://github.com/azimuth-logic-research/S-TOON-Protocol.git"
 
