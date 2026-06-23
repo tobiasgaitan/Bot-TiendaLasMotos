@@ -110,6 +110,10 @@ EXTRACTION_SCHEMA = {
                     "type": "BOOLEAN",
                     "description": "Indica si el usuario aceptó el tratamiento de datos (mapeado de afirmaciones o emojis)."
                 },
+                "habeas_data_accepted_sent": {
+                    "type": "BOOLEAN",
+                    "description": "Indica si el bot ya envió el script legal y el enlace de la política de privacidad."
+                },
                 "forma_pago": {
                     "type": "STRING",
                     "description": "Método de pago preferido (ej. Crédito - 0 inicial, Contado, Financiado)."
@@ -368,66 +372,72 @@ class CerebroIA:
         if not prospect_data:
             return "PHASE_1_PROFILING"
 
-        # Phase 3: Credit Profiling
-        # Condition: Payment method is 'credito' AND Habeas Data is accepted AND sent.
-        # MANDATO v2: Verificación física del link de privacidad en el historial del chat.
-        conversation_text = ""
-        if history:
-            for m in history:
-                # Extract text from Content parts
-                if hasattr(m, 'parts'):
-                    parts_text = "".join([getattr(p, 'text', '') for p in m.parts if hasattr(p, 'text')])
-                    conversation_text += parts_text + " "
-        
-        has_sent_link = "tiendalasmotos.com/politica-de-privacidad" in conversation_text.lower()
-        
-        # SI YA ACEPTÓ HABEAS DATA -> PHASE 3 (Profiling)
-        # [UNIFICACIÓN] habeas_data_accepted enforced
-        is_accepted = prospect_data.get("habeas_data_accepted") is True
-        is_sent = prospect_data.get("habeas_data_accepted_sent") is True
-        
-        if is_accepted and is_sent and has_sent_link:
-            has_name = bool(prospect_data.get("nombre"))
-            has_city = bool(prospect_data.get("ciudad"))
-            if not has_name or not has_city:
-                # Regla v1.3.2: No avanzar a perfilamiento sin nombre ni ciudad (Guardrail de Vitrina)
-                logger.warning(f"⚠️ Prospecto aceptó Habeas Data pero falta nombre o ciudad. Re-enrutando a Phase 1.")
-                return "PHASE_1_PROFILING"
-            return "PHASE_3_CREDIT_PROFILING"
-
-        # Phase 2: Habeas Data Request (Legal Script)
-        # Condition: User selected 'credito' AND we have name AND city AND moto_confirmada is True.
-        # CRITICAL FIX: Extraction of moto_interest is not enough; explicit confirmation is required.
-        has_name = bool(prospect_data.get("nombre"))
-        has_city = bool(prospect_data.get("ciudad"))
-        moto_confirmada = prospect_data.get("moto_confirmada") is True
-        is_credit = bool(prospect_data.get("forma_pago") == "credito")
-
         # --- BLOQUEO PROTOCOLO COMPETENCIA (Directiva 2026) ---
         # Bloqueamos el avance a fase legal si la moto es de la competencia.
         moto_interest = str(prospect_data.get("moto_interest", "")).lower()
-        competitors = ["boxer", "nkd", "yamaha", "suzuki", "honda", "akt", "pulsar", "victory", "tvs Apache"] 
-        # User defined Boxer, NKD, Yamaha explicitly.
         competitor_keywords = ["boxer", "nkd", "yamaha", "suzuki", "honda", "bajaj", "hero"]
         
         is_competitor = any(comp in moto_interest for comp in competitor_keywords)
         alternative_interest = prospect_data.get("interest_confirmed_in_alternative") is True
         
         if is_competitor and not alternative_interest:
-            logger.info(f"🚫 [PROTOCOL] Competitor brand detected: {moto_interest}. Blocking advance to Phase 2.")
+            logger.info(f"🚫 [PROTOCOL] Competitor brand detected: {moto_interest}. Blocking advance to Phase 2/3.")
             return "PHASE_1_PROFILING"
 
         # --- INTENCIÓN FINANCIERA (v1.3.1) ---
+        is_credit = bool(prospect_data.get("forma_pago") == "credito")
         is_financial_intent = False
         if history:
             finance_keywords = ["cuota", "credito", "crédito", "financiar", "mensualidad", "requisitos", "cuanto pago", "papeles"]
-            last_msgs = [str(m.get("content", "")).lower() for m in reversed(history) if m.get("role") == "user"][:2]
+            last_msgs = []
+            for m in reversed(history):
+                if isinstance(m, dict):
+                    if m.get("role") == "user":
+                        last_msgs.append(str(m.get("content", "")).lower())
+                elif hasattr(m, "role"):
+                    if m.role == "user":
+                        msg_text = ""
+                        if hasattr(m, "parts"):
+                            msg_text = "".join([getattr(p, 'text', '') for p in m.parts if hasattr(p, 'text')])
+                        elif hasattr(m, "content"):
+                            msg_text = str(m.content)
+                        last_msgs.append(msg_text.lower())
+                if len(last_msgs) >= 2:
+                    break
+            
             if any(any(kw in msg for kw in finance_keywords) for msg in last_msgs):
-                logger.info("💰 [INTENT] Financial intent detected. Bypassing moto_confirmada for Phase 2.")
+                logger.info("💰 [INTENT] Financial intent detected.")
                 is_financial_intent = True
 
-        if has_name and has_city and (moto_confirmada or is_financial_intent) and is_credit:
-            return "PHASE_2_HABEAS_DATA"
+        # Evaluamos transiciones en estricto orden secuencial de negocio:
+        if is_credit or is_financial_intent:
+            is_accepted = prospect_data.get("habeas_data_accepted") is True
+            is_sent = prospect_data.get("habeas_data_accepted_sent") is True
+            
+            conversation_text = ""
+            if history:
+                for m in history:
+                    if hasattr(m, 'parts'):
+                        parts_text = "".join([getattr(p, 'text', '') for p in m.parts if hasattr(p, 'text')])
+                        conversation_text += parts_text + " "
+                    elif isinstance(m, dict) and m.get("content"):
+                        conversation_text += str(m.get("content", "")) + " "
+            
+            has_sent_link = "tiendalasmotos.com/politica-de-privacidad" in conversation_text.lower()
+            
+            if is_accepted and is_sent and has_sent_link:
+                # Transición a Perfilamiento Profundo (Fase 3) tras la captura de 'nombre' y 'ciudad'
+                has_name = bool(prospect_data.get("nombre"))
+                has_city = bool(prospect_data.get("ciudad"))
+                if has_name and has_city:
+                    return "PHASE_3_CREDIT_PROFILING"
+                else:
+                    # Retención Estricta en Fase 2 si falta identidad (PROHIBICIÓN ABSOLUTA DE DEGRADACIÓN)
+                    logger.warning("⚠️ Prospecto aceptó Habeas Data pero falta nombre o ciudad. Reteniendo en PHASE_2_HABEAS_DATA.")
+                    return "PHASE_2_HABEAS_DATA"
+            else:
+                # Detección de intención financiera e inyección del script legal (Fase 2)
+                return "PHASE_2_HABEAS_DATA"
 
         # Phase 1: Default (Profiling / Catalog)
         return "PHASE_1_PROFILING"
@@ -802,12 +812,12 @@ REGLAS ESTRICTAS DE USO:
 
         # 2. Build Instructions block based on State
         funnel_instruction = ""
+        data = prospect_data or {}
+        p_name = data.get("nombre")
+        p_ciudad = data.get("ciudad")
+        p_payment = data.get("forma_pago")
+
         if phase == "PHASE_1_PROFILING":
-            data = prospect_data or {}
-            p_name = data.get("nombre")
-            p_ciudad = data.get("ciudad")
-            p_payment = data.get("forma_pago")
-            
             # Sincronización Protegida: Confiamos en prospect_data actualizado por el socket síncrono.
             # Se eliminan detecciones manuales por Regex para evitar falsos positivos y bloqueos de lógica.
             pass
@@ -828,7 +838,14 @@ REGLAS ESTRICTAS DE USO:
                 funnel_instruction = "Falta el método de pago. Pregunta si prefiere compra de contado o a crédito."
         
         elif phase == "PHASE_2_HABEAS_DATA":
-            funnel_instruction = "EL USUARIO ESTÁ LISTO PARA EL CRÉDITO. Debes presentar el script legal de Habeas Data y pedir su aceptación explícita (Sí/No)."
+            is_accepted = data.get("habeas_data_accepted") is True
+            if is_accepted:
+                if not p_name:
+                    funnel_instruction = "El consentimiento de datos ya está firmado. El sistema requiere el nombre del prospecto para continuar con su solicitud de crédito. Cierra tu mensaje pidiendo su nombre de forma clara y amable."
+                elif not p_ciudad:
+                    funnel_instruction = "El consentimiento de datos ya está firmado. El sistema requiere la ciudad del prospecto para continuar con su solicitud de crédito. Cierra tu mensaje pidiendo su ciudad de forma clara y amable."
+            else:
+                funnel_instruction = "EL USUARIO ESTÁ LISTO PARA EL CRÉDITO. Debes presentar el script legal de Habeas Data y pedir su aceptación explícita (Sí/No)."
         
         elif phase == "PHASE_3_CREDIT_PROFILING":
             funnel_instruction = (
@@ -1379,6 +1396,14 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 logger.exception(f"❌ Credit error for prospect {user_name}: {e}")
                                 credit_res = "Error calculando el crédito."
 
+                            is_accepted = (prospect_data or {}).get("habeas_data_accepted") is True
+                            if not is_accepted:
+                                credit_res += (
+                                    "\n\nPara hacer el estudio formal de tu crédito y darte las opciones de financiación, "
+                                    "¿me autorizas el tratamiento de tus datos personales de acuerdo con nuestra política de privacidad? "
+                                    "(Política: https://tiendalasmotos.com/politica-de-privacidad). Solo confírmame con un 'Sí'."
+                                )
+
                             credit_res += f"\n\n{funnel_instruction}"
                             response_parts.append(types.Part.from_function_response(
                                 name=f_name,
@@ -1517,6 +1542,13 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             
             if "summary" not in result: result["summary"] = "Error en procesamiento de resumen"
             if "extracted" not in result: result["extracted"] = {}
+
+            # PERSISTENCIA SÍNCRONA: Validar presencia física de la URL en el historial
+            has_link = "tiendalasmotos.com/politica-de-privacidad" in conversation_text.lower()
+            if has_link:
+                result["extracted"]["habeas_data_accepted_sent"] = True
+            else:
+                result["extracted"]["habeas_data_accepted_sent"] = False
             
             logger.info(f"📝 Generated summary (Voorhees Cleaned) with {len(result.get('extracted', {}))} fields | Valid: {is_valid}")
             
