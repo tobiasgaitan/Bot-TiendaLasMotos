@@ -2,7 +2,7 @@
 Versión: v10.8.0 (Asynchronous Agentic Loop & Conversational Quality Retry)
 Estado: BETA DEPLOYED / CERTIFIED (Rama beta sincronizada en hash 581a5ef)
 Último Hito: Cierre del ticket BOT-QA-LOOP-107. Asincronización completa del orquestador agéntico (AgenticOrchestrator) mediante subprocesos no bloqueantes e integración del bucle de reintento de calidad conversacional post-generación en ai_brain.py ante fallos del Price Consistency Check (PCC Pro).
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 120/120 Tests PASSED)
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 125/125 Tests PASSED)
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
@@ -54,7 +54,7 @@ Judge Calibration (C5): Regla ONE_QUESTION_RULE flexibilizada a un límite heur�
 Real Parity Guard (C2): Validación matemática de cuotas con un margen de error inferior al 1% comparando la respuesta del LLM contra el simulador financiero.
 
 8. Evaluación y No-Regresión
-Score de Coherencia de Regresión: 1.000 certificado de forma automatizada mediante la suite histórica ampliada y unificada (120/120 Tests PASSED), garantizando la estabilidad de la lógica de herramientas, el comportamiento asíncrono del orquestador mediante mocks de subprocesos y la correcta propagación de errores.
+Score de Coherencia de Regresión: 1.000 certificado de forma automatizada mediante la suite histórica ampliada y unificada (125/125 Tests PASSED), garantizando la estabilidad de la lógica de herramientas, el comportamiento asíncrono del orquestador mediante mocks de subprocesos y la correcta propagación de errores.
 Aserciones de Contenido Rígidas: Inyección del test unitario especializado `tests/test_agentic_loop_async.py`. Se prohíben valores nulos, strings vacíos o retornos tipo `None` silenciosos, forzando la presencia explícita de la cadena de formato de precio (`$5.800.000`) y el prefijo de catálogo `Ficha Tecnica:`.
 Verificación GSD: Ejecución obligatoria de evaluación (`eval`) con un umbral de aprobación de un mínimo de 0.9 antes de autorizar el push. Score obtenido: 1.000.
 
