@@ -53,16 +53,22 @@ async def lifespan(app: FastAPI):
             credentials=credentials
         )
         
-        # 3. Load configuration into memory
-        logger.info("📋 Loading configuration...")
-        config_service.initialize(db)
-        
-        # 4. Configuración dinámica (SSOT)
-        logger.info("🧠 Loading dynamic configuration (SSOT)...")
+        # 3. Load configurations and services
+        logger.info("⚡ Initializing config loader singleton...")
         config_loader = ConfigLoader(db)
-        config_loader.load_all()
-
-        # 5. Servicios dependientes (🏍️ Catalog)
+        
+        import concurrent.futures
+        logger.info("⚡ Loading configurations in parallel (Stage 1)...")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            future_config = executor.submit(config_service.initialize, db)
+            future_loader = executor.submit(config_loader.load_all)
+            concurrent.futures.wait([future_config, future_loader])
+            
+            # Propagate exceptions if any occurred during loading
+            future_config.result()
+            future_loader.result()
+            
+        # 4. Servicios dependientes (🏍️ Catalog)
         logger.info("🏍️  Loading catalog service...")
         catalog_service.initialize(db)
         
