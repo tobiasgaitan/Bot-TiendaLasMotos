@@ -12,6 +12,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install Git
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git
+
+      - name: Pre-clone S-TOON Protocol
+        run: |
+          git clone https://github.com/azimuth-logic-research/S-TOON-Protocol.git S-TOON-Protocol
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
@@ -23,11 +32,11 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy bot-tiendalasmotos-beta \
             --source . \
+            --dockerfile=Dockerfile \
             --region us-central1 \
             --project tiendalasmotos \
             --set-env-vars="PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos,WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }},ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }}" \
