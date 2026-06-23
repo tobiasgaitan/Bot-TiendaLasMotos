@@ -12,7 +12,8 @@
   "scripts": {
     "test": "node ./bin/agent-cli.js --version",
     "eval": "node ./bin/agent-cli.js eval",
-    "agent-cli": "node ./bin/agent-cli.js"
+    "agent-cli": "node ./bin/agent-cli.js",
+    "whap:server": "whap"
   },
   "author": "TiendaLasMotos",
   "license": "ISC",
@@ -25,6 +26,7 @@
     "url": "git+https://github.com/tiendalasmotos/Bot-TiendaLasMotos.git"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.0"
+    "@playwright/test": "^1.61.0",
+    "whap": "github:fdarian/whap"
   }
 }

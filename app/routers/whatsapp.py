@@ -125,7 +125,7 @@ async def verify_webhook(
 async def webhook_handler(
     request: Request,
     background_tasks: BackgroundTasks,
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     """Recepción de mensajes y acuses de recibo de WhatsApp."""
     try:
         body = await request.body()
@@ -162,11 +162,21 @@ async def webhook_handler(
 
         # --- RAMA 2: Mensajes reales del usuario ---
         if not _is_valid_message(payload):
-            return {"status": "ignored"}
+            return {"status": "ignored", "procesado": False}
 
         msg_data = _extract_message_data(payload)
         if not msg_data:
-            return {"status": "ignored"}
+            return {"status": "ignored", "procesado": False}
+
+        raw_phone = msg_data["from"]
+        from app.core.utils import PhoneNormalizer
+        user_phone = PhoneNormalizer.normalize(raw_phone)
+        msg_id_unique = msg_data.get("id") or f"{user_phone}_{int(datetime.now().timestamp())}"
+
+        _ensure_services()
+        if message_buffer and user_phone in message_buffer._processed_wamids and msg_id_unique in message_buffer._processed_wamids[user_phone]:
+            logger.warning(f"🔄 Duplicate WAMID ignored in handler: {msg_id_unique}")
+            return {"status": "ignored", "procesado": False}
 
         # Procesamiento en segundo plano
         background_tasks.add_task(_handle_message_background, msg_data, background_tasks)
