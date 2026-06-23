@@ -43,6 +43,7 @@ async def test_interceptor_true_positive(cerebro_mock, mock_prospect_data):
         mock_response = MagicMock()
         mock_part = MagicMock()
         mock_part.function_call = None
+        mock_part.text = "La Raider cuesta $6.000.000. ![Raider](https://img.url) Ficha Tecnica: Excelente moto."
         mock_response.candidates = [MagicMock(content=MagicMock(parts=[mock_part]))]
         mocked_call.return_value = mock_response
 

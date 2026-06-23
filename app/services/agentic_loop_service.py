@@ -3,6 +3,7 @@ import re
 import json
 import subprocess
 import logging
+import asyncio
 from typing import Dict, Any
 
 logger = logging.getLogger("agentic_loop")
@@ -16,14 +17,27 @@ class AgenticOrchestrator:
             "output_obtained", "broken_guardrail", "code_context"
         ]
 
-    def create_sandbox(self, branch_name: str) -> bool:
+    async def create_sandbox(self, branch_name: str) -> bool:
         try:
-            cmd = f"git worktree add -b {branch_name} {self.sandbox_path} main"
-            result = subprocess.run(cmd.split(), capture_output=True, text=True, check=True)
-            logger.info(f"Worktree creado exitosamente: {result.stdout.strip()}")
+            # cmd split: git worktree add -b {branch_name} {self.sandbox_path} main
+            proc = await asyncio.create_subprocess_exec(
+                "git", "worktree", "add", "-b", branch_name, self.sandbox_path, "main",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(
+                    returncode=proc.returncode,
+                    cmd=["git", "worktree", "add", "-b", branch_name, self.sandbox_path, "main"],
+                    output=stdout.decode("utf-8", errors="ignore"),
+                    stderr=stderr.decode("utf-8", errors="ignore")
+                )
+            logger.info(f"Worktree creado exitosamente: {stdout.decode('utf-8', errors='ignore').strip()}")
             return True
         except subprocess.CalledProcessError as e:
-            logger.exception(f"Error forense al crear Git Worktree: {e.stderr.strip()}")
+            err_msg = e.stderr.strip() if isinstance(e.stderr, str) else (e.stderr.decode("utf-8", errors="ignore").strip() if e.stderr else "")
+            logger.exception(f"Error forense al crear Git Worktree: {err_msg}")
             raise e
 
     def run_checker(self, bot_response: str, is_catalog_query: bool = False) -> Dict[str, Any]:
@@ -48,14 +62,31 @@ class AgenticOrchestrator:
         
         return {"success": True, "report": {}}
 
-    def destroy_sandbox(self, branch_name: str) -> None:
+    async def destroy_sandbox(self, branch_name: str) -> None:
         try:
             if os.path.exists(self.sandbox_path):
-                subprocess.run(f"git worktree remove --force {self.sandbox_path}".split(), check=True)
-                subprocess.run(f"git branch -D {branch_name}".split(), check=True)
+                proc1 = await asyncio.create_subprocess_exec(
+                    "git", "worktree", "remove", "--force", self.sandbox_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout1, stderr1 = await proc1.communicate()
+                if proc1.returncode != 0:
+                    logger.error(f"Fallo al remover worktree: {stderr1.decode('utf-8', errors='ignore').strip()}")
+
+                proc2 = await asyncio.create_subprocess_exec(
+                    "git", "branch", "-D", branch_name,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout2, stderr2 = await proc2.communicate()
+                if proc2.returncode != 0:
+                    logger.error(f"Fallo al remover rama: {stderr2.decode('utf-8', errors='ignore').strip()}")
+
                 logger.info("Sandbox efímero destruido físicamente de forma limpia.")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Fallo crítico en el proceso de limpieza forense: {e.stderr}")
+        except Exception as e:
+            logger.error(f"Fallo crítico en el proceso de limpieza forense: {e}")
 
 if __name__ == "__main__":
     print("AgenticOrchestrator: CLI Ready")
+
