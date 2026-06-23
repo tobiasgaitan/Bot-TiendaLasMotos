@@ -442,90 +442,142 @@ class CerebroIA:
         userId is mapped to the prospect's phone (E.164 canonical key).
         """
         # [BOT-TRACE-FIX-v2.5] Migrate to update_current_trace for better userId propagation
-        if LANGFUSE_AVAILABLE and prospect_data:
-            _phone = prospect_data.get("phone") or prospect_data.get("id", "unknown")
-            _phase = self._determine_funnel_phase(prospect_data, history)
-            _session = f"wa_{_phone}"  # Stable session key per WhatsApp thread
-            
-            langfuse_context.update_current_trace(
-                user_id=_phone,
-                session_id=_session,
-                tags=[_phase, "juan_pablo_agent", "hotfix-v2.5"],
-                metadata={
-                    "funnel_phase": _phase,
-                    "nombre": prospect_data.get("nombre", "desconocido"),
-                    "ciudad": prospect_data.get("ciudad", ""),
-                    "moto_interest": prospect_data.get("moto_interest", ""),
-                    "habeas_data_accepted": prospect_data.get("habeas_data_accepted", False),
-                }
-            )
-            raw_response = await self._generate_with_retry_async(texto, context, prospect_data, history, skip_greeting)
-        else:
-            raw_response = await self._generate_with_retry_async(texto, context, prospect_data, history, skip_greeting)
-        
-        # --- PHASE-GATE FÍSICO (Bypass de Habeas Data) ---
-        # AUDIT P1 (2.2): Interceptor de Respuesta.
-        # Si el usuario NO ha aceptado Habeas Data, bloqueamos cualquier pregunta de crédito.
-        habeas_data_accepted = prospect_data.get("habeas_data_accepted", False) if prospect_data else False
-        
-        if not habeas_data_accepted and raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
-            # REGLA DE NEGOCIO (Audit v2.0): Permitir "crédito" como explicación, bloquear solo perfilamiento.
-            is_profiling = self._is_profiling_attempt(raw_response)
-            
-            if is_profiling:
-                # [BOT-SEC-42] Forensic Security Log for Prompt Injection Attempt
-                _phone = prospect_data.get("phone") or prospect_data.get("id", "unknown") if prospect_data else "unknown"
-                logger.warning(f"SECURITY ALERT [Prompt Injection]: Attempted financial profiling without Habeas Data consent. Phone: {_phone}")
+        max_validation_attempts = 3
+        current_attempt = 0
+        forced_instruction = None
+        forced_temp = None
 
-                # [PHASE-GATE PASSTHROUGH v1.3.2]
-                # Filtramos el contenido intrusivo pero permitimos visuales ($ e imágenes)
-                filtered_text = self._filter_profiling_content(raw_response)
+        while current_attempt < max_validation_attempts:
+            current_attempt += 1
+            if LANGFUSE_AVAILABLE and prospect_data:
+                _phone = prospect_data.get("phone") or prospect_data.get("id", "unknown")
+                _phase = self._determine_funnel_phase(prospect_data, history)
+                _session = f"wa_{_phone}"  # Stable session key per WhatsApp thread
                 
-                # Si el filtrado dejó el texto vacío, intentamos recuperar visuales manualmente
-                if not filtered_text:
-                    visual_blocks = self._extract_visual_blocks(raw_response)
-                    filtered_text = "\n".join(visual_blocks)
-
-                # SCRIPT DE TRANSICIÓN DINÁMICO
-                transition_msg = (
-                    f"{filtered_text}\n\nPara darte una asesoría completa y tu plan de pagos exacto, "
-                    f"necesito tu autorización para el tratamiento de datos personales.\n\n"
-                    f"¿Aceptas nuestra política de privacidad? Consúltala aquí: {self.privacy_policy_url}"
+                langfuse_context.update_current_trace(
+                    user_id=_phone,
+                    session_id=_session,
+                    tags=[_phase, "juan_pablo_agent", "hotfix-v2.5"],
+                    metadata={
+                        "funnel_phase": _phase,
+                        "nombre": prospect_data.get("nombre", "desconocido"),
+                        "ciudad": prospect_data.get("ciudad", ""),
+                        "moto_interest": prospect_data.get("moto_interest", ""),
+                        "habeas_data_accepted": prospect_data.get("habeas_data_accepted", False),
+                    }
                 )
-                
-                logger.info("🛡️ [PHASE-GATE] Passthrough Filtrado aplicado con éxito.")
-                return transition_msg.strip()
-
-        # FINAL SANITIZATION: Hardcoded Parrot Effect Killer
-        if raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
-            final_text = self.clean_parrot_phrases(raw_response)
-            
-            # --- COGNITIVE BRAKE GUARDRAIL (BOT-LOGIC-1.2) ---
-            # Detecta y reemplaza placeholders financieros que hayan filtrado
-            # a través del pipeline de generación (ej. $X.XXX, $X.XXX.XXX).
-            # WHY: Si el catálogo no devolvió raw_price, el código antiguo
-            # inyectaba "$X.XXX" literal. Este guardrail es la última línea
-            # de defensa antes de que el mensaje llegue al usuario.
-            placeholder_pattern = r'\$X[\.X]+'
-            if re.search(placeholder_pattern, final_text):
-                logger.warning(f"🛑 [COGNITIVE BRAKE] Placeholder financiero detectado en respuesta final. Sanitizando.")
-                final_text = re.sub(
-                    placeholder_pattern,
-                    'un valor que calcularemos con tus datos',
-                    final_text
+                raw_response = await self._generate_with_retry_async(
+                    texto, context, prospect_data, history, skip_greeting,
+                    forced_instruction=forced_instruction,
+                    forced_temperature=forced_temp
+                )
+            else:
+                raw_response = await self._generate_with_retry_async(
+                    texto, context, prospect_data, history, skip_greeting,
+                    forced_instruction=forced_instruction,
+                    forced_temperature=forced_temp
                 )
             
-            # PHASE 2 / LEGAL INJECTION (JSON Voorhees v2.1.0 programmatic insertion)
-            if re.search(r'(?i)\b(autoriza|tratamiento de datos|habeas data|pol[íi]tica de privacidad|ley\s?1581|datos personales)\b', final_text):
-                if "tiendalasmotos.com/politica-de-privacidad" not in final_text:
-                    final_text += "\n\n📄 Conoce nuestra Política de Privacidad aquí: https://tiendalasmotos.com/politica-de-privacidad"
+            # --- PHASE-GATE FÍSICO (Bypass de Habeas Data) ---
+            # AUDIT P1 (2.2): Interceptor de Respuesta.
+            # Si el usuario NO ha aceptado Habeas Data, bloqueamos cualquier pregunta de crédito.
+            habeas_data_accepted = prospect_data.get("habeas_data_accepted", False) if prospect_data else False
             
-            # LAST-MILE CLEANUP: Remove any technical markdown residue
-            final_text = self.clean_markdown_blocks(final_text)
+            is_profiling_bypass = False
+            if not habeas_data_accepted and raw_response and not raw_response.startswith("HANDOFF_TRIGGERED:"):
+                # REGLA DE NEGOCIO (Audit v2.0): Permitir "crédito" como explicación, bloquear solo perfilamiento.
+                is_profiling = self._is_profiling_attempt(raw_response)
+                
+                if is_profiling:
+                    # [BOT-SEC-42] Forensic Security Log for Prompt Injection Attempt
+                    _phone = prospect_data.get("phone") or prospect_data.get("id", "unknown") if prospect_data else "unknown"
+                    logger.warning(f"SECURITY ALERT [Prompt Injection]: Attempted financial profiling without Habeas Data consent. Phone: {_phone}")
+
+                    # [PHASE-GATE PASSTHROUGH v1.3.2]
+                    # Filtramos el contenido intrusivo pero permitimos visuales ($ e imágenes)
+                    filtered_text = self._filter_profiling_content(raw_response)
+                    
+                    # Si el filtrado dejó el texto vacío, intentamos recuperar visuales manualmente
+                    if not filtered_text:
+                        visual_blocks = self._extract_visual_blocks(raw_response)
+                        filtered_text = "\n".join(visual_blocks)
+
+                    # SCRIPT DE TRANSICIÓN DINÁMICO
+                    transition_msg = (
+                        f"{filtered_text}\n\nPara darte una asesoría completa y tu plan de pagos exacto, "
+                        f"necesito tu autorización para el tratamiento de datos personales.\n\n"
+                        f"¿Aceptas nuestra política de privacidad? Consúltala aquí: {self.privacy_policy_url}"
+                    )
+                    
+                    logger.info("🛡️ [PHASE-GATE] Passthrough Filtrado aplicado con éxito.")
+                    final_text = transition_msg.strip()
+                    is_profiling_bypass = True
+                else:
+                    final_text = raw_response
+            else:
+                final_text = raw_response
+
+            if not is_profiling_bypass:
+                # FINAL SANITIZATION: Hardcoded Parrot Effect Killer
+                if final_text and not final_text.startswith("HANDOFF_TRIGGERED:"):
+                    final_text = self.clean_parrot_phrases(final_text)
+                    
+                    # --- COGNITIVE BRAKE GUARDRAIL (BOT-LOGIC-1.2) ---
+                    # Detecta y reemplaza placeholders financieros que hayan filtrado
+                    # a través del pipeline de generación (ej. $X.XXX, $X.XXX.XXX).
+                    # WHY: Si el catálogo no devolvió raw_price, el código antiguo
+                    # inyectaba "$X.XXX" literal. Este guardrail es la última línea
+                    # de defensa antes de que el mensaje llegue al usuario.
+                    placeholder_pattern = r'\$X[\.X]+'
+                    if re.search(placeholder_pattern, final_text):
+                        logger.warning(f"🛑 [COGNITIVE BRAKE] Placeholder financiero detectado en respuesta final. Sanitizando.")
+                        final_text = re.sub(
+                            placeholder_pattern,
+                            'un valor que calcularemos con tus datos',
+                            final_text
+                        )
+                    
+                    # PHASE 2 / LEGAL INJECTION (JSON Voorhees v2.1.0 programmatic insertion)
+                    if re.search(r'(?i)\b(autoriza|tratamiento de datos|habeas data|pol[íi]tica de privacidad|ley\s?1581|datos personales)\b', final_text):
+                        if "tiendalasmotos.com/politica-de-privacidad" not in final_text:
+                            final_text += "\n\n📄 Conoce nuestra Política de Privacidad aquí: https://tiendalasmotos.com/politica-de-privacidad"
+                    
+                    # LAST-MILE CLEANUP: Remove any technical markdown residue
+                    final_text = self.clean_markdown_blocks(final_text)
+                else:
+                    final_text = self.clean_markdown_blocks(final_text) if final_text else final_text
+
+            # --- POST-GENERATION VALIDATION HOOK (BOT-QA-LOOP-107) ---
+            mentions_moto = any(brand.lower() in final_text.lower() for brand in ["tvs", "victory", "raider", "apache", "sport", "mrx", "bomber", "life", "urban", "enduro", "scooter", "moped"]) if final_text else False
+            is_moto_query = any(kw in texto.lower() for kw in ["moto", "tvs", "victory", "raider", "apache", "sport", "mrx", "bomber", "life"])
             
-            return final_text
+            # Is specifications/ficha query:
+            is_catalog_query = any(kw in texto.lower() for kw in ["ficha", "tecnica", "especificaciones", "caracteristicas"])
             
-        return self.clean_markdown_blocks(raw_response)
+            if final_text and not final_text.startswith("HANDOFF_TRIGGERED:") and (mentions_moto or is_moto_query):
+                from app.services.agentic_loop_service import AgenticOrchestrator
+                orchestrator = AgenticOrchestrator()
+                validation = orchestrator.run_checker(final_text, is_catalog_query=is_catalog_query)
+                if not validation["success"]:
+                    logger.warning(
+                        f"⚠️ [PCC VALIDATION FAILED] Attempt {current_attempt}/{max_validation_attempts} for query '{texto}'. "
+                        f"Expected: {validation['report']['expected_behavior']}."
+                    )
+                    if current_attempt < max_validation_attempts:
+                        forced_instruction = (
+                            f"ERROR: La respuesta generada anteriormente falló la validación del catálogo y precio. "
+                            f"Detalles: {validation['report']['expected_behavior']}. "
+                            f"Asegúrate de incluir siempre el precio con '$' y la imagen/enlace de la moto en formato markdown."
+                        )
+                        forced_temp = 0.1
+                        continue  # Force immediate retry with temperature 0.1
+                    else:
+                        logger.error("🚨 [PCC VALIDATION] Max validation attempts reached. Returning degraded response.")
+                        return final_text
+                else:
+                    return final_text
+            else:
+                return final_text
 
     @staticmethod
     def clean_markdown_blocks(text: str) -> str:
@@ -716,7 +768,7 @@ REGLAS ESTRICTAS DE USO:
             logger.error(f"❌ Error creating tools: {str(e)}", exc_info=True)
             return []
 
-    async def _generate_with_retry_async(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, forced_instruction: Optional[str] = None) -> str:
+    async def _generate_with_retry_async(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, forced_instruction: Optional[str] = None, forced_temperature: Optional[float] = None) -> str:
         """
         Internal generation with exponential backoff and structured prompt injection (Async).
         """
@@ -889,7 +941,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         chat.send_message,
                         full_prompt,
                         config=types.GenerateContentConfig(
-                            temperature=0.2,
+                            temperature=forced_temperature if forced_temperature is not None else 0.2,
                             max_output_tokens=8192,
                             tools=dynamic_tools
                         )

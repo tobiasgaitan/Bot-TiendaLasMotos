@@ -255,7 +255,7 @@ async def test_search_catalog_tool_execution_retains_ficha_tecnica():
     response1 = MockResponse(candidates=[candidate1])
     
     # Second turn reply
-    candidate2 = MockCandidate(content=MockContent(parts=[MockPart(text="La Victory Life es perfecta. Vale $ 5.800.000 y puedes verla aquí: ![Life](https://img.url/life)")]))
+    candidate2 = MockCandidate(content=MockContent(parts=[MockPart(text="La Victory Life es perfecta. Vale $5.800.000 y puedes verla aquí: ![Life](https://img.url/life) Ficha Tecnica: Excelente moto.")]))
     response2 = MockResponse(candidates=[candidate2])
     
     call_count = 0
