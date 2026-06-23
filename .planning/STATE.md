@@ -8,3 +8,4 @@ Coherence Score: 1.000
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 049 | Fallo en qa-pipeline.yml debido a la ausencia de package-lock.json y npm ci. | 2026-06-23 | 568ccd1 | 049-fix-qa-cache-workflow |
+
