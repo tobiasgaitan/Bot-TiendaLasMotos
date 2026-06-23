@@ -24,6 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy uv lock files and metadata required by build system
 COPY pyproject.toml uv.lock README.md ./
+COPY S-TOON-Protocol ./S-TOON-Protocol
+
+# Configure git to use the local clone offline
+RUN git config --global url."/app/S-TOON-Protocol".insteadOf "https://github.com/azimuth-logic-research/S-TOON-Protocol.git"
 
 # Install dependencies using uv sync --frozen
 RUN uv sync --frozen --no-install-project --no-dev
