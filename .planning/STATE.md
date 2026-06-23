@@ -1,4 +1,4 @@
-Versión: v10.7.1
+Versión: v10.8.0
 Posición: Integración de la asincronización de AgenticOrchestrator y reintento conversacional (BOT-QA-LOOP-107).
 Coherence Score: 1.000 (Certificado de No-Regresión)
 

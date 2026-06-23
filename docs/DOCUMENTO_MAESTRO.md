@@ -1,5 +1,5 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.7.1)
-Versión: v10.7.1 (Asynchronous Agentic Loop & Conversational Quality Retry)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.8.0)
+Versión: v10.8.0 (Asynchronous Agentic Loop & Conversational Quality Retry)
 Estado: BETA DEPLOYED / CERTIFIED (Rama beta sincronizada en hash cf3ab3a)
 Último Hito: Cierre del ticket BOT-QA-LOOP-107. Asincronización completa del orquestador agéntico (AgenticOrchestrator) mediante subprocesos no bloqueantes e integración del bucle de reintento de calidad conversacional post-generación en ai_brain.py ante fallos del Price Consistency Check (PCC Pro).
 **Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 120/120 Tests PASSED)
@@ -81,4 +81,4 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.3.0] Cierre de ticket BOT-AUDIT-103. Refactorización asíncrona estricta de 'generate_summary' erradicando el bloqueo del Event Loop. Implementación de '_LangfuseContextShim' para paridad con SDK v4. Blindaje Zero-Silent-Failures en '_call_gemini_with_retry_async'. Score certificado: 1.000.
 -[v10.5.1] Cierre de ticket BOT-DEBT-042. Refactorización asíncrona estricta en survey_service y memory_service (Mandato de Bloqueo). Test PCC Pro inyectado. Score: 1.000.
 - [v10.6.0] Cierre de ticket BOT-QA-GATE-105. Despliegue de Suite de Pruebas e inyección de QA Gates locales y de CI/CD. Certificación automatizada del hook de control de estructura scaffold y protección perimetral del webhook de WhatsApp. Score certificado: 1.000.
-- [v10.7.1] Cierre de ticket BOT-QA-LOOP-107. Asincronización completa de los métodos de gestión de Sandboxes del `AgenticOrchestrator` eliminando bloqueos de subprocesos en disco. Acoplamiento del motor Checker/Maker en el runtime conversacional de `ai_brain.py` para mitigación en caliente de errores de formato en catálogo de motocicletas (PCC Pro). Sincronización local y remota en hash cf3ab3a con Score de Coherencia de 1.000.
+- [v10.8.0] Cierre de ticket BOT-QA-LOOP-107. Asincronización completa de los métodos de gestión de Sandboxes del `AgenticOrchestrator` eliminando bloqueos de subprocesos en disco. Acoplamiento del motor Checker/Maker en el runtime conversacional de `ai_brain.py` para mitigación en caliente de errores de formato en catálogo de motocicletas (PCC Pro). Sincronización local y remota en hash cf3ab3a con Score de Coherencia de 1.000.
