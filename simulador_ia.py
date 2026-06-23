@@ -25,7 +25,6 @@ async def run_simulation():
         respuesta = await cerebro.pensar_respuesta(
             pregunta,
             context="",
-            prospect_data={"name": "Tobias Prueba", "phone": "57000000000"},
             history=[],
             skip_greeting=True
         )
