@@ -803,9 +803,10 @@ REGLAS ESTRICTAS DE USO:
         # 2. Build Instructions block based on State
         funnel_instruction = ""
         if phase == "PHASE_1_PROFILING":
-            p_name = prospect_data.get("nombre") if prospect_data else None
-            p_ciudad = prospect_data.get("ciudad") if prospect_data else None
-            p_payment = prospect_data.get("forma_pago") if prospect_data else None
+            data = prospect_data or {}
+            p_name = data.get("nombre")
+            p_ciudad = data.get("ciudad")
+            p_payment = data.get("forma_pago")
             
             # Sincronización Protegida: Confiamos en prospect_data actualizado por el socket síncrono.
             # Se eliminan detecciones manuales por Regex para evitar falsos positivos y bloqueos de lógica.
@@ -813,7 +814,7 @@ REGLAS ESTRICTAS DE USO:
 
             # HARD-GATE DE IDENTIDAD (Requirement 2026.1): Prohibido preguntar si ya existe.
             # v1.3.0: Skip name request if moto is confirmed or in context
-            moto_context = prospect_data.get("moto_interest") or prospect_data.get("moto_confirmada")
+            moto_context = data.get("moto_interest") or data.get("moto_confirmada")
             if p_name:
                 pass # Already have it
             elif not moto_context:
