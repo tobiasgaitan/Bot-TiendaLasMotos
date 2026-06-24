@@ -63,10 +63,5 @@ def test_pcc_ficha_tecnica_no_silent_null():
         
         res_mutated = catalog_service.search_catalog("Ghost")
         
-        # Validar que si la llave mutó, no devuelva "Ficha Tecnica: " ni "Ficha Tecnica: None"
-        if "Ficha Tecnica:" in res_mutated:
-            match = re.search(r"Ficha Tecnica:\s*(.*)", res_mutated)
-            if match:
-                val = match.group(1).strip()
-                assert val != "", "ALERTA: Se detectó 'Ficha Tecnica:' con string vacío debido a mutación de llaves."
-                assert val != "None", "ALERTA: Se detectó 'None' silencioso en 'Ficha Tecnica:' debido a mutación."
+        # Validar que si la llave mutó, no devuelva la sección Ficha Tecnica (evita valores vacíos o None)
+        assert "Ficha Tecnica:" not in res_mutated, "Se esperaba que 'Ficha Tecnica:' no estuviera presente debido a la mutación de llaves."

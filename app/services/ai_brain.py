@@ -1157,9 +1157,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             catalog_response_str = f"Encontré {len(matches)} motos relacionados:\n"
                                             for m in matches:
                                                 # Validaciones estrictas de Anti-Null Masking
-                                                name = m.get('Nombre del producto TVS') or m.get('name')
-                                                summary = m.get('Descripción del producto TVS') or m.get('summary')
-                                                price = m.get('precio') or m.get('price') or m.get('formatted_price')
+                                                name = m.get('name')
+                                                summary = m.get('summary')
+                                                price = m.get('price') or m.get('formatted_price')
                                                 
                                                 if not name or not summary or not price:
                                                     # [BOT-BUG-040] Anti-Null Masking resiliente: omitir ítem corrupto
@@ -1191,9 +1191,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             
                                             # Extraer nombres para guardrail de alucinaciones
                                             catalog_models_found.extend([
-                                                (m.get('Nombre del producto TVS') or m.get('name', '')).strip()
+                                                m.get('name', '').strip()
                                                 for m in matches
-                                                if (m.get('Nombre del producto TVS') or m.get('name'))
+                                                if m.get('name')
                                             ])
                                         else:
                                             catalog_response_str = "No encontré motos en el catálogo para esa búsqueda."

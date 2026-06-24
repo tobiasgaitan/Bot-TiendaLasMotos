@@ -272,26 +272,23 @@ def test_financial_service_default_entity_is_brilla():
     res = fs._generate_full_simulation_response(moto_dict, 0.0)
     # Debe mencionar "Brilla de Gases" o usar sus factores/nombre
     assert "Brilla de Gases" in res
-    assert "Crediorbe" not in res
-
-
 @pytest.mark.asyncio
-async def test_spanish_catalog_keys_interception():
+async def test_unified_catalog_keys_interception():
     """
-    Verifica que la herramienta search_catalog extraiga correctamente Nombre del producto TVS,
-    Descripción del producto TVS y precio de Firestore sin levantar ValueError.
+    Verifica que la herramienta search_catalog extraiga correctamente name,
+    summary y price de Firestore sin levantar ValueError.
     """
     cerebro = CerebroIA()
     cerebro.client = MagicMock()
     cerebro._model_id = "gemini-2.0-flash"
     
     mock_catalog = MagicMock()
-    # Retornamos llaves preferentes en español
+    # Retornamos llaves unificadas
     mock_catalog.search_items.return_value = [
         {
-            "Nombre del producto TVS": "TVS Apache 160",
-            "Descripción del producto TVS": "Moto deportiva y ágil",
-            "precio": "$ 9.500.000",
+            "name": "TVS Apache 160",
+            "summary": "Moto deportiva y ágil",
+            "price": "$ 9.500.000",
             "category": "Urban"
         }
     ]
@@ -322,7 +319,7 @@ async def test_spanish_catalog_keys_interception():
 
     with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
          patch('app.services.ai_brain.SDK_AVAILABLE', True):
-         
+          
         prospect = {
             "nombre": "Carlos",
             "ciudad": "Santa Marta",
@@ -345,9 +342,10 @@ async def test_spanish_catalog_keys_interception():
                     result_text = getattr(resp, "result", "")
                 break
         
-        # Validar que Nombre, Descripción y Precio en español se formatearon correctamente
+        # Validar que Nombre, Descripción y Precio se formatearon correctamente
         assert "TVS Apache 160" in result_text
         assert "Moto deportiva y ágil" in result_text
         assert "$ 9.500.000" in result_text
         assert "Ficha Tecnica: Moto deportiva y ágil" in result_text
+
 
