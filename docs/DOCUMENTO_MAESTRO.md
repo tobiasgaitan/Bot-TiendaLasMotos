@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.10.0)
-Versión: v10.10.0 (Hotfix Healthcheck Timeout & Startup Parallelization)
-Estado: PRODUCTION READY / GCP LIVE (Rama beta sincronizada en hash 38f16c8)
-Último Hito: Cierre del ticket BOT-INFRA-BUG-054. Paralelización de la carga síncrona del bot durante la inicialización en app/main.py y aumento de start-period de docker healthcheck a 60s.
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 131/131 Tests PASSED)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.11.0)
+Versión: v10.11.0 (Hotfix Robots.txt Balancer Probe)
+Estado: PRODUCTION READY / GCP LIVE (Rama beta sincronizada en hash 1db0ae2)
+Último Hito: Cierre del ticket BOT-INFRA-ROUTER-058. Inyección del endpoint `/robots.txt` en `app/main.py` que responde 200 OK con texto plano vacío para satisfacer las sondas del balanceador de carga de GCP Cloud Run.
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 134/134 Tests PASSED)
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
@@ -83,3 +83,4 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.6.0] Cierre de ticket BOT-QA-GATE-105. Despliegue de Suite de Pruebas e inyección de QA Gates locales y de CI/CD. Certificación automatizada del hook de control de estructura scaffold y protección perimetral del webhook de WhatsApp. Score certificado: 1.000.
 - [v10.8.0] Cierre de ticket BOT-QA-LOOP-107. Asincronización completa de los métodos de gestión de Sandboxes del `AgenticOrchestrator` eliminando bloqueos de subprocesos en disco. Acoplamiento del motor Checker/Maker en el runtime conversacional de `ai_brain.py` para mitigación en caliente de errores de formato en catálogo de motocicletas (PCC Pro). Sincronización local y remota en hash 581a5ef con Score de Coherencia de 1.000.
 - [v10.10.0] Cierre de ticket BOT-INFRA-BUG-054. Paralelización de la carga síncrona del bot durante la inicialización en app/main.py y aumento de start-period de docker healthcheck a 60s. Score de Coherencia de 1.000.
+- [v10.11.0] Cierre de ticket BOT-INFRA-ROUTER-058. Inyección del endpoint `/robots.txt` en `app/main.py` que responde 200 OK con texto plano vacío para satisfacer las sondas automáticas del balanceador de carga de GCP Cloud Run. Score de Coherencia de 1.000.
