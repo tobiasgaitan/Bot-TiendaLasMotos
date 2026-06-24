@@ -174,20 +174,41 @@ async def health_check():
     Returns:
         Status information about the application including V6.0 config status
     """
-    # Access config_loader from app state
-    config_loader = app.state.config_loader
+    # Access config_loader from app state safely without raising AttributeError
+    config_loader = getattr(app.state, "config_loader", None)
     
+    v6_config = None
+    if config_loader is not None:
+        try:
+            v6_config = {
+                "juan_pablo_model": config_loader.get_juan_pablo_personality().get("model_version"),
+                "routing_keywords_loaded": len(config_loader.get_routing_rules().get("financial_keywords", [])),
+                "catalog_config_items": len(config_loader.get_catalog_config().get("items", []))
+            }
+        except Exception as e:
+            logger.exception("❌ Error retrieving v6_config from config_loader in health check: %s", e)
+    else:
+        logger.warning("⚠️ app.state.config_loader is not initialized yet in health_check")
+
+    catalog_items_count = 0
+    try:
+        catalog_items_count = len(catalog_service.get_all_items())
+    except Exception as e:
+        logger.exception("❌ Error retrieving catalog items in health check: %s", e)
+
+    storage_bucket_name = None
+    try:
+        storage_bucket_name = storage_service.get_bucket_name()
+    except Exception as e:
+        logger.exception("❌ Error retrieving storage bucket name in health check: %s", e)
+
     return {
         "status": "healthy",
         "service": "Auteco Las Motos Backend",
         "version": "6.0.0",
-        "catalog_items": len(catalog_service.get_all_items()),
-        "storage_bucket": storage_service.get_bucket_name(),
-        "v6_config": {
-            "juan_pablo_model": config_loader.get_juan_pablo_personality().get("model_version"),
-            "routing_keywords_loaded": len(config_loader.get_routing_rules().get("financial_keywords", [])),
-            "catalog_config_items": len(config_loader.get_catalog_config().get("items", []))
-        }
+        "catalog_items": catalog_items_count,
+        "storage_bucket": storage_bucket_name,
+        "v6_config": v6_config
     }
 
 
