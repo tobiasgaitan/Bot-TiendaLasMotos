@@ -49,8 +49,7 @@ class MemoryService:
         self._db = db
         self.collection_name = "prospectos"
         self._pending_tasks: Set[asyncio.Task] = set()
-        self._status_semaphore = asyncio.Semaphore(5)
-        logger.info("🧠 MemoryService v9.8.4: Quick Task 042 Async Resilience")
+        logger.info("🧠 MemoryService v9.8.5: Refactor Exception Handling")
 
     def _track_task(self, coro) -> asyncio.Task:
         """
@@ -224,10 +223,12 @@ class MemoryService:
                 doc_ref.set({"role": role, "content": content, "timestamp": firestore.SERVER_TIMESTAMP}),
                 phone=clean_phone, label="save_message"
             )
-        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
-            raise  # Propagar para detener ai_brain.py
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
+            logger.exception(f"🔌 [NETWORK_ERR] Fallo de red/timeout de Firestore en save_message para {phone_number}: {e}")
+            raise
         except Exception as e:
             logger.exception(f"❌ save_message failed for {phone_number}: {e}")
+            raise
 
     async def get_chat_history(self, phone_number: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Retrieve last N messages from historial, ordered ascending."""
@@ -244,11 +245,12 @@ class MemoryService:
                     history.append(doc.to_dict())
             await self._firestore_io(_collect(), phone=clean_phone, label="get_chat_history")
             return history[::-1]
-        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
+            logger.exception(f"🔌 [NETWORK_ERR] Fallo de red/timeout de Firestore en get_chat_history para {phone_number}: {e}")
             raise
         except Exception as e:
             logger.exception(f"❌ get_chat_history failed for {phone_number}: {e}")
-            return []
+            raise
 
     async def get_prospect_data(self, phone_number: str) -> Dict[str, Any]:
         """
@@ -267,11 +269,12 @@ class MemoryService:
                     data["celular"] = doc_ref.id
                 return data
             return {"exists": False}
-        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
+            logger.exception(f"🔌 [NETWORK_ERR] Fallo de red/timeout de Firestore en get_prospect_data para {phone_number}: {e}")
             raise
         except Exception as e:
             logger.exception(f"❌ get_prospect_data failed for {phone_number}: {e}")
-            return {"exists": False}
+            raise
 
     async def create_prospect_if_missing(self, phone_number: str) -> None:
         """
@@ -315,10 +318,12 @@ class MemoryService:
             # Zombie purge — clear stale historial docs under prospectos/{phone}/historial
             # WHY: Ensures idempotency for /reset by wiping orphan history
             await self.clear_memory(clean_phone)
-        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
+            logger.exception(f"🔌 [NETWORK_ERR] Fallo de red/timeout de Firestore en create_prospect_if_missing para {phone_number}: {e}")
             raise
         except Exception as e:
             logger.exception(f"❌ create_prospect_if_missing failed for {phone_number}: {e}")
+            raise
 
     # Backward-compat alias
     async def create_prospect(self, phone_number: str, data: Dict[str, Any]) -> None:
@@ -542,42 +547,41 @@ class MemoryService:
         Incluye guardrail para evitar retrodegradación del status CRM.
         """
         try:
-            async with self._status_semaphore:
-                doc_ref = await self._find_prospect_ref(phone_number)
-                
-                # --- GUARDRAIL: Leer status CRM actual antes de escribir ---
-                doc_snap = await self._firestore_io(doc_ref.get(), phone=phone_number, label="update_whatsapp_status.get")
-                current_data = doc_snap.to_dict() if doc_snap.exists else {}
-                current_crm_status = current_data.get("status", "")
-                protected_statuses = {"IN_PROGRESS", "DONE", "DISCARDED"}
+            doc_ref = await self._find_prospect_ref(phone_number)
+            
+            # --- GUARDRAIL: Leer status CRM actual antes de escribir ---
+            doc_snap = await self._firestore_io(doc_ref.get(), phone=phone_number, label="update_whatsapp_status.get")
+            current_data = doc_snap.to_dict() if doc_snap.exists else {}
+            current_crm_status = current_data.get("status", "")
+            protected_statuses = {"IN_PROGRESS", "DONE", "DISCARDED"}
 
-                # Sincronía de nivel superior para el Dashboard CRM
-                payload = {
-                    "metadata.whatsapp.last_status": status_value,
-                    "metadata.whatsapp.last_status_timestamp": firestore.SERVER_TIMESTAMP,
-                    "metadata.whatsapp.last_wamid": wamid,
-                    "whatsapp_delivery_status": status_value, # [SYNC-CRM] Top-level field
-                    "whatsapp_delivery_updated_at": firestore.SERVER_TIMESTAMP,
-                }
+            # Sincronía de nivel superior para el Dashboard CRM
+            payload = {
+                "metadata.whatsapp.last_status": status_value,
+                "metadata.whatsapp.last_status_timestamp": firestore.SERVER_TIMESTAMP,
+                "metadata.whatsapp.last_wamid": wamid,
+                "whatsapp_delivery_status": status_value, # [SYNC-CRM] Top-level field
+                "whatsapp_delivery_updated_at": firestore.SERVER_TIMESTAMP,
+            }
 
-                # Idempotencia para whatsapp_read_at
-                if status_value == "read" and "whatsapp_read_at" not in current_data:
-                    payload["whatsapp_read_at"] = firestore.SERVER_TIMESTAMP
+            # Idempotencia para whatsapp_read_at
+            if status_value == "read" and "whatsapp_read_at" not in current_data:
+                payload["whatsapp_read_at"] = firestore.SERVER_TIMESTAMP
 
-                if errors:
-                    payload["metadata.whatsapp.last_error"] = errors
-                    if isinstance(errors, list) and len(errors) > 0:
-                        # Guardamos el resumen del error para el Dashboard
-                        error_summary = errors[0]
-                        payload["last_whatsapp_error"] = error_summary.get("message")
-                        payload["whatsapp_error_details"] = error_summary
-                
-                # Guardrail de máquina de estados: nunca tocamos 'status' desde acuses de recibo
-                if status_value == "read" and current_crm_status in protected_statuses:
-                    logger.info(f"🛡️ [STATUSES] Guardrail activo: status '{current_crm_status}' no se altera por acuse 'read'.")
+            if errors:
+                payload["metadata.whatsapp.last_error"] = errors
+                if isinstance(errors, list) and len(errors) > 0:
+                    # Guardamos el resumen del error para el Dashboard
+                    error_summary = errors[0]
+                    payload["last_whatsapp_error"] = error_summary.get("message")
+                    payload["whatsapp_error_details"] = error_summary
+            
+            # Guardrail de máquina de estados: nunca tocamos 'status' desde acuses de recibo
+            if status_value == "read" and current_crm_status in protected_statuses:
+                logger.info(f"🛡️ [STATUSES] Guardrail activo: status '{current_crm_status}' no se altera por acuse 'read'.")
 
-                await self._firestore_io(doc_ref.update(payload), phone=phone_number, label="update_whatsapp_status.update")
-                logger.info(f"✅ [STATUSES] Acuse '{status_value}' registrado para {phone_number}")
+            await self._firestore_io(doc_ref.update(payload), phone=phone_number, label="update_whatsapp_status.update")
+            logger.info(f"✅ [STATUSES] Acuse '{status_value}' registrado para {phone_number}")
         except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
             # [BOT-BUG-040] NO re-raise: update_whatsapp_status corre en background task.
             # WHY: Este método procesa acuses de recibo Meta (sent/delivered/read/failed).
