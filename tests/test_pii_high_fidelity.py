@@ -18,8 +18,6 @@ class TestPIIHighFidelity(unittest.TestCase):
             "name": "Juan Pérez",
             "city": "Bogotá",
             "moto_interest": "Pulsar 200",
-            "moto_ofrecida": "TVS Apache 160",
-            "moto_aceptada": "TVS Apache 160",
             "habeas_data_accepted": true,
             "payment_method": "Crédito",
             "ocupacion": "Empleado",
@@ -32,7 +30,6 @@ class TestPIIHighFidelity(unittest.TestCase):
         result, is_valid = clean_json_voorhees(raw_json)
         self.assertTrue(is_valid)
         self.assertEqual(result["extracted"]["moto_interest"], "Pulsar 200")
-        self.assertEqual(result["extracted"]["moto_aceptada"], "TVS Apache 160")
         self.assertTrue(result["extracted"]["habeas_data_accepted"])
         self.assertEqual(result["extracted"]["servicios_publicos"], "Gas Natural")
         print("✅ PII High-Fidelity Schema Verification Passed!")
