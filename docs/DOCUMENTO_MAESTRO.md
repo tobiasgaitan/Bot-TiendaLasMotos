@@ -1,4 +1,4 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.11.4)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.11.6)
 Versión: v10.11.4 (Hotfix Competitor Protocol Parity)
 Estado: PRODUCTION READY / GCP LIVE (Rama beta sincronizada en hash 7d5babc)
 Último Hito: Cierre del ticket BOT-COMP-981. Cobertura del Protocolo de Competencia y aserción de payload visual ('price', 'image_url') sin valores None ni vacíos, verificando el tag 'Ficha Tecnica:'.
