@@ -132,12 +132,19 @@ class FinancialService:
                 "uso_matriz": uso_matriz
             }
         except Exception as e:
-            # Fallback a Amortización Básica en caso de error crítico en matriz
+            # WHY [BOT-FINANCE-ERR-094]: Zero-Silent-Failures — registrar traza forense completa
+            # para que Langfuse capture el span. NO se silencia el fallo original.
+            logger.exception(
+                f"[BOT-FINANCE-ERR-094] Fallo en calculate_payment | "
+                f"entidad={entidad}, plazo={plazo_meses}, precio={precio}, inicial={inicial} | "
+                f"Error: {e}"
+            )
+            # Fallback defensivo: Amortización Básica con tasa default.
+            # Garantiza retorno coherente (cuota_mensual > 0) en ausencia de config de Firestore.
             try:
-                monto_base = precio - inicial
+                monto_base = max(precio - inicial, 0.0)
                 seguro_vida = self._get_insurance_monthly(entidad, monto_base)
-                # Tasa default si falla todo
-                rate = 2.22 / 100
+                rate = 2.22 / 100  # Tasa NMV default Crediorbe
                 f = (rate * (1 + rate) ** plazo_meses) / ((1 + rate) ** plazo_meses - 1)
                 cuota = round((monto_base * f) + seguro_vida, 0)
                 return {
@@ -145,14 +152,31 @@ class FinancialService:
                     "total_pagar": float(cuota * plazo_meses),
                     "capital_financiado": float(monto_base),
                     "seguro_vida": float(seguro_vida),
+                    "cuota_aval": 0.0,
                     "plazo_meses": plazo_meses,
                     "entidad": entidad,
                     "uso_matriz": False,
                     "error_matriz": str(e)
                 }
-            except:
-                logger.error(f"❌ Error fatal en calculate_payment: {e}")
-                return {"error": "Error en el cálculo", "mensaje": str(e)}
+            except Exception as inner_e:
+                # WHY: Segunda barrera forense — si el fallback mismo falla (ej. monto_base negativo),
+                # se registra con contexto completo. PROHIBIDO silenciar este nivel.
+                logger.exception(
+                    f"[BOT-FINANCE-ERR-094] Fallo en fallback de calculate_payment | "
+                    f"entidad={entidad}, plazo={plazo_meses} | inner_error={inner_e}"
+                )
+                return {
+                    "cuota_mensual": 0.0,
+                    "total_pagar": 0.0,
+                    "capital_financiado": 0.0,
+                    "seguro_vida": 0.0,
+                    "cuota_aval": 0.0,
+                    "plazo_meses": plazo_meses,
+                    "entidad": entidad,
+                    "uso_matriz": False,
+                    "error": str(e),
+                    "inner_error": str(inner_e)
+                }
 
     def _get_matrix_row(self, entity_id: str, moto_cc: float, category: str = "motos") -> Optional[Dict[str, Any]]:
         """Lookup the matching row in the financial matrix."""
