@@ -26,9 +26,13 @@ class TestCatalogScoring(unittest.TestCase):
             "name": "TVS Sport 100",
             "price": 5000000,
             "category": "trabajo",
-            "search_tags": ["trabajo", "economica", "mensajeria"],
-            "search_text": "tvs sport 100 trabajo economica mensajeria",
-            "search_tokens": ["tvs", "sport", "100", "trabajo", "economica", "mensajeria"],
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/tvs_sport.jpg",
+            "search_tags": ["trabajo", "economica", "mensajeria", "nkd", "boxer"],
+            "search_text": "tvs sport 100 trabajo economica mensajeria nkd boxer",
+            "search_tokens": ["tvs", "sport", "100", "trabajo", "economica", "mensajeria", "nkd", "boxer"],
+            "searchBy": ["trabajo", "economica", "mensajeria", "nkd", "boxer"],
+            "description": "Moto de trabajo muy economica y duradera con excelente consumo de combustible.",
+            "link": "https://tiendalasmotos.com/tvs-sport",
             "active": True
         }
         
@@ -37,9 +41,13 @@ class TestCatalogScoring(unittest.TestCase):
             "name": "Victory Bomber 125",
             "price": 5500000,
             "category": "urbana",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/victory_bomber.jpg",
             "search_tags": ["urbana", "pique"],
             "search_text": "victory bomber 125 urbana pique",
             "search_tokens": ["victory", "bomber", "125", "urbana", "pique"],
+            "searchBy": ["urbana", "pique"],
+            "description": "Moto urbana ideal para el dia a dia con estilo clasico.",
+            "link": "https://tiendalasmotos.com/victory-bomber",
             "active": True
         }
         
@@ -48,9 +56,13 @@ class TestCatalogScoring(unittest.TestCase):
             "name": "TVS Raider 125",
             "price": 6000000,
             "category": "deportiva",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/tvs_raider.jpg",
             "search_tags": ["sport", "tecnologia"],
             "search_text": "tvs raider 125 deportiva sport tecnologia",
             "search_tokens": ["tvs", "raider", "125", "deportiva", "sport", "tecnologia"],
+            "searchBy": ["sport", "tecnologia"],
+            "description": "Moto deportiva con tecnologia de punta y gran desempeño.",
+            "link": "https://tiendalasmotos.com/tvs-raider",
             "active": True
         }
 
@@ -116,6 +128,56 @@ class TestCatalogScoring(unittest.TestCase):
         self.assertLess(score_other, 10000)
         
         print(f"✅ Hard-Lock Test Passed: TVS Sport Score={score_tvs}, Other={score_other}")
+
+    def test_competitor_brand_resolution_nkd(self):
+        """
+        Verify brand rival resolution (e.g. 'NKD') against catalog items via 'searchBy',
+        ensuring visual payload keys ('price', 'image_url') are returned without None or empty values.
+        Also verifies the presence of 'Ficha Tecnica:' and the competitor pivot instructions.
+        """
+        # Test search_items
+        results = self.service.search_items("NKD")
+        self.assertTrue(len(results) > 0, "Should return at least one competitor alternative")
+        
+        # Verify the top alternative is TVS Sport 100 (equivalent work bike containing 'nkd' in searchBy)
+        top_match = results[0]
+        self.assertEqual(top_match["name"], "TVS Sport 100")
+        
+        # Verify visual payload integrity
+        self.assertIsNotNone(top_match.get("price"))
+        self.assertNotEqual(top_match.get("price"), "")
+        self.assertIsNotNone(top_match.get("image_url"))
+        self.assertNotEqual(top_match.get("image_url"), "")
+        
+        # Verify searchBy exists and is populated
+        self.assertIsNotNone(top_match.get("searchBy"))
+        self.assertIn("nkd", top_match["searchBy"])
+        
+        # Verify summary is not empty
+        self.assertIsNotNone(top_match.get("summary"))
+        self.assertNotEqual(top_match.get("summary"), "")
+
+        # Test search_catalog text output
+        text_output = self.service.search_catalog("NKD")
+        
+        # Verify competitor pivot instruction is present
+        self.assertIn("[SISTEMA: El usuario preguntó por la competencia. ESTÁS OBLIGADO a pivotar a nuestras alternativas...]", text_output)
+        
+        # Verify the specific items and fields are rendered correctly
+        self.assertIn("TVS Sport 100", text_output)
+        self.assertIn("Image URL: https://firebasestorage.googleapis.com", text_output)
+        
+        # Verify content assertion: "Ficha Tecnica:" must be explicitly present and not followed by None/empty
+        self.assertIn("Ficha Tecnica:", text_output)
+        # Search for "Ficha Tecnica: " followed by non-empty content
+        self.assertTrue("Ficha Tecnica: Moto de trabajo" in text_output or "Ficha Tecnica: " in text_output)
+        
+        # Verify no silent None or empty values in critical formatting lines
+        self.assertNotIn("None", text_output)
+        self.assertNotIn("Ficha Tecnica: \n", text_output)
+        self.assertNotIn("Image URL: \n", text_output)
+        
+        print("✅ Competitor Brand Resolution & Visual Payload Integrity Tests Passed!")
 
 if __name__ == '__main__':
     unittest.main()
