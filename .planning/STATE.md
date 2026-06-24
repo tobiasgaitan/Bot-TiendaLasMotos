@@ -12,3 +12,4 @@
 | 060 | Bloquear calculate_credit_score si habeas_data_accepted está ausente/False | 2026-06-24 | a42b57c | 060-hotfix-gate-legal |
 | 061 | Unificar flujo multirreferencia de motos sobre la llave canónica moto_interest | 2026-06-24 | f961c33 | 061-hotfix-canonical-moto-alignment |
 | 062 | Implementación de pruebas y paridad de Protocolo de Competencia | 2026-06-24 | 7d5babc | 062-competitor-protocol-parity |
+| 063 | [BOT-FINANCE-ERR-094] Zero-Silent-Failures en calculate_payment + test_financial_fallback.py | 2026-06-24 | aa7db26 | 063-hotfix-financial-fallback |
