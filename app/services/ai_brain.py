@@ -1242,6 +1242,15 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             logger.info(f"💰 AI calculating credit score...")
                             credit_res = "No disponible."
                             try:
+                                # [BOT-SEC-42] Validar consentimiento Habeas Data antes de interactuar con el simulador
+                                is_accepted = (prospect_data or {}).get("habeas_data_accepted") is True
+                                if not is_accepted:
+                                    _phone = (prospect_data or {}).get("phone") or (prospect_data or {}).get("id", "unknown")
+                                    logger.warning(
+                                        f"SECURITY ALERT [Prompt Injection]: Attempted financial profiling without Habeas Data consent. Phone: {_phone}"
+                                    )
+                                    raise PermissionError("Habeas Data consent required before calling calculate_credit_score.")
+
                                 if self.motor_financiero:
                                     res = self.motor_financiero.evaluate_profile(
                                         ocupacion_y_contrato=f_args.get("ocupacion_y_contrato", ""),
