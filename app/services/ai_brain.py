@@ -98,14 +98,6 @@ EXTRACTION_SCHEMA = {
                     "type": "STRING",
                     "description": "La primera moto o estilo por el que preguntó el usuario."
                 },
-                "moto_ofrecida": {
-                    "type": "STRING",
-                    "description": "La moto del catálogo (TVS/Victory) que el bot ofreció."
-                },
-                "moto_aceptada": {
-                    "type": "STRING",
-                    "description": "La moto que el usuario aceptó explícitamente comprar o conocer más (Inmutable contra competencia)."
-                },
                 "habeas_data_accepted": {
                     "type": "BOOLEAN",
                     "description": "Indica si el usuario aceptó el tratamiento de datos (mapeado de afirmaciones o emojis)."
@@ -142,7 +134,8 @@ EXTRACTION_SCHEMA = {
                     "type": "STRING",
                     "description": "Número de cédula del usuario (extraer ÚNICAMENTE si el usuario lo escribe de forma explícita y voluntaria; bias negativo estricto: si no está seguro o no está presente, dejar vacío)."
                 }
-            }
+            },
+            "required": ["nombre", "ciudad", "moto_interest", "habeas_data_accepted"]
         }
     },
     "required": ["summary", "extracted"]
@@ -1490,15 +1483,13 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                - Solo mapea a `true` si el usuario da una respuesta afirmativa DIRECTA y EXPLÍCITA (ej: "Sí", "Acepto", "Dale", "Listo", "👍") tras el script legal.
                - Si el usuario responde con otra pregunta (ej: "¿qué requisitos hay?") o ambigüedad, DEBE ser `false`.
                - NUNCA asumas aceptación por el simple hecho de continuar la charla.
-            2. moto_aceptada:
-               - Este campo es INMUTABLE contra la competencia. Solo guarda modelos de Tienda Las Motos que el usuario haya aceptado explícitamente comprar o ver.
-               - PROHIBIDO guardar marcas de la competencia como Bajaj, Yamaha, Honda, Suzuki, AKT.
-               - Si el usuario menciona una marca de la competencia, déjalo en blanco.
-            3. moto_interest: La primera moto por la que preguntó el usuario.
-            4. moto_ofrecida: La moto que el bot recomendó del catálogo (sustituye a moto_offered).
-            5. Resumen: Un resumen ejecutivo de la situación del cliente enfocado en su perfil crediticio y moto de interés.
-            6. moto_confirmada: 
-               - Solo marca como `true` si el usuario da una respuesta de aceptación o interés EXPLÍCITO hacia la moto ofrecida (ej: "me interesa", "me gusta esa", "esa es", "sí/si", "👍").
+            2. moto_interest:
+               - La moto o estilo (TVS/Victory del catálogo de Tienda Las Motos) por la que preguntó el usuario o en la que mostró interés.
+               - Este campo es INMUTABLE contra la competencia. Solo guarda modelos de Tienda Las Motos.
+               - PROHIBIDO guardar marcas de la competencia como Bajaj, Yamaha, Honda, Suzuki, AKT. Si el usuario menciona una marca de la competencia, déjalo vacío o no la extraigas.
+            3. Resumen: Un resumen ejecutivo de la situación del cliente enfocado en su perfil crediticio y moto de interés.
+            4. moto_confirmada: 
+               - Solo marca como `true` si el usuario da una respuesta de aceptación o interés EXPLÍCITO hacia la moto del catálogo (ej: "me interesa", "me gusta esa", "esa es", "sí/si", "👍").
                - Si el usuario simplemente pregunta por el precio o características sin confirmar interés, déjalo en `false`.
 
             HISTORIAL DE CHAT:
