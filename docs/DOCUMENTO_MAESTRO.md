@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.11.2)
-Versión: v10.11.2 (Hotfix Canonical Moto Alignment)
-Estado: PRODUCTION READY / GCP LIVE (Rama beta sincronizada en hash 1db0ae2)
-Último Hito: Cierre del ticket BOT-INFRA-ROUTER-058. Inyección del endpoint `/robots.txt` en `app/main.py` que responde 200 OK con texto plano vacío para satisfacer las sondas del balanceador de carga de GCP Cloud Run.
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 134/134 Tests PASSED)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.11.4)
+Versión: v10.11.4 (Hotfix Competitor Protocol Parity)
+Estado: PRODUCTION READY / GCP LIVE (Rama beta sincronizada en hash 7d5babc)
+Último Hito: Cierre del ticket BOT-COMP-981. Cobertura del Protocolo de Competencia y aserción de payload visual ('price', 'image_url') sin valores None ni vacíos, verificando el tag 'Ficha Tecnica:'.
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 137/137 Tests PASSED)
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
