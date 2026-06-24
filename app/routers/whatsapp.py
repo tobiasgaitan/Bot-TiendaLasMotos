@@ -42,6 +42,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhook", tags=["WhatsApp"])
 
+# Semáforo para controlar concurrencia de acuses de recibo Meta (Burst Mitigation)
+status_semaphore = asyncio.Semaphore(5)
+
 # ============================================================================
 # STATE & INITIALIZATION
 # ============================================================================
@@ -231,12 +234,13 @@ async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
         # Persistencia bloqueante (await) — mandato ARCH-BULK-META-010
         if memory_service_module.memory_service:
             errors = status_data.get("errors", [])
-            await memory_service_module.memory_service.update_whatsapp_status(
-                phone_number=recipient_id,
-                status_value=status_value,
-                wamid=wamid,
-                errors=errors,
-            )
+            async with status_semaphore:
+                await memory_service_module.memory_service.update_whatsapp_status(
+                    phone_number=recipient_id,
+                    status_value=status_value,
+                    wamid=wamid,
+                    errors=errors,
+                )
         else:
             logger.warning("⚠️ [STATUSES] MemoryService no inicializado. Acuse no persistido.")
 
