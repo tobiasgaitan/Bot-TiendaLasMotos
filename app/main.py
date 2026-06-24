@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from google.cloud import firestore
 
 from app.core.config import settings
@@ -210,6 +211,17 @@ async def health_check():
         "storage_bucket": storage_bucket_name,
         "v6_config": v6_config
     }
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots_txt():
+    """
+    Robots.txt endpoint.
+    
+    Returns:
+        Empty robots.txt response with 200 OK for balancer probe.
+    """
+    return ""
 
 
 @app.get("/")
