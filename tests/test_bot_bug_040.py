@@ -28,26 +28,26 @@ class TestCatalogAntiNullMaskingResilience:
         """Fixture: mix de ítems válidos y corruptos."""
         return [
             {
-                "Nombre del producto TVS": "TVS Sport 100",
-                "Descripción del producto TVS": "Moto económica ideal para trabajo.",
-                "precio": "$4.590.000",
+                "name": "TVS Sport 100",
+                "summary": "Moto económica ideal para trabajo.",
+                "price": "$4.590.000",
                 "category": "Trabajo",
                 "image_url": "https://img.example.com/sport100.jpg",
                 "link": "https://example.com/sport100",
             },
             {
                 # Ítem corrupto: summary vacía (reproduce el bug exacto)
-                "Nombre del producto TVS": "TVS APACHE 160",
-                "Descripción del producto TVS": "",  # ← LLAVE VACÍA que causaba el crash
-                "precio": "$11.990.000",
+                "name": "TVS APACHE 160",
+                "summary": "",  # ← LLAVE VACÍA que causaba el crash
+                "price": "$11.990.000",
                 "category": "Deportiva",
                 "image_url": "https://img.example.com/apache160.jpg",
                 "link": "https://example.com/apache160",
             },
             {
-                "Nombre del producto TVS": "TVS Raider 125",
-                "Descripción del producto TVS": "Naked deportiva con tecnología SmartXonnect.",
-                "precio": "$7.190.000",
+                "name": "TVS Raider 125",
+                "summary": "Naked deportiva con tecnología SmartXonnect.",
+                "price": "$7.190.000",
                 "category": "Urban",
                 "image_url": "https://img.example.com/raider125.jpg",
                 "link": "https://example.com/raider125",
@@ -67,9 +67,9 @@ class TestCatalogAntiNullMaskingResilience:
 
         with caplog.at_level(logging.WARNING):
             for m in items:
-                name = m.get('Nombre del producto TVS') or m.get('name')
-                summary = m.get('Descripción del producto TVS') or m.get('summary')
-                price = m.get('precio') or m.get('price') or m.get('formatted_price')
+                name = m.get('name')
+                summary = m.get('summary')
+                price = m.get('price') or m.get('formatted_price')
 
                 if not name or not summary or not price:
                     # Reproducción exacta del fix BOT-BUG-040
@@ -106,9 +106,9 @@ class TestCatalogAntiNullMaskingResilience:
 
         with caplog.at_level(logging.WARNING):
             for m in items:
-                name = m.get('Nombre del producto TVS') or m.get('name')
-                summary = m.get('Descripción del producto TVS') or m.get('summary')
-                price = m.get('precio') or m.get('price') or m.get('formatted_price')
+                name = m.get('name')
+                summary = m.get('summary')
+                price = m.get('price') or m.get('formatted_price')
 
                 if not name or not summary or not price:
                     logging.getLogger(__name__).warning(
@@ -228,23 +228,23 @@ class TestFichaTecnicaContentAssertion:
         """
         items = [
             {
-                "Nombre del producto TVS": "TVS Sport 100",
-                "Descripción del producto TVS": "Motor 4T OHC refrigerado por aire.",
-                "precio": "$4.590.000",
+                "name": "TVS Sport 100",
+                "summary": "Motor 4T OHC refrigerado por aire.",
+                "price": "$4.590.000",
             },
             {
                 # Corrupto
-                "Nombre del producto TVS": "TVS APACHE 160",
-                "Descripción del producto TVS": "",
-                "precio": "$11.990.000",
+                "name": "TVS APACHE 160",
+                "summary": "",
+                "price": "$11.990.000",
             },
         ]
 
         catalog_response_str = ""
         for m in items:
-            name = m.get('Nombre del producto TVS') or m.get('name')
-            summary = m.get('Descripción del producto TVS') or m.get('summary')
-            price = m.get('precio') or m.get('price') or m.get('formatted_price')
+            name = m.get('name')
+            summary = m.get('summary')
+            price = m.get('price') or m.get('formatted_price')
 
             if not name or not summary or not price:
                 continue
@@ -270,14 +270,14 @@ class TestFichaTecnicaContentAssertion:
         Esto valida que no se inyecta un None silencioso.
         """
         items = [
-            {"Nombre del producto TVS": "TVS APACHE 160", "Descripción del producto TVS": "", "precio": "$11.990.000"},
+            {"name": "TVS APACHE 160", "summary": "", "price": "$11.990.000"},
         ]
 
         catalog_response_str = ""
         for m in items:
-            name = m.get('Nombre del producto TVS') or m.get('name')
-            summary = m.get('Descripción del producto TVS') or m.get('summary')
-            price = m.get('precio') or m.get('price')
+            name = m.get('name')
+            summary = m.get('summary')
+            price = m.get('price')
 
             if not name or not summary or not price:
                 continue
