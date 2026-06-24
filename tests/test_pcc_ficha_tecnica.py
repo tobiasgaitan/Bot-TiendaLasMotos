@@ -65,3 +65,170 @@ def test_pcc_ficha_tecnica_no_silent_null():
         
         # Validar que si la llave mutó, no devuelva la sección Ficha Tecnica (evita valores vacíos o None)
         assert "Ficha Tecnica:" not in res_mutated, "Se esperaba que 'Ficha Tecnica:' no estuviera presente debido a la mutación de llaves."
+
+
+@pytest.mark.asyncio
+async def test_habeas_data_gate_before_credit_score():
+    """
+    Test de caracterización estricta:
+    - Cuando el flag 'habeas_data_accepted' está ausente o es False,
+      la llamada a calculate_credit_score debe ser interceptada.
+    - Se debe verificar que se lance PermissionError o se desvíe al flujo de legalización
+      (PASO 4 del protocolo / script legal de Habeas Data) ANTES de invocar el simulador/motor financiero.
+    - [MANDATORIO] Incluir aserción de contenido que verifique la presencia explícita de 'Ficha Tecnica:'
+      cuando el catálogo sí cuenta con la información y no está mutado, y prohibir que resulte en vacío,
+      forzando la validación de 'habeas_data_accepted' en Firestore/prospect_data antes de calcular la cuota.
+    """
+    from app.services.ai_brain import CerebroIA
+    
+    # Mocking classes for Gemini response
+    class MockFunctionCall:
+        def __init__(self, name, args):
+            self.name = name
+            self.args = args
+
+    class MockPart:
+        def __init__(self, function_call=None, text=None):
+            self.function_call = function_call
+            self.text = text
+
+    class MockContent:
+        def __init__(self, parts):
+            self.parts = parts
+
+    class MockCandidate:
+        def __init__(self, content):
+            self.content = content
+
+    class MockResponse:
+        def __init__(self, candidates):
+            self.candidates = candidates
+
+    # Configuración de CerebroIA
+    cerebro = CerebroIA()
+    cerebro.client = MagicMock()
+    cerebro._model_id = "gemini-2.0-flash"
+
+    # Mock catalog service para retornar un item válido con su respectiva Ficha Tecnica
+    mock_catalog = MagicMock()
+    mock_catalog.search_items.return_value = [
+        {
+            "name": "TVS Sport 100",
+            "price": "$ 6.200.000",
+            "raw_price": 6200000.0,
+            "category": "Urban",
+            "image_url": "https://img.url",
+            "summary": "Excelente moto urbana."
+        }
+    ]
+    cerebro._catalog_service = mock_catalog
+
+    # Mock del motor financiero. Si se llega a invocar, el test debe fallar,
+    # garantizando el bloqueo absoluto antes de tocar el simulador.
+    mock_financial = MagicMock()
+    mock_financial.evaluate_profile = MagicMock(side_effect=AssertionError("ERROR: El motor financiero fue tocado sin consentimiento de Habeas Data."))
+    mock_financial.calculate_payment = MagicMock(side_effect=AssertionError("ERROR: El simulador fue tocado sin consentimiento de Habeas Data."))
+    cerebro.motor_financiero = mock_financial
+
+    # Simular que el LLM intenta invocar calculate_credit_score
+    fc = MockFunctionCall(name="calculate_credit_score", args={})
+    candidate = MockCandidate(content=MockContent(parts=[MockPart(function_call=fc)]))
+    gemini_response = MockResponse(candidates=[candidate])
+
+    candidate_text_no_consent = MockCandidate(content=MockContent(parts=[MockPart(text="Para hacer el estudio formal de tu crédito, ¿me autorizas el tratamiento de tus datos?")]))
+    gemini_response_text_no_consent = MockResponse(candidates=[candidate_text_no_consent])
+
+    captured_response_parts = None
+    call_count_no_consent = 0
+    async def mock_call_no_consent(*args, **kwargs):
+        nonlocal call_count_no_consent, captured_response_parts
+        call_count_no_consent += 1
+        if call_count_no_consent == 1:
+            return gemini_response
+        if len(args) > 1:
+            captured_response_parts = args[1]
+        return gemini_response_text_no_consent
+
+    # Caso 1: Flag habeas_data_accepted está ausente/False
+    prospect_no_consent = {
+        "nombre": "Pedro",
+        "moto_interest": "TVS Sport 100",
+        "ciudad": "Cali",
+        "forma_pago": "Crédito"
+        # habeas_data_accepted está ausente (debe bloquearse)
+    }
+
+    with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call_no_consent), \
+         patch('app.services.ai_brain.SDK_AVAILABLE', True), \
+         patch('app.services.ai_brain.logger.warning') as mock_log_warn:
+
+        response = await cerebro.pensar_respuesta("Quiero mi crédito", prospect_data=prospect_no_consent)
+        
+        # 1. Asegurar que el log forense de seguridad se haya registrado
+        mock_log_warn.assert_called()
+        warn_args = [call[0][0] for call in mock_log_warn.call_args_list]
+        assert any("SECURITY ALERT [Prompt Injection]: Attempted financial profiling without Habeas Data consent." in arg for arg in warn_args)
+
+        # 2. Asegurar que no se tocó el simulador (evaluate_profile y calculate_payment no fueron llamados)
+        mock_financial.evaluate_profile.assert_not_called()
+        mock_financial.calculate_payment.assert_not_called()
+
+        # 3. Asegurar que la respuesta final de la herramienta enviada a Gemini se desvió al flujo de legalización solicitando consentimiento
+        assert captured_response_parts is not None
+        assert len(captured_response_parts) == 1
+        part = captured_response_parts[0]
+        part_result = part.function_response.response.get("result", "")
+        assert "Para hacer el estudio formal de tu crédito" in part_result
+        assert "politica-de-privacidad" in part_result
+
+    # Caso 2: Garantizar que la Ficha Tecnica es explícita y forzar validación del flag en DB antes de calcular cuota
+    # Si habeas_data_accepted es True, la validación pasa, y sí se procesa el catálogo y simulador.
+    mock_financial.evaluate_profile.reset_mock()
+    mock_financial.evaluate_profile.side_effect = None
+    mock_financial.evaluate_profile.return_value = {
+        "score": 750,
+        "strategy": "Aprobado",
+        "entity": "Crediorbe",
+        "link_url": "https://crediorbe.link"
+    }
+    mock_financial.calculate_payment.reset_mock()
+    mock_financial.calculate_payment.side_effect = None
+    mock_financial.calculate_payment.return_value = {
+        "cuota_mensual": 250000
+    }
+
+    prospect_with_consent = {
+        "nombre": "Pedro",
+        "moto_interest": "TVS Sport 100",
+        "ciudad": "Cali",
+        "forma_pago": "Crédito",
+        "habeas_data_accepted": True # Consentimiento explícito
+    }
+
+    # Creamos una segunda respuesta para el final text
+    candidate_text = MockCandidate(content=MockContent(parts=[MockPart(text="Felicidades. Ficha Tecnica: Excelente moto urbana.")]))
+    gemini_response_text = MockResponse(candidates=[candidate_text])
+
+    call_count = 0
+    async def mock_call_two_turns(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return gemini_response
+        return gemini_response_text
+
+    with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call_two_turns), \
+         patch('app.services.ai_brain.SDK_AVAILABLE', True):
+
+        response_consent = await cerebro.pensar_respuesta("Quiero mi crédito", prospect_data=prospect_with_consent)
+
+        # 1. Asegurar que el simulador SÍ fue invocado cuando se tiene el consentimiento
+        mock_financial.evaluate_profile.assert_called_once()
+        mock_financial.calculate_payment.assert_called_once()
+
+        # 2. [MANDATORIO] Verificar la presencia explícita de 'Ficha Tecnica:' y prohibir string vacío
+        assert "Ficha Tecnica:" in response_consent
+        match = re.search(r"Ficha Tecnica:\s*(.+)", response_consent)
+        assert match is not None, "El contenido de Ficha Tecnica no debe estar vacío"
+        assert len(match.group(1).strip()) > 0, "El valor de Ficha Tecnica no puede ser vacío"
+

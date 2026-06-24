@@ -117,7 +117,8 @@ async def test_crediorbe_interception_blocks_link_and_injects_contingency():
             "nombre": "Carlos",
             "moto_interest": "TVS Sport 100",
             "ciudad": "Santa Marta",
-            "forma_pago": "Crédito"
+            "forma_pago": "Crédito",
+            "habeas_data_accepted": True
         }
         await cerebro.pensar_respuesta("Quiero mi crédito ciego", prospect_data=prospect)
         
@@ -221,7 +222,8 @@ async def test_crediorbe_interception_direct_value():
             "nombre": "Carlos",
             "moto_interest": "TVS Sport 100",
             "ciudad": "Santa Marta",
-            "forma_pago": "Crédito"
+            "forma_pago": "Crédito",
+            "habeas_data_accepted": True
         }
         await cerebro.pensar_respuesta("Quiero mi crédito ciego", prospect_data=prospect)
         

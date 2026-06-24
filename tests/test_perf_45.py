@@ -92,7 +92,8 @@ async def test_fallback_price_parsing():
             "nombre": "Pedro",
             "moto_interest": "TVS Sport 100",
             "ciudad": "Cali",
-            "forma_pago": "Crédito"
+            "forma_pago": "Crédito",
+            "habeas_data_accepted": True
         }
         res = await cerebro.pensar_respuesta("Quiero saber mi crédito", prospect_data=prospect)
         
@@ -168,7 +169,8 @@ async def test_missing_both_prices_raises_error():
             "nombre": "Pedro",
             "moto_interest": "TVS Sport 100",
             "ciudad": "Cali",
-            "forma_pago": "Crédito"
+            "forma_pago": "Crédito",
+            "habeas_data_accepted": True
         }
         
         await cerebro.pensar_respuesta("Quiero saber mi crédito", prospect_data=prospect)
