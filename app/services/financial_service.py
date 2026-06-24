@@ -27,8 +27,17 @@ class FinancialService:
     @property
     def link_brilla(self) -> str:
         """Get Brilla link from configuration."""
-        partners = self._config_service.get_partners_config()
-        return partners.get("link_brilla", "#")
+        # WHY [BOT-ARQ-E2E-095]: Blindado con try/except para que un documento
+        # 'partners' vacío o ausente en Firestore no colapse el runtime antes
+        # de emitir trazas a Langfuse (Zero-Silent-Failures).
+        try:
+            partners = self._config_service.get_partners_config()
+            return partners.get("link_brilla", "#") if partners else "#"
+        except Exception as e:
+            logger.exception(
+                f"[BOT-ARQ-E2E-095] Fallo al obtener link_brilla de partners config: {e}"
+            )
+            return "#"
 
     def calculate_payment(
         self, 
@@ -216,6 +225,11 @@ class FinancialService:
         """
         Evaluate financial profile and determine best strategy (SSOT).
         Supports both dict input and direct keyword arguments.
+
+        WHY [BOT-ARQ-E2E-095]: El bloque de acceso a 'partners' está blindado con
+        try/except + logger.exception para garantizar que un documento ausente o
+        vacío en Firestore no colapse el agentic loop antes de emitir trazas a
+        Langfuse. Si la configuración falla, se usa '#' como fallback de link_url.
         """
         data = profile_data or kwargs
         # Capture from parameters if not present in profile_data/kwargs
@@ -238,11 +252,22 @@ class FinancialService:
             mora_y_paz_salvo=data.get("mora_y_paz_salvo", "")
         )
         
-        partners = self._config_service.get_partners_config()
-        link_url = partners.get(strategy_info.get("link_key"), "#") if strategy_info.get("link_key") else "#"
+        # [BOT-ARQ-E2E-095] Blindaje de partners: si Firestore devuelve {} o falla,
+        # se registra traza forense y se usa fallback '#' para no colapsar el runtime.
+        link_url = "#"
+        try:
+            partners = self._config_service.get_partners_config()
+            if partners and strategy_info.get("link_key"):
+                link_url = partners.get(strategy_info["link_key"], "#")
+        except Exception as e:
+            logger.exception(
+                f"[BOT-ARQ-E2E-095] Fallo al obtener partners config en evaluate_profile. "
+                f"Usando link_url='#' como fallback. entity={strategy_info.get('entity')}, "
+                f"link_key={strategy_info.get('link_key')} | Error: {e}"
+            )
         
         requires_documents = False
-        if strategy_info["entity"] in ["Brilla de Gases", "Brilla"]:
+        if strategy_info.get("entity") in ["Brilla de Gases", "Brilla"]:
             link_url = None
             requires_documents = True
 
@@ -255,7 +280,7 @@ class FinancialService:
             "requires_aval": strategy_info["requires_aval"],
             "is_fallback": strategy_info.get("is_fallback", False),
             "requires_documents": requires_documents,
-            "explanation": f"Basado en tu perfil (Score: {score}), la mejor opción es {strategy_info['entity']}.",
+            "explanation": f"Basado en tu perfil (Score: {score}), la mejor opción es {strategy_info.get('entity', 'N/A')}.",
             "entidad": entidad,
             "reportes": reportes
         }
@@ -304,12 +329,21 @@ Por ejemplo: "Doy 1 millón" o "Tengo 500mil".
 
     def _generate_generic_response(self) -> str:
         """Return generic response when no entities are detected."""
-        financial_config = self._config_service.get_financial_config()
+        try:
+            financial_config = self._config_service.get_financial_config()
+        except Exception as e:
+            logger.exception(f"[BOT-ARQ-E2E-095] Fallo al obtener financial_config en _generate_generic_response: {e}")
+            financial_config = {}
         tasa_banco = financial_config.get("tasa_nmv_banco", 1.87)
         tasa_fintech = financial_config.get("tasa_nmv_fintech", 2.22)
         
-        partners_config = self._config_service.get_partners_config()
-        link_brilla = partners_config.get("link_brilla", "#")
+        # [BOT-ARQ-E2E-095] Blindaje de partners: fallback seguro si Firestore vacío.
+        link_brilla = "#"
+        try:
+            partners_config = self._config_service.get_partners_config()
+            link_brilla = partners_config.get("link_brilla", "#") if partners_config else "#"
+        except Exception as e:
+            logger.exception(f"[BOT-ARQ-E2E-095] Fallo al obtener partners_config en _generate_generic_response: {e}")
             
         return f"""
 🏍️ **Simulación de Crédito - Tienda Las Motos**
