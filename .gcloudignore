@@ -1,0 +1,4 @@
+.git/
+.gitignore
+!S-TOON-Protocol/
+!README.md
