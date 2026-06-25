@@ -71,17 +71,33 @@ class ConfigService:
                 logger.critical("🔥 CRITICAL: 'financial_config/.../global_params' not found! Using Hardcoded Defaults.")
                 self._financial_config = self.DEFAULT_FINANCIAL.copy()
             
-            # Load partners configuration
-            partners_ref = self._db.collection("configuracion").document("aliados")
-            partners_doc = partners_ref.get()
+            # Load partners configuration (Dynamic hydration CP-002)
+            self._partners_config = {}
+            financieras_ref = self._db.collection("financial_config").document("general").collection("financieras")
+            financieras_docs = financieras_ref.stream()
             
-            if partners_doc.exists:
-                self._partners_config = partners_doc.to_dict()
-                logger.info(f"✅ Partners config loaded: {len(self._partners_config)} keys")
-            else:
-                logger.warning("⚠️  Partners config document not found")
-                self._partners_config = {}
+            for doc in financieras_docs:
+                doc_data = doc.to_dict()
+                doc_id = doc.id
                 
+                # Consolidate standard link_keys for evaluate_profile
+                link = doc_data.get("link_url") or doc_data.get("link") or doc_data.get("url") or "#"
+                self._partners_config[f"link_{doc_id}"] = link
+                
+                # Merge all other keys prefixing them to avoid collisions, preserving retrocompatibility
+                for k, v in doc_data.items():
+                    if k not in ["rows", "matrix", "tasas"]: # Skip heavy matrix data
+                        self._partners_config[f"{doc_id}_{k}"] = v
+                        # Keep flat key if it matches exactly (e.g., if doc already contains 'link_brilla')
+                        if k.startswith("link_"):
+                            self._partners_config[k] = v
+
+            if self._partners_config:
+                logger.info(f"✅ Partners config loaded from financieras: {len(self._partners_config)} keys")
+            else:
+                logger.warning("⚠️  Partners config is empty after loading from financieras")
+                
+
         except Exception as e:
             logger.error(f"❌ Error loading configurations: {str(e)}")
             self._financial_config = self.DEFAULT_FINANCIAL.copy()

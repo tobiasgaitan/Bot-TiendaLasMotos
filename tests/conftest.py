@@ -54,3 +54,41 @@ class AsyncStreamMock:
         item = self.items[self.index]
         self.index += 1
         return item
+
+def test_config_service_routing_dynamic_partners():
+    """
+    [BOT-ARQ-FS-066] Certifica que ConfigService.load_configurations hidrata
+    _partners_config iterando sobre financial_config/general/financieras, 
+    y que get_partners_config() no retorna None ni un diccionario vacío.
+    """
+    from app.services.config_service import ConfigService
+    
+    class MockDoc:
+        def __init__(self, id, data):
+            self.id = id
+            self._data = data
+        def to_dict(self):
+            return self._data
+            
+    mock_docs = [
+        MockDoc("banco_bogota", {"link_url": "https://bogota.com"}),
+        MockDoc("brilla", {"link": "https://brilla.com"}),
+        MockDoc("crediorbe", {"url": "https://crediorbe.com"})
+    ]
+    
+    mock_db = MagicMock()
+    mock_db.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value.exists = True
+    mock_db.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value.to_dict.return_value = {"tasa_nmv_banco": 1.5}
+    mock_db.collection.return_value.document.return_value.collection.return_value.stream.return_value = mock_docs
+    
+    service = ConfigService()
+    service.initialize(mock_db)
+    
+    partners = service.get_partners_config()
+    
+    assert partners is not None, "get_partners_config() retornó None"
+    assert len(partners) > 0, "get_partners_config() retornó un diccionario vacío"
+    assert partners.get("link_banco_bogota") == "https://bogota.com", "Fallo mapeo link_url"
+    assert partners.get("link_brilla") == "https://brilla.com", "Fallo mapeo link"
+    assert partners.get("link_crediorbe") == "https://crediorbe.com", "Fallo mapeo url"
+
