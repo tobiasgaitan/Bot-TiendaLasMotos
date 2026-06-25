@@ -39,7 +39,7 @@ jobs:
             --source . \
             --region us-central1 \
             --project tiendalasmotos \
-            --set-env-vars="PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos,WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }},ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }}" \
+            --set-env-vars="PHONE_NUMBER_ID=${{ secrets.BETA_PHONE_NUMBER_ID }},WHATSAPP_TOKEN=${{ secrets.BETA_WHATSAPP_TOKEN }},FIRESTORE_COLLECTION=prospectos,WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }},ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }},WHATSAPP_APP_SECRET=${{ secrets.WHATSAPP_APP_SECRET }}" \
             --allow-unauthenticated
 
       - name: Make Service Public
