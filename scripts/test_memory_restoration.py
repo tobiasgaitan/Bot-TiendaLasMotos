@@ -102,7 +102,7 @@ async def test_update_whatsapp_status_top_level_sync():
     mock_doc_ref = MagicMock()
     mock_doc_ref.get = AsyncMock()
     mock_doc_ref.get.return_value = mock_doc_snap
-    mock_doc_ref.update = AsyncMock()
+    mock_doc_ref.set = AsyncMock()
     memory_service._find_prospect_ref = AsyncMock(return_value=mock_doc_ref)
 
     await memory_service.update_whatsapp_status(
@@ -112,8 +112,8 @@ async def test_update_whatsapp_status_top_level_sync():
         errors=errors
     )
 
-    mock_doc_ref.update.assert_called_once()
-    data = mock_doc_ref.update.call_args[0][0]
+    mock_doc_ref.set.assert_called_once()
+    data = mock_doc_ref.set.call_args[0][0]
     
     if data["whatsapp_delivery_status"] == "failed" and data["last_whatsapp_error"] == "Account not registered":
         print("✅ update_whatsapp_status sincroniza campos top-level y maneja errores")

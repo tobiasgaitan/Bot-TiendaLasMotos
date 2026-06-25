@@ -1,7 +1,7 @@
 ### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.12.3)
 Versión: v10.12.3 (Hotfix Firestore Post-Reset Recovery Unification)
-Estado: PRODUCTION READY / GCP LIVE (Rama beta sincronizada)
-Último Hito: Cierre del ticket BOT-BUG-RESTORATION-RESET. Mitigación del fallo gRPC 404 mediante auto-inicialización limpia y síncrona de prospectos eliminados físicamente por borrado nuclear.
+Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
+Último Hito: Cierre del ticket BOT-BUG-RESTORATION-RESET. Mitigación definitiva del fallo gRPC 404 mediante conmutación a set(merge=True) en update_whatsapp_status y update_prospect_summary ante ráfagas concurrentes de acuses de Meta tras un borrado nuclear (/reset).
 **Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 157/157 Tests PASSED)
 
 1. Contexto y Persona (Juan Pablo)
