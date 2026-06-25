@@ -65,6 +65,13 @@ def test_pcc_ficha_tecnica_no_silent_null():
         
         # Validar que si la llave mutó, no devuelva la sección Ficha Tecnica (evita valores vacíos o None)
         assert "Ficha Tecnica:" not in res_mutated, "Se esperaba que 'Ficha Tecnica:' no estuviera presente debido a la mutación de llaves."
+        
+        # Asegurar que la mutación active la alerta del guardrail PCC Pro inyectando un error (success=False)
+        from app.services.agentic_loop_service import AgenticOrchestrator
+        orchestrator = AgenticOrchestrator()
+        validation = orchestrator.run_checker(res_mutated, is_catalog_query=True)
+        assert validation["success"] is False, "Se esperaba que el guardrail PCC Pro fallara debido a la mutación de llaves."
+        assert validation["report"]["broken_guardrail"] == "PRICE_CONSISTENCY_CHECK"
 
 
 @pytest.mark.asyncio
@@ -275,5 +282,12 @@ def test_ficha_tecnica_explicit_content_assertion():
         
     assert "Ficha Tecnica:" not in response_mutated, "Si el summary es None, 'Ficha Tecnica:' no debe generarse"
     assert response_mutated == "", "Un ítem corrupto debe dar una respuesta vacía (ignorado) en vez de None silencioso"
+
+    # Asegurar que la mutación active la alerta del guardrail PCC Pro en el orquestador
+    from app.services.agentic_loop_service import AgenticOrchestrator
+    orchestrator = AgenticOrchestrator()
+    validation = orchestrator.run_checker(response_mutated, is_catalog_query=True)
+    assert validation["success"] is False, "La respuesta vacía por mutación debe activar la alerta del guardrail PCC Pro."
+    assert validation["report"]["broken_guardrail"] == "PRICE_CONSISTENCY_CHECK"
 
 
