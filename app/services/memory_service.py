@@ -549,10 +549,14 @@ class MemoryService:
         Incluye guardrail para evitar retrodegradación del status CRM.
         """
         try:
-            doc_ref = await self._find_prospect_ref(phone_number)
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            doc_ref = await self._find_prospect_ref(clean_phone)
             
             # --- GUARDRAIL: Leer status CRM actual antes de escribir ---
-            doc_snap = await self._firestore_io(doc_ref.get(), phone=phone_number, label="update_whatsapp_status.get")
+            doc_snap = await self._firestore_io(doc_ref.get(), phone=clean_phone, label="update_whatsapp_status.get")
+            
+            # RECOBRAMIENTO DE EMERGENCIA POST-NUCLEAR WIPE (/RESET)
+            is_new_doc = not doc_snap.exists
             current_data = doc_snap.to_dict() if doc_snap.exists else {}
             current_crm_status = current_data.get("status", "")
             protected_statuses = {"IN_PROGRESS", "DONE", "DISCARDED"}
@@ -566,6 +570,20 @@ class MemoryService:
                 "whatsapp_delivery_updated_at": firestore.SERVER_TIMESTAMP,
             }
 
+            # Si el documento fue borrado por un /reset, inicializamos las llaves mínimas de estructura
+            if is_new_doc:
+                logger.warning(f"⚠️ [WEBHOOK_RECOVERY] Registrando acuse '{status_value}' en prospecto inexistente/purgado {clean_phone}. Inicializando claves canónicas.")
+                payload.update({
+                    "celular": clean_phone,
+                    "chatbot_status": "ACTIVE",
+                    "status": "PENDING",
+                    "source": "whatsapp_bot",
+                    "human_help_requested": False,
+                    "habeas_data_accepted": False,
+                    "habeas_data_accepted_sent": False,
+                    "created_at": firestore.SERVER_TIMESTAMP
+                })
+
             # Idempotencia para whatsapp_read_at
             if status_value == "read" and "whatsapp_read_at" not in current_data:
                 payload["whatsapp_read_at"] = firestore.SERVER_TIMESTAMP
@@ -573,46 +591,24 @@ class MemoryService:
             if errors:
                 payload["metadata.whatsapp.last_error"] = errors
                 if isinstance(errors, list) and len(errors) > 0:
-                    # Guardamos el resumen del error para el Dashboard
                     error_summary = errors[0]
                     payload["last_whatsapp_error"] = error_summary.get("message")
                     payload["whatsapp_error_details"] = error_summary
             
-            # Guardrail de máquina de estados: nunca tocamos 'status' desde acuses de recibo
+            # Guardrail de máquina de estados
             if status_value == "read" and current_crm_status in protected_statuses:
                 logger.info(f"🛡️ [STATUSES] Guardrail activo: status '{current_crm_status}' no se altera por acuse 'read'.")
 
-            await self._firestore_io(doc_ref.update(payload), phone=phone_number, label="update_whatsapp_status.update")
-            logger.info(f"✅ [STATUSES] Acuse '{status_value}' registrado para {phone_number}")
+            # CONMUTACIÓN QUIRÚRGICA: set(merge=True) tolera la no existencia física del nodo padre
+            await self._firestore_io(doc_ref.set(payload, merge=True), phone=clean_phone, label="update_whatsapp_status.set_merge")
+            logger.info(f"✅ [STATUSES] Acuse '{status_value}' registrado con éxito para {clean_phone}")
         except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
-            # [BOT-BUG-040] NO re-raise: update_whatsapp_status corre en background task.
-            # WHY: Este método procesa acuses de recibo Meta (sent/delivered/read/failed).
-            # Un re-raise aquí mata el hilo de background sin path de recuperación,
-            # rompiendo el orquestador para los siguientes webhooks de ese lead.
-            # Zero-Silent-Failures se cumple con el log forense explícito.
             logger.exception(
                 f"❌ [BOT-BUG-040] gRPC/Timeout error en update_whatsapp_status para {phone_number}: {e}. "
-                f"Status: '{status_value}', WAMID: '{wamid}'. "
-                f"El acuse NO fue persistido pero el orquestador continúa."
+                f"Status: '{status_value}', WAMID: '{wamid}'. El acuse NO fue persistido pero el orquestador continúa."
             )
         except Exception as e:
             logger.exception(f"❌ [STATUSES] Error actualizando metadata.whatsapp para {phone_number}: {e}")
-
-    async def update_last_interaction(self, phone_number: str) -> None:
-        """
-        Updates the 'fecha' timestamp to bring user to top of Admin Panel list.
-        """
-        try:
-            doc_ref = await self._find_prospect_ref(phone_number)
-            await self._firestore_io(
-                doc_ref.update({"fecha": firestore.SERVER_TIMESTAMP}),
-                phone=phone_number, label="update_last_interaction"
-            )
-            logger.info(f"🕐 Updated last interaction timestamp for {phone_number}")
-        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
-            raise
-        except Exception as e:
-            logger.exception(f"❌ Error updating last interaction for {phone_number}: {e}")
 
 
 # ──────────────────────────────────────────────────────────────────────
