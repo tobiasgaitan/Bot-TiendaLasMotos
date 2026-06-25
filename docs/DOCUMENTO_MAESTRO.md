@@ -1,5 +1,5 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.12.1)
-Versión: v10.12.1 (Hotfix Firestore Tests Contracts Alignment)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.12.2)
+Versión: v10.12.2 (Hotfix Firestore Tests Contracts Alignment)
 Estado: PRODUCTION READY / GCP LIVE (Rama beta sincronizada en hash 6a3f928)
 Último Hito: Cierre del ticket BOT-QA-REVISION-099. Alineación de las llaves del servicio financiero y aserciones de pruebas unitarias al EXTRACTION_SCHEMA de Firestore ('ocupacion', 'datacredito', 'forma_pago'). Aserción estricta de alertas del guardrail PCC Pro ante mutación de llaves.
 **Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 156/156 Tests PASSED)
@@ -85,4 +85,6 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.10.0] Cierre de ticket BOT-INFRA-BUG-054. Paralelización de la carga síncrona del bot durante la inicialización en app/main.py y aumento de start-period de docker healthcheck a 60s. Score de Coherencia de 1.000.
 - [v10.11.2] Cierre de ticket BOT-INFRA-ROUTER-058. Inyección del endpoint `/robots.txt` en `app/main.py` que responde 200 OK con texto plano vacío para satisfacer las sondas automáticas del balanceador de carga de GCP Cloud Run. Score de Coherencia de 1.000.- [v10.11.1] Cierre de ticket BOT-INFRA-GCLOUD-060. Resolución del fallo catastrófico de compilación en el Paso 25 (Building Container) provocado por la purga automática del directorio S-TOON-Protocol. El CLI de gcloud heredaba de forma silenciosa la directiva de exclusión del .gitignore corporativo. Se implementó un archivo .gcloudignore explícito en la raíz para forzar la inclusión obligatoria de la librería offline. Score de Coherencia certificado: 1.000.
 - [v10.12.0] Cierre de ticket BOT-INFRA-SECRET-062. Parametrización de la variable WHATSAPP_APP_SECRET en el pipeline de GitHub Actions (deploy.yml y deploy-beta.yml) para evitar regresiones de firma (HTTP 401) en cada push. Score de Coherencia de 1.000.
-- [v10.12.1] Cierre de ticket BOT-QA-REVISION-099. Alineación de llaves estrictas ('ocupacion', 'datacredito') de Firestore en evaluate_profile y pruebas, corrección del canónico de forma_pago a 'Crédito - 0 inicial', y validación de que la mutación de llaves del catálogo activa el guardrail PCC Pro. Score de Coherencia de 1.000.
+- [v10.12.2] Cierre de ticket BOT-QA-REVISION-099. Alineación de llaves estrictas ('ocupacion', 'datacredito') de Firestore en evaluate_profile y pruebas, corrección del canónico de forma_pago a 'Crédito - 0 inicial', y validación de que la mutación de llaves del catálogo activa el guardrail PCC Pro. Score de Coherencia de 1.000.
+
+- [v10.12.2] Cierre de ticket BOT-ARQ-ANTI-NULL-044. Implementación quirúrgica del guardrail Anti-Null Masking en generate_and_update_summary y mitigación de fallos de contingencia silenciosos. Coherence Score: 1.000.
