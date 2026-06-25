@@ -186,11 +186,6 @@ class MemoryService:
 
         return merged
         
-    # Backward-compat alias used by update_prospect_summary
-    def merge_data(self, current_data: Dict[str, Any], new_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Legacy alias — delegates to _merge_extracted_data."""
-        return self._merge_extracted_data(current_data, new_data)
-
     # ──────────────────────────────────────────────────────────────────
     # Firestore reference helpers (async)
     # ──────────────────────────────────────────────────────────────────
@@ -306,7 +301,6 @@ class MemoryService:
                     "habeas_data_accepted_sent": False,
                     "servicios_publicos": None,
                     "created_at": firestore.SERVER_TIMESTAMP,
-                    "updated_at": firestore.SERVER_TIMESTAMP,
                     "fecha": firestore.SERVER_TIMESTAMP,
                     "current_agent": "expert",
                     "total_tokens_consumed": 0,
@@ -324,20 +318,6 @@ class MemoryService:
         except Exception as e:
             logger.exception(f"❌ create_prospect_if_missing failed for {phone_number}: {e}")
             raise
-
-    # Backward-compat alias
-    async def create_prospect(self, phone_number: str, data: Dict[str, Any]) -> None:
-        """Legacy create method — sets arbitrary data with habeas_data_accepted default."""
-        try:
-            doc_ref = await self.get_ref(phone_number)
-            payload = data.copy()
-            payload["celular"] = doc_ref.id
-            payload["created_at"] = firestore.SERVER_TIMESTAMP
-            if "habeas_data_accepted" not in payload:
-                payload["habeas_data_accepted"] = False
-            await doc_ref.set(payload)
-        except Exception as e:
-            logger.exception(f"❌ create_prospect failed for {phone_number}: {e}")
 
     async def clear_memory(self, phone_number: str) -> bool:
         """
@@ -428,7 +408,7 @@ class MemoryService:
             # Use centralized merge logic
             update_payload = self._merge_extracted_data(current_data, extracted_data or {})
             update_payload["ai_summary"] = summary_text
-            update_payload["last_updated"] = firestore.SERVER_TIMESTAMP
+            update_payload["fecha"] = firestore.SERVER_TIMESTAMP
 
             await self._firestore_io(doc_ref.set(update_payload, merge=True), phone=phone_number, label="update_prospect_summary.set")
         except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
@@ -489,7 +469,7 @@ class MemoryService:
                 return False
 
             await self._firestore_io(
-                doc_ref.update({"status": "IN_PROGRESS", "updated_at": firestore.SERVER_TIMESTAMP, "fecha": firestore.SERVER_TIMESTAMP}),
+                doc_ref.update({"status": "IN_PROGRESS", "fecha": firestore.SERVER_TIMESTAMP}),
                 phone=phone_number, label="transition_to_in_progress.update"
             )
             logger.info(f"🟢 [STATE] Prospecto {phone_number}: PENDING → IN_PROGRESS")
@@ -511,7 +491,7 @@ class MemoryService:
             
             if doc_ref:
                 await self._firestore_io(
-                    doc_ref.update({"human_help_requested": status, "updated_at": firestore.SERVER_TIMESTAMP, "fecha": firestore.SERVER_TIMESTAMP}),
+                    doc_ref.update({"human_help_requested": status, "fecha": firestore.SERVER_TIMESTAMP}),
                     phone=phone_number, label="set_human_help_status.update"
                 )
                 logger.info(f"✅ Updated human_help_requested={status} for {phone_number}")
@@ -525,7 +505,7 @@ class MemoryService:
             # Re-fetch and update
             doc_ref = await self._find_prospect_ref(clean_phone)
             await self._firestore_io(
-                doc_ref.update({"human_help_requested": status, "updated_at": firestore.SERVER_TIMESTAMP, "fecha": firestore.SERVER_TIMESTAMP}),
+                doc_ref.update({"human_help_requested": status, "fecha": firestore.SERVER_TIMESTAMP}),
                 phone=clean_phone, label="set_human_help_status.update_refetch"
             )
             return True

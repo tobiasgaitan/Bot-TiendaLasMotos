@@ -128,3 +128,32 @@ def test_is_valid_helper_logic(memory_service):
     case_valid = {"nombre": "Juan"}
     merged_valid = memory_service._merge_extracted_data(current, case_valid)
     assert merged_valid["nombre"] == "Juan"
+
+def test_merge_strategy_spanish_keys_and_no_empty_strings(memory_service):
+    """
+    Mandatory test: Verifies presence of keys in Spanish and forbids empty strings or None silently.
+    """
+    current_data = {"fecha": "mock_timestamp"}
+    incoming_data = {
+        "nombre": "Tobias",
+        "ciudad": "Bogotá",
+        "forma_pago": "",
+        "moto_interest": None,
+        "null_key": "null",
+        "none_key": "none"
+    }
+    merged = memory_service._merge_extracted_data(current_data, incoming_data)
+    
+    # Verify Spanish keys are accepted
+    assert "nombre" in merged
+    assert merged["nombre"] == "Tobias"
+    assert "ciudad" in merged
+    assert merged["ciudad"] == "Bogotá"
+    
+    # Verify empty strings and None are explicitly forbidden (not merged)
+    assert "forma_pago" not in merged
+    assert "moto_interest" not in merged
+    
+    # Verify sentinels like "null" or "none" are omitted
+    assert "null_key" not in merged
+    assert "none_key" not in merged
