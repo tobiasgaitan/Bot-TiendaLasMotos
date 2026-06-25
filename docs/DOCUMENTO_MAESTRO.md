@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.11.6)
-Versión: v10.11.4 (Hotfix Competitor Protocol Parity)
-Estado: PRODUCTION READY / GCP LIVE (Rama beta sincronizada en hash 7d5babc)
-Último Hito: Cierre del ticket BOT-COMP-981. Cobertura del Protocolo de Competencia y aserción de payload visual ('price', 'image_url') sin valores None ni vacíos, verificando el tag 'Ficha Tecnica:'.
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 137/137 Tests PASSED)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.12.0)
+Versión: v10.12.0 (Hotfix Pipeline Secrets)
+Estado: PRODUCTION READY / GCP LIVE (Rama beta sincronizada en hash 67c38d5)
+Último Hito: Cierre del ticket BOT-INFRA-SECRET-062. Parametrización de la variable WHATSAPP_APP_SECRET en el pipeline de GitHub Actions para evitar regresiones de firma (HTTP 401).
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 155/155 Tests PASSED)
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
@@ -84,3 +84,4 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.8.0] Cierre de ticket BOT-QA-LOOP-107. Asincronización completa de los métodos de gestión de Sandboxes del `AgenticOrchestrator` eliminando bloqueos de subprocesos en disco. Acoplamiento del motor Checker/Maker en el runtime conversacional de `ai_brain.py` para mitigación en caliente de errores de formato en catálogo de motocicletas (PCC Pro). Sincronización local y remota en hash 581a5ef con Score de Coherencia de 1.000.
 - [v10.10.0] Cierre de ticket BOT-INFRA-BUG-054. Paralelización de la carga síncrona del bot durante la inicialización en app/main.py y aumento de start-period de docker healthcheck a 60s. Score de Coherencia de 1.000.
 - [v10.11.2] Cierre de ticket BOT-INFRA-ROUTER-058. Inyección del endpoint `/robots.txt` en `app/main.py` que responde 200 OK con texto plano vacío para satisfacer las sondas automáticas del balanceador de carga de GCP Cloud Run. Score de Coherencia de 1.000.- [v10.11.1] Cierre de ticket BOT-INFRA-GCLOUD-060. Resolución del fallo catastrófico de compilación en el Paso 25 (Building Container) provocado por la purga automática del directorio S-TOON-Protocol. El CLI de gcloud heredaba de forma silenciosa la directiva de exclusión del .gitignore corporativo. Se implementó un archivo .gcloudignore explícito en la raíz para forzar la inclusión obligatoria de la librería offline. Score de Coherencia certificado: 1.000.
+- [v10.12.0] Cierre de ticket BOT-INFRA-SECRET-062. Parametrización de la variable WHATSAPP_APP_SECRET en el pipeline de GitHub Actions (deploy.yml y deploy-beta.yml) para evitar regresiones de firma (HTTP 401) en cada push. Score de Coherencia de 1.000.
