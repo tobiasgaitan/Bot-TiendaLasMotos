@@ -86,7 +86,7 @@ async def test_ai_brain_validation_retry():
         "exists": True,
         "nombre": "Tobias",
         "ciudad": "Santa Marta",
-        "forma_pago": "credito",
+        "forma_pago": "Crédito - 0 inicial",
         "habeas_data_accepted": True,
         "moto_interest": "TVS Sport"
     }
@@ -220,9 +220,9 @@ class TestEvaluateProfileEmptyFirestoreConfig:
         svc = _build_financial_service_empty_config()
         # No debería lanzar ninguna excepción
         result = svc.evaluate_profile(
-            ocupacion_y_contrato="Empleado fijo",
+            ocupacion="Empleado fijo",
             ingresos_demostrables="1200000",
-            historial_datacredito="Al dia"
+            datacredito="Al dia"
         )
         assert result is not None, \
             "[E2E-095] evaluate_profile retornó None con partners_config vacío. Violación de Zero-Silent-Failures."
@@ -233,9 +233,9 @@ class TestEvaluateProfileEmptyFirestoreConfig:
         """
         svc = _build_financial_service_empty_config()
         result = svc.evaluate_profile(
-            ocupacion_y_contrato="Empleado fijo",
+            ocupacion="Empleado fijo",
             ingresos_demostrables="1200000",
-            historial_datacredito="Al dia"
+            datacredito="Al dia"
         )
         required_keys = ["score", "strategy", "entity", "link_url", "requires_aval", "explanation"]
         for key in required_keys:
@@ -249,9 +249,9 @@ class TestEvaluateProfileEmptyFirestoreConfig:
         """
         svc = _build_financial_service_empty_config()
         result = svc.evaluate_profile(
-            ocupacion_y_contrato="Independiente",
+            ocupacion="Independiente",
             ingresos_demostrables="800000",
-            historial_datacredito="Sin experiencia"
+            datacredito="Sin experiencia"
         )
         link_url = result.get("link_url")
         assert link_url is None or isinstance(link_url, str), \
@@ -264,9 +264,9 @@ class TestEvaluateProfileEmptyFirestoreConfig:
         """
         svc = _build_financial_service_empty_config()
         result = svc.evaluate_profile(
-            ocupacion_y_contrato="Pensionado",
+            ocupacion="Pensionado",
             ingresos_demostrables="900000",
-            historial_datacredito="Al dia"
+            datacredito="Al dia"
         )
         assert isinstance(result.get("score"), (int, float)), \
             f"[E2E-095] score debe ser numérico, obtenido: {type(result.get('score'))}"
@@ -281,9 +281,9 @@ class TestEvaluateProfileEmptyFirestoreConfig:
 
         # Paso 1: Evaluar perfil (simula calculate_credit_score tool call en ai_brain.py)
         profile_result = svc.evaluate_profile(
-            ocupacion_y_contrato="Empleado fijo",
+            ocupacion="Empleado fijo",
             ingresos_demostrables="1500000",
-            historial_datacredito="Al dia",
+            datacredito="Al dia",
             tiene_gas_natural=False,
             plan_celular="Sí"
         )
@@ -315,9 +315,9 @@ class TestEvaluateProfileEmptyFirestoreConfig:
 
         with caplog.at_level(logging.ERROR):
             result = svc.evaluate_profile(
-                ocupacion_y_contrato="Independiente",
+                ocupacion="Independiente",
                 ingresos_demostrables="1000000",
-                historial_datacredito="Reportado"
+                datacredito="Reportado"
             )
 
         # Verificar que no colapsó
