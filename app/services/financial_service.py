@@ -238,9 +238,13 @@ class FinancialService:
         
         logger.info(f"Evaluating profile with explicit entidad: {entidad}, reportes: {reportes}")
 
+        # [BOT-QA-REVISION-099] Align parameters to EXTRACTION_SCHEMA strict keys: 'ocupacion' and 'datacredito'
+        ocupacion = data.get("ocupacion", data.get("ocupacion_y_contrato", data.get("labor_type", "")))
+        datacredito = data.get("datacredito", data.get("historial_datacredito", data.get("credit_history", "")))
+
         score = self._scoring_service.calculate_score(
-            ocupacion_y_contrato=data.get("ocupacion_y_contrato", data.get("labor_type", "")),
-            historial_datacredito=data.get("historial_datacredito", data.get("credit_history", "")),
+            ocupacion_y_contrato=ocupacion,
+            historial_datacredito=datacredito,
             ingresos_demostrables=str(data.get("ingresos_demostrables", data.get("income", ""))),
             plan_celular=data.get("plan_celular", data.get("phone_plan", ""))
         )
@@ -248,7 +252,7 @@ class FinancialService:
         strategy_info = self._scoring_service.determine_strategy(
             score=score,
             tiene_gas_natural=data.get("tiene_gas_natural", data.get("has_gas_natural", False)),
-            historial_datacredito=data.get("historial_datacredito", data.get("credit_history", "")),
+            historial_datacredito=datacredito,
             mora_y_paz_salvo=data.get("mora_y_paz_salvo", "")
         )
         
