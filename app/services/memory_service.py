@@ -401,8 +401,18 @@ class MemoryService:
     ) -> None:
         """Merge AI-extracted data into prospect and update summary."""
         try:
-            doc_ref = await self.get_ref(phone_number)
-            doc_snap = await self._firestore_io(doc_ref.get(), phone=phone_number, label="update_prospect_summary.get")
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            doc_ref = await self.get_ref(clean_phone)
+            doc_snap = await self._firestore_io(doc_ref.get(), phone=clean_phone, label="update_prospect_summary.get")
+            
+            # --- CORRECCIÓN QUIRÚRGICA ANTE BORRADO NUCLEAR (/RESET) ---
+            if not doc_snap.exists:
+                logger.warning(f"⚠️ [RESET_RECOVERY] Documento no encontrado para {clean_phone} durante actualización. Creando nodo base de emergencia...")
+                # Invocamos la inicialización limpia con claves canónicas
+                await self.create_prospect_if_missing(clean_phone)
+                # Re-congelamos el snapshot para obtener el diccionario base limpio
+                doc_snap = await self._firestore_io(doc_ref.get(), phone=clean_phone, label="update_prospect_summary.reget")
+            
             current_data = doc_snap.to_dict() if doc_snap.exists else {}
 
             # Use centralized merge logic
@@ -410,7 +420,7 @@ class MemoryService:
             update_payload["ai_summary"] = summary_text
             update_payload["fecha"] = firestore.SERVER_TIMESTAMP
 
-            await self._firestore_io(doc_ref.set(update_payload, merge=True), phone=phone_number, label="update_prospect_summary.set")
+            await self._firestore_io(doc_ref.set(update_payload, merge=True), phone=clean_phone, label="update_prospect_summary.set")
         except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
             raise
         except Exception as e:
@@ -439,10 +449,22 @@ class MemoryService:
             )
             
             # 2. Firestore Persistence
+            try:
+                summary_text = summary_data["summary"]
+                extracted_data = summary_data["extracted"]
+            except KeyError as e:
+                logger.warning(
+                    f"⚠️ [ANTI-NULL-MASKING] Fallo de aserción rígida. Llave mandatoria ausente en EXTRACTION_SCHEMA: {e}. "
+                    f"Payload de IA: {summary_data}",
+                    exc_info=True
+                )
+                summary_text = summary_data.get("summary", "")
+                extracted_data = summary_data.get("extracted", {})
+
             await self.update_prospect_summary(
                 phone_number, 
-                summary_data.get("summary", ""), 
-                summary_data.get("extracted", {})
+                summary_text, 
+                extracted_data
             )
             
             logger.info(f"✅ Successfully updated prospect summary for {phone_number}")

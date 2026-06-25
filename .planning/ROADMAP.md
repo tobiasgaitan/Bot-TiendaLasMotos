@@ -1,6 +1,10 @@
-# 🗺️ Project Roadmap - Phase 1 Complete
+# Roadmap - Bot-TiendaLasMotos
 
-- [x] Audit Firestore persistence topological mapping (2026-06-24)
-- [x] Sync system instructions metadata definitions
-- [ ] Initialize next development sprint via GSD workflow
-- [x] Cierre de hito de diseño y aserción rígida en test_memory_merge.py (2026-06-25)
+## Tasks Completadas (v10.12.3)
+- [x] Identificación forense del error 404 NotFound de Firestore en Cloud Run.
+- [x] Refactorización quirúrgica de `update_prospect_summary` en `memory_service.py` con interceptor de existencia (`doc_snap.exists`).
+- [x] Corrección de error de indentación horizontal (AST Syntax Validation).
+- [x] Validación local del framework agéntico con Score de Coherencia 1.000.
+
+## Próximos Pasos
+- [ ] Monitoreo en producción (GCP Live Logs) del comportamiento del comando `/reset`.

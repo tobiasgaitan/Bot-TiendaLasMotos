@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.12.2)
-Versión: v10.12.2 (Hotfix Firestore Tests Contracts Alignment)
-Estado: PRODUCTION READY / GCP LIVE (Rama beta sincronizada en hash 6a3f928)
-Último Hito: Cierre del ticket BOT-QA-REVISION-099. Alineación de las llaves del servicio financiero y aserciones de pruebas unitarias al EXTRACTION_SCHEMA de Firestore ('ocupacion', 'datacredito', 'forma_pago'). Aserción estricta de alertas del guardrail PCC Pro ante mutación de llaves.
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 156/156 Tests PASSED)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.12.3)
+Versión: v10.12.3 (Hotfix Firestore Post-Reset Recovery Unification)
+Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
+Último Hito: Cierre del ticket BOT-BUG-RESTORATION-RESET. Mitigación del fallo gRPC 404 mediante auto-inicialización limpia y síncrona de prospectos eliminados físicamente por borrado nuclear.
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 157/157 Tests PASSED)
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.

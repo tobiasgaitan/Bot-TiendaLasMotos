@@ -1,17 +1,9 @@
-# 📝 State of the Project - Firebase Mapping Session
+# Current State - Bot-TiendaLasMotos
+**Versión Actual:** v10.12.3
+**Último Hito:** Cierre de ticket BOT-BUG-RESTORATION-RESET
+**Coherence Score:** 1.000 (157/157 Tests PASSED)
 
-## Current Status
-- **Firestore Schema:** Mapped and documented in `.planning/FIRESTORE_SCHEMA.md`.
-- **System Instruction:** Verified alignment between `EXTRACTION_SCHEMA` and `juan_pablo_personality`.
-- **Coherence Score:** 1.0 (Zero-Guessing Hardened).
-
-## Key Decisions
-- Invalidation of redundant English keys (`name`/`role`) in favor of unified Spanish fields (`nombre`/`rol`) within administrative structures.
-
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 066 | Purge legacy MemoryService methods and normalize timestamps | 2026-06-24 | pending | 066-bot-arq-purge |
-| 067 | Align Firestore keys in tests, financial service parameters and assert PCC Pro guardrail alert | 2026-06-25 | 225fd59 | 067-correccion-contratos-pruebas |
-- [Hotfix Completado] BOT-ARQ-ANTI-NULL-044 erradicó el uso de .get() en el diccionario de extracción del sumario.
+## Estado de la Ruta Crítica
+- El bug del borrado nuclear (/reset) que generaba excepciones 404 gRPC en Firestore ha sido mitigado quirúrgicamente en `update_prospect_summary`.
+- El sistema es capaz de auto-inicializar un prospecto fantasma si este escribe inmediatamente después de un wipe de memoria.
+- Compilación y AST validados localmente de forma exitosa.
