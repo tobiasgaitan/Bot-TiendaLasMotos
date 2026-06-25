@@ -1,36 +1,26 @@
-# Walkthrough — Quick Task 058: hotfix-gcp-robots-probe
+# Walkthrough — Quick Task 067: correccion_contratos_pruebas_firestore
 
-Se ha completado la tarea de inyectar de forma explícita y quirúrgica el endpoint `/robots.txt` en `app/main.py` para responder de forma inmediata con un estado HTTP 200 y cuerpo de texto plano vacío, satisfaciendo las sondas automáticas del balanceador de carga de Google Cloud Run y previniendo fallos y abortos durante el despliegue del sistema.
+Se ha completado la tarea de corregir las discrepancias nomenclaturales y variables en la suite de pruebas unitarias alineándolas a la estructura oficial del `EXTRACTION_SCHEMA` de Firestore (`ocupacion`, `datacredito`), así como la corrección del valor canónico de `forma_pago` y la validación estricta de alertas del guardrail PCC Pro.
 
 ## Cambios Realizados
 
-1. **Inyección de Ruta en Backend (`app/main.py`)**:
-   - Se importó `PlainTextResponse` desde `fastapi.responses`.
-   - Se inyectó el endpoint `@app.get("/robots.txt", response_class=PlainTextResponse)` que retorna una cadena vacía de texto plano con estado `200 OK`.
+1. **Alineación de `forma_pago` (`tests/test_agentic_loop_async.py`)**:
+   - Se reemplazó el valor de prueba `"forma_pago": "credito"` por el valor canónico real en base de datos `"forma_pago": "Crédito - 0 inicial"`.
 
-2. **Creación de Test Automatizado (`tests/test_robots.py`)**:
-   - Se implementaron pruebas unitarias utilizando `fastapi.testclient.TestClient` para verificar que una petición `GET` a `/robots.txt` retorna de forma inmediata el estado `200` y cuerpo vacío.
+2. **Extracción y Validación de Parámetros (`app/services/financial_service.py`)**:
+   - Se actualizó el método `evaluate_profile` para capturar y priorizar los parámetros `'ocupacion'` y `'datacredito'` de forma de mantener alineación con el `EXTRACTION_SCHEMA`. Se conservaron los fallobacks anteriores para asegurar compatibilidad.
 
-3. **Verificación de Calidad y No Regresión**:
-   - Ejecución de `uv run pytest tests/test_robots.py` validando con éxito el comportamiento del nuevo endpoint.
-   - Ejecución de la suite completa con 134 pruebas unitarias aprobadas exitosamente y Score de Coherencia de **1.000**.
+3. **Corrección de Parámetros en Suite de Pruebas (`tests/test_agentic_loop_async.py`)**:
+   - Se alinearon todas las llamadas a `evaluate_profile` para utilizar los parámetros `'ocupacion'` y `'datacredito'`.
 
-## Resultados de Verificación
+4. **Alertas del Guardrail PCC Pro (`tests/test_pcc_ficha_tecnica.py`)**:
+   - Se inyectó verificación explícita para asegurar que la mutación de una llave requerida (como `summary` o `price`) active la alerta de fallo de validación del guardrail `PCC Pro` (retornando `success=False` y `broken_guardrail='PRICE_CONSISTENCY_CHECK'`) en lugar de pasar de largo con un retorno vacío.
 
-Se obtuvo un score perfecto de **1.000** en la auditoría de coherencia automática de `agent-cli`:
+## Evidencia de Verificación
 
-```text
-━━━ EVAL REPORT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Tests passed : 134
-  Tests failed : 0
-  Total        : 134
-  Score        : 1.000 (threshold: 0.9)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✓ SCORE 1.000 ≥ 0.9 — DEPLOY AUTHORIZED ✅
-```
+- **Suite de Pruebas**: Todos los 156 tests unitarios pasan exitosamente local y en el pipeline.
+- **Score de Coherencia**: Obtenido un score perfecto de **1.000** verificado vía `npx agent-cli eval`.
+- **Commit GitHub**: Sincronizado en la rama `beta` remota con el hash de commit final `b7a510b`.
 
-## Estado Final
-
-- **Rama**: `beta`
-- **Hito**: Cierre del ticket `BOT-INFRA-ROUTER-058`
-- **Último Commit**: Sincronizado en la rama remota de origen
+---
+*Completado: 2026-06-25*
