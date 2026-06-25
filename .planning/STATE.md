@@ -21,3 +21,4 @@
 ### 🏛️ Mandato de Sincronía Documental (PSD)
 - El Documento Maestro es exclusivamente un archivo Markdown físico ubicado en la ruta: `docs/DOCUMENTO_MAESTRO.md`.
 - Queda estrictamente PROHIBIDO referenciarlo como archivo .docx o suponer que está en la raíz.
+| 066 | [BOT-ARQ-FS-066] Hidratación modular de _partners_config desde financieras e inyección de test de aserción | 2026-06-24 | f5319cd | 066-hotfix-config-service-routing |
