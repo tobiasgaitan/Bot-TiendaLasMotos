@@ -14,6 +14,7 @@
 | 062 | Implementación de pruebas y paridad de Protocolo de Competencia | 2026-06-24 | 7d5babc | 062-competitor-protocol-parity |
 | 063 | [BOT-FINANCE-ERR-094] Zero-Silent-Failures en calculate_payment + test_financial_fallback.py | 2026-06-24 | aa7db26 | 063-hotfix-financial-fallback |
 | 064 | [BOT-ARQ-E2E-095] Blindar evaluate_profile + link_brilla contra Firestore vacío + 8 tests E2E | 2026-06-24 | 6b8e617 | 064-hotfix-brain-e2e-fallback |
+| 065 | [BOT-INFRA-SECRET-062] Parametrizar WHATSAPP_APP_SECRET en el pipeline de GitHub Actions | 2026-06-24 | 67c38d5 | 065-fix-pipeline-secrets |
 
 
 
