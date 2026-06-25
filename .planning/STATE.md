@@ -13,3 +13,4 @@
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 066 | Purge legacy MemoryService methods and normalize timestamps | 2026-06-24 | pending | 066-bot-arq-purge |
+| 067 | Align Firestore keys in tests, financial service parameters and assert PCC Pro guardrail alert | 2026-06-25 | 225fd59 | 067-correccion-contratos-pruebas |
