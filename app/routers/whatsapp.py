@@ -160,7 +160,7 @@ async def webhook_handler(
         if _is_valid_statuses(payload):
             status_data = _extract_status_data(payload)
             if status_data:
-                background_tasks.add_task(_handle_statuses_background, status_data)
+                await _handle_statuses_background(status_data)
             return {"status": "received"}
 
         # --- RAMA 2: Mensajes reales del usuario ---
@@ -181,8 +181,8 @@ async def webhook_handler(
             logger.warning(f"🔄 Duplicate WAMID ignored in handler: {msg_id_unique}")
             return {"status": "ignored", "procesado": False}
 
-        # Procesamiento en segundo plano
-        background_tasks.add_task(_handle_message_background, msg_data, background_tasks)
+        # Procesamiento síncrono bloqueante
+        await _handle_message_background(msg_data, background_tasks)
         return {"status": "received"}
 
     except HTTPException:
