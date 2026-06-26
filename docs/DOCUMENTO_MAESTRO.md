@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.12.5)
-Versión: v10.12.5 (Hotfix Test Zombie Recovery Flow Patch)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.12.6)
+Versión: v10.12.6 (Hotfix Reset Recovery — Idempotencia Post-Borrado)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Cierre del ticket [BOT-QA-PATCH-111]. Modificada la ruta del patch para `whatsapp_service` en `tests/test_zombie_recovery_flow.py` para utilizar `app.services.whatsapp_service.whatsapp_service` evitando el AttributeError causado por lazy imports.
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 161/161 Tests PASSED)
+Último Hito: Cierre del ticket [BOT-POST-RESET-RECOVERY-070]. Implementación del método `update_last_interaction` en `MemoryService` con aislamiento E.164 y vinculación Langfuse. Extensión del blindaje zombi del router para documentos completamente borrados (`is_fully_deleted`). Test post-reset con aserciones rígidas anti-null.
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 153/153 Tests PASSED)
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
@@ -88,3 +88,4 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.12.2] Cierre de ticket BOT-QA-REVISION-099. Alineación de llaves estrictas ('ocupacion', 'datacredito') de Firestore en evaluate_profile y pruebas, corrección del canónico de forma_pago a 'Crédito - 0 inicial', y validación de que la mutación de llaves del catálogo activa el guardrail PCC Pro. Score de Coherencia de 1.000.
 
 - [v10.12.2] Cierre de ticket BOT-ARQ-ANTI-NULL-044. Implementación quirúrgica del guardrail Anti-Null Masking en generate_and_update_summary y mitigación de fallos de contingencia silenciosos. Coherence Score: 1.000.
+- [v10.12.6] Cierre de ticket BOT-POST-RESET-RECOVERY-070. Implementación del método fantasma `update_last_interaction` en `MemoryService` con aislamiento E.164 (sin PhoneNormalizer interno), escritura idempotente `set(merge=True)` para tolerar documentos inexistentes post-`/reset`, y vinculación explícita de telemetría Langfuse. Extensión del blindaje zombi del router (`is_fully_deleted`) para reconstrucción CRM automática ante `exists: False`. Test de integración con aserciones rígidas anti-null prohibiendo retornos vacíos, None o truncados. Score de Coherencia: 1.000 (153/153 Tests PASSED).
