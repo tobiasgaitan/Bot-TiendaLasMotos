@@ -503,6 +503,45 @@ class MemoryService:
             logger.exception(f"❌ [STATE] Error in transition_to_in_progress for {phone_number}: {e}")
             return False
 
+    async def update_last_interaction(self, phone_number: str) -> None:
+        """
+        Actualiza el timestamp de última interacción del prospecto.
+
+        WHY: El router invoca este método en L645 (texto) y L881 (audio) para
+        registrar la actividad del usuario en el CRM.
+
+        Condiciones de diseño (v10.12.6):
+          - phone_number: string E.164 canónico, pre-sanitizado por PhoneNormalizer
+            en la capa del enrutador (app/routers/whatsapp.py L264). NO se invoca
+            PhoneNormalizer aquí para prevenir colisiones de namespace (Condición #1).
+          - set(merge=True): tolera documentos inexistentes post-/reset sin lanzar
+            google.cloud.exceptions.NotFound (idempotencia).
+          - Langfuse: registra traza explícita dentro del contexto transaccional
+            activo para observabilidad de escrituras de infraestructura (Condición #2).
+        """
+        try:
+            doc_ref = self._db.collection(self.collection_name).document(phone_number)
+            await self._firestore_io(
+                doc_ref.set({"fecha": firestore.SERVER_TIMESTAMP}, merge=True),
+                phone=phone_number, label="update_last_interaction.set"
+            )
+            # --- VINCULACIÓN LANGFUSE (Condición #2) ---
+            # WHY: Registra la escritura de infraestructura dentro del span activo
+            # de Langfuse para garantizar observabilidad end-to-end. El import lazy
+            # previene ImportError si Langfuse no está configurado en el entorno.
+            try:
+                from langfuse.decorators import langfuse_context
+                langfuse_context.update_current_observation(
+                    metadata={"update_last_interaction": phone_number, "idempotent": True}
+                )
+            except Exception:
+                pass  # Langfuse no disponible — no bloquea la operación de Firestore
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+            raise
+        except Exception as e:
+            logger.exception(f"❌ update_last_interaction failed for {phone_number}: {e}")
+            raise
+
     async def set_human_help_status(self, phone_number: str, status: bool) -> bool:
         """
         Set the human_help_requested flag. When True, the bot remains silent.
