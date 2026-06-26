@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 from app.services.memory_service import MemoryService
 
 @pytest.fixture
@@ -157,3 +157,37 @@ def test_merge_strategy_spanish_keys_and_no_empty_strings(memory_service):
     # Verify sentinels like "null" or "none" are omitted
     assert "null_key" not in merged
     assert "none_key" not in merged
+
+@pytest.mark.asyncio
+async def test_generate_and_update_summary_anti_null_masking(caplog, memory_service):
+    """
+    [BOT-ARQ-ANTI-NULL-044] Aserción de contenido rígida.
+    Verifica que la mutación o ausencia de llaves críticas (summary, extracted)
+    fuerce la traza forense explícita en logger.warning antes de usar contingencia.
+    """
+    import logging
+    
+    # Mock AI brain to return mutated payload (missing 'extracted')
+    mock_ai_brain = MagicMock()
+    mock_ai_brain.generate_summary = AsyncMock(return_value={"summary": "test summary"})
+    
+    memory_service.update_prospect_summary = AsyncMock()
+
+    with caplog.at_level(logging.WARNING):
+        await memory_service.generate_and_update_summary(
+            phone_number="1234567890",
+            conversation_text="hello",
+            ai_brain=mock_ai_brain
+        )
+
+    # Verificar que el log forense existe (Anti-Null Masking interceptado)
+    log_messages = " ".join([r.message for r in caplog.records])
+    assert "[ANTI-NULL-MASKING]" in log_messages, "❌ Fallo silencioso detectado. No se forzó la traza forense de advertencia."
+    assert "Fallo de aserción rígida" in log_messages, "❌ Falta mensaje explícito en traza forense."
+
+    # Verificar que update_prospect_summary igual fue llamado (contingencia funcionó)
+    memory_service.update_prospect_summary.assert_called_once_with(
+        "1234567890",
+        "test summary",
+        {}
+    )
