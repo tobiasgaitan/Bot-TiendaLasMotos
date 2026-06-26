@@ -14,3 +14,4 @@
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 068 | webhook blocking sync awaits | 2026-06-25 | 114e0a0 | 068-hotfix-webhook-sync-block |
+| 069 | corregir mock namespace en test zombie | 2026-06-26 | a07a42b | 069-hotfix-test-namespace-patch |
