@@ -1,8 +1,8 @@
 ### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.12.6)
-Versión: v10.12.6 (Hotfix Reset Recovery — Idempotencia Post-Borrado)
+Versión: v10.12.6 (Hotfix Reset Recovery & Trace Propagation)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Cierre del ticket [BOT-POST-RESET-RECOVERY-070]. Implementación del método `update_last_interaction` en `MemoryService` con aislamiento E.164 y vinculación Langfuse. Extensión del blindaje zombi del router para documentos completamente borrados (`is_fully_deleted`). Test post-reset con aserciones rígidas anti-null.
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 153/153 Tests PASSED)
+Último Hito: Cierre de los tickets [BOT-POST-RESET-RECOVERY-070] y [BOT-TRACE-PROPAGATION-071]. Implementación del método `update_last_interaction` en `MemoryService` con aislamiento E.164. Extensión del blindaje zombi del router. Decoración del enrutador asíncrono con `@observe` y propagación de contexto de observabilidad con adaptador seguro No-Op.
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 155/155 Tests PASSED)
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
@@ -89,3 +89,4 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 
 - [v10.12.2] Cierre de ticket BOT-ARQ-ANTI-NULL-044. Implementación quirúrgica del guardrail Anti-Null Masking en generate_and_update_summary y mitigación de fallos de contingencia silenciosos. Coherence Score: 1.000.
 - [v10.12.6] Cierre de ticket BOT-POST-RESET-RECOVERY-070. Implementación del método fantasma `update_last_interaction` en `MemoryService` con aislamiento E.164 (sin PhoneNormalizer interno), escritura idempotente `set(merge=True)` para tolerar documentos inexistentes post-`/reset`, y vinculación explícita de telemetría Langfuse. Extensión del blindaje zombi del router (`is_fully_deleted`) para reconstrucción CRM automática ante `exists: False`. Test de integración con aserciones rígidas anti-null prohibiendo retornos vacíos, None o truncados. Score de Coherencia: 1.000 (153/153 Tests PASSED).
+- [v10.12.6] Cierre de ticket BOT-TRACE-PROPAGATION-071. Decoración de la función principal del enrutador asíncrono `_handle_message_background` con `@observe(name="whatsapp_webhook_background")` e inyección de contexto de observabilidad (`user_id`, `session_id` y `metadata`) con un adaptador seguro No-Op para evitar fugas de telemetría post-reset. Score de Coherencia: 1.000 (155/155 Tests PASSED).

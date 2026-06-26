@@ -10,6 +10,7 @@
 - [x] Implementación de `update_last_interaction` en `MemoryService` con aislamiento E.164 y vinculación Langfuse.
 - [x] Extensión del blindaje zombi del router para escenario post-reset (`is_fully_deleted`).
 - [x] Test de integración post-reset con `exists: False` y aserciones rígidas anti-null (Condición #3).
+- [x] Decoración del webhook de WhatsApp (`_handle_message_background`) y propagación de trazas Langfuse con adaptador seguro No-Op (Task 071).
 
 ## Próximos Pasos
 - [ ] Validación en producción (GCP Live Logs) del flujo completo post-reset con telemetría Langfuse end-to-end.
