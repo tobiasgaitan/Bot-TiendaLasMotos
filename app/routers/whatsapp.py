@@ -37,6 +37,21 @@ import app.services.memory_service as memory_service_module
 from app.services.config_service import config_service # [SSOT] Unified Config
 # Note: Access via memory_service_module.memory_service to get the updated instance
 
+# --- LANGFUSE OBSERVABILITY (Graceful Fallback & Context Sharing) ---
+try:
+    from langfuse.decorators import observe, langfuse_context
+except Exception:
+    def observe(*args, **kwargs):
+        def decorator(fn):
+            return fn
+        if args and callable(args[0]):
+            return args[0]
+        return decorator
+    class _LangfuseContextShim:
+        def update_current_trace(self, **kwargs): pass
+        def update_current_observation(self, **kwargs): pass
+    langfuse_context = _LangfuseContextShim()
+
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +266,7 @@ async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
         )
 
 
+@observe(name="whatsapp_webhook_background")
 async def _handle_message_background(msg_data: Dict[str, Any], background_tasks: BackgroundTasks) -> None:
     """Lógica principal del bot (Procesamiento Asíncrono)"""
     # Ensure services are initialized before proceeding
@@ -265,6 +281,22 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         msg_type = msg_data.get("type", "text").lower()
         msg_id_unique = msg_data.get("id") or f"{user_phone}_{int(datetime.now().timestamp())}"
         phone_number_id = msg_data.get("phone_number_id")
+
+        # [BOT-TRACE-201] Propagar telemetría de Langfuse al trace raíz del webhook
+        try:
+            from langfuse.decorators import langfuse_context as lf_ctx
+        except Exception:
+            lf_ctx = langfuse_context
+
+        lf_ctx.update_current_trace(
+            user_id=user_phone,
+            session_id=f"wa_{user_phone}",
+            metadata={
+                "msg_id": msg_id_unique,
+                "phone_number_id": phone_number_id,
+                "msg_type": msg_type
+            }
+        )
 
         # 1.1 Extracción temprana de Body para Idempotencia (v9.8.3)
         message_body = ""
