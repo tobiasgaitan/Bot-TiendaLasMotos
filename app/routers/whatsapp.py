@@ -592,9 +592,21 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                         await whatsapp_service.send_text_message(user_phone, confirm_msg, phone_number_id=phone_number_id)
                         return
     
-                newly_created = not (prospect_data and prospect_data.get("exists", False))
-                current_agent = prospect_data.get("current_agent", "expert") if prospect_data else "expert"
-                
+                # --- BLINDAJE DE CONCURRENCIA PARA PROSPECTOS ZOMBIS (v10.12.6) ---
+                is_metadata_only = prospect_data and prospect_data.get("exists", False) and "ai_summary" not in prospect_data
+                is_fully_deleted = not prospect_data or not prospect_data.get("exists", False)
+
+                newly_created = is_fully_deleted or is_metadata_only
+                current_agent = prospect_data.get("current_agent", "expert") if (prospect_data and not is_metadata_only and not is_fully_deleted) else "expert"
+
+                if is_fully_deleted:
+                    logger.warning(f"⚠️ [POST_RESET_RECOVERY] Documento inexistente para {user_phone} (post-reset). Forzando reconstrucción CRM.")
+                    await ms.create_prospect_if_missing(user_phone)
+                    prospect_data = await ms.get_prospect_data(user_phone)
+                elif is_metadata_only:
+                    logger.warning(f"⚠️ [CONCURRENCY_RECOVERY] Detectado documento zombi sin estructura para {user_phone}. Forzando inicialización de sesión CRM.")
+                    await ms.create_prospect_if_missing(user_phone)
+                    prospect_data = await ms.get_prospect_data(user_phone)
                 # 2. LOAD HISTORY for Context
                 logger.info(f"📜 Loading chat history for {user_phone}...")
                 current_history = await ms.get_chat_history(user_phone, limit=10)
