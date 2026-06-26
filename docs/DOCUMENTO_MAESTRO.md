@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.12.3)
-Versión: v10.12.3 (Hotfix Firestore Post-Reset Recovery Unification)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.12.5)
+Versión: v10.12.5 (Hotfix Test Zombie Recovery Flow Patch)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Cierre del ticket BOT-BUG-RESTORATION-RESET. Mitigación definitiva del fallo gRPC 404 mediante conmutación a set(merge=True) en update_whatsapp_status y update_prospect_summary ante ráfagas concurrentes de acuses de Meta tras un borrado nuclear (/reset).
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 157/157 Tests PASSED)
+Último Hito: Cierre del ticket [BOT-QA-PATCH-111]. Modificada la ruta del patch para `whatsapp_service` en `tests/test_zombie_recovery_flow.py` para utilizar `app.services.whatsapp_service.whatsapp_service` evitando el AttributeError causado por lazy imports.
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 161/161 Tests PASSED)
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
