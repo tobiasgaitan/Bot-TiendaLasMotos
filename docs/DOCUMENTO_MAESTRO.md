@@ -1,7 +1,7 @@
 ### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.12.6)
 Versión: v10.12.6 (Hotfix Reset Recovery & Trace Propagation)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Cierre de los tickets [BOT-POST-RESET-RECOVERY-070] y [BOT-TRACE-PROPAGATION-071]. Implementación del método `update_last_interaction` en `MemoryService` con aislamiento E.164. Extensión del blindaje zombi del router. Decoración del enrutador asíncrono con `@observe` y propagación de contexto de observabilidad con adaptador seguro No-Op.
+Último Hito: Estabilización de infraestructura CI/CD, resolución de firmas HMAC en k6, calibración de latencia p95 y bypass de caché uv. Cierre de tickets [BOT-INFRA-CI-074] a [BOT-INFRA-CI-079]. Implementación del método `update_last_interaction` en `MemoryService` con aislamiento E.164. Extensión del blindaje zombi del router. Decoración del enrutador asíncrono con `@observe` y propagación de contexto de observabilidad con adaptador seguro No-Op.
 **Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 155/155 Tests PASSED)
 
 1. Contexto y Persona (Juan Pablo)
