@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.12.6
-**Último Hito:** Cierre de los tickets BOT-POST-RESET-RECOVERY-070, BOT-TRACE-PROPAGATION-071 y BOT-INFRA-CI-074
-**Coherence Score:** 1.000 (155/155 Tests PASSED)
+**Versión Actual:** v10.12.7
+**Último Hito:** Cierre del ticket BOT-INFRA-CI-075 — Reemplazo de GPG keyserver por pipeline atómico curl en qa-pipeline.yml
+**Coherence Score:** 1.000 (167/167 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación del método `update_last_interaction` en `MemoryService` con aislamiento E.164, `set(merge=True)` idempotente y vinculación de telemetría Langfuse.
@@ -20,4 +20,5 @@
 | 070 | hotfix reset recovery idempotencia post-borrado | 2026-06-26 | b96b716 | 070-hotfix-reset-recovery |
 | 071 | webhook trace propagation | 2026-06-26 | a7379b8 | 071-hotfix-trace-propagation |
 | 072 | install k6 binary in qa-pipeline.yml | 2026-06-27 | 2853b67 | 072-hotfix-ci-k6-binary |
+| 075 | replace gpg keyserver with atomic curl pipeline for k6 | 2026-06-27 | 8de00f4 | 075-hotfix-ci-k6-gpg |
 
