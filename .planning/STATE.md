@@ -26,3 +26,4 @@
 | 078 | ajustar umbrales k6 para CI hardware (p95<30s, p99<40s) | 2026-06-27 | a1a6e89 | 078-hotfix-k6-ci-hardware-thresholds |
 | 079 | hotfix-ci-uv-cache | 2026-06-27 | bea7ab7 | 079-hotfix-ci-uv-cache |
 
+- v10.13.0: Inicialización del sistema de alertas automáticas nativas GCP para CATALOG_VALIDATION_FAIL.
