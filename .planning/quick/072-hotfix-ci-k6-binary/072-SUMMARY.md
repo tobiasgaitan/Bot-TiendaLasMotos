@@ -14,6 +14,7 @@ Añadido un paso de instalación para Grafana k6 antes del paso de ejecución de
 ## Verification
 - Se verificó la sintaxis del archivo del workflow localmente mediante `git diff`.
 - Se ejecutó `npx agent-cli scaffold --check` resultando en PASS.
+- Se implementó una estrategia de fallback robusta usando `curl` directo en caso de fallo en el servidor de claves GPG (flaky keyserver returning "No data").
 
 ---
 *Completed: 2026-06-27*

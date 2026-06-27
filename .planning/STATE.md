@@ -19,5 +19,5 @@
 | 069 | corregir mock namespace en test zombie | 2026-06-26 | a07a42b | 069-hotfix-test-namespace-patch |
 | 070 | hotfix reset recovery idempotencia post-borrado | 2026-06-26 | b96b716 | 070-hotfix-reset-recovery |
 | 071 | webhook trace propagation | 2026-06-26 | a7379b8 | 071-hotfix-trace-propagation |
-| 072 | install k6 binary in qa-pipeline.yml | 2026-06-27 | 8b56fd0 | 072-hotfix-ci-k6-binary |
+| 072 | install k6 binary in qa-pipeline.yml | 2026-06-27 | bba35d7 | 072-hotfix-ci-k6-binary |
 
