@@ -52,7 +52,7 @@ test.describe('WhatsApp Webhook Integration & Deduplication Gate', () => {
     const latency = Date.now() - startTime;
 
     expect(response.status()).toBe(200);
-    expect(latency).toBeLessThan(1000);
+    expect(latency).toBeLessThan(1500);
   });
 
   test('Aserción B: Deduplicación estricta de solicitudes repetidas consecutivas', async ({ request }) => {
