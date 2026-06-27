@@ -70,6 +70,12 @@ jobs:
       - name: Run Conversational Regression (Botium)
         run: npm test -- --botium tests/conversational/TC_simulacion_ciega.convo.txt
 
+      - name: Install Grafana k6
+        run: |
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install k6
+
       - name: Execute Performance Test (Grafana k6)
         uses: grafana/run-k6-action@v1
         with:
