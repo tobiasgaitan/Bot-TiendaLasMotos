@@ -1,8 +1,10 @@
 import http from 'k6/http';
+import crypto from 'k6/crypto';
 import { check, sleep } from 'k6';
 import { Rate } from 'k6/metrics';
 
 const errorRate = new Rate('tasa_errores_webhook');
+const secret = __ENV.WHATSAPP_APP_SECRET || '***REMOVED***';
 
 export const options = {
   vus: 100,
@@ -36,10 +38,12 @@ export default function () {
     }]
   });
 
+  const signature = crypto.hmac('sha256', secret, payload, 'hex');
+
   const params = {
     headers: {
       'Content-Type': 'application/json',
-      'X-Hub-Signature-256': 'sha256=mocked_k6_load_test_signature_pass_bypass'
+      'X-Hub-Signature-256': `sha256=${signature}`
     },
   };
 
