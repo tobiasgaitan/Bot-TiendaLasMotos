@@ -14,7 +14,7 @@ export const options = {
 };
 
 export default function () {
-  const url = 'http://localhost:8000/whatsapp/webhook';
+  const url = 'http://localhost:8000/webhook';
   const payload = JSON.stringify({
     object: 'whatsapp_business_account',
     entry: [{
