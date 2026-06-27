@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Query, HTTPException, BackgroundTasks
 from fastapi.responses import PlainTextResponse
 from google.cloud import firestore
+from google.api_core import exceptions as gcp_exceptions
 
 from app.core.config import settings
 from app.core.config_loader import ConfigLoader
@@ -76,6 +77,10 @@ def _ensure_services():
     """Lazy initialization of services"""
     global db, config_loader, motor_financiero, catalog_service_local, message_buffer
     
+    # 5. Message Buffer (initialized first to ensure availability in tests)
+    if not message_buffer:
+        message_buffer = MessageBuffer(debounce_seconds=5.0)
+        
     # 1. Firestore
     if not db:
         try:
@@ -116,10 +121,6 @@ def _ensure_services():
             logger.info("✅ CatalogService initialized")
         except Exception as e:
              logger.error(f"❌ Failed to initialize CatalogService: {e}")
-             
-    # 5. Message Buffer
-    if not message_buffer:
-        message_buffer = MessageBuffer(debounce_seconds=5.0)
 
 # ============================================================================
 # WEBHOOK ENDPOINTS
@@ -541,8 +542,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 # Optimistic save (don't block too long)
                 try:
                     await memory_service_module.memory_service.save_message(user_phone, "user", message_body)
-                except Exception as e:
-                    logger.error(f"❌ [CONTINGENCY] Fallo al guardar mensaje del usuario {user_phone}. Abortando flujo. Detalle: {e}", exc_info=True)
+                except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
+                    logger.error(f"❌ [CONTINGENCY] Fallo de red/timeout al guardar mensaje del usuario {user_phone}. Abortando flujo por intermitencia. Detalle: {e}", exc_info=True)
                     await _send_whatsapp_message(user_phone, "Disculpa, estamos experimentando intermitencias en nuestro sistema. Intenta de nuevo en unos minutos.", phone_number_id=phone_number_id)
                     return
             # AUDIO: [Mensaje de Voz] removed here to avoid blinding the extractor.
@@ -721,41 +722,42 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         # 3. Generar Respuesta (CerebroIA - Rama Finance)
         if msg_type == "text":
             # --- LINEAR BLOCKING: Memory Update (Wait for Firestore) ---
-            try:
-                # Identify last bot question for anchoring
-                last_bot_q = ""
-                for m in reversed(current_history or []):
-                    if m.get("role") == "model":
-                        last_bot_q = m.get("content", "")
-                        break
-                
-                # Full Context for Extraction
-                history_context = ""
-                context_messages = (current_history or [])[-6:]
-                for m in context_messages:
-                    role = "User" if m.get("role") == "user" else "Bot"
-                    history_context += f"{role}: {m.get('content', '')}\n"
-                
-                conversation = f"{history_context}User: {message_body}"
-
-                # 1. Generate & Update Summary (BLOCKING)
-                logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync for {user_phone}")
-                await ms.generate_and_update_summary(
-                    user_phone, 
-                    conversation, 
-                    cerebro_ia, 
-                    last_bot_question=last_bot_q
-                )
-                
-                # 2. GESTIÓN DE VERDAD: Re-fetch fresh prospect data from Firestore
-                prospect_data = await ms.get_prospect_data(user_phone)
-                logger.info(f"✅ [LINEAR BLOCKING] Memory Synced. Identity: {prospect_data.get('name')}")
-
-            except Exception as e:
-                logger.exception(f"❌ Error in Linear Blocking flow: {e}")
-                # Fallback to local data if sync fails
-                if not prospect_data:
+            if memory_service_module.memory_service:
+                try:
+                    # Identify last bot question for anchoring
+                    last_bot_q = ""
+                    for m in reversed(current_history or []):
+                        if m.get("role") == "model":
+                            last_bot_q = m.get("content", "")
+                            break
+                    
+                    # Full Context for Extraction
+                    history_context = ""
+                    context_messages = (current_history or [])[-6:]
+                    for m in context_messages:
+                        role = "User" if m.get("role") == "user" else "Bot"
+                        history_context += f"{role}: {m.get('content', '')}\n"
+                    
+                    conversation = f"{history_context}User: {message_body}"
+    
+                    # 1. Generate & Update Summary (BLOCKING)
+                    logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync for {user_phone}")
+                    await ms.generate_and_update_summary(
+                        user_phone, 
+                        conversation, 
+                        cerebro_ia, 
+                        last_bot_question=last_bot_q
+                    )
+                    
+                    # 2. GESTIÓN DE VERDAD: Re-fetch fresh prospect data from Firestore
                     prospect_data = await ms.get_prospect_data(user_phone)
+                    logger.info(f"✅ [LINEAR BLOCKING] Memory Synced. Identity: {prospect_data.get('name')}")
+    
+                except Exception as e:
+                    logger.exception(f"❌ Error in Linear Blocking flow: {e}")
+                    # Fallback to local data if sync fails
+                    if not prospect_data:
+                        prospect_data = await ms.get_prospect_data(user_phone)
 
             # 3. Inferencia de la IA con Auditoría de Vida o Muerte (v9.8.0)
             max_retries = 2
@@ -1137,7 +1139,27 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
 
     except Exception as e:
-        logger.error(f"🔥 Error CRÍTICO en handle_message: {e}", exc_info=True)
+        import traceback
+        tb_list = traceback.extract_tb(e.__traceback__)
+        if tb_list:
+            last_frame = tb_list[-1]
+            error_file = last_frame.filename
+            error_line = last_frame.lineno
+        else:
+            error_file = "unknown"
+            error_line = 0
+
+        payload = {
+            "CRITICAL_CODE_FAULT": {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "file": error_file,
+                "line": error_line,
+                "stack_trace": traceback.format_exc()
+            }
+        }
+        logger.error(payload)
+        raise
 
 
 # ============================================================================

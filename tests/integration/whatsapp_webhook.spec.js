@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const crypto = require('crypto');
 
-const WEBHOOK_URL = 'http://localhost:8000/whatsapp/webhook';
+const WEBHOOK_URL = 'http://localhost:8000/webhook';
 const WEBHOOK_SECRET = 'secreto_de_aplicacion_para_firmas_hmac';
 
 function generateSignature(payload) {
