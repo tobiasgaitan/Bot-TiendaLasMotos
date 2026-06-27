@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
 **Versión Actual:** v10.12.6
-**Último Hito:** Cierre de los tickets BOT-POST-RESET-RECOVERY-070 y BOT-TRACE-PROPAGATION-071
+**Último Hito:** Cierre de los tickets BOT-POST-RESET-RECOVERY-070, BOT-TRACE-PROPAGATION-071 y BOT-INFRA-CI-074
 **Coherence Score:** 1.000 (155/155 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -19,4 +19,5 @@
 | 069 | corregir mock namespace en test zombie | 2026-06-26 | a07a42b | 069-hotfix-test-namespace-patch |
 | 070 | hotfix reset recovery idempotencia post-borrado | 2026-06-26 | b96b716 | 070-hotfix-reset-recovery |
 | 071 | webhook trace propagation | 2026-06-26 | a7379b8 | 071-hotfix-trace-propagation |
+| 072 | install k6 binary in qa-pipeline.yml | 2026-06-27 | 8b56fd0 | 072-hotfix-ci-k6-binary |
 
