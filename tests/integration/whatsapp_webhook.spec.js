@@ -13,6 +13,13 @@ function generateSignature(payload) {
 
 test.describe('WhatsApp Webhook Integration & Deduplication Gate', () => {
   
+  test.beforeAll(async ({ request }) => {
+    // Warm up the FastAPI server to prevent cold start latency in GHA runners
+    for (let i = 0; i < 3; i++) {
+      await request.get('http://localhost:8000/health');
+    }
+  });
+
   test('Aserción A: Latencia de red inferior a 500ms ante payload válido', async ({ request }) => {
     const payload = {
       object: 'whatsapp_business_account',
