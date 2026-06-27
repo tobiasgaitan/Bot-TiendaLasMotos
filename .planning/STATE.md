@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.12.8
-**Último Hito:** Cierre del ticket BOT-INFRA-CI-076 — Firma HMAC dinámica en test k6 con crypto.hmac
+**Versión Actual:** v10.12.9
+**Último Hito:** Cierre del ticket BOT-INFRA-CI-077 — Calibración de umbrales k6 a latencias reales de agente LLM+Firestore
 **Coherence Score:** 1.000 (167/167 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -22,4 +22,6 @@
 | 072 | install k6 binary in qa-pipeline.yml | 2026-06-27 | 2853b67 | 072-hotfix-ci-k6-binary |
 | 075 | replace gpg keyserver with atomic curl pipeline for k6 | 2026-06-27 | 8de00f4 | 075-hotfix-ci-k6-gpg |
 | 076 | dynamic HMAC signature in k6 test (crypto.hmac) | 2026-06-27 | 2fc3e2d | 076-hotfix-k6-dynamic-hmac |
+| 077 | calibrar umbrales k6 a latencias reales LLM+Firestore | 2026-06-27 | 054e56b | 077-hotfix-k6-thresholds |
+
 
