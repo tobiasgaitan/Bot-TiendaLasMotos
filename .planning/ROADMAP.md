@@ -13,6 +13,7 @@
 - [x] Decoración del webhook de WhatsApp (`_handle_message_background`) y propagación de trazas Langfuse con adaptador seguro No-Op (Task 071).
 - [x] Instalación del binario k6 en el pipeline de qa-pipeline.yml (Task 072).
 - [x] Reemplazo de GPG keyserver por pipeline atómico curl para k6 en qa-pipeline.yml (Task 075).
+- [x] Firma HMAC dinámica en test k6 con `crypto.hmac()` eliminando hardcode estático que causaba HTTP 401 (Task 076).
 
 ## Próximos Pasos
 - [ ] Validación en producción (GCP Live Logs) del flujo completo post-reset con telemetría Langfuse end-to-end.

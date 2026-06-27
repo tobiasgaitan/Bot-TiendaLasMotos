@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.12.7
-**Último Hito:** Cierre del ticket BOT-INFRA-CI-075 — Reemplazo de GPG keyserver por pipeline atómico curl en qa-pipeline.yml
+**Versión Actual:** v10.12.8
+**Último Hito:** Cierre del ticket BOT-INFRA-CI-076 — Firma HMAC dinámica en test k6 con crypto.hmac
 **Coherence Score:** 1.000 (167/167 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -21,4 +21,5 @@
 | 071 | webhook trace propagation | 2026-06-26 | a7379b8 | 071-hotfix-trace-propagation |
 | 072 | install k6 binary in qa-pipeline.yml | 2026-06-27 | 2853b67 | 072-hotfix-ci-k6-binary |
 | 075 | replace gpg keyserver with atomic curl pipeline for k6 | 2026-06-27 | 8de00f4 | 075-hotfix-ci-k6-gpg |
+| 076 | dynamic HMAC signature in k6 test (crypto.hmac) | 2026-06-27 | 2fc3e2d | 076-hotfix-k6-dynamic-hmac |
 
