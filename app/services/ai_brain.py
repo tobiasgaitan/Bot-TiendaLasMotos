@@ -562,8 +562,9 @@ class CerebroIA:
                 orchestrator = AgenticOrchestrator()
                 validation = orchestrator.run_checker(final_text, is_catalog_query=is_catalog_query)
                 if not validation["success"]:
+                    user_id = prospect_data.get("phone") or prospect_data.get("id", "unknown") if prospect_data else "unknown"
                     logger.warning(
-                        f"⚠️ [PCC VALIDATION FAILED] Attempt {current_attempt}/{max_validation_attempts} for query '{texto}'. "
+                        f"⚠️ [PCC VALIDATION FAILED] CATALOG_VALIDATION_FAIL - Attempt {current_attempt}/{max_validation_attempts} for query '{texto}' user_id={user_id}. "
                         f"Expected: {validation['report']['expected_behavior']}."
                     )
                     if current_attempt < max_validation_attempts:
@@ -575,7 +576,10 @@ class CerebroIA:
                         forced_temp = 0.1
                         continue  # Force immediate retry with temperature 0.1
                     else:
-                        logger.error("🚨 [PCC VALIDATION] Max validation attempts reached. Returning degraded response.")
+                        logger.error(
+                            f"🚨 [PCC VALIDATION] CATALOG_VALIDATION_FAIL - Max validation attempts reached. "
+                            f"user_id={user_id} query='{texto}' - Returning degraded response."
+                        )
                         return final_text
                 else:
                     return final_text

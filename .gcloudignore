@@ -1,4 +1,30 @@
+# .gcloudignore canónico para GCP Cloud Run Deploy
+# Ignorar directorios del control de versiones y configuraciones locales
 .git/
+.gcloudignore
 .gitignore
-!S-TOON-Protocol/
-!README.md
+
+# Ignorar salidas de compilación y caches de Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Ignorar entornos virtuales locales
+.venv/
+venv/
+env/
+ENV/
+
+# Ignorar dependencias locales y archivos de tests locales
+node_modules/
+tests/
+.agent/
+
+# Ignorar archivos locales temporales y de configuración secreta
+.env
+.env.*
+*.log
+bot-tiendalasmotos.zip
