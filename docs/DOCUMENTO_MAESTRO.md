@@ -2,7 +2,7 @@
 Versión: v10.13.0 (Hotfix Reset Recovery & Trace Propagation)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
 Último Hito: Estabilización de infraestructura CI/CD, resolución de firmas HMAC en k6, calibración de latencia p95 y bypass de caché uv. Cierre de tickets [BOT-INFRA-CI-074] a [BOT-INFRA-CI-079]. Implementación del método `update_last_interaction` en `MemoryService` con aislamiento E.164. Extensión del blindaje zombi del router. Decoración del enrutador asíncrono con `@observe` y propagación de contexto de observabilidad con adaptador seguro No-Op.
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 155/155 Tests PASSED)
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 167/167 Tests PASSED)
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
@@ -90,3 +90,5 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.12.2] Cierre de ticket BOT-ARQ-ANTI-NULL-044. Implementación quirúrgica del guardrail Anti-Null Masking en generate_and_update_summary y mitigación de fallos de contingencia silenciosos. Coherence Score: 1.000.
 - [v10.13.0] Cierre de ticket BOT-POST-RESET-RECOVERY-070. Implementación del método fantasma `update_last_interaction` en `MemoryService` con aislamiento E.164 (sin PhoneNormalizer interno), escritura idempotente `set(merge=True)` para tolerar documentos inexistentes post-`/reset`, y vinculación explícita de telemetría Langfuse. Extensión del blindaje zombi del router (`is_fully_deleted`) para reconstrucción CRM automática ante `exists: False`. Test de integración con aserciones rígidas anti-null prohibiendo retornos vacíos, None o truncados. Score de Coherencia: 1.000 (153/153 Tests PASSED).
 - [v10.13.0] Cierre de ticket BOT-TRACE-PROPAGATION-071. Decoración de la función principal del enrutador asíncrono `_handle_message_background` con `@observe(name="whatsapp_webhook_background")` e inyección de contexto de observabilidad (`user_id`, `session_id` y `metadata`) con un adaptador seguro No-Op para evitar fugas de telemetría post-reset. Score de Coherencia: 1.000 (155/155 Tests PASSED).
+- [v10.13.0] Cierre de ticket BOT-INFRA-ALERT-080. Configuración de Log Sink en GCP Cloud Logging para filtrar la firma `CATALOG_VALIDATION_FAIL` (con logs enriquecidos con user_id y consulta) y excepciones de `_firestore_io` con severidad >= ERROR, publicando en Pub/Sub a un webhook receptor con Dead Letter Topic (DLT) y Exponential Backoff. Paridad e inyección en `.gcloudignore` canónico de GCP. Score de Coherencia: 1.000 (167/167 Tests PASSED).
+
