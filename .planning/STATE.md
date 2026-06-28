@@ -1,15 +1,13 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.12.9
+**Versión Actual:** v10.13.0
 **Último Hito:** Cierre del ticket BOT-INFRA-CI-078 — Ajuste de umbrales k6 http_req_duration para runners compartidos de GitHub Actions (p95<30s, p99<40s)
 **Coherence Score:** 1.000 (167/167 Tests PASSED)
 
 ## Estado de la Ruta Crítica
-- Implementación del método `update_last_interaction` en `MemoryService` con aislamiento E.164, `set(merge=True)` idempotente y vinculación de telemetría Langfuse.
-- Extensión del blindaje zombi del router (`is_fully_deleted`) para cubrir el escenario post-reset con documentos completamente borrados (`exists: False`).
-- Inyección de test de integración `test_handle_message_background_post_reset_recovery` con aserciones rígidas anti-null que prohíben retornos vacíos, None o estructuras truncadas.
-- Mitigación total de la interrupción del flujo conversacional posterior al comando `/reset`.
-- Decoración del enrutador asíncrono con `@observe` e inyección de contexto de observabilidad (`user_id`, `session_id`, `metadata`) con un adaptador seguro No-Op.
-- Compilación y AST validados con paridad absoluta.
+- Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
+- Desacoplamiento asíncrono asumiendo reenvíos vía tópicos de Pub/Sub con Dead Letter Topic (DLT) y Exponential Backoff en la suscripción push del webhook.
+- Aislamiento en `.gcloudignore` canónico de GCP para omitir exclusiones locales y empaquetar de forma correcta.
+- Enriquecimiento estructurado en `ai_brain.py` asociando `user_id` y `query` a logs forenses de error de validación.
 
 ### Quick Tasks Completed
 
@@ -26,4 +24,5 @@
 | 078 | ajustar umbrales k6 para CI hardware (p95<30s, p99<40s) | 2026-06-27 | a1a6e89 | 078-hotfix-k6-ci-hardware-thresholds |
 | 079 | hotfix-ci-uv-cache | 2026-06-27 | bea7ab7 | 079-hotfix-ci-uv-cache |
 
-- v10.13.0: Inicialización del sistema de alertas automáticas nativas GCP para CATALOG_VALIDATION_FAIL.
+- v10.13.0: Implementar Log Sink y Pub Sub Alerting para CATALOG_VALIDATION_FAIL.
+
