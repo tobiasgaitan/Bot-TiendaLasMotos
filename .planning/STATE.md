@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.13.1
-**Último Hito:** hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases
+**Versión Actual:** v10.14.0
+**Último Hito:** hotfix-brain-return-contingency: Resolución de la contingencia de retorno de PermissionError en `ai_brain.py` e inyección de response_parts
 **Coherence Score:** 1.000 (167/167 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -25,5 +25,7 @@
 | 079 | hotfix-ci-uv-cache | 2026-06-27 | bea7ab7 | 079-hotfix-ci-uv-cache |
 | 080 | Log Sink y Pub Sub Alerting | 2026-06-28 | 23640bb | 080-log-sink-pubsub-alerting |
 | 081 | hotfix-anonymous-quota | 2026-06-30 | 5eeb5d6 | 081-hotfix-anonymous-quota |
+| 082 | hotfix-brain-return-contingency | 2026-06-30 | pending | 082-hotfix-brain-return-contingency |
 
 - v10.13.1: hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases.
+- v10.14.0: hotfix-brain-return-contingency: Resolución de la contingencia de retorno de PermissionError en `ai_brain.py` y robustecimiento de aserciones en test.

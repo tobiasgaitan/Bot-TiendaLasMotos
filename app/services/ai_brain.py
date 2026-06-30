@@ -1437,6 +1437,21 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     credit_res = f"Estimación de cuota base aproximada: ${cuota_val:,.0f} / mes (a 24 meses sin cuota inicial)."
                                 else:
                                     credit_res = "Estimación de cuota base no disponible temporalmente."
+
+                                is_accepted = (prospect_data or {}).get("habeas_data_accepted") is True
+                                if not is_accepted:
+                                    credit_res += (
+                                        "\n\nPara hacer el estudio formal de tu crédito y darte las opciones de financiación, "
+                                        "¿me autorizas el tratamiento de tus datos personales de acuerdo con nuestra política de privacidad? "
+                                        "(Política: https://tiendalasmotos.com/politica-de-privacidad). Solo confírmame con un 'Sí'."
+                                    )
+
+                                credit_res += f"\n\n{funnel_instruction}"
+                                response_parts.append(types.Part.from_function_response(
+                                    name="calculate_credit_score",
+                                    response={"result": credit_res}
+                                ))
+                                continue
                             except Exception as e:
                                 logger.exception(f"❌ Credit error for prospect {user_name}: {e}")
                                 credit_res = "Error calculando el crédito."

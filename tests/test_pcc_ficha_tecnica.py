@@ -202,6 +202,26 @@ async def test_habeas_data_gate_before_credit_score():
         assert "Para hacer el estudio formal de tu crédito" in part_result
         assert "politica-de-privacidad" in part_result
 
+        # Aserciones rígidas de contenido de BOT-BRAIN-RETURN-082
+        assert "$" in part_result, "El resultado debe contener el signo pesos ($)."
+        assert "Estimación de cuota base aproximada:" in part_result, "El resultado debe contener la cadena 'Estimación de cuota base aproximada:'."
+
+        # 4. Prueba de Inyección Anti-Nulos:
+        # Asegurar que el array captured_response_parts no contenga objetos/diccionarios con llaves vacías o valores nulos/vacíos.
+        for p in captured_response_parts:
+            # Si es un objeto mock de test o un objeto real Part
+            if hasattr(p, "function_response"):
+                fr = p.function_response
+                assert fr is not None, "function_response no puede ser nulo."
+                assert getattr(fr, "name", None) not in (None, ""), "El nombre de la función no puede ser nulo o vacío."
+                
+                resp = getattr(fr, "response", None)
+                assert isinstance(resp, dict), "El response debe ser un diccionario."
+                assert len(resp) > 0, "El response no puede estar vacío."
+                for key, val in resp.items():
+                    assert key not in (None, ""), "La llave del response no puede ser nula o vacía."
+                    assert val not in (None, ""), f"El valor para la llave '{key}' no puede ser nulo o vacío."
+
     # Caso 2: Garantizar que la Ficha Tecnica es explícita y forzar validación del flag en DB antes de calcular cuota
     # Si habeas_data_accepted es True, la validación pasa, y sí se procesa el catálogo y simulador.
     mock_financial.evaluate_profile.reset_mock()
