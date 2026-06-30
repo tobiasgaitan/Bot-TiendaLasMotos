@@ -449,7 +449,7 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
 🗓️ **36 meses:** ${plan_36.get('cuota_mensual', 0):,.0f} / mes
 🗓️ **48 meses:** ${plan_48.get('cuota_mensual', 0):,.0f} / mes
 
-_*Cálculo basado en matriz de factores de **{entidad_default}** (Tasa {tasa_mensual}% MV). Incluye SOAT y Matrícula._
+_*Cálculo basado en tasa de {tasa_mensual}% MV. Incluye SOAT y Matrícula._
 
 📱 ¿Te gustaría iniciar el estudio de crédito? Responde **SÍ** para continuar.
         """.strip()
