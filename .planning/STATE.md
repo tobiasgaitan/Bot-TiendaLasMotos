@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.13.0
-**Último Hito:** Cierre del ticket BOT-INFRA-ALERT-080 — Log Sink y Pub Sub Alerting para CATALOG_VALIDATION_FAIL
+**Versión Actual:** v10.13.1
+**Último Hito:** hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases
 **Coherence Score:** 1.000 (167/167 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -24,5 +24,6 @@
 | 078 | ajustar umbrales k6 para CI hardware (p95<30s, p99<40s) | 2026-06-27 | a1a6e89 | 078-hotfix-k6-ci-hardware-thresholds |
 | 079 | hotfix-ci-uv-cache | 2026-06-27 | bea7ab7 | 079-hotfix-ci-uv-cache |
 | 080 | Log Sink y Pub Sub Alerting | 2026-06-28 | 23640bb | 080-log-sink-pubsub-alerting |
+| 081 | hotfix-anonymous-quota | 2026-06-30 | 5eeb5d6 | 081-hotfix-anonymous-quota |
 
-- v10.13.0: Implementar Log Sink y Pub Sub Alerting para CATALOG_VALIDATION_FAIL.
+- v10.13.1: hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases.
