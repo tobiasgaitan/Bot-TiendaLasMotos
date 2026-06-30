@@ -261,7 +261,7 @@ async def test_crediorbe_interception_direct_value():
 
 def test_financial_service_default_entity_is_brilla():
     """
-    Verifica que en financial_service.py la entidad por defecto conmutada sea Brilla de Gases.
+    Verifica que en financial_service.py la simulación por defecto no exponga Brilla de Gases (anonimización).
     """
     fs = FinancialService()
     moto_dict = {
@@ -272,8 +272,9 @@ def test_financial_service_default_entity_is_brilla():
     }
     # Invocamos la simulación para una moto inexistente o similar, o evaluamos directamente la respuesta generada.
     res = fs._generate_full_simulation_response(moto_dict, 0.0)
-    # Debe mencionar "Brilla de Gases" o usar sus factores/nombre
-    assert "Brilla de Gases" in res
+    # Debe omitir mencionar "Brilla de Gases" o cualquier marca de agua
+    assert "Brilla de Gases" not in res
+    assert "Brilla" not in res
 @pytest.mark.asyncio
 async def test_unified_catalog_keys_interception():
     """
