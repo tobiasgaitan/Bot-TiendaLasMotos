@@ -130,11 +130,11 @@ async def test_habeas_data_gate_before_credit_score():
     ]
     cerebro._catalog_service = mock_catalog
 
-    # Mock del motor financiero. Si se llega a invocar, el test debe fallar,
-    # garantizando el bloqueo absoluto antes de tocar el simulador.
+    # Mock del motor financiero. Si se llega a invocar evaluate_profile, el test debe fallar,
+    # garantizando el bloqueo absoluto de perfilamiento antes de tocar el simulador.
     mock_financial = MagicMock()
     mock_financial.evaluate_profile = MagicMock(side_effect=AssertionError("ERROR: El motor financiero fue tocado sin consentimiento de Habeas Data."))
-    mock_financial.calculate_payment = MagicMock(side_effect=AssertionError("ERROR: El simulador fue tocado sin consentimiento de Habeas Data."))
+    mock_financial.calculate_payment = MagicMock(return_value={"cuota_mensual": 250000.0})
     cerebro.motor_financiero = mock_financial
 
     # Simular que el LLM intenta invocar calculate_credit_score
@@ -176,15 +176,29 @@ async def test_habeas_data_gate_before_credit_score():
         warn_args = [call[0][0] for call in mock_log_warn.call_args_list]
         assert any("SECURITY ALERT [Prompt Injection]: Attempted financial profiling without Habeas Data consent." in arg for arg in warn_args)
 
-        # 2. Asegurar que no se tocó el simulador (evaluate_profile y calculate_payment no fueron llamados)
+        # 2. Asegurar que no se tocó el perfilamiento, pero sí el simulador para la cuota ciega
         mock_financial.evaluate_profile.assert_not_called()
-        mock_financial.calculate_payment.assert_not_called()
+        mock_financial.calculate_payment.assert_called_once_with(
+            precio=6200000.0,
+            inicial=0.0,
+            plazo_meses=24,
+            entidad="Crediorbe"
+        )
 
         # 3. Asegurar que la respuesta final de la herramienta enviada a Gemini se desvió al flujo de legalización solicitando consentimiento
         assert captured_response_parts is not None
         assert len(captured_response_parts) == 1
         part = captured_response_parts[0]
         part_result = part.function_response.response.get("result", "")
+        
+        # Inmutabilidad del Formato PCC Pro (Validación Visual):
+        # Debe certificar mediante Regex secuencial la presencia exacta del signo pesos ($) pegado al valor numérico formateado.
+        assert re.search(r"\$250,000", part_result) is not None, "El formato de cuota formateada no cumple con la regla de negocio ($250,000)."
+        
+        # Debe omitir marcas de agua de proveedores financieros.
+        assert "Crediorbe" not in part_result, "La marca de agua 'Crediorbe' no debe figurar en la respuesta de contingencia ciego."
+        assert "Brilla" not in part_result, "La marca de agua 'Brilla' no debe figurar en la respuesta de contingencia ciego."
+        
         assert "Para hacer el estudio formal de tu crédito" in part_result
         assert "politica-de-privacidad" in part_result
 
