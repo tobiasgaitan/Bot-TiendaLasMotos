@@ -198,6 +198,32 @@ class CerebroIA:
             self.client = None
             logger.warning("⚠️  CerebroIA running in fallback mode (no AI)")
 
+    def _parse_raw_price(self, raw_price_val: Any, price_val: Any) -> float:
+        """
+        Parses price raw and fallback values robustly.
+        Ensures formatted prices like '$9.969.000.*' are cleaned of non-numeric chars
+        and successfully cast to float (e.g. 9969000.0) without ValueError.
+        """
+        if raw_price_val is not None:
+            try:
+                return float(raw_price_val)
+            except (ValueError, TypeError):
+                clean_raw = re.sub(r'[^\d]', '', str(raw_price_val).strip())
+                if clean_raw:
+                    try:
+                        return float(clean_raw)
+                    except (ValueError, TypeError):
+                        pass
+
+        if price_val:
+            try:
+                clean_p = re.sub(r'[^\d]', '', str(price_val).strip())
+                return float(clean_p) if clean_p else 0.0
+            except (ValueError, TypeError):
+                pass
+
+        return 0.0
+
     async def _call_gemini_with_retry_async(self, func, *args, **kwargs):
         """
         Resiliencia de Red (Async): Implementa reintentos con Exponential Backoff
@@ -1284,25 +1310,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                 m_results = self._catalog_service.search_items(moto_name)
                                                 if m_results: 
                                                     first_match = m_results[0]
-                                                    raw_val = first_match.get('raw_price')
-                                                    if raw_val is not None:
-                                                        try:
-                                                            m_price = float(raw_val)
-                                                        except (ValueError, TypeError):
-                                                            m_price = 0.0
-                                                    
-                                                    # FALLBACK DE PARSEO MONETARIO ROBUSTO (BOT-PERF-45 Condition 1)
-                                                    if not m_price or m_price <= 0:
-                                                        fallback_price = first_match.get('price')
-                                                        if fallback_price:
-                                                            try:
-                                                                clean_p = re.sub(r'[^\d]', '', str(fallback_price))
-                                                                m_price = float(clean_p) if clean_p else 0.0
-                                                            except (ValueError, TypeError) as parse_err:
-                                                                logger.warning(
-                                                                    f"⚠️ [MONETARY PARSING FAIL] No se pudo parsear fallback price '{fallback_price}': {parse_err}"
-                                                                )
-                                                                m_price = 0.0
+                                                    m_price = self._parse_raw_price(
+                                                        first_match.get('raw_price'),
+                                                        first_match.get('price')
+                                                    )
                                             
                                             if m_price <= 0:
                                                 import traceback
@@ -1350,25 +1361,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                 m_results = self._catalog_service.search_items(moto_name)
                                                 if m_results: 
                                                     first_match = m_results[0]
-                                                    raw_val = first_match.get('raw_price')
-                                                    if raw_val is not None:
-                                                        try:
-                                                            m_price = float(raw_val)
-                                                        except (ValueError, TypeError):
-                                                            m_price = 0.0
-                                                    
-                                                    # FALLBACK DE PARSEO MONETARIO ROBUSTO (BOT-PERF-45 Condition 1)
-                                                    if not m_price or m_price <= 0:
-                                                        fallback_price = first_match.get('price')
-                                                        if fallback_price:
-                                                            try:
-                                                                clean_p = re.sub(r'[^\d]', '', str(fallback_price))
-                                                                m_price = float(clean_p) if clean_p else 0.0
-                                                            except (ValueError, TypeError) as parse_err:
-                                                                logger.warning(
-                                                                    f"⚠️ [MONETARY PARSING FAIL] No se pudo parsear fallback price '{fallback_price}': {parse_err}"
-                                                                )
-                                                                m_price = 0.0
+                                                    m_price = self._parse_raw_price(
+                                                        first_match.get('raw_price'),
+                                                        first_match.get('price')
+                                                    )
                                             
                                             if m_price <= 0:
                                                 import traceback
@@ -1406,21 +1402,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     m_results = self._catalog_service.search_items(moto_name)
                                     if m_results:
                                         first_match = m_results[0]
-                                        raw_val = first_match.get('raw_price')
-                                        if raw_val is not None:
-                                            try:
-                                                m_price = float(raw_val)
-                                            except (ValueError, TypeError):
-                                                m_price = 0.0
-                                        
-                                        if not m_price or m_price <= 0:
-                                            fallback_price = first_match.get('price')
-                                            if fallback_price:
-                                                try:
-                                                    clean_p = re.sub(r'[^\d]', '', str(fallback_price))
-                                                    m_price = float(clean_p) if clean_p else 0.0
-                                                except (ValueError, TypeError):
-                                                    m_price = 0.0
+                                        m_price = self._parse_raw_price(
+                                            first_match.get('raw_price'),
+                                            first_match.get('price')
+                                        )
                                                     
                                 if m_price <= 0:
                                     logger.warning(f"⚠️ [Catalog Lock] No se pudo encontrar el precio real para la moto '{moto_name}'. Evitando simulación inventada.")
@@ -1451,7 +1436,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     name="calculate_credit_score",
                                     response={"result": credit_res}
                                 ))
-                                continue
+                                response_message = credit_res
+                                return response_message
                             except Exception as e:
                                 logger.exception(f"❌ Credit error for prospect {user_name}: {e}")
                                 credit_res = "Error calculando el crédito."

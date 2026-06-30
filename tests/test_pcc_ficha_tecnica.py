@@ -121,8 +121,8 @@ async def test_habeas_data_gate_before_credit_score():
     mock_catalog.search_items.return_value = [
         {
             "name": "TVS Sport 100",
-            "price": "$ 6.200.000",
-            "raw_price": 6200000.0,
+            "price": "$9.969.000.*",
+            "raw_price": None,
             "category": "Urban",
             "image_url": "https://img.url",
             "summary": "Excelente moto urbana."
@@ -179,48 +179,29 @@ async def test_habeas_data_gate_before_credit_score():
         # 2. Asegurar que no se tocó el perfilamiento, pero sí el simulador para la cuota ciega
         mock_financial.evaluate_profile.assert_not_called()
         mock_financial.calculate_payment.assert_called_once_with(
-            precio=6200000.0,
+            precio=9969000.0,
             inicial=0.0,
             plazo_meses=24,
             entidad="Crediorbe"
         )
 
-        # 3. Asegurar que la respuesta final de la herramienta enviada a Gemini se desvió al flujo de legalización solicitando consentimiento
-        assert captured_response_parts is not None
-        assert len(captured_response_parts) == 1
-        part = captured_response_parts[0]
-        part_result = part.function_response.response.get("result", "")
+        # 3. Asegurar que la respuesta final de la herramienta se desvió al flujo de legalización solicitando consentimiento
+        assert response is not None
         
         # Inmutabilidad del Formato PCC Pro (Validación Visual):
         # Debe certificar mediante Regex secuencial la presencia exacta del signo pesos ($) pegado al valor numérico formateado.
-        assert re.search(r"\$250,000", part_result) is not None, "El formato de cuota formateada no cumple con la regla de negocio ($250,000)."
+        assert re.search(r"\$250,000", response) is not None, "El formato de cuota formateada no cumple con la regla de negocio ($250,000)."
         
         # Debe omitir marcas de agua de proveedores financieros.
-        assert "Crediorbe" not in part_result, "La marca de agua 'Crediorbe' no debe figurar en la respuesta de contingencia ciego."
-        assert "Brilla" not in part_result, "La marca de agua 'Brilla' no debe figurar en la respuesta de contingencia ciego."
+        assert "Crediorbe" not in response, "La marca de agua 'Crediorbe' no debe figurar en la respuesta de contingencia ciego."
+        assert "Brilla" not in response, "La marca de agua 'Brilla' no debe figurar en la respuesta de contingencia ciego."
         
-        assert "Para hacer el estudio formal de tu crédito" in part_result
-        assert "politica-de-privacidad" in part_result
+        assert "Para hacer el estudio formal de tu crédito" in response
+        assert "politica-de-privacidad" in response
 
         # Aserciones rígidas de contenido de BOT-BRAIN-RETURN-082
-        assert "$" in part_result, "El resultado debe contener el signo pesos ($)."
-        assert "Estimación de cuota base aproximada:" in part_result, "El resultado debe contener la cadena 'Estimación de cuota base aproximada:'."
-
-        # 4. Prueba de Inyección Anti-Nulos:
-        # Asegurar que el array captured_response_parts no contenga objetos/diccionarios con llaves vacías o valores nulos/vacíos.
-        for p in captured_response_parts:
-            # Si es un objeto mock de test o un objeto real Part
-            if hasattr(p, "function_response"):
-                fr = p.function_response
-                assert fr is not None, "function_response no puede ser nulo."
-                assert getattr(fr, "name", None) not in (None, ""), "El nombre de la función no puede ser nulo o vacío."
-                
-                resp = getattr(fr, "response", None)
-                assert isinstance(resp, dict), "El response debe ser un diccionario."
-                assert len(resp) > 0, "El response no puede estar vacío."
-                for key, val in resp.items():
-                    assert key not in (None, ""), "La llave del response no puede ser nula o vacía."
-                    assert val not in (None, ""), f"El valor para la llave '{key}' no puede ser nulo o vacío."
+        assert "$" in response, "El resultado debe contener el signo pesos ($)."
+        assert "Estimación de cuota base aproximada:" in response, "El resultado debe contener la cadena 'Estimación de cuota base aproximada:'."
 
     # Caso 2: Garantizar que la Ficha Tecnica es explícita y forzar validación del flag en DB antes de calcular cuota
     # Si habeas_data_accepted es True, la validación pasa, y sí se procesa el catálogo y simulador.
