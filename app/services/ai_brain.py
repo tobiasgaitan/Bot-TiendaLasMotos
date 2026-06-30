@@ -1398,6 +1398,45 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         )
                                 else:
                                     credit_res = "Error: Motor financiero no conectado."
+                            except PermissionError as pe:
+                                logger.info(f"[BOT-FINANCE-BYPASS] Ejecutando simulación ciega preventiva ante ausencia de Habeas Data para {user_name}")
+                                m_price = 0.0
+                                moto_name = (prospect_data or {}).get("moto_interest", "")
+                                if moto_name and self._catalog_service:
+                                    m_results = self._catalog_service.search_items(moto_name)
+                                    if m_results:
+                                        first_match = m_results[0]
+                                        raw_val = first_match.get('raw_price')
+                                        if raw_val is not None:
+                                            try:
+                                                m_price = float(raw_val)
+                                            except (ValueError, TypeError):
+                                                m_price = 0.0
+                                        
+                                        if not m_price or m_price <= 0:
+                                            fallback_price = first_match.get('price')
+                                            if fallback_price:
+                                                try:
+                                                    clean_p = re.sub(r'[^\d]', '', str(fallback_price))
+                                                    m_price = float(clean_p) if clean_p else 0.0
+                                                except (ValueError, TypeError):
+                                                    m_price = 0.0
+                                                    
+                                if m_price <= 0:
+                                    logger.warning(f"⚠️ [Catalog Lock] No se pudo encontrar el precio real para la moto '{moto_name}'. Evitando simulación inventada.")
+                                    raise ValueError(f"Precio no disponible para la simulación financiera de la moto '{moto_name}'.")
+
+                                if self.motor_financiero:
+                                    sim = self.motor_financiero.calculate_payment(
+                                        precio=m_price,
+                                        inicial=0.0,
+                                        plazo_meses=24,
+                                        entidad="Crediorbe"
+                                    )
+                                    cuota_val = sim.get('cuota_mensual', 0.0)
+                                    credit_res = f"Estimación de cuota base aproximada: ${cuota_val:,.0f} / mes (a 24 meses sin cuota inicial)."
+                                else:
+                                    credit_res = "Estimación de cuota base no disponible temporalmente."
                             except Exception as e:
                                 logger.exception(f"❌ Credit error for prospect {user_name}: {e}")
                                 credit_res = "Error calculando el crédito."
