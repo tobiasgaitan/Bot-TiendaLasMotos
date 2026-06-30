@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
 
-## Tasks Completadas (v10.14.0)
+## Tasks Completadas (v10.14.1)
+- [x] Resolución de la fuga de contexto en contingencias de PermissionError y robustecimiento del parser de precios (BOT-BRAIN-E2E-META-083).
 - [x] Resolución de la contingencia de retorno de `PermissionError` en `ai_brain.py` e inyección de `response_parts` (BOT-BRAIN-RETURN-082).
 - [x] Identificación forense del error 404 NotFound de Firestore en Cloud Run ante ráfagas de Webhooks.
 - [x] Refactorización de `update_prospect_summary` y `update_whatsapp_status` usando .set(merge=True) para tolerar documentos purgados.

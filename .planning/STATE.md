@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.14.0
-**Último Hito:** hotfix-brain-return-contingency: Resolución de la contingencia de retorno de PermissionError en `ai_brain.py` e inyección de response_parts
+**Versión Actual:** v10.14.1
+**Último Hito:** hotfix-meta-e2e-alignment: Resolución de la fuga de contexto en contingencias de PermissionError y robustecimiento del parser de precios
 **Coherence Score:** 1.000 (167/167 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -25,7 +25,9 @@
 | 079 | hotfix-ci-uv-cache | 2026-06-27 | bea7ab7 | 079-hotfix-ci-uv-cache |
 | 080 | Log Sink y Pub Sub Alerting | 2026-06-28 | 23640bb | 080-log-sink-pubsub-alerting |
 | 081 | hotfix-anonymous-quota | 2026-06-30 | 5eeb5d6 | 081-hotfix-anonymous-quota |
-| 082 | hotfix-brain-return-contingency | 2026-06-30 | pending | 082-hotfix-brain-return-contingency |
+| 082 | hotfix-brain-return-contingency | 2026-06-30 | 28cf79c | 082-hotfix-brain-return-contingency |
+| 083 | hotfix-meta-e2e-alignment | 2026-06-30 | c93b898 | 083-hotfix-meta-e2e-alignment |
 
 - v10.13.1: hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases.
 - v10.14.0: hotfix-brain-return-contingency: Resolución de la contingencia de retorno de PermissionError en `ai_brain.py` y robustecimiento de aserciones en test.
+- v10.14.1: hotfix-meta-e2e-alignment: Resolución de la fuga de contexto en contingencias de PermissionError y robustecimiento del parser de precios.
