@@ -1273,16 +1273,11 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             logger.info(f"💰 AI calculating credit score...")
                             credit_res = "No disponible."
                             try:
-                                # [BOT-SEC-42] Validar consentimiento Habeas Data antes de interactuar con el simulador
+                                # [BOT-BRAIN-FINANCE-086] Bifurcación lineal: consentimiento Habeas Data
                                 is_accepted = (prospect_data or {}).get("habeas_data_accepted") is True
-                                if not is_accepted:
-                                    _phone = (prospect_data or {}).get("phone") or (prospect_data or {}).get("id", "unknown")
-                                    logger.warning(
-                                        f"SECURITY ALERT [Prompt Injection]: Attempted financial profiling without Habeas Data consent. Phone: {_phone}"
-                                    )
-                                    raise PermissionError("Habeas Data consent required before calling calculate_credit_score.")
 
-                                if self.motor_financiero:
+                                if is_accepted and self.motor_financiero:
+                                    # --- RAMA COMPLETA: Habeas Data aceptado → evaluate_profile ---
                                     res = self.motor_financiero.evaluate_profile(
                                         ocupacion_y_contrato=f_args.get("ocupacion_y_contrato", ""),
                                         ingresos_demostrables=f_args.get("ingresos_demostrables", ""),
@@ -1400,51 +1395,55 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             f"{cuota_line}"
                                             f"Link de Pre-aprobación: {res['link_url']}"
                                         )
-                                else:
+                                elif is_accepted and not self.motor_financiero:
                                     credit_res = "Error: Motor financiero no conectado."
-                            except PermissionError as pe:
-                                logger.info(f"[BOT-FINANCE-BYPASS] Ejecutando simulación ciega preventiva ante ausencia de Habeas Data para {user_name}")
-                                m_price = 0.0
-                                moto_name = (prospect_data or {}).get("moto_interest", "")
-                                if moto_name and self._catalog_service:
-                                    m_results = self._catalog_service.search_items(moto_name)
-                                    if m_results:
-                                        first_match = m_results[0]
-                                        m_price = self._parse_raw_price(
-                                            first_match.get('raw_price'),
-                                            first_match.get('price')
-                                        )
-                                                    
-                                if m_price <= 0:
-                                    logger.warning(f"⚠️ [Catalog Lock] No se pudo encontrar el precio real para la moto '{moto_name}'. Evitando simulación inventada.")
-                                    raise ValueError(f"Precio no disponible para la simulación financiera de la moto '{moto_name}'.")
-
-                                if self.motor_financiero:
-                                    sim = self.motor_financiero.calculate_payment(
-                                        precio=m_price,
-                                        inicial=0.0,
-                                        plazo_meses=24,
-                                        entidad="Crediorbe"
-                                    )
-                                    cuota_val = sim.get('cuota_mensual', 0.0)
-                                    credit_res = f"Estimación de cuota base aproximada: ${cuota_val:,.0f} / mes (a 24 meses sin cuota inicial)."
                                 else:
-                                    credit_res = "Estimación de cuota base no disponible temporalmente."
+                                    # --- RAMA CIEGA: Sin Habeas Data → simulación ciega + HabeasDataBypassInterrupt ---
+                                    # [BOT-BRAIN-FINANCE-086] Flujo lineal directo (elimina colisión PermissionError)
+                                    _phone = (prospect_data or {}).get("phone") or (prospect_data or {}).get("id", "unknown")
+                                    logger.warning(
+                                        f"SECURITY ALERT [Habeas Data Gate]: Financial profiling without consent. Phone: {_phone}"
+                                    )
+                                    logger.info(f"[BOT-FINANCE-BYPASS] Ejecutando simulación ciega preventiva ante ausencia de Habeas Data para {user_name}")
+                                    m_price = 0.0
+                                    moto_name = (prospect_data or {}).get("moto_interest", "")
+                                    if moto_name and self._catalog_service:
+                                        m_results = self._catalog_service.search_items(moto_name)
+                                        if m_results:
+                                            first_match = m_results[0]
+                                            m_price = self._parse_raw_price(
+                                                first_match.get('raw_price'),
+                                                first_match.get('price')
+                                            )
 
-                                is_accepted = (prospect_data or {}).get("habeas_data_accepted") is True
-                                if not is_accepted:
+                                    if m_price <= 0:
+                                        logger.warning(f"⚠️ [Catalog Lock] No se pudo encontrar el precio real para la moto '{moto_name}'. Evitando simulación inventada.")
+                                        raise ValueError(f"Precio no disponible para la simulación financiera de la moto '{moto_name}'.")
+
+                                    if self.motor_financiero:
+                                        sim = self.motor_financiero.calculate_payment(
+                                            precio=m_price,
+                                            inicial=0.0,
+                                            plazo_meses=24,
+                                            entidad="Crediorbe"
+                                        )
+                                        cuota_val = sim.get('cuota_mensual', 0.0)
+                                        credit_res = f"Estimación de cuota base aproximada: ${cuota_val:,.0f} / mes (a 24 meses sin cuota inicial)."
+                                    else:
+                                        credit_res = "Estimación de cuota base no disponible temporalmente."
+
                                     credit_res += (
                                         "\n\nPara hacer el estudio formal de tu crédito y darte las opciones de financiación, "
                                         "¿me autorizas el tratamiento de tus datos personales de acuerdo con nuestra política de privacidad? "
                                         "(Política: https://tiendalasmotos.com/politica-de-privacidad). Solo confírmame con un 'Sí'."
                                     )
 
-                                credit_res += f"\n\n{funnel_instruction}"
-                                response_parts.append(types.Part.from_function_response(
-                                    name="calculate_credit_score",
-                                    response={"result": credit_res}
-                                ))
-                                raise HabeasDataBypassInterrupt(credit_res)
+                                    credit_res += f"\n\n{funnel_instruction}"
+                                    response_parts.append(types.Part.from_function_response(
+                                        name="calculate_credit_score",
+                                        response={"result": credit_res}
+                                    ))
+                                    raise HabeasDataBypassInterrupt(credit_res)
                             except HabeasDataBypassInterrupt:
                                 raise
                             except Exception as e:

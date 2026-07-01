@@ -80,7 +80,7 @@ async def test_habeas_data_gate_before_credit_score():
     Test de caracterización estricta:
     - Cuando el flag 'habeas_data_accepted' está ausente o es False,
       la llamada a calculate_credit_score debe ser interceptada.
-    - Se debe verificar que se lance PermissionError o se desvíe al flujo de legalización
+    - Se debe verificar que se desvíe al flujo de legalización (HabeasDataBypassInterrupt lineal)
       (PASO 4 del protocolo / script legal de Habeas Data) ANTES de invocar el simulador/motor financiero.
     - [MANDATORIO] Incluir aserción de contenido que verifique la presencia explícita de 'Ficha Tecnica:'
       cuando el catálogo sí cuenta con la información y no está mutado, y prohibir que resulte en vacío,
@@ -174,7 +174,7 @@ async def test_habeas_data_gate_before_credit_score():
         # 1. Asegurar que el log forense de seguridad se haya registrado
         mock_log_warn.assert_called()
         warn_args = [call[0][0] for call in mock_log_warn.call_args_list]
-        assert any("SECURITY ALERT [Prompt Injection]: Attempted financial profiling without Habeas Data consent." in arg for arg in warn_args)
+        assert any("SECURITY ALERT [Habeas Data Gate]: Financial profiling without consent." in arg for arg in warn_args)
 
         # 2. Asegurar que no se tocó el perfilamiento, pero sí el simulador para la cuota ciega
         mock_financial.evaluate_profile.assert_not_called()
@@ -392,7 +392,7 @@ async def test_habeas_bypass_interrupt_e2e():
         # If we reach here, the short-circuit FAILED
         return gemini_response_text
 
-    # Prospect WITHOUT habeas_data_accepted → triggers PermissionError → HabeasDataBypassInterrupt
+    # Prospect WITHOUT habeas_data_accepted → triggers HabeasDataBypassInterrupt directly (BOT-BRAIN-FINANCE-086)
     prospect_no_consent = {
         "nombre": "TestUser",
         "moto_interest": "TVS Sport 100",
