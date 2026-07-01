@@ -28,6 +28,7 @@
 | 082 | hotfix-brain-return-contingency | 2026-06-30 | 28cf79c | 082-hotfix-brain-return-contingency |
 | 083 | hotfix-meta-e2e-alignment | 2026-06-30 | c93b898 | 083-hotfix-meta-e2e-alignment |
 | 084 | hotfix-e2e-exception-shortcircuit | 2026-07-01 | 9545720 | 084-hotfix-e2e-exception-shortcircuit |
+| 085 | hotfix-brain-habeas-moto-interest | 2026-07-01 | 24554cd | 085-hotfix-brain-habeas-interest |
 
 - v10.13.1: hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases.
 - v10.14.0: hotfix-brain-return-contingency: Resolución de la contingencia de retorno de PermissionError en `ai_brain.py` y robustecimiento de aserciones en test.
