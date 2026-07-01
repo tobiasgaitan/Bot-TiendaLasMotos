@@ -429,10 +429,13 @@ class CerebroIA:
                 logger.info("💰 [INTENT] Financial intent detected.")
                 is_financial_intent = True
 
-        # Evaluamos transiciones en estricto orden secuencial de negocio:
-        if is_credit or is_financial_intent:
-            is_accepted = prospect_data.get("habeas_data_accepted") is True
-            is_sent = prospect_data.get("habeas_data_accepted_sent") is True
+       # Evaluamos transiciones en estricto orden secuencial de negocio:
+        # GUARDRAIL: No permitimos avanzar a fase legal si no hay un modelo inmutable identificado en el CRM
+        has_moto_interest = bool(prospect_data and prospect_data.get("moto_interest"))
+        
+        if (is_credit or is_financial_intent) and has_moto_interest:
+            is_accepted = bool(prospect_data.get("habeas_data_accepted"))
+            is_sent = bool(prospect_data.get("habeas_data_accepted_sent"))
             
             conversation_text = ""
             if history:

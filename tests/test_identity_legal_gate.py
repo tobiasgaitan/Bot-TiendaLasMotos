@@ -26,6 +26,7 @@ class TestIdentityLegalGate(unittest.TestCase):
             "nombre": "",  # Ausente
             "ciudad": None,  # Ausente
             "forma_pago": "credito",
+            "moto_interest": "TVS Apache 160",  # [GUARDRAIL SATISFECHO]
             "habeas_data_accepted": True,
             "habeas_data_accepted_sent": True
         }
@@ -49,6 +50,7 @@ class TestIdentityLegalGate(unittest.TestCase):
             "nombre": "Tobias",
             "ciudad": "Santa Marta",
             "forma_pago": "credito",
+            "moto_interest": "TVS Apache 160",  # [GUARDRAIL SATISFECHO]
             "habeas_data_accepted": True,
             "habeas_data_accepted_sent": True
         }
@@ -71,6 +73,7 @@ class TestIdentityLegalGate(unittest.TestCase):
             "nombre": "",
             "ciudad": None,
             "forma_pago": "credito",
+            "moto_interest": "TVS Apache 160",  # [GUARDRAIL SATISFECHO]
             "habeas_data_accepted": True,
             "habeas_data_accepted_sent": True
         }
