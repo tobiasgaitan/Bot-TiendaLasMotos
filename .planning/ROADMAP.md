@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
 
-## Tasks Completadas (v10.14.1)
+## Tasks Completadas (v10.15.0)
+- [x] Excepción `HabeasDataBypassInterrupt` para cortocircuito limpio del while loop en `pensar_respuesta` (BOT-BRAIN-CRITICAL-E2E-084).
 - [x] Resolución de la fuga de contexto en contingencias de PermissionError y robustecimiento del parser de precios (BOT-BRAIN-E2E-META-083).
 - [x] Resolución de la contingencia de retorno de `PermissionError` en `ai_brain.py` e inyección de `response_parts` (BOT-BRAIN-RETURN-082).
 - [x] Identificación forense del error 404 NotFound de Firestore en Cloud Run ante ráfagas de Webhooks.

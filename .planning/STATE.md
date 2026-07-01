@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.14.1
-**Último Hito:** hotfix-meta-e2e-alignment: Resolución de la fuga de contexto en contingencias de PermissionError y robustecimiento del parser de precios
-**Coherence Score:** 1.000 (167/167 Tests PASSED)
+**Versión Actual:** v10.15.0
+**Último Hito:** hotfix-e2e-exception-shortcircuit: Excepción HabeasDataBypassInterrupt para cortocircuito limpio del while loop en pensar_respuesta
+**Coherence Score:** 1.000 (168/168 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -27,7 +27,9 @@
 | 081 | hotfix-anonymous-quota | 2026-06-30 | 5eeb5d6 | 081-hotfix-anonymous-quota |
 | 082 | hotfix-brain-return-contingency | 2026-06-30 | 28cf79c | 082-hotfix-brain-return-contingency |
 | 083 | hotfix-meta-e2e-alignment | 2026-06-30 | c93b898 | 083-hotfix-meta-e2e-alignment |
+| 084 | hotfix-e2e-exception-shortcircuit | 2026-07-01 | 9545720 | 084-hotfix-e2e-exception-shortcircuit |
 
 - v10.13.1: hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases.
 - v10.14.0: hotfix-brain-return-contingency: Resolución de la contingencia de retorno de PermissionError en `ai_brain.py` y robustecimiento de aserciones en test.
 - v10.14.1: hotfix-meta-e2e-alignment: Resolución de la fuga de contexto en contingencias de PermissionError y robustecimiento del parser de precios.
+- v10.15.0: hotfix-e2e-exception-shortcircuit: Excepción `HabeasDataBypassInterrupt` para cortocircuito limpio del while loop en `pensar_respuesta`.
