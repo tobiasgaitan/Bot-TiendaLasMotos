@@ -14,6 +14,7 @@ from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
 
 from app.utils.json_processor import clean_json_voorhees
+from app.core.exceptions import HabeasDataBypassInterrupt
 
 logger = logging.getLogger(__name__)
 
@@ -476,7 +477,8 @@ class CerebroIA:
         forced_instruction = None
         forced_temp = None
 
-        while current_attempt < max_validation_attempts:
+        try:
+          while current_attempt < max_validation_attempts:
             current_attempt += 1
             if LANGFUSE_AVAILABLE and prospect_data:
                 _phone = prospect_data.get("phone") or prospect_data.get("id", "unknown")
@@ -611,6 +613,9 @@ class CerebroIA:
                     return final_text
             else:
                 return final_text
+        except HabeasDataBypassInterrupt as hdbi:
+            logger.info(f"🛡️ [HABEAS-BYPASS] Cortocircuito limpio ejecutado. Retornando respuesta directa al webhook.")
+            return str(hdbi.args[0])
 
     @staticmethod
     def clean_markdown_blocks(text: str) -> str:
@@ -1436,8 +1441,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     name="calculate_credit_score",
                                     response={"result": credit_res}
                                 ))
-                                response_message = credit_res
-                                return response_message
+                                raise HabeasDataBypassInterrupt(credit_res)
+                            except HabeasDataBypassInterrupt:
+                                raise
                             except Exception as e:
                                 logger.exception(f"❌ Credit error for prospect {user_name}: {e}")
                                 credit_res = "Error calculando el crédito."
@@ -1478,6 +1484,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 logger.warning(f"⏳ API Limit (429/503). Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
                 await asyncio.sleep(wait_time)
                 
+            except HabeasDataBypassInterrupt:
+                raise
             except Exception as e:
                 error_type = type(e).__name__
                 logger.exception(f"🚨 [AI FALLBACK REASON]: {error_type} - {e} | Prospect: {prospect_data.get('nombre', 'Unknown')}")

@@ -306,3 +306,151 @@ def test_ficha_tecnica_explicit_content_assertion():
     assert validation["report"]["broken_guardrail"] == "PRICE_CONSISTENCY_CHECK"
 
 
+@pytest.mark.asyncio
+async def test_habeas_bypass_interrupt_e2e():
+    """
+    [BOT-BRAIN-CRITICAL-E2E-084] Test de caracterización E2E:
+    Verifica que HabeasDataBypassInterrupt produce un cortocircuito limpio
+    a través del while loop maestro de pensar_respuesta, retornando un string
+    válido al webhook de Meta sin colapsar el orquestador.
+
+    Mandatory checks:
+    1. El string retornado contiene '$' (PCC Visual)
+    2. Contiene 'Estimación de cuota base aproximada:'
+    3. NO lanza excepción (no colapsa el orquestador)
+    4. Estructura anonimizada (sin marca de agua 'Crediorbe' en respuesta)
+    5. Contiene script legal de Habeas Data
+    """
+    from app.services.ai_brain import CerebroIA
+    from app.core.exceptions import HabeasDataBypassInterrupt
+
+    # Mocking classes for Gemini response
+    class MockFunctionCall:
+        def __init__(self, name, args):
+            self.name = name
+            self.args = args
+
+    class MockPart:
+        def __init__(self, function_call=None, text=None):
+            self.function_call = function_call
+            self.text = text
+
+    class MockContent:
+        def __init__(self, parts):
+            self.parts = parts
+
+    class MockCandidate:
+        def __init__(self, content):
+            self.content = content
+
+    class MockResponse:
+        def __init__(self, candidates):
+            self.candidates = candidates
+
+    # Setup CerebroIA with mocks
+    cerebro = CerebroIA()
+    cerebro.client = MagicMock()
+    cerebro._model_id = "gemini-2.0-flash"
+
+    # Mock catalog service returning a valid item with price
+    mock_catalog = MagicMock()
+    mock_catalog.search_items.return_value = [
+        {
+            "name": "TVS Sport 100",
+            "price": "$9.969.000.*",
+            "raw_price": None,
+            "category": "Urban",
+            "image_url": "https://img.url",
+            "summary": "Excelente moto urbana."
+        }
+    ]
+    cerebro._catalog_service = mock_catalog
+
+    # Mock motor financiero — evaluate_profile MUST NOT be called (no consent)
+    mock_financial = MagicMock()
+    mock_financial.evaluate_profile = MagicMock(
+        side_effect=AssertionError("ERROR: El motor financiero fue tocado sin consentimiento de Habeas Data.")
+    )
+    mock_financial.calculate_payment = MagicMock(return_value={"cuota_mensual": 250000.0})
+    cerebro.motor_financiero = mock_financial
+
+    # Simulate Gemini returning a function call to calculate_credit_score
+    fc = MockFunctionCall(name="calculate_credit_score", args={})
+    candidate_fc = MockCandidate(content=MockContent(parts=[MockPart(function_call=fc)]))
+    gemini_response_fc = MockResponse(candidates=[candidate_fc])
+
+    # This second response should NEVER be reached (HabeasDataBypassInterrupt short-circuits)
+    candidate_text = MockCandidate(content=MockContent(parts=[MockPart(text="Esta respuesta NO debe verse.")]))
+    gemini_response_text = MockResponse(candidates=[candidate_text])
+
+    call_count = 0
+    async def mock_gemini_call(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return gemini_response_fc
+        # If we reach here, the short-circuit FAILED
+        return gemini_response_text
+
+    # Prospect WITHOUT habeas_data_accepted → triggers PermissionError → HabeasDataBypassInterrupt
+    prospect_no_consent = {
+        "nombre": "TestUser",
+        "moto_interest": "TVS Sport 100",
+        "ciudad": "Bogotá",
+        "forma_pago": "Crédito"
+        # habeas_data_accepted is ABSENT → must trigger bypass
+    }
+
+    with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_gemini_call), \
+         patch('app.services.ai_brain.SDK_AVAILABLE', True), \
+         patch('app.services.ai_brain.logger') as mock_logger:
+
+        # ACT: Call pensar_respuesta directly — must NOT raise
+        response = await cerebro.pensar_respuesta(
+            "Quiero financiar mi moto",
+            prospect_data=prospect_no_consent
+        )
+
+        # ASSERT 1: No exception was raised (orchestrator did not collapse)
+        assert response is not None, "pensar_respuesta debe retornar un string, no None."
+        assert isinstance(response, str), f"pensar_respuesta debe retornar str, obtuvo {type(response).__name__}."
+
+        # ASSERT 2: PCC Visual — contains '$' sign
+        assert "$" in response, f"El resultado debe contener el signo pesos ($). Respuesta: {response[:200]}"
+
+        # ASSERT 3: Contains the expected cuota structure
+        assert "Estimación de cuota base aproximada:" in response, (
+            f"El resultado debe contener 'Estimación de cuota base aproximada:'. Respuesta: {response[:200]}"
+        )
+
+        # ASSERT 4: Anonimized — no provider watermark
+        assert "Crediorbe" not in response, "La marca de agua 'Crediorbe' no debe figurar en la respuesta anonimizada."
+        assert "Brilla" not in response, "La marca de agua 'Brilla' no debe figurar en la respuesta anonimizada."
+
+        # ASSERT 5: Habeas Data legal script present
+        assert "politica-de-privacidad" in response, "El script legal de Habeas Data debe estar presente."
+
+        # ASSERT 6: Verify the HABEAS-BYPASS log was emitted
+        bypass_logged = any(
+            "HABEAS-BYPASS" in str(call)
+            for call in mock_logger.info.call_args_list
+        )
+        assert bypass_logged, "El log '[HABEAS-BYPASS] Cortocircuito limpio ejecutado' debe haberse emitido."
+
+        # ASSERT 7: evaluate_profile must NOT have been called
+        mock_financial.evaluate_profile.assert_not_called()
+
+        # ASSERT 8: calculate_payment MUST have been called (blind simulation)
+        mock_financial.calculate_payment.assert_called_once_with(
+            precio=9969000.0,
+            inicial=0.0,
+            plazo_meses=24,
+            entidad="Crediorbe"
+        )
+
+        # ASSERT 9: Gemini was only called ONCE (the function call turn),
+        # the short-circuit prevented a second call
+        assert call_count == 1, (
+            f"Gemini debió ser llamado exactamente 1 vez (function call turn). "
+            f"Fue llamado {call_count} veces — indica que el cortocircuito falló."
+        )
