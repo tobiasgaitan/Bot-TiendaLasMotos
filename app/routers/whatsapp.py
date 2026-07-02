@@ -74,8 +74,14 @@ catalog_service_local = None
 message_buffer = None
 _active_resets = set() # v9.8.3: Guard against concurrent resets
 
-def _ensure_services():
-    """Lazy initialization of services"""
+def _ensure_services_sync():
+    """
+    Lazy initialization of services (SYNCHRONOUS).
+    WHY: Contains Firestore .stream() I/O via CatalogService.initialize().
+    Must be called via asyncio.to_thread() from async handlers to prevent
+    blocking FastAPI's event loop under Meta production load (BOT-INFRA-ASYNC-094).
+    """
+
     global db, config_loader, motor_financiero, catalog_service_local, message_buffer
     
     # 5. Message Buffer (initialized first to ensure availability in tests)
@@ -122,6 +128,14 @@ def _ensure_services():
             logger.info("✅ CatalogService initialized")
         except Exception as e:
              logger.error(f"❌ Failed to initialize CatalogService: {e}")
+
+async def _ensure_services():
+    """
+    Async wrapper for _ensure_services_sync().
+    BOT-INFRA-ASYNC-094: Delegates synchronous Firestore I/O (.stream()) to
+    a thread pool to unblock the event loop during lazy initialization.
+    """
+    await asyncio.to_thread(_ensure_services_sync)
 
 # ============================================================================
 # WEBHOOK ENDPOINTS
@@ -193,7 +207,7 @@ async def webhook_handler(
         user_phone = PhoneNormalizer.normalize(raw_phone)
         msg_id_unique = msg_data.get("id") or f"{user_phone}_{int(datetime.now().timestamp())}"
 
-        _ensure_services()
+        await _ensure_services()
         if message_buffer and user_phone in message_buffer._processed_wamids and msg_id_unique in message_buffer._processed_wamids[user_phone]:
             logger.warning(f"🔄 Duplicate WAMID ignored in handler: {msg_id_unique}")
             return {"status": "ignored", "procesado": False}
@@ -224,7 +238,7 @@ async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
     Zero-Silent-Failures: captura explícita de los errores más comunes para
     evitar que un fallo de Firestore quede invisible en el log.
     """
-    _ensure_services()
+    await _ensure_services()
     try:
         recipient_id = status_data.get("recipient_id", "")
         status_value = status_data.get("status", "")
@@ -272,7 +286,7 @@ async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
 async def _handle_message_background(msg_data: Dict[str, Any], background_tasks: BackgroundTasks) -> None:
     """Lógica principal del bot (Procesamiento Asíncrono)"""
     # Ensure services are initialized before proceeding
-    _ensure_services()
+    await _ensure_services()
 
     try:
         # 1. Extracción de Datos
@@ -450,7 +464,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                             # 1. Handle Moto Detection (Legacy / Main Vision Logic)
                             elif "[MOTO_DETECTADA]" in vision_response:
                                 vision_description = vision_response.replace("[MOTO_DETECTADA]", "").strip()
-                                _ensure_services()
+                                await _ensure_services()
                                 cerebro_ia = CerebroIA(config_loader, catalog_service_local)
                                 cerebro_ia.motor_financiero = motor_financiero
                                 
@@ -499,7 +513,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
 
                             if vision_response.startswith("[System Note:") or (msg_type == "sticker" and is_affirmative_sticker):
                                 logger.info("🧠 General image/meme/sticker detected.")
-                                _ensure_services()
+                                await _ensure_services()
                                 cerebro_ia = CerebroIA(config_loader, catalog_service_local)
                                 cerebro_ia.motor_financiero = motor_financiero
                                 
@@ -631,9 +645,10 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     if cmd in ["/update", "/refresh_catalog"]:
                         logger.warning(f"🔄 CATALOG REFRESH TRIGGERED by {user_phone}")
                         try:
-                            _ensure_services()
+                            await _ensure_services()
                             if catalog_service_local:
-                                catalog_service_local.refresh()
+                                # BOT-INFRA-ASYNC-094: Delegate sync .stream() to thread pool
+                                await asyncio.to_thread(catalog_service_local.refresh)
                                 confirm_msg = "✅ Catálogo actualizado en memoria exitosamente."
                             else:
                                 confirm_msg = "❌ Error: Catalog Service no inicializado."
