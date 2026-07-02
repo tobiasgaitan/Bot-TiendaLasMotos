@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.16.1
-**Último Hito:** hotfix-catalog-interceptor: Expansión de sinónimos coloquiales y fallback por coincidencia de tokens en CatalogService.
-**Coherence Score:** 1.000 (171/171 Tests PASSED)
+**Versión Actual:** v10.16.2
+**Último Hito:** hotfix-async-firestore-stream: Aislamiento de I/O síncrono de Firestore (.stream()) del event loop de FastAPI vía asyncio.to_thread().
+**Coherence Score:** 1.000 (162/162 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -35,6 +35,7 @@
 | 090 | hotfix-blind-quota-parity | 2026-07-02 | b87291a | 090-hotfix-blind-quota-parity |
 | 091 | hotfix-sticker-habeas | 2026-07-02 | 1d28f47 | 091-hotfix-sticker-habeas |
 | 092 | hotfix-catalog-interceptor | 2026-07-02 | 47ef061 | 092-hotfix-catalog-interceptor |
+| 094 | hotfix-async-firestore-stream | 2026-07-02 | da56b17 | 094-hotfix-async-firestore-stream |
 
 - v10.13.1: hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases.
 - v10.14.0: hotfix-brain-return-contingency: Resolución de la contingencia de retorno de PermissionError en `ai_brain.py` y robustecimiento de aserciones en test.
@@ -46,4 +47,5 @@
 - v10.15.5: hotfix-blind-quota-parity: Cuota inicial exacta del 10% del precio obtenido y copywriting del PASO 3 en la rama ciega de calculate_credit_score. Coherence Score: 1.000 (170/170 Tests PASSED).
 - v10.15.6: hotfix-sticker-habeas: Normalización de stickers afirmativos a 'Sí' y captura de HabeasDataBypassInterrupt en media handler. Coherence Score: 1.000 (171/171 Tests PASSED).
 - v10.15.7: hotfix-catalog-interceptor: Expansión de sinónimos coloquiales, fallback de coincidencia de tokens y contingencias anti-vacías en búsqueda de catálogo. Coherence Score: 1.000 (171/171 Tests PASSED).
+- v10.16.2: hotfix-async-firestore-stream: Aislamiento de operaciones de I/O síncronas de Firestore (.stream()) del event loop de FastAPI usando asyncio.to_thread() en 6 callsites del webhook y en /refresh_catalog. Coherence Score: 1.000 (162/162 Tests PASSED).
 
