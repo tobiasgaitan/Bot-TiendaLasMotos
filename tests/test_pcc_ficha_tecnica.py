@@ -183,7 +183,7 @@ async def test_habeas_data_gate_before_credit_score():
         mock_financial.evaluate_profile.assert_not_called()
         mock_financial.calculate_payment.assert_called_once_with(
             precio=9969000.0,
-            inicial=0.0,
+            inicial=996900.0,
             plazo_meses=24,
             entidad="Crediorbe"
         )
@@ -204,7 +204,7 @@ async def test_habeas_data_gate_before_credit_score():
 
         # Aserciones rígidas de contenido de BOT-BRAIN-RETURN-082
         assert "$" in response, "El resultado debe contener el signo pesos ($)."
-        assert "Estimación de cuota base aproximada:" in response, "El resultado debe contener la cadena 'Estimación de cuota base aproximada:'."
+        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $250,000 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, "El resultado debe contener la cadena esperada."
 
     # Caso 2: Garantizar que la Ficha Tecnica es explícita y forzar validación del flag en DB antes de calcular cuota
     # Si habeas_data_accepted es True, la validación pasa, y sí se procesa el catálogo y simulador.
@@ -424,8 +424,8 @@ async def test_habeas_bypass_interrupt_e2e():
         assert "$" in response, f"El resultado debe contener el signo pesos ($). Respuesta: {response[:200]}"
 
         # ASSERT 3: Contains the expected cuota structure
-        assert "Estimación de cuota base aproximada:" in response, (
-            f"El resultado debe contener 'Estimación de cuota base aproximada:'. Respuesta: {response[:200]}"
+        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $250,000 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, (
+            f"El resultado debe contener the expected copywriting. Respuesta: {response[:200]}"
         )
 
         # ASSERT 4: Anonimized — no provider watermark
@@ -448,7 +448,7 @@ async def test_habeas_bypass_interrupt_e2e():
         # ASSERT 8: calculate_payment MUST have been called (blind simulation)
         mock_financial.calculate_payment.assert_called_once_with(
             precio=9969000.0,
-            inicial=0.0,
+            inicial=996900.0,
             plazo_meses=24,
             entidad="Crediorbe"
         )

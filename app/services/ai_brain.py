@@ -1421,14 +1421,19 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         raise ValueError(f"Precio no disponible para la simulación financiera de la moto '{moto_name}'.")
 
                                     if self.motor_financiero:
+                                        inicial_val = m_price * 0.10
                                         sim = self.motor_financiero.calculate_payment(
                                             precio=m_price,
-                                            inicial=0.0,
+                                            inicial=inicial_val,
                                             plazo_meses=24,
                                             entidad="Crediorbe"
                                         )
                                         cuota_val = sim.get('cuota_mensual', 0.0)
-                                        credit_res = f"Estimación de cuota base aproximada: ${cuota_val:,.0f} / mes (a 24 meses sin cuota inicial)."
+                                        credit_res = (
+                                            f"Si te interesa a crédito con la inicial de ${inicial_val:,.0f}, "
+                                            f"las cuotas a 24 meses serían aproximadamente de ${cuota_val:,.0f} "
+                                            f"(incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*"
+                                        )
                                     else:
                                         credit_res = "Estimación de cuota base no disponible temporalmente."
 

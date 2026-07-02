@@ -492,9 +492,16 @@ async def test_meta_payload_leak_prevention_and_bypass():
             f"Context Bleeding detected! Outgoing Meta message contains system directives: '{sent_text}'"
             
         # 4. STRICT ASSERTIONS: Silent Bypass of Blind Simulation
-        # The text must contain the blind simulation credit estimation and request for consent
-        assert "Estimación de cuota base aproximada" in sent_text, \
-            f"Blind simulation bypass! Response does not contain base quota estimation: '{sent_text}'"
+        # The text must contain the blind simulation credit estimation with 10% downpayment pattern and request for consent
+        expected_blind_copy = (
+            "Si te interesa a crédito con la inicial de $650,000, "
+            "las cuotas a 24 meses serían aproximadamente de $350,000 "
+            "(incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*"
+        )
+        assert expected_blind_copy in sent_text, \
+            f"Blind simulation bypass! Response does not contain the exact 10% initial and payment copywriting: '{sent_text}'"
+        assert "sin cuota inicial" not in sent_text, \
+            f"Blind simulation bypass! Response contains illegal phrase 'sin cuota inicial': '{sent_text}'"
         assert "$" in sent_text, \
             f"Blind simulation bypass! Response does not contain currency symbol: '{sent_text}'"
         assert "tratamiento de tus datos personales" in sent_text or "https://tiendalasmotos.com/politica-de-privacidad" in sent_text, \
