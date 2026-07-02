@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.16.2
-**Último Hito:** hotfix-async-firestore-stream: Aislamiento de I/O síncrono de Firestore (.stream()) del event loop de FastAPI vía asyncio.to_thread().
+**Versión Actual:** v10.17.0
+**Último Hito:** hotfix-tool-phase-isolation: Aislamiento de calculate_credit_score de PHASE_1_PROFILING para prevenir ejecución prematura del motor de crédito.
 **Coherence Score:** 1.000 (162/162 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -36,6 +36,7 @@
 | 091 | hotfix-sticker-habeas | 2026-07-02 | 1d28f47 | 091-hotfix-sticker-habeas |
 | 092 | hotfix-catalog-interceptor | 2026-07-02 | 47ef061 | 092-hotfix-catalog-interceptor |
 | 094 | hotfix-async-firestore-stream | 2026-07-02 | da56b17 | 094-hotfix-async-firestore-stream |
+| 096 | hotfix-tool-phase-isolation | 2026-07-02 | f94b830 | 096-hotfix-tool-phase-isolation |
 
 - v10.13.1: hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases.
 - v10.14.0: hotfix-brain-return-contingency: Resolución de la contingencia de retorno de PermissionError en `ai_brain.py` y robustecimiento de aserciones en test.
@@ -48,4 +49,5 @@
 - v10.15.6: hotfix-sticker-habeas: Normalización de stickers afirmativos a 'Sí' y captura de HabeasDataBypassInterrupt en media handler. Coherence Score: 1.000 (171/171 Tests PASSED).
 - v10.15.7: hotfix-catalog-interceptor: Expansión de sinónimos coloquiales, fallback de coincidencia de tokens y contingencias anti-vacías en búsqueda de catálogo. Coherence Score: 1.000 (171/171 Tests PASSED).
 - v10.16.2: hotfix-async-firestore-stream: Aislamiento de operaciones de I/O síncronas de Firestore (.stream()) del event loop de FastAPI usando asyncio.to_thread() en 6 callsites del webhook y en /refresh_catalog. Coherence Score: 1.000 (162/162 Tests PASSED).
+- v10.17.0: hotfix-tool-phase-isolation: Aislamiento de calculate_credit_score de PHASE_1_PROFILING. La herramienta de crédito solo se inyecta en PHASE_2_HABEAS_DATA y PHASE_3_CREDIT_PROFILING. Coherence Score: 1.000 (162/162 Tests PASSED).
 
