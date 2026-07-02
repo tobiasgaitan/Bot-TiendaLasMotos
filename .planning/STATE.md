@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.15.6
-**Último Hito:** hotfix-sticker-habeas: Normalización de stickers afirmativos a 'Sí' y captura de HabeasDataBypassInterrupt en media handler.
+**Versión Actual:** v10.16.1
+**Último Hito:** hotfix-catalog-interceptor: Expansión de sinónimos coloquiales y fallback por coincidencia de tokens en CatalogService.
 **Coherence Score:** 1.000 (171/171 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -34,6 +34,7 @@
 | 089 | hotfix-catalog-import-leak | 2026-07-02 | e5df74a | 089-hotfix-catalog-import-leak |
 | 090 | hotfix-blind-quota-parity | 2026-07-02 | b87291a | 090-hotfix-blind-quota-parity |
 | 091 | hotfix-sticker-habeas | 2026-07-02 | 1d28f47 | 091-hotfix-sticker-habeas |
+| 092 | hotfix-catalog-interceptor | 2026-07-02 | 47ef061 | 092-hotfix-catalog-interceptor |
 
 - v10.13.1: hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases.
 - v10.14.0: hotfix-brain-return-contingency: Resolución de la contingencia de retorno de PermissionError en `ai_brain.py` y robustecimiento de aserciones en test.
@@ -44,4 +45,5 @@
 - v10.15.4: hotfix-catalog-import-leak: Exposición explícita de CatalogService en app/services/__init__.py para restablecer la paridad de inicialización y contención quirúrgica de fuga de contexto en HabeasDataBypassInterrupt. Coherence Score: 1.000 (170/170 Tests PASSED).
 - v10.15.5: hotfix-blind-quota-parity: Cuota inicial exacta del 10% del precio obtenido y copywriting del PASO 3 en la rama ciega de calculate_credit_score. Coherence Score: 1.000 (170/170 Tests PASSED).
 - v10.15.6: hotfix-sticker-habeas: Normalización de stickers afirmativos a 'Sí' y captura de HabeasDataBypassInterrupt en media handler. Coherence Score: 1.000 (171/171 Tests PASSED).
+- v10.15.7: hotfix-catalog-interceptor: Expansión de sinónimos coloquiales, fallback de coincidencia de tokens y contingencias anti-vacías en búsqueda de catálogo. Coherence Score: 1.000 (171/171 Tests PASSED).
 

@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.16.0)
-Versión: v10.16.0 (Hotfix Bypass Interceptor Collision)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.16.1)
+Versión: v10.16.1 (Hotfix Catalog Interceptor)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Intercepción directa de HabeasDataBypassInterrupt en el router de WhatsApp para aprobación inmediata con cuota ciega y script legal sin pasar por el supervisor. Cierre de ticket [BOT-BRAIN-FINANCE-087].
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 169/169 Tests PASSED)
+Último Hito: Expansión de sinónimos coloquiales y fallback por coincidencia de tokens en CatalogService para evitar retornos vacíos. Cierre de ticket [BOT-BRAIN-CATALOG-091].
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 171/171 Tests PASSED)
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
@@ -100,3 +100,4 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.16.0] Cierre de ticket BOT-UI-GREETING-088 (Restauración de saludo comercial inicial y optimización del contador de mensajes de usuario en WhatsAppRouter). Score certificado: 1.000.
 - [v10.16.0] Cierre de ticket BOT-BRAIN-FINANCE-089. Sincronización explícita del namespace en app.services y despliegue del asertor rígido contra el sangrado de instrucciones.
 - [v10.16.0] Cierre de ticket BOT-BRAIN-FINANCE-090. Corrección quirúrgica del cálculo del 10% de cuota inicial y alineación de copywriting del PASO 3 en la rama ciega de Meta.
+- [v10.16.1] Cierre de Hotfix BOT-BRAIN-CATALOG-091 (Desalineación de scores de difflib y fallback de tokens de la base normalizada). Expansión de sinónimos coloquiales, fallback de coincidencia de tokens y contingencias anti-vacías en búsqueda de catálogo. Coherence Score: 1.000 (171/171 Tests PASSED).
