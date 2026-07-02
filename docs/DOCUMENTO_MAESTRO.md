@@ -1,5 +1,5 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.15.5)
-Versión: v10.15.5 (Hotfix Bypass Interceptor Collision)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.16.0)
+Versión: v10.16.0 (Hotfix Bypass Interceptor Collision)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
 Último Hito: Intercepción directa de HabeasDataBypassInterrupt en el router de WhatsApp para aprobación inmediata con cuota ciega y script legal sin pasar por el supervisor. Cierre de ticket [BOT-BRAIN-FINANCE-087].
 **Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 169/169 Tests PASSED)
@@ -96,7 +96,7 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.15.0] Cierre de ticket BOT-BRAIN-CRITICAL-E2E-084. Introducción de 'HabeasDataBypassInterrupt' para cortocircuito síncrono de nivel superior en pensar_respuesta ante falta de Habeas Data en Meta. Coherence Score: 1.000 (168/168 Tests PASSED).
 - [v10.15.2] Cierre de Hotfix BOT-BRAIN-HABEAS-085 (Salto Prematuro de Embudo). Se inyectó guardrail estricto de Anti-Null Masking (bool()) en la máquina de estados de ai_brain.py para condicionar el salto a PHASE_2_HABEAS_DATA a la confirmación e inyección previa de moto_interest. Se hidrataron los mocks en tests/test_identity_legal_gate.py inyectando la llave inmutable de catálogo. Score de Coherencia certificado: 1.000 (168/168 Tests PASSED).
 - [v10.15.2] Cierre de Hotfix BOT-BRAIN-FINANCE-086 (Resolución de Colisión de Interceptor y Bloqueo Prematuro de Cuotas). Eliminación de cortocircuito redundante PermissionError, linealización de simulación ciega y unificación con HabeasDataBypassInterrupt. Score certificado: 1.000 (159/159 Tests PASSED).
-- [v10.15.5] Cierre de Hotfix BOT-BRAIN-FINANCE-087 (Resolución de Colisión de Interceptor de Bucle en Webhook). Se propagó HabeasDataBypassInterrupt en CerebroIA y se implementó su captura específica en el enrutador de WhatsApp, logrando la aprobación inmediata (is_approved=True) y el despacho directo de la cuota ciega con script legal sin agotar reintentos ni disparar el supervisor. Score certificado: 1.000 (169/169 Tests PASSED).
-- [v10.15.5] Cierre de ticket BOT-UI-GREETING-088 (Restauración de saludo comercial inicial y optimización del contador de mensajes de usuario en WhatsAppRouter). Score certificado: 1.000.
-- [v10.15.5] Cierre de ticket BOT-BRAIN-FINANCE-089. Sincronización explícita del namespace en app.services y despliegue del asertor rígido contra el sangrado de instrucciones.
-- [v10.15.5] Cierre de ticket BOT-BRAIN-FINANCE-090. Corrección quirúrgica del cálculo del 10% de cuota inicial y alineación de copywriting del PASO 3 en la rama ciega de Meta.
+- [v10.16.0] Cierre de Hotfix BOT-BRAIN-FINANCE-087 (Resolución de Colisión de Interceptor de Bucle en Webhook). Se propagó HabeasDataBypassInterrupt en CerebroIA y se implementó su captura específica en el enrutador de WhatsApp, logrando la aprobación inmediata (is_approved=True) y el despacho directo de la cuota ciega con script legal sin agotar reintentos ni disparar el supervisor. Score certificado: 1.000 (169/169 Tests PASSED).
+- [v10.16.0] Cierre de ticket BOT-UI-GREETING-088 (Restauración de saludo comercial inicial y optimización del contador de mensajes de usuario en WhatsAppRouter). Score certificado: 1.000.
+- [v10.16.0] Cierre de ticket BOT-BRAIN-FINANCE-089. Sincronización explícita del namespace en app.services y despliegue del asertor rígido contra el sangrado de instrucciones.
+- [v10.16.0] Cierre de ticket BOT-BRAIN-FINANCE-090. Corrección quirúrgica del cálculo del 10% de cuota inicial y alineación de copywriting del PASO 3 en la rama ciega de Meta.
