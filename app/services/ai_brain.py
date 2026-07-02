@@ -795,10 +795,12 @@ REGLAS ESTRICTAS DE USO:
             phase = self._determine_funnel_phase(prospect_data)
             moto_confirmada = prospect_data.get("moto_confirmada") is True if prospect_data else False
             
-            # REGLA v1.3.1: Desacople de Crédito (Mandatorio)
-            # La herramienta de crédito debe estar disponible en las fases 1, 2 y 3
-            # para cumplir con el protocolo de "Valor Primero" y la Phase 2.
-            if phase in ["PHASE_1_PROFILING", "PHASE_2_HABEAS_DATA", "PHASE_3_CREDIT_PROFILING"]:
+            # REGLA v1.4.0: Aislamiento de Crédito por Fase (BOT-BRAIN-SCOPE-096)
+            # WHY: Exponer calculate_credit_score en PHASE_1_PROFILING causaba que el LLM
+            # ejecutara el motor de crédito prematuramente ante consultas de catálogo simples,
+            # detonando el cortocircuito de Habeas Data. La herramienta de crédito SOLO
+            # se inyecta a partir de PHASE_2 (intención financiera confirmada + moto bloqueada).
+            if phase in ["PHASE_2_HABEAS_DATA", "PHASE_3_CREDIT_PROFILING"]:
                 function_declarations.append(credit_function)
                 logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Phase: {phase})")
             else:

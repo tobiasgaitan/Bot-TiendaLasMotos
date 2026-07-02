@@ -18,10 +18,11 @@ class TestProactiveCredit(unittest.TestCase):
 
 
 
-    def test_proactive_tools_without_habeas(self):
+    def test_phase1_excludes_credit_tool(self):
         """
-        GIVEN: Un prospecto nuevo (sin Habeas Data aceptado).
-        THEN: La herramienta 'calculate_credit_score' DEBE estar disponible (Proactivo).
+        BOT-BRAIN-SCOPE-096: En PHASE_1_PROFILING (enganche) la herramienta
+        'calculate_credit_score' NO debe estar disponible para evitar que el
+        LLM detone el motor de crédito en consultas de catálogo simples.
         """
         prospect_data = {
             "exists": True,
@@ -30,32 +31,35 @@ class TestProactiveCredit(unittest.TestCase):
         }
         tools = self.cerebro._create_tools(prospect_data)
         
-        # Extraer nombres de funciones de las declaraciones
         function_names = []
         for tool in tools:
             for fd in tool.function_declarations:
                 function_names.append(fd.name)
         
-        self.assertIn("calculate_credit_score", function_names, "La herramienta de crédito debe estar disponible proactivamente.")
+        self.assertNotIn(
+            "calculate_credit_score", function_names,
+            "PHASE_1_PROFILING NO debe exponer calculate_credit_score (BOT-BRAIN-SCOPE-096)."
+        )
+        self.assertIn("search_catalog", function_names, "search_catalog DEBE estar siempre disponible.")
 
-    def test_proactive_tools_in_phase_2(self):
+    def test_phase2_includes_credit_tool(self):
         """
-        GIVEN: Un prospecto en Fase 2 (Habeas Data Request).
+        GIVEN: Un prospecto en Fase 2 (Habeas Data Request) con intención financiera.
         THEN: La herramienta 'calculate_credit_score' DEBE estar disponible.
         """
         prospect_data = {
             "nombre": "Juan",
             "ciudad": "Bogota",
             "moto_confirmada": True,
+            "moto_interest": "Raider 125",
             "forma_pago": "credito",
             "habeas_data_accepted": False
         }
-        # Forzar que _determine_funnel_phase devuelva PHASE_2
-        # (Ya debería devolverlo con estos datos)
         tools = self.cerebro._create_tools(prospect_data)
         
         function_names = [fd.name for tool in tools for fd in tool.function_declarations]
-        self.assertIn("calculate_credit_score", function_names)
+        self.assertIn("calculate_credit_score", function_names,
+                       "PHASE_2_HABEAS_DATA DEBE incluir calculate_credit_score.")
 
     def test_deterministic_insurance_fallback(self):
         """
