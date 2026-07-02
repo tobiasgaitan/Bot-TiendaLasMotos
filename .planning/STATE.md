@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.15.5
-**Último Hito:** hotfix-blind-quota-parity: Cuota inicial exacta del 10% y copywriting del PASO 3 en calculate_credit_score.
-**Coherence Score:** 1.000 (170/170 Tests PASSED)
+**Versión Actual:** v10.15.6
+**Último Hito:** hotfix-sticker-habeas: Normalización de stickers afirmativos a 'Sí' y captura de HabeasDataBypassInterrupt en media handler.
+**Coherence Score:** 1.000 (171/171 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -33,6 +33,7 @@
 | 087 | hotfix bypass interceptor collision | 2026-07-02 | 0df70dc | 087-hotfix-bypass-interceptor-collision |
 | 089 | hotfix-catalog-import-leak | 2026-07-02 | e5df74a | 089-hotfix-catalog-import-leak |
 | 090 | hotfix-blind-quota-parity | 2026-07-02 | b87291a | 090-hotfix-blind-quota-parity |
+| 091 | hotfix-sticker-habeas | 2026-07-02 | 1d28f47 | 091-hotfix-sticker-habeas |
 
 - v10.13.1: hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases.
 - v10.14.0: hotfix-brain-return-contingency: Resolución de la contingencia de retorno de PermissionError en `ai_brain.py` y robustecimiento de aserciones en test.
@@ -42,4 +43,5 @@
 - v10.15.3: hotfix-bypass-interceptor-collision: Intercepción directa de HabeasDataBypassInterrupt en el router de WhatsApp para aprobación inmediata con cuota ciega y script legal sin pasar por el supervisor. Coherence Score: 1.000 (169/169 Tests PASSED).
 - v10.15.4: hotfix-catalog-import-leak: Exposición explícita de CatalogService en app/services/__init__.py para restablecer la paridad de inicialización y contención quirúrgica de fuga de contexto en HabeasDataBypassInterrupt. Coherence Score: 1.000 (170/170 Tests PASSED).
 - v10.15.5: hotfix-blind-quota-parity: Cuota inicial exacta del 10% del precio obtenido y copywriting del PASO 3 en la rama ciega de calculate_credit_score. Coherence Score: 1.000 (170/170 Tests PASSED).
+- v10.15.6: hotfix-sticker-habeas: Normalización de stickers afirmativos a 'Sí' y captura de HabeasDataBypassInterrupt en media handler. Coherence Score: 1.000 (171/171 Tests PASSED).
 
