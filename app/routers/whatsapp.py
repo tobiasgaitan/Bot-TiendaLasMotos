@@ -486,16 +486,29 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                     return
 
                             # 2. Handle Sentiment / Memes / Stickers
-                            elif vision_response.startswith("[System Note:"):
+                            # Interceptor for affirmative stickers mapping to positive emojis
+                            is_affirmative_sticker = False
+                            if msg_type == "sticker":
+                                sticker_obj = msg_data.get("sticker", {})
+                                sticker_emoji = sticker_obj.get("emoji", "") if isinstance(sticker_obj, dict) else ""
+                                metadata_str = str(sticker_obj).lower() if sticker_obj else ""
+                                vision_str = vision_response.lower() if vision_response else ""
+                                affirmative_terms = ["thumbs_up", "thumbsup", "pulgar arriba", "thumbs-up", "👍", "si", "sí", "ok", "✅", "👌"]
+                                if any(term in vision_str for term in affirmative_terms) or any(term in metadata_str for term in affirmative_terms):
+                                    is_affirmative_sticker = True
+
+                            if vision_response.startswith("[System Note:") or (msg_type == "sticker" and is_affirmative_sticker):
                                 logger.info("🧠 General image/meme/sticker detected.")
                                 _ensure_services()
                                 cerebro_ia = CerebroIA(config_loader, catalog_service_local)
                                 cerebro_ia.motor_financiero = motor_financiero
                                 
+                                input_text = "Sí" if (msg_type == "sticker" and is_affirmative_sticker) else vision_response
+                                
                                 if memory_service_module.memory_service:
                                     ms = memory_service_module.memory_service
                                     await ms.create_prospect_if_missing(user_phone)
-                                    await ms.generate_and_update_summary(user_phone, f"User sent media: {vision_response}", cerebro_ia)
+                                    await ms.generate_and_update_summary(user_phone, f"User sent media: {input_text}", cerebro_ia)
                                     
                                     prospect_data = await ms.get_prospect_data(user_phone)
                                     current_history = await ms.get_chat_history(user_phone, limit=10)
@@ -504,19 +517,24 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                         return
                                     
                                     if prospect_data: prospect_data["phone"] = user_phone
-                                    final_response = await cerebro_ia.pensar_respuesta(
-                                        vision_response,
-                                        context="", 
-                                        prospect_data=prospect_data,
-                                        history=current_history,
-                                        skip_greeting=True
-                                    )
                                     
+                                    try:
+                                        final_response = await cerebro_ia.pensar_respuesta(
+                                            input_text,
+                                            context="", 
+                                            prospect_data=prospect_data,
+                                            history=current_history,
+                                            skip_greeting=True
+                                        )
+                                    except HabeasDataBypassInterrupt as hdbi:
+                                        logger.info("🛡️ [HABEAS-BYPASS-STICKER] Cortocircuito limpio capturado en el router de WhatsApp (Sticker). Aprobación inmediata.")
+                                        final_response = str(hdbi.args[0])
+
                                     if not final_response:
                                         final_response = "¡Estuvo bueno! 😅 Pero cuéntame, ¿en qué moto estabas pensando?"
                                     
                                     await _send_whatsapp_message(user_phone, final_response, phone_number_id=phone_number_id)
-                                    await ms.save_message(user_phone, "user", vision_response)
+                                    await ms.save_message(user_phone, "user", input_text)
                                     await ms.save_message(user_phone, "model", final_response)
                                     return
 

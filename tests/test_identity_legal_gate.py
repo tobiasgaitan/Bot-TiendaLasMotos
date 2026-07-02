@@ -1,6 +1,7 @@
 import unittest
 import sys
 import os
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Add app to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -111,6 +112,96 @@ class TestIdentityLegalGate(unittest.TestCase):
         # 2. Prohibir mutaciones nulas o strings vacíos
         self.assertIsNotNone(simulated_response, "El contenido de la cuota no puede ser None.")
         self.assertNotEqual(simulated_response.strip(), "", "El contenido de la cuota no puede ser un string vacío.")
+
+    @patch("app.routers.whatsapp.db")
+    @patch("app.routers.whatsapp.message_buffer")
+    @patch("app.routers.whatsapp.config_loader")
+    @patch("app.routers.whatsapp.catalog_service_local")
+    @patch("app.routers.whatsapp.config_service")
+    @patch("app.routers.whatsapp.judge_service")
+    @patch("app.routers.whatsapp.memory_service_module")
+    @patch("app.routers.whatsapp.CerebroIA")
+    @patch("app.routers.whatsapp.storage_service")
+    @patch("app.routers.whatsapp._send_whatsapp_message")
+    @patch("app.services.whatsapp_service.whatsapp_service")
+    def test_sticker_affirmative_normalization_to_si(
+        self, mock_wa_service, mock_send_wa, mock_storage, mock_cerebro_class, 
+        mock_mem_module, mock_judge, mock_config_service, mock_catalog, 
+        mock_config_loader, mock_message_buffer, mock_db
+    ):
+        """
+        GIVEN: A webhook message payload containing msg_type: 'sticker'
+        AND: The sticker represents an affirmative response ('thumbs_up')
+        WHEN: WhatsApp router receives and processes the sticker
+        THEN: It must normalize the input to 'Sí' towards CerebroIA, which
+              raises HabeasDataBypassInterrupt, leading to immediate approval
+              and saving 'Sí' as the user's message.
+        """
+        import asyncio
+        from fastapi import BackgroundTasks
+        from app.routers.whatsapp import _handle_message_background
+        from app.core.exceptions import HabeasDataBypassInterrupt
+        
+        # 1. Payload simulating incoming sticker message
+        msg_data = {
+            "from": "573192564288",
+            "id": "wamid.sticker_test_123",
+            "type": "sticker",
+            "sticker": {
+                "id": "sticker_media_123",
+                "mime_type": "image/webp",
+                "emoji": "👍"
+            },
+            "phone_number_id": "1021779847693778"
+        }
+        background_tasks = BackgroundTasks()
+
+        # 2. Mock Prospect data
+        mock_prospect_data = {
+            "exists": True,
+            "celular": "+573192564288",
+            "chatbot_status": "ACTIVE",
+            "status": "PENDING",
+            "source": "whatsapp_bot",
+            "habeas_data_accepted": False
+        }
+
+        # 3. Setup mocks
+        mock_ms = AsyncMock()
+        mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+        mock_ms.create_prospect_if_missing = AsyncMock()
+        mock_ms.get_chat_history = AsyncMock(return_value=[])
+        mock_ms.save_message = AsyncMock()
+        mock_ms.generate_and_update_summary = AsyncMock()
+        mock_mem_module.memory_service = mock_ms
+
+        mock_storage.download_media = AsyncMock(return_value=b"fake_image_bytes")
+        
+        mock_vision_instance = AsyncMock()
+        mock_vision_instance.analyze_image = AsyncMock(return_value="[System Note: thumbs_up]")
+        
+        with patch("app.routers.whatsapp.VisionService", return_value=mock_vision_instance):
+            mock_cerebro = AsyncMock()
+            mock_cerebro.pensar_respuesta = AsyncMock(side_effect=HabeasDataBypassInterrupt("Bypass Approved"))
+            mock_cerebro_class.return_value = mock_cerebro
+            
+            mock_message_buffer.add_message = AsyncMock(return_value=True)
+            mock_wa_service.mark_as_read = AsyncMock(return_value=True)
+            mock_send_wa.return_value = True
+
+            # Run the handler
+            asyncio.run(_handle_message_background(msg_data, background_tasks))
+
+            # Verification
+            mock_storage.download_media.assert_called_with("sticker_media_123")
+            mock_vision_instance.analyze_image.assert_called_once()
+            
+            mock_cerebro.pensar_respuesta.assert_called_once()
+            args, kwargs = mock_cerebro.pensar_respuesta.call_args
+            self.assertEqual(args[0], "Sí")
+            
+            mock_send_wa.assert_called_with("+573192564288", "Bypass Approved", phone_number_id="1021779847693778")
+            mock_ms.save_message.assert_any_call("+573192564288", "user", "Sí")
 
 if __name__ == '__main__':
     unittest.main()
