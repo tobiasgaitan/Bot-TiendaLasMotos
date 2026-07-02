@@ -1438,10 +1438,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         "(Política: https://tiendalasmotos.com/politica-de-privacidad). Solo confírmame con un 'Sí'."
                                     )
 
-                                    credit_res += f"\n\n{funnel_instruction}"
+                                    credit_res_for_llm = credit_res + f"\n\n{funnel_instruction}"
                                     response_parts.append(types.Part.from_function_response(
                                         name="calculate_credit_score",
-                                        response={"result": credit_res}
+                                        response={"result": credit_res_for_llm}
                                     ))
                                     raise HabeasDataBypassInterrupt(credit_res)
                             except HabeasDataBypassInterrupt:

@@ -356,3 +356,147 @@ class TestEvaluateProfileEmptyFirestoreConfig:
             f"[E2E-095] link_brilla debe retornar str con excepción en partners, obtenido: {type(result)}"
         assert result == "#", \
             f"[E2E-095] link_brilla debe retornar '#' en fallback de excepción, obtenido: '{result}'"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BOT-BRAIN-FINANCE-089: Integration test for context leak and blind simulation bypass
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_meta_payload_leak_prevention_and_bypass():
+    """
+    [BOT-BRAIN-FINANCE-089] Intercepts the WhatsApp message payload sent to Meta
+    and executes strict Regex checks to prevent context leaks (directives) and
+    detect silent bypasses of the blind simulation for credit queries without Habeas Data.
+    """
+    import re
+    from app.routers.whatsapp import _handle_message_background
+    from fastapi import BackgroundTasks
+    
+    # 1. Setup mock request payload for a prospect requesting credit
+    # but having habeas_data_accepted = False (triggers blind simulation)
+    user_phone = "+573192564288"
+    msg_data = {
+        "from": user_phone,
+        "id": "wamid.test_leak_prevent_089",
+        "timestamp": "1672531199",
+        "text": "Quiero comprar una Raider 125 a crédito",
+        "type": "text",
+        "phone_number_id": "999999"
+    }
+
+    # 2. Mock services to simulate a prospect with habeas_data_accepted = False
+    mock_memory_service = MagicMock()
+    mock_memory_service.save_message = AsyncMock(return_value=True)
+    mock_memory_service.get_prospect_data = AsyncMock(return_value={
+        "exists": True,
+        "status": "PENDING",
+        "chatbot_status": "ACTIVE",
+        "name": "Juan Test",
+        "celular": user_phone,
+        "habeas_data_accepted": False, # Triggers the blind simulation flow!
+        "moto_interest": "Raider 125"
+    })
+    mock_memory_service.get_chat_history = AsyncMock(return_value=[])
+    mock_memory_service.create_prospect_if_missing = AsyncMock()
+    mock_memory_service.update_last_interaction = AsyncMock()
+    mock_memory_service.transition_to_in_progress = AsyncMock()
+    mock_memory_service.generate_and_update_summary = AsyncMock()
+    
+    # Mock CerebroIA & JudgeService
+    # Mock self._catalog_service inside cerebro to return the Raider 125 catalog item
+    mock_catalog = MagicMock()
+    mock_catalog.search_items.return_value = [{
+        "name": "Raider 125",
+        "price": 6500000.0,
+        "raw_price": "6500000",
+        "formatted_price": "$6.500.000",
+        "summary": "Excelente moto"
+    }]
+    mock_catalog.search.return_value = [{
+        "name": "Raider 125",
+        "price": 6500000.0,
+        "raw_price": "6500000",
+        "formatted_price": "$6.500.000",
+        "summary": "Excelente moto"
+    }]
+    
+    # We need to mock motor_financiero as well to return a simulated payment
+    mock_financial = MagicMock()
+    mock_financial.calculate_payment.return_value = {
+        "cuota_mensual": 350000.0
+    }
+    
+    # Mock GenAI client
+    mock_client = MagicMock()
+    mock_chat = AsyncMock()
+
+    # Setup the response for chat.send_message
+    mock_response = MagicMock()
+    mock_candidate = MagicMock()
+    mock_part = MagicMock()
+
+    # Setup the function call
+    mock_function_call = MagicMock()
+    mock_function_call.name = "calculate_credit_score"
+    mock_function_call.args = {
+        "ocupacion_y_contrato": "Independiente",
+        "ingresos_demostrables": "1500000",
+        "historial_datacredito": "Al dia"
+    }
+
+    mock_part.function_call = mock_function_call
+    mock_part.text = None
+    mock_candidate.content.parts = [mock_part]
+    mock_response.candidates = [mock_candidate]
+
+    # Configure send_message to return mock_response
+    mock_chat.send_message = AsyncMock(return_value=mock_response)
+
+    # Configure mock_client.aio.chats.create to return mock_chat
+    mock_client.aio.chats.create = MagicMock(return_value=mock_chat)
+    
+    # Mock send_text_message on whatsapp_service to capture the outgoing message
+    captured_messages = []
+    async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
+        captured_messages.append(text)
+        return {"messages": [{"id": "wamid.mocked_123"}]}
+
+    with patch("app.routers.whatsapp.settings") as mock_settings, \
+         patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
+         patch("app.routers.whatsapp.judge_service") as mock_judge, \
+         patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
+         patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+         patch("app.routers.whatsapp.catalog_service_local", mock_catalog), \
+         patch("app.routers.whatsapp.motor_financiero", mock_financial), \
+         patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+         
+        mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+        
+        background_tasks = BackgroundTasks()
+        await _handle_message_background(msg_data, background_tasks)
+        
+        # Verify a message was sent to Meta
+        assert len(captured_messages) > 0, "No messages were sent to Meta."
+        sent_text = captured_messages[0]
+        
+        # 3. STRICT REGEX ASSERTIONS: Context Bleeding / Internal Directives
+        # The text must not contain any system instructions/directives
+        leak_pattern = re.compile(
+            r"(EL USUARIO ESTÁ LISTO PARA EL CRÉDITO|calculate_credit_score|Habeas Data Aceptado|SISTEMA:|MANDATO CRÍTICO|ERROR:)",
+            re.IGNORECASE
+        )
+        assert not leak_pattern.search(sent_text), \
+            f"Context Bleeding detected! Outgoing Meta message contains system directives: '{sent_text}'"
+            
+        # 4. STRICT ASSERTIONS: Silent Bypass of Blind Simulation
+        # The text must contain the blind simulation credit estimation and request for consent
+        assert "Estimación de cuota base aproximada" in sent_text, \
+            f"Blind simulation bypass! Response does not contain base quota estimation: '{sent_text}'"
+        assert "$" in sent_text, \
+            f"Blind simulation bypass! Response does not contain currency symbol: '{sent_text}'"
+        assert "tratamiento de tus datos personales" in sent_text or "https://tiendalasmotos.com/politica-de-privacidad" in sent_text, \
+            f"Blind simulation bypass! Response does not request Habeas Data consent: '{sent_text}'"
+
