@@ -23,6 +23,7 @@ from google.api_core import exceptions as gcp_exceptions
 from app.core.config import settings
 from app.core.config_loader import ConfigLoader
 from app.core.security import get_firebase_credentials_object
+from app.core.exceptions import HabeasDataBypassInterrupt
 
 from app.services.judge_service import judge_service
 from app.services.financial_service import financial_service
@@ -785,13 +786,19 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     if prospect_data is not None:
                         prospect_data["phone"] = user_phone 
 
-                    response_text = await cerebro_ia.pensar_respuesta(
-                        message_body,
-                        context=current_context,
-                        prospect_data=prospect_data,
-                        history=current_history,
-                        skip_greeting=skip_greeting
-                    )
+                    try:
+                        response_text = await cerebro_ia.pensar_respuesta(
+                            message_body,
+                            context=current_context,
+                            prospect_data=prospect_data,
+                            history=current_history,
+                            skip_greeting=skip_greeting
+                        )
+                    except HabeasDataBypassInterrupt as hdbi:
+                        logger.info("🛡️ [HABEAS-BYPASS] Cortocircuito limpio capturado en el router de WhatsApp. Aprobación inmediata.")
+                        response_text = str(hdbi.args[0])
+                        is_approved = True
+                        break
 
                     # 4. Auditoría del Juez de Fundamentación
                     is_approved, rejection_reason = await judge_service.analyze_response(
@@ -973,13 +980,19 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                         if attempts > 1:
                             current_context += f"\n\n[SISTEMA - ERROR DE CALIDAD]: Tu respuesta anterior fue RECHAZADA por el Juez. Motivo: {rejection_reason}. Por favor, corrige este punto y genera una nueva respuesta válida."
 
-                        response_text = await cerebro_ia.pensar_respuesta(
-                            transcription,
-                            context=current_context, 
-                            prospect_data=prospect_data,
-                            history=current_history,
-                            skip_greeting=True
-                        )
+                        try:
+                            response_text = await cerebro_ia.pensar_respuesta(
+                                transcription,
+                                context=current_context, 
+                                prospect_data=prospect_data,
+                                history=current_history,
+                                skip_greeting=True
+                            )
+                        except HabeasDataBypassInterrupt as hdbi:
+                            logger.info("🛡️ [HABEAS-BYPASS-AUDIO] Cortocircuito limpio capturado en el router de WhatsApp (Audio). Aprobación inmediata.")
+                            response_text = str(hdbi.args[0])
+                            is_approved = True
+                            break
 
                         # 4. Auditoría del Juez
                         is_approved, rejection_reason = await judge_service.analyze_response(

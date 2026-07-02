@@ -169,7 +169,10 @@ async def test_habeas_data_gate_before_credit_score():
          patch('app.services.ai_brain.SDK_AVAILABLE', True), \
          patch('app.services.ai_brain.logger.warning') as mock_log_warn:
 
-        response = await cerebro.pensar_respuesta("Quiero mi crédito", prospect_data=prospect_no_consent)
+        from app.core.exceptions import HabeasDataBypassInterrupt
+        with pytest.raises(HabeasDataBypassInterrupt) as exc_info:
+            await cerebro.pensar_respuesta("Quiero mi crédito", prospect_data=prospect_no_consent)
+        response = str(exc_info.value.args[0])
         
         # 1. Asegurar que el log forense de seguridad se haya registrado
         mock_log_warn.assert_called()
@@ -405,11 +408,13 @@ async def test_habeas_bypass_interrupt_e2e():
          patch('app.services.ai_brain.SDK_AVAILABLE', True), \
          patch('app.services.ai_brain.logger') as mock_logger:
 
-        # ACT: Call pensar_respuesta directly — must NOT raise
-        response = await cerebro.pensar_respuesta(
-            "Quiero financiar mi moto",
-            prospect_data=prospect_no_consent
-        )
+        # ACT: Call pensar_respuesta directly — must raise HabeasDataBypassInterrupt
+        with pytest.raises(HabeasDataBypassInterrupt) as exc_info:
+            await cerebro.pensar_respuesta(
+                "Quiero financiar mi moto",
+                prospect_data=prospect_no_consent
+            )
+        response = str(exc_info.value.args[0])
 
         # ASSERT 1: No exception was raised (orchestrator did not collapse)
         assert response is not None, "pensar_respuesta debe retornar un string, no None."

@@ -617,8 +617,8 @@ class CerebroIA:
             else:
                 return final_text
         except HabeasDataBypassInterrupt as hdbi:
-            logger.info(f"🛡️ [HABEAS-BYPASS] Cortocircuito limpio ejecutado. Retornando respuesta directa al webhook.")
-            return str(hdbi.args[0])
+            logger.info(f"🛡️ [HABEAS-BYPASS] Cortocircuito limpio ejecutado. Propagando al router.")
+            raise
 
     @staticmethod
     def clean_markdown_blocks(text: str) -> str:
