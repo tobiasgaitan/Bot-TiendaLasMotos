@@ -159,8 +159,21 @@ async def verify_webhook(
         raise HTTPException(status_code=403, detail="Forbidden")
 
 async def _enqueue_cloud_task(payload: Dict[str, Any]) -> None:
+    """
+    Enqueue a webhook payload to Cloud Tasks for async processing.
+
+    BOT-BRAIN-ALIGNMENT-099: dispatch_deadline limits total retry window to 120s.
+    This prevents zombie messages when Meta webhook payloads expire or the bot's
+    inference takes too long. After 120s Cloud Tasks stops retrying.
+
+    RESILIENCE CONTRACT: The /webhook/task-processor endpoint SHOULD return HTTP 200
+    and log errors internally for inference failures where we do NOT want Cloud Tasks
+    to retry the message to the client. The dispatch_deadline acts as the primary shield.
+    """
     try:
         from google.cloud import tasks_v2
+        from google.protobuf import duration_pb2
+
         client = tasks_v2.CloudTasksClient()
         
         if not settings.cloud_tasks_queue_path or not settings.task_processor_url:
@@ -175,14 +188,18 @@ async def _enqueue_cloud_task(payload: Dict[str, Any]) -> None:
                     "X-Task-Token": settings.webhook_verify_token
                 },
                 "body": json.dumps(payload).encode(),
-            }
+            },
+            # BOT-BRAIN-ALIGNMENT-099: TTL de 120s para descartar webhooks zombi.
+            # WHY: Sin dispatch_deadline, Cloud Tasks reintenta durante 30 min (default),
+            # causando mensajes duplicados al usuario cuando Meta ya expiró el webhook.
+            "dispatch_deadline": duration_pb2.Duration(seconds=120)
         }
         
         await asyncio.to_thread(
             client.create_task,
             request={"parent": settings.cloud_tasks_queue_path, "task": task}
         )
-        logger.info(f"☁️ [CLOUD TASKS] Payload successfully enqueued to {settings.cloud_tasks_queue_path}")
+        logger.info(f"☁️ [CLOUD TASKS] Payload successfully enqueued to {settings.cloud_tasks_queue_path} (TTL: 120s)")
     except Exception as e:
         logger.error(f"❌ [CLOUD TASKS] Error enqueueing payload: {e}")
         raise HTTPException(status_code=500, detail="Failed to enqueue Cloud Task")

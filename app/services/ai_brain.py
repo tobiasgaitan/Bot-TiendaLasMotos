@@ -905,9 +905,53 @@ REGLAS ESTRICTAS DE USO:
                     if captured_fields:
                         captured_data_xml = f"\n<datos_ya_capturados>\n" + "\n".join([f"  <{k}>{prospect_data[k]}</{k}>" for k in captured_fields]) + "\n</datos_ya_capturados>"
                 
-                full_prompt = f"""
-{self._get_current_instruction()}
+                # --- BOT-BRAIN-ALIGNMENT-099: SYNONYM INJECTION ---
+                # WHY: category_aliases exists in Firestore for programmatic search indexing
+                # but the LLM has zero awareness of regional synonyms (e.g. "señoritera" → scooter).
+                # Injecting them into the prompt enables the LLM to translate user colloquialisms
+                # into proper search_catalog queries without hardcoding every regional term.
+                synonyms_xml = ""
+                try:
+                    from app.services.config_service import config_service
+                    catalog_aliases = config_service.get_catalog_aliases()
+                    if catalog_aliases:
+                        alias_lines = []
+                        for cat, syns in catalog_aliases.items():
+                            csv_syns = ", ".join(syns)
+                            alias_lines.append(f"  <alias categoria=\"{cat}\">{csv_syns}</alias>")
+                        synonyms_xml = (
+                            "\n<diccionario_sinonimos_regionales>\n"
+                            + "\n".join(alias_lines)
+                            + "\n  [INSTRUCCIÓN: Si el usuario usa alguno de estos sinónimos, tradúcelo a la categoría correspondiente al llamar search_catalog.]"
+                            + "\n</diccionario_sinonimos_regionales>\n"
+                        )
+                        logger.info(f"📖 [SYNONYM INJECTION] {len(catalog_aliases)} categorías inyectadas en prompt")
+                except Exception as _syn_err:
+                    logger.warning(f"⚠️ [SYNONYM INJECTION] Failed to inject aliases: {_syn_err}")
 
+                base_instruction = self._get_current_instruction()
+
+                # --- BOT-BRAIN-ALIGNMENT-099: PROMPT-TOOL DESYNC PURGE ---
+                # WHY: The system prompt contains "REGLA DE CREDITO CIEGO" which instructs the LLM
+                # to use calculate_credit_score. But in PHASE_1, that tool is NOT in the toolset
+                # (isolated in Quick-096). This causes the LLM to panic-loop trying to invoke
+                # a non-existent tool for ~6 minutes. We purge the instruction dynamically.
+                has_credit_tool = any(
+                    fd.name == "calculate_credit_score"
+                    for tool in (dynamic_tools or [])
+                    for fd in (tool.function_declarations or [])
+                )
+                if not has_credit_tool:
+                    base_instruction = re.sub(
+                        r'-\s*REGLA DE CREDITO CIEGO:[^\n]*\n?',
+                        '- [SISTEMA: La herramienta de crédito NO está disponible en esta fase. Si el usuario pregunta por cuotas, primero identifica la moto de interés y confirma la forma de pago.]\n',
+                        base_instruction
+                    )
+                    logger.info(f"🧹 [PROMPT PURGE] 'REGLA DE CREDITO CIEGO' eliminada del prompt (Phase: {phase}, credit tool absent)")
+
+                full_prompt = f"""
+{base_instruction}
+{synonyms_xml}
 <contexto_dinamico>
   <prospecto>
     <nombre_real>{user_name}</nombre_real>
@@ -1137,6 +1181,21 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                     # Execute function calls
                     logger.info(f"⚡ AI triggered {len(function_calls)} function call(s)")
+
+                    # --- BOT-BRAIN-ALIGNMENT-099: HARD-CAP (Max 2 tool calls per turn) ---
+                    # WHY: Without a per-turn cap, the LLM can dispatch unlimited function_calls
+                    # in a single response (e.g. search_catalog + calculate_credit_score + handoff),
+                    # causing an exhaustive agentic loop. Truncating to 2 prevents resource waste
+                    # and forces the LLM to prioritize the most critical tool per turn.
+                    MAX_TOOL_CALLS_PER_TURN = 2
+                    if len(function_calls) > MAX_TOOL_CALLS_PER_TURN:
+                        discarded = [fc.name for fc in function_calls[MAX_TOOL_CALLS_PER_TURN:]]
+                        logger.warning(
+                            f"🛑 [HARD-CAP] LLM dispatched {len(function_calls)} function calls in one turn. "
+                            f"Truncating to {MAX_TOOL_CALLS_PER_TURN}. Discarded: {discarded}"
+                        )
+                        function_calls = function_calls[:MAX_TOOL_CALLS_PER_TURN]
+
                     response_parts = []
                     
                     for fc in function_calls:
