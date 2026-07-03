@@ -26,6 +26,8 @@ async def test_10_concurrent_webhooks_no_deadlock(concurrent_webhook_factory):
          patch("app.routers.whatsapp._handle_message_background", AsyncMock()) as mock_handle:
          
          mock_settings.whatsapp_app_secret = None
+         mock_settings.cloud_tasks_queue_path = None
+         mock_settings.task_processor_url = None
          
          # Execute concurrently
          responses = await asyncio.gather(*(run_webhook(p) for p in payloads))

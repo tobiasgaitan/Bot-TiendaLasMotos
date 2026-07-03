@@ -37,6 +37,11 @@ class Settings:
         self.webhook_verify_token: str = os.getenv("WEBHOOK_VERIFY_TOKEN")
         self.whatsapp_app_secret: str = os.getenv("WHATSAPP_APP_SECRET", "***REMOVED***")
         
+        # Cloud Tasks Configuration (BOT-ARCH-CLOUDTASKS-098)
+        # Fallback to local synchronous background tasks if not set (for local dev)
+        self.cloud_tasks_queue_path: Optional[str] = os.getenv("CLOUD_TASKS_QUEUE_PATH")
+        self.task_processor_url: Optional[str] = os.getenv("TASK_PROCESSOR_URL")
+        
         # Validate critical settings
         self._validate_config()
 
@@ -96,6 +101,10 @@ class Settings:
         # Server
         print(f"Port: {self.port}")
         print(f"Admin API Key: {'✅ SECURE' if self.admin_api_key != 'moto_master_2026' else '⚠️ DEFAULT/INSECURE'}")
+        
+        # Cloud Tasks
+        print(f"Cloud Tasks Queue: {'✅ ' + self.cloud_tasks_queue_path if self.cloud_tasks_queue_path else '⚠️ NOT SET (Using local fallback)'}")
+        print(f"Task Processor URL: {'✅ ' + self.task_processor_url if self.task_processor_url else '⚠️ NOT SET (Using local fallback)'}")
         print("=" * 60)
         
         # Critical warnings for WhatsApp

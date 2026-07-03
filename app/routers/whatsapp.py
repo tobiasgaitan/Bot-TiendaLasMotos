@@ -158,6 +158,35 @@ async def verify_webhook(
         logger.error("❌ Token de verificación incorrecto.")
         raise HTTPException(status_code=403, detail="Forbidden")
 
+async def _enqueue_cloud_task(payload: Dict[str, Any]) -> None:
+    try:
+        from google.cloud import tasks_v2
+        client = tasks_v2.CloudTasksClient()
+        
+        if not settings.cloud_tasks_queue_path or not settings.task_processor_url:
+            raise ValueError("Cloud Tasks environment variables missing.")
+            
+        task = {
+            "http_request": {
+                "http_method": tasks_v2.HttpMethod.POST,
+                "url": settings.task_processor_url,
+                "headers": {
+                    "Content-type": "application/json",
+                    "X-Task-Token": settings.webhook_verify_token
+                },
+                "body": json.dumps(payload).encode(),
+            }
+        }
+        
+        await asyncio.to_thread(
+            client.create_task,
+            request={"parent": settings.cloud_tasks_queue_path, "task": task}
+        )
+        logger.info(f"☁️ [CLOUD TASKS] Payload successfully enqueued to {settings.cloud_tasks_queue_path}")
+    except Exception as e:
+        logger.error(f"❌ [CLOUD TASKS] Error enqueueing payload: {e}")
+        raise HTTPException(status_code=500, detail="Failed to enqueue Cloud Task")
+
 @router.post("")
 async def webhook_handler(
     request: Request,
@@ -192,9 +221,12 @@ async def webhook_handler(
         # estado de entrega de los templates de campaña masiva. Antes de este parche,
         # _is_valid_message() los ignoraba silenciosamente (KeyError silenciado).
         if _is_valid_statuses(payload):
-            status_data = _extract_status_data(payload)
-            if status_data:
-                await _handle_statuses_background(status_data)
+            if settings.cloud_tasks_queue_path and settings.task_processor_url:
+                await _enqueue_cloud_task(payload)
+            else:
+                status_data = _extract_status_data(payload)
+                if status_data:
+                    await _handle_statuses_background(status_data)
             return {"status": "received"}
 
         # --- RAMA 2: Mensajes reales del usuario ---
@@ -215,8 +247,12 @@ async def webhook_handler(
             logger.warning(f"🔄 Duplicate WAMID ignored in handler: {msg_id_unique}")
             return {"status": "ignored", "procesado": False}
 
-        # Procesamiento asíncrono no bloqueante vía BackgroundTasks
-        background_tasks.add_task(_handle_message_background, msg_data, background_tasks)
+        if settings.cloud_tasks_queue_path and settings.task_processor_url:
+            await _enqueue_cloud_task(payload)
+        else:
+            # Procesamiento asíncrono no bloqueante vía BackgroundTasks
+            background_tasks.add_task(_handle_message_background, msg_data, background_tasks)
+            
         return {"status": "received"}
 
     except HTTPException:
@@ -225,6 +261,48 @@ async def webhook_handler(
         logger.exception(f"Error procesando webhook: {e}")
         return {"status": "error"}
 
+
+# ============================================================================
+# INTERNAL WORKER
+# ============================================================================
+
+@router.post("/task-processor")
+async def task_processor(
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> Dict[str, Any]:
+    """Worker interno que procesa las tareas encoladas de manera 100% síncrona."""
+    # 1. Validación de seguridad (Auth interna)
+    token = request.headers.get("X-Task-Token")
+    if not token or token != settings.webhook_verify_token:
+        logger.error("❌ Invalid or missing X-Task-Token in task-processor")
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    try:
+        payload = await request.json()
+    except Exception as e:
+        logger.error(f"❌ Failed to parse JSON payload in task-processor: {e}")
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    # 2. Enrutamiento síncrono
+    try:
+        if _is_valid_statuses(payload):
+            status_data = _extract_status_data(payload)
+            if status_data:
+                await _handle_statuses_background(status_data)
+            return {"status": "processed", "type": "statuses"}
+
+        if _is_valid_message(payload):
+            msg_data = _extract_message_data(payload)
+            if msg_data:
+                await _handle_message_background(msg_data, background_tasks)
+            return {"status": "processed", "type": "message"}
+
+        return {"status": "ignored", "reason": "invalid_payload"}
+    except Exception as e:
+        logger.exception(f"❌ Error during synchronous task processing: {e}")
+        # Zero-Silent-Failures: return 500 so Cloud Tasks can retry if configured
+        raise HTTPException(status_code=500, detail="Task processing failed")
 
 # ============================================================================
 # BACKGROUND LOGIC
