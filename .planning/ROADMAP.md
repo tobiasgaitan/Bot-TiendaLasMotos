@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
 
-## Tasks Completadas (v10.15.0)
+## Tasks Completadas (v10.18.2)
+- [x] Implementación del Tool Rejection Pattern para calculate_credit_score en PHASE_1_PROFILING y reversión de exclusión.
 - [x] Cierre de Hotfix BOT-BRAIN-HABEAS-085: Validación de moto_interest previa a Fase 2 (Habeas Data).
 
 - [x] Excepción `HabeasDataBypassInterrupt` para cortocircuito limpio del while loop en `pensar_respuesta` (BOT-BRAIN-CRITICAL-E2E-084).

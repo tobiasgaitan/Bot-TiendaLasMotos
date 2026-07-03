@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.16.1)
-Versión: v10.16.1 (Hotfix Catalog Interceptor)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.18.2)
+Versión: v10.18.2 (Tool Rejection Pattern)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Expansión de sinónimos coloquiales y fallback por coincidencia de tokens en CatalogService para evitar retornos vacíos. Cierre de ticket [BOT-BRAIN-CATALOG-091].
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 171/171 Tests PASSED)
+Último Hito: Implementación del Tool Rejection Pattern para calculate_credit_score en PHASE_1_PROFILING y reversión de exclusión. Cierre de ticket [BOT-ARCH-STATE-101].
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 186/186 Tests PASSED)
 
 1. Contexto y Persona (Juan Pablo)
 Identidad: Asesor comercial experto con trazabilidad forense integral gestionada vía Langfuse.
@@ -101,3 +101,4 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.16.1] Cierre de ticket BOT-BRAIN-FINANCE-089. Sincronización explícita del namespace en app.services y despliegue del asertor rígido contra el sangrado de instrucciones.
 - [v10.16.1] Cierre de ticket BOT-BRAIN-FINANCE-090. Corrección quirúrgica del cálculo del 10% de cuota inicial y alineación de copywriting del PASO 3 en la rama ciega de Meta.
 - [v10.16.1] Cierre de Hotfix BOT-BRAIN-CATALOG-091 (Desalineación de scores de difflib y fallback de tokens de la base normalizada). Expansión de sinónimos coloquiales, fallback de coincidencia de tokens y contingencias anti-vacías en búsqueda de catálogo. Coherence Score: 1.000 (171/171 Tests PASSED).
+- [v10.18.2] Cierre de ticket BOT-ARCH-STATE-101 (Tool Rejection Pattern). Reversión de la exclusión de `calculate_credit_score` de Phase 1, remoción de la purga regex del prompt y desarrollo del Tool Rejection Pattern en ejecución de herramientas para retornar error explícito en `PHASE_1_PROFILING`. Coherence Score: 1.000 (186/186 Tests PASSED).
