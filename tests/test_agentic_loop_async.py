@@ -395,7 +395,8 @@ async def test_meta_payload_leak_prevention_and_bypass():
         "name": "Juan Test",
         "celular": user_phone,
         "habeas_data_accepted": False, # Triggers the blind simulation flow!
-        "moto_interest": "Raider 125"
+        "moto_interest": "Raider 125",
+        "forma_pago": "credito"
     })
     mock_memory_service.get_chat_history = AsyncMock(return_value=[])
     mock_memory_service.create_prospect_if_missing = AsyncMock()

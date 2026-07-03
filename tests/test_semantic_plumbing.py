@@ -179,13 +179,12 @@ async def test_synonym_injection_absent_when_no_aliases():
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_credit_blind_rule_purged_in_phase1():
+async def test_credit_blind_rule_preserved_in_phase1():
     """
     BOT-QA-PLUMBING-100 / Assertion 3:
-    GIVEN: The prospect is in PHASE_1_PROFILING (calculate_credit_score NOT in toolset).
+    GIVEN: The prospect is in PHASE_1_PROFILING.
     WHEN: pensar_respuesta builds the full_prompt.
-    THEN: The string 'REGLA DE CREDITO CIEGO' MUST NOT appear in the prompt.
-          Instead, the replacement instruction about tool unavailability MUST appear.
+    THEN: The string 'REGLA DE CREDITO CIEGO' MUST remain in the prompt (no prompt purging).
     """
     cerebro, captured_prompts = _build_cerebro_with_prompt_capture()
 
@@ -200,16 +199,15 @@ async def test_credit_blind_rule_purged_in_phase1():
     assert len(captured_prompts) >= 1, "Gemini chat.send_message was never called."
     full_prompt = captured_prompts[0]
 
-    # CRITICAL ASSERTION: The zombie instruction must be PURGED
-    assert "REGLA DE CREDITO CIEGO" not in full_prompt, (
-        "REGRESIÓN CRÍTICA (Prompt-Tool Desync): 'REGLA DE CREDITO CIEGO' está presente "
-        "en el prompt durante PHASE_1_PROFILING, donde calculate_credit_score NO está "
-        "en el toolset. Esto causa un bucle agéntico de 6 minutos."
+    # In Phase 1, the rule must remain in the prompt now that tool rejection pattern is used
+    assert "REGLA DE CREDITO CIEGO" in full_prompt, (
+        "REGRESIÓN: 'REGLA DE CREDITO CIEGO' fue eliminada del prompt en PHASE_1, "
+        "pero el prompt no debe ser purgado ya que calculate_credit_score está siempre en el toolset."
     )
 
-    # Verify the replacement instruction IS present
-    assert "La herramienta de crédito NO está disponible en esta fase" in full_prompt, (
-        "REGRESIÓN: La instrucción de reemplazo post-purga no fue inyectada en el prompt."
+    # The replacement instruction should NOT be present
+    assert "La herramienta de crédito NO está disponible en esta fase" not in full_prompt, (
+        "REGRESIÓN: La instrucción de reemplazo post-purga fue inyectada en PHASE_1."
     )
 
 

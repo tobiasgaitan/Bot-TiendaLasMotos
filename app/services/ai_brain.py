@@ -405,7 +405,7 @@ class CerebroIA:
             return "PHASE_1_PROFILING"
 
         # --- INTENCIÓN FINANCIERA (v1.3.1) ---
-        is_credit = bool(prospect_data.get("forma_pago") == "credito")
+        is_credit = bool(str(prospect_data.get("forma_pago") or "").strip().lower() in ["credito", "crédito"])
         is_financial_intent = False
         if history:
             finance_keywords = ["cuota", "credito", "crédito", "financiar", "mensualidad", "requisitos", "cuanto pago", "papeles"]
@@ -795,16 +795,10 @@ REGLAS ESTRICTAS DE USO:
             phase = self._determine_funnel_phase(prospect_data)
             moto_confirmada = prospect_data.get("moto_confirmada") is True if prospect_data else False
             
-            # REGLA v1.4.0: Aislamiento de Crédito por Fase (BOT-BRAIN-SCOPE-096)
-            # WHY: Exponer calculate_credit_score en PHASE_1_PROFILING causaba que el LLM
-            # ejecutara el motor de crédito prematuramente ante consultas de catálogo simples,
-            # detonando el cortocircuito de Habeas Data. La herramienta de crédito SOLO
-            # se inyecta a partir de PHASE_2 (intención financiera confirmada + moto bloqueada).
-            if phase in ["PHASE_2_HABEAS_DATA", "PHASE_3_CREDIT_PROFILING"]:
-                function_declarations.append(credit_function)
-                logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Phase: {phase})")
-            else:
-                logger.info(f"🛠️ Toolset: [handoff, catalog] (Phase: {phase})")
+            # Reverted: credit_function is now always included to avoid LLM panic loops,
+            # and we reject it at runtime if called in PHASE_1_PROFILING (Tool Rejection Pattern)
+            function_declarations.append(credit_function)
+            logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Phase: {phase})")
 
             return [types.Tool(function_declarations=function_declarations)]
         except Exception as e:
@@ -931,23 +925,6 @@ REGLAS ESTRICTAS DE USO:
 
                 base_instruction = self._get_current_instruction()
 
-                # --- BOT-BRAIN-ALIGNMENT-099: PROMPT-TOOL DESYNC PURGE ---
-                # WHY: The system prompt contains "REGLA DE CREDITO CIEGO" which instructs the LLM
-                # to use calculate_credit_score. But in PHASE_1, that tool is NOT in the toolset
-                # (isolated in Quick-096). This causes the LLM to panic-loop trying to invoke
-                # a non-existent tool for ~6 minutes. We purge the instruction dynamically.
-                has_credit_tool = any(
-                    fd.name == "calculate_credit_score"
-                    for tool in (dynamic_tools or [])
-                    for fd in (tool.function_declarations or [])
-                )
-                if not has_credit_tool:
-                    base_instruction = re.sub(
-                        r'-\s*REGLA DE CREDITO CIEGO:[^\n]*\n?',
-                        '- [SISTEMA: La herramienta de crédito NO está disponible en esta fase. Si el usuario pregunta por cuotas, primero identifica la moto de interés y confirma la forma de pago.]\n',
-                        base_instruction
-                    )
-                    logger.info(f"🧹 [PROMPT PURGE] 'REGLA DE CREDITO CIEGO' eliminada del prompt (Phase: {phase}, credit tool absent)")
 
                 full_prompt = f"""
 {base_instruction}
@@ -1332,6 +1309,24 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                         elif f_name == "calculate_credit_score":
                             logger.info(f"💰 AI calculating credit score...")
+                            # --- TOOL REJECTION PATTERN (BOT-ARCH-STATE-101) ---
+                            # Si calculate_credit_score es invocada prematuramente en PHASE_1_PROFILING,
+                            # retornamos un JSON/dict de error indicando al LLM que la acción está denegada
+                            # y obligándolo a usar search_catalog y mostrar precio/imagen.
+                            if phase == "PHASE_1_PROFILING":
+                                reject_msg = (
+                                    "Acción denegada: La herramienta calculate_credit_score no puede ser utilizada en PHASE_1_PROFILING. "
+                                    "OBLIGATORIO: Debes identificar primero la moto de interés mediante la herramienta search_catalog, "
+                                    "y mostrar el precio exacto y el enlace de imagen al usuario antes de poder realizar cualquier perfilamiento de crédito. "
+                                    "El estudio de crédito está estrictamente denegado en esta fase inicial."
+                                )
+                                logger.warning(f"🛑 [TOOL REJECTION] calculate_credit_score invoked in PHASE_1_PROFILING. Rejecting for LLM.")
+                                response_parts.append(types.Part.from_function_response(
+                                    name=f_name,
+                                    response={"error": reject_msg}
+                                ))
+                                continue
+
                             credit_res = "No disponible."
                             try:
                                 # [BOT-BRAIN-FINANCE-086] Bifurcación lineal: consentimiento Habeas Data
