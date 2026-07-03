@@ -106,19 +106,22 @@ def _ensure_services_sync():
             config_loader = ConfigLoader(db)
             if not config_loader.get_juan_pablo_personality().get("name"):
                  config_loader.load_all()
-        except Exception: pass
+        except Exception as e:
+            logger.error(f"❌ [INIT] ConfigLoader init failed: {e}", exc_info=True)
 
     # 2.1 Config Service (Financial SSOT)
     if db:
         try:
             config_service.initialize(db)
-        except Exception: pass
+        except Exception as e:
+            logger.error(f"❌ [INIT] ConfigService init failed: {e}", exc_info=True)
 
     # 3. Financial Service (Consolidated v1.5.0)
     if db and not motor_financiero:
          try:
             motor_financiero = financial_service
-         except Exception: pass
+         except Exception as e:
+            logger.error(f"❌ [INIT] FinancialService init failed: {e}", exc_info=True)
 
     # 4. Catalog Service
     if db and not catalog_service_local:
@@ -212,8 +215,8 @@ async def webhook_handler(
             logger.warning(f"🔄 Duplicate WAMID ignored in handler: {msg_id_unique}")
             return {"status": "ignored", "procesado": False}
 
-        # Procesamiento síncrono bloqueante
-        await _handle_message_background(msg_data, background_tasks)
+        # Procesamiento asíncrono no bloqueante vía BackgroundTasks
+        background_tasks.add_task(_handle_message_background, msg_data, background_tasks)
         return {"status": "received"}
 
     except HTTPException:
@@ -697,7 +700,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     elif isinstance(last_ts, str): # String ISO format fallback
                         try:
                             last_time = datetime.fromisoformat(last_ts.replace('Z', '+00:00'))
-                        except: pass
+                        except Exception as e:
+                            logger.warning(f"⚠️ [HISTORY] Error parsing timestamp '{last_ts}': {e}")
                     
                     if last_time:
                         # Calculate duration since previous message
@@ -887,7 +891,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                 "attempts": attempts
                             }
                         )
-                    except: pass
+                    except Exception as e:
+                        logger.warning(f"⚠️ [JUDGE_FALLBACK] Failed to update Langfuse trace: {e}")
 
                     return # Stop processing
 
@@ -941,7 +946,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 calculated_delay = base_delay + jitter
                 
                 # 2. Límite de seguridad
-                typing_delay = min(8.0, calculated_delay)
+                typing_delay = min(1.5, calculated_delay)
                 logger.info(f"⏳ Human Latency: len={len(str(response_text))}, delay={typing_delay:.2f}s")
 
             if typing_delay > 0:

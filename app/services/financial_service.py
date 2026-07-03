@@ -215,7 +215,8 @@ class FinancialService:
                 return financed_amount * rate
             else:
                 return float(fin_config.get("life_insurance_monthly", 15000))
-        except Exception:
+        except Exception as e:
+            logger.warning(f"⚠️ [FINANCIAL_SERVICE] Error calculating life insurance for {entity_id}, falling back to 15000.0: {e}", exc_info=True)
             return 15000.0 # Baseline fallback
 
     # Alias for legacy compatibility
@@ -411,7 +412,9 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
                 val = float(num)
                 if val >= 100_000: return val
             return 0.0
-        except Exception: return 0.0
+        except Exception as e:
+            logger.warning(f"⚠️ [FINANCIAL_SERVICE] Error parsing inicial text '{text_lower}': {e}", exc_info=True)
+            return 0.0
 
     def _generate_full_simulation_response(self, moto: Dict, inicial: float) -> str:
         """Generate full simulation response with parity v1.4.0."""

@@ -7,10 +7,8 @@ from app.routers.whatsapp import webhook_handler
 @pytest.mark.asyncio
 async def test_webhook_handler_synchronous_blocking():
     """
-    Verifica que el webhook_handler espere síncronamente (con await) el procesamiento
-    del mensaje, garantizando que el commit de base de datos finalice antes de que
-    el handler retorne la respuesta HTTP 200 a Meta, y asserta que no haya llaves None
-    o strings vacíos silenciosos en el estado inicial de CRM ('PENDING' / 'ACTIVE').
+    Verifica que el webhook_handler retorne HTTP 200 de inmediato a Meta,
+    enviando el procesamiento a BackgroundTasks para evitar Retry Storms.
     """
     # 1. Mock Request Payload (Mensaje de usuario)
     mock_request = MagicMock()
@@ -98,15 +96,13 @@ async def test_webhook_handler_synchronous_blocking():
         
         background_tasks = BackgroundTasks()
         
-        # Call the webhook handler
+        # Ejecución
         response = await webhook_handler(mock_request, background_tasks)
-        execution_steps.append("handler_returned")
         
-        # Verify execution is synchronous (handler_returned must happen AFTER db_commit_complete)
-        assert execution_steps == ["start_processing", "db_commit_complete", "handler_returned"], \
-            f"❌ Flujo asíncrono no bloqueante detectado: {execution_steps}"
-            
+        # Aserciones
         assert response == {"status": "received"}
+        assert len(background_tasks.tasks) == 1
+        assert "start_processing" not in execution_steps  # Aún no se ejecuta el background
 
 @pytest.mark.asyncio
 async def test_content_assertions_no_silent_none():

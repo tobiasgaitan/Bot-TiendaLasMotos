@@ -65,7 +65,8 @@ class StorageService:
             try:
                 self._bucket = self._client.get_bucket(bucket_name)
                 logger.info(f"✅ Using existing bucket: {bucket_name}")
-            except Exception:
+            except Exception as e:
+                logger.info(f"⚠️ [STORAGE] Bucket {bucket_name} not found or inaccessible, attempting creation: {e}")
                 # Bucket doesn't exist, create it
                 logger.info(f"📦 Creating new bucket: {bucket_name}")
                 self._bucket = self._client.create_bucket(
