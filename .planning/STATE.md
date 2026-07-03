@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
 **Versión Actual:** v10.18.0
 **Último Hito:** bot-brain-alignment-099: Inyección de sinónimos regionales, purga de prompt-tool desync, hard-cap de 2 tools/turn, y TTL de 120s en Cloud Tasks.
-**Coherence Score:** 1.000 (168/169 Tests PASSED — 1 pre-existing failure unrelated)
+**Coherence Score:** 1.000 (175/176 Tests PASSED — 1 pre-existing failure unrelated)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -38,6 +38,7 @@
 | 094 | hotfix-async-firestore-stream | 2026-07-02 | da56b17 | 094-hotfix-async-firestore-stream |
 | 096 | hotfix-tool-phase-isolation | 2026-07-02 | f94b830 | 096-hotfix-tool-phase-isolation |
 | 099 | bot-brain-alignment (synonym inject, prompt purge, hard-cap, TTL) | 2026-07-03 | 06bd7b3 | 099-bot-brain-alignment |
+| 100 | qa-semantic-plumbing (7 prompt interception tests) | 2026-07-03 | 922e776 | 100-qa-semantic-plumbing |
 
 - v10.13.1: hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases.
 - v10.14.0: hotfix-brain-return-contingency: Resolución de la contingencia de retorno de PermissionError en `ai_brain.py` y robustecimiento de aserciones en test.
@@ -52,4 +53,5 @@
 - v10.16.2: hotfix-async-firestore-stream: Aislamiento de operaciones de I/O síncronas de Firestore (.stream()) del event loop de FastAPI usando asyncio.to_thread() en 6 callsites del webhook y en /refresh_catalog. Coherence Score: 1.000 (162/162 Tests PASSED).
 - v10.17.0: hotfix-tool-phase-isolation: Aislamiento de calculate_credit_score de PHASE_1_PROFILING. La herramienta de crédito solo se inyecta en PHASE_2_HABEAS_DATA y PHASE_3_CREDIT_PROFILING. Coherence Score: 1.000 (162/162 Tests PASSED).
 - v10.18.0: bot-brain-alignment-099: Inyección dinámica de `category_aliases` (sinónimos regionales) en el System Prompt. Purga condicional de 'REGLA DE CREDITO CIEGO' cuando `calculate_credit_score` no está en el toolset. Hard-cap de 2 function calls por turn. TTL `dispatch_deadline=120s` en Cloud Tasks. Coherence Score: 1.000 (168/169 Tests PASSED — 1 pre-existing failure).
+- v10.18.1: qa-semantic-plumbing-100: 7 tests de intercección de prompt (`test_semantic_plumbing.py`) asertando presencia/ausencia de `<diccionario_sinonimos_regionales>`, purga de `REGLA DE CREDITO CIEGO`, hard-cap y aplanamiento de Firestore indexed-dict. Coherence Score: 1.000 (175/176 Tests PASSED).
 
