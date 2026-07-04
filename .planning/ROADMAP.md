@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
 
-## Tasks Completadas (v10.18.2)
+## Tasks Completadas (v10.19.0)
+- [x] Flexibilización del Drift Interceptor a 0.30, Null Masking opcional para summary/descripcion y fallback de imagen_url/image_url (BOT-RESILIENCE-102).
 - [x] Implementación del Tool Rejection Pattern para calculate_credit_score en PHASE_1_PROFILING y reversión de exclusión.
 - [x] Cierre de Hotfix BOT-BRAIN-HABEAS-085: Validación de moto_interest previa a Fase 2 (Habeas Data).
 
