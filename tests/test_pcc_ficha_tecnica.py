@@ -459,3 +459,247 @@ async def test_habeas_bypass_interrupt_e2e():
             f"Gemini debió ser llamado exactamente 1 vez (function call turn). "
             f"Fue llamado {call_count} veces — indica que el cortocircuito falló."
         )
+
+
+@pytest.mark.asyncio
+async def test_resilience_missing_summary_passes_filter():
+    """
+    Test unitario afirmando que un documento sin 'summary'/'descripcion'
+    no es rechazado por el Null Masking en ai_brain.py y en su lugar pasa el filtro
+    con el valor por defecto 'Sin descripción'.
+    """
+    from app.services.ai_brain import CerebroIA
+    cerebro = CerebroIA()
+    cerebro.client = MagicMock()
+    cerebro._model_id = "gemini-2.0-flash"
+    
+    # Mock de catalog_service con item sin summary ni descripcion
+    mock_catalog = MagicMock()
+    mock_catalog.search_items.return_value = [
+        {
+            "name": "TVS Sport 100",
+            "price": "$ 6.200.000",
+            "category": "Urban"
+            # summary y descripcion ausentes!
+        }
+    ]
+    cerebro._catalog_service = mock_catalog
+    
+    # Mock LLM calls
+    class MockFunctionCall:
+        def __init__(self, name, args):
+            self.name = name
+            self.args = args
+
+    class MockPart:
+        def __init__(self, function_call=None, text=None):
+            self.function_call = function_call
+            self.text = text
+
+    class MockContent:
+        def __init__(self, parts):
+            self.parts = parts
+
+    class MockCandidate:
+        def __init__(self, content):
+            self.content = content
+
+    class MockResponse:
+        def __init__(self, candidates):
+            self.candidates = candidates
+            
+    fc = MockFunctionCall(name="search_catalog", args={"query": "TVS Sport"})
+    candidate1 = MockCandidate(content=MockContent(parts=[MockPart(function_call=fc)]))
+    response1 = MockResponse(candidates=[candidate1])
+    
+    candidate2 = MockCandidate(content=MockContent(parts=[MockPart(text="TVS Sport 100 es excelente: $6.200.000. ![TVS](https://img.url) Ficha Tecnica: Sin descripción")]))
+    response2 = MockResponse(candidates=[candidate2])
+    
+    call_count = 0
+    captured_tool_output = None
+    async def mock_call(*args, **kwargs):
+        nonlocal call_count, captured_tool_output
+        call_count += 1
+        if call_count == 1:
+            return response1
+        if len(args) > 1:
+            captured_tool_output = str(args[1])
+        return response2
+        
+    with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
+         patch('app.services.ai_brain.SDK_AVAILABLE', True):
+         
+        prospect = {
+            "nombre": "Pedro",
+            "ciudad": "Cali",
+            "forma_pago": "Crédito"
+        }
+        
+        await cerebro.pensar_respuesta("Muéstrame la TVS Sport", prospect_data=prospect)
+        
+        # Debe contener 'Sin descripción' en el tool result
+        assert captured_tool_output is not None
+        assert "Ficha Tecnica: Sin descripción" in captured_tool_output
+
+
+@pytest.mark.asyncio
+async def test_resilience_imagen_url_fallback():
+    """
+    Test unitario afirmando que la llave 'imagen_url' (o 'image_url')
+    es procesada correctamente y agregada como 'Image URL:' en el payload del catálogo.
+    """
+    from app.services.ai_brain import CerebroIA
+    cerebro = CerebroIA()
+    cerebro.client = MagicMock()
+    cerebro._model_id = "gemini-2.0-flash"
+    
+    # Mock catalog service con 'imagen_url' (en español) en lugar de 'image_url'
+    mock_catalog = MagicMock()
+    mock_catalog.search_items.return_value = [
+        {
+            "name": "TVS Sport 100",
+            "price": "$ 6.200.000",
+            "category": "Urban",
+            "summary": "Excelente moto",
+            "imagen_url": "https://img.example.com/imagen.jpg"
+        }
+    ]
+    cerebro._catalog_service = mock_catalog
+    
+    # Mock LLM calls
+    class MockFunctionCall:
+        def __init__(self, name, args):
+            self.name = name
+            self.args = args
+
+    class MockPart:
+        def __init__(self, function_call=None, text=None):
+            self.function_call = function_call
+            self.text = text
+
+    class MockContent:
+        def __init__(self, parts):
+            self.parts = parts
+
+    class MockCandidate:
+        def __init__(self, content):
+            self.content = content
+
+    class MockResponse:
+        def __init__(self, candidates):
+            self.candidates = candidates
+            
+    fc = MockFunctionCall(name="search_catalog", args={"query": "TVS Sport"})
+    candidate1 = MockCandidate(content=MockContent(parts=[MockPart(function_call=fc)]))
+    response1 = MockResponse(candidates=[candidate1])
+    
+    candidate2 = MockCandidate(content=MockContent(parts=[MockPart(text="TVS Sport 100 es excelente: $6.200.000. ![TVS](https://img.url) Ficha Tecnica: Excelente moto. Image URL: https://img.example.com/imagen.jpg")]))
+    response2 = MockResponse(candidates=[candidate2])
+    
+    call_count = 0
+    captured_tool_output = None
+    async def mock_call(*args, **kwargs):
+        nonlocal call_count, captured_tool_output
+        call_count += 1
+        if call_count == 1:
+            return response1
+        if len(args) > 1:
+            captured_tool_output = str(args[1])
+        return response2
+        
+    with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
+         patch('app.services.ai_brain.SDK_AVAILABLE', True):
+         
+        prospect = {
+            "nombre": "Pedro",
+            "ciudad": "Cali",
+            "forma_pago": "Crédito"
+        }
+        
+        await cerebro.pensar_respuesta("Muéstrame la TVS Sport", prospect_data=prospect)
+        
+        # Verificar que el resultado de la herramienta inyectó la URL de la imagen
+        assert captured_tool_output is not None
+        assert "Image URL: https://img.example.com/imagen.jpg" in captured_tool_output
+
+
+@pytest.mark.asyncio
+async def test_resilience_drift_interceptor_ratio_035():
+    """
+    Test unitario afirmando que un ratio de 0.35 no dispara el bloqueo del Drift Interceptor
+    (ya que el nuevo umbral es < 0.30).
+    """
+    from app.services.ai_brain import CerebroIA
+    cerebro = CerebroIA()
+    cerebro.client = MagicMock()
+    cerebro._model_id = "gemini-2.0-flash"
+    
+    # Mock catalog service con el nombre correcto para la regla de consistencia
+    mock_catalog = MagicMock()
+    mock_catalog.search_items.return_value = [
+        {
+            "name": "Apache 160",
+            "price": "$ 11.990.000",
+            "category": "Deportiva",
+            "summary": "Excelente moto"
+        }
+    ]
+    cerebro._catalog_service = mock_catalog
+    
+    # Mock LLM calls
+    class MockFunctionCall:
+        def __init__(self, name, args):
+            self.name = name
+            self.args = args
+
+    class MockPart:
+        def __init__(self, function_call=None, text=None):
+            self.function_call = function_call
+            self.text = text
+
+    class MockContent:
+        def __init__(self, parts):
+            self.parts = parts
+
+    class MockCandidate:
+        def __init__(self, content):
+            self.content = content
+
+    class MockResponse:
+        def __init__(self, candidates):
+            self.candidates = candidates
+            
+    fc = MockFunctionCall(name="search_catalog", args={"query": "Apache 160 RTR"})
+    candidate1 = MockCandidate(content=MockContent(parts=[MockPart(function_call=fc)]))
+    response1 = MockResponse(candidates=[candidate1])
+    
+    candidate2 = MockCandidate(content=MockContent(parts=[MockPart(text="Apache 160 es excelente: $11.990.000. ![Apache](https://img.url) Ficha Tecnica: Excelente moto")]))
+    response2 = MockResponse(candidates=[candidate2])
+    
+    call_count = 0
+    captured_tool_output = None
+    async def mock_call(*args, **kwargs):
+        nonlocal call_count, captured_tool_output
+        call_count += 1
+        if call_count == 1:
+            return response1
+        if len(args) > 1:
+            captured_tool_output = str(args[1])
+        return response2
+        
+    with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
+         patch('app.services.ai_brain.SDK_AVAILABLE', True):
+         
+        prospect = {
+            "nombre": "Pedro",
+            "ciudad": "Cali",
+            "forma_pago": "Crédito",
+            "moto_interest": "Apache 160"
+        }
+        
+        await cerebro.pensar_respuesta("Muéstrame la Apache 160 RTR", prospect_data=prospect)
+        
+        assert captured_tool_output is not None
+        assert "Encontré" in captured_tool_output
+        assert "Apache 160" in captured_tool_output
+        assert "REGLA OBLIGATORIA: NO listes otras motos" not in captured_tool_output

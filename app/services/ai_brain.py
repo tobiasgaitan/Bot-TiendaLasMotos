@@ -1205,7 +1205,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     if moto_interest_prev:
                                         import difflib
                                         ratio = difflib.SequenceMatcher(None, str(query).lower(), str(moto_interest_prev).lower()).ratio()
-                                        if 0.35 <= ratio < 0.95:
+                                        if ratio < 0.30:
                                             skip_catalog = True
                                             logger.info(f"🛡️ [INTERCEPTOR] Búsqueda de '{query}' bloqueada. Ratio: {ratio:.2f} (Drift Threshold). Protegiendo '{moto_interest_prev}'.")
                                     
@@ -1227,23 +1227,26 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             for m in matches:
                                                 # Validaciones estrictas de Anti-Null Masking
                                                 name = m.get('name')
-                                                summary = m.get('summary')
-                                                price = m.get('price') or m.get('formatted_price')
+                                                # 'summary'/'descripcion' is optional, default: 'Sin descripción'
+                                                summary = m.get('summary') or m.get('descripcion') or m.get('description') or 'Sin descripción'
+                                                price = m.get('price') or m.get('formatted_price') or m.get('precio')
                                                 
-                                                if not name or not summary or not price:
+                                                if not name or not price:
                                                     # [BOT-BUG-040] Anti-Null Masking resiliente: omitir ítem corrupto
                                                     # WHY: Un solo ítem con llave vacía (ej. TVS APACHE 160 sin 'summary')
                                                     # NO debe destruir la iteración completa del catálogo.
                                                     logger.warning(
                                                         f"⚠️ [NULL MASKING DETECTED] Ítem de catálogo omitido por llave crítica nula o vacía: "
-                                                        f"name={name!r}, summary={summary!r}, price={price!r}. "
+                                                        f"name={name!r}, price={price!r}. "
                                                         f"Raw item keys: {list(m.keys())}"
                                                     )
                                                     continue
                                                 
                                                 catalog_response_str += f"- {name} ({m.get('category', 'Moto')}): {price}\n"
-                                                if m.get('image_url'):
-                                                    catalog_response_str += f"  Image URL: {m['image_url']}\n"
+                                                
+                                                image_val = m.get('image_url') or m.get('imagen_url')
+                                                if image_val:
+                                                    catalog_response_str += f"  Image URL: {image_val}\n"
                                                 if m.get('link'):
                                                     catalog_response_str += f"  Link: {m['link']}\n"
                                                 

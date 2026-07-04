@@ -300,23 +300,22 @@ async def test_search_catalog_tool_execution_retains_ficha_tecnica():
 @pytest.mark.asyncio
 async def test_search_catalog_tool_execution_raises_error_on_missing_critical_keys():
     """
-    Test Case 5 (Updated BOT-BUG-040):
-    - Verify that if the catalog matches are missing critical keys like name or summary or price,
-      a logger.warning is emitted with NULL MASKING DETECTED tag, and the item is SKIPPED
-      without crashing the iteration (continue instead of raise ValueError).
+    Test Case 5 (Updated BOT-RESILIENCE-102):
+    - Verify that if the catalog matches are missing critical keys like name or price,
+      a logger.warning is emitted with NULL MASKING DETECTED tag, and the item is SKIPPED.
     """
     cerebro = CerebroIA()
     cerebro.client = MagicMock()
     cerebro._model_id = "gemini-2.0-flash"
     
-    # Mock catalog service to return item with no summary key
+    # Mock catalog service to return item with no name key (which is critical)
     mock_catalog = MagicMock()
     mock_catalog.search_items.return_value = [
         {
-            "name": "TVS Sport 100",
             "price": "$ 6.200.000",
-            "category": "Urban"
-            # summary is missing!
+            "category": "Urban",
+            "summary": "Excelente moto"
+            # name is missing!
         }
     ]
     cerebro._catalog_service = mock_catalog
@@ -345,10 +344,9 @@ async def test_search_catalog_tool_execution_raises_error_on_missing_critical_ke
         # Call thinking logic — MUST NOT crash
         await cerebro.pensar_respuesta("Muéstrame la TVS Sport", prospect_data=prospect)
         
-        # [BOT-BUG-040] Verify that logger.warning (NOT exception) was called
+        # Verify that logger.warning (NOT exception) was called
         # with NULL MASKING DETECTED tag, indicating the corrupted item was skipped
         mock_log_warn.assert_called()
         warn_args = [call[0][0] for call in mock_log_warn.call_args_list]
         assert any("NULL MASKING DETECTED" in arg for arg in warn_args), \
             "logger.warning DEBE contener '[NULL MASKING DETECTED]' indicando ítem omitido"
-
