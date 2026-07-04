@@ -199,6 +199,42 @@ class CerebroIA:
             self.client = None
             logger.warning("⚠️  CerebroIA running in fallback mode (no AI)")
 
+    def _is_synonym_or_model_match(self, query: str, moto_interest: str, aliases: dict) -> bool:
+        """
+        Determines if a catalog search query matches the prospect's motorcycle of interest
+        either through regional synonyms (aliases dictionary) or clean alphanumeric substring match.
+        """
+        q = str(query).lower().strip()
+        m = str(moto_interest).lower().strip()
+        
+        if not q or not m:
+            return False
+            
+        if q == m:
+            return True
+            
+        # 1. Coincidencia por subcadena limpia (ej. "TVS Apache 160" y "Apache")
+        q_alnum = "".join(c for c in q if c.isalnum())
+        m_alnum = "".join(c for c in m if c.isalnum())
+        if q_alnum and m_alnum:
+            if q_alnum in m_alnum or m_alnum in q_alnum:
+                return True
+                
+        # 2. Coincidencia por alias de catálogo (regionalismos)
+        for category, syns in aliases.items():
+            cat_lower = str(category).lower().strip()
+            syns_lower = [str(s).lower().strip() for s in syns]
+            
+            # Check if query is category or in syns
+            q_matches = (q == cat_lower or q in syns_lower)
+            # Check if moto_interest is category or in syns
+            m_matches = (m == cat_lower or m in syns_lower)
+            
+            if q_matches and m_matches:
+                return True
+                
+        return False
+
     def _parse_raw_price(self, raw_price_val: Any, price_val: Any) -> float:
         """
         Parses price raw and fallback values robustly.
@@ -1203,11 +1239,31 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     # [UNIFICACIÓN] moto_interest enforced
                                     moto_interest_prev = prospect_data.get("moto_interest") if prospect_data else None
                                     if moto_interest_prev:
-                                        import difflib
-                                        ratio = difflib.SequenceMatcher(None, str(query).lower(), str(moto_interest_prev).lower()).ratio()
-                                        if ratio < 0.30:
-                                            skip_catalog = True
-                                            logger.info(f"🛡️ [INTERCEPTOR] Búsqueda de '{query}' bloqueada. Ratio: {ratio:.2f} (Drift Threshold). Protegiendo '{moto_interest_prev}'.")
+                                        # Obtener alias regionales de catálogo (Zero-Silent-Failures compliant)
+                                        aliases = {}
+                                        try:
+                                            if self._catalog_service and hasattr(self._catalog_service, 'get_catalog_aliases'):
+                                                aliases = self._catalog_service.get_catalog_aliases()
+                                        except Exception as e:
+                                            logger.warning(f"⚠️ [DRIFT INTERCEPTOR] Error recuperando alias de catálogo desde catalog_service: {e}")
+                                            
+                                        if not aliases:
+                                            try:
+                                                from app.services.config_service import config_service
+                                                aliases = config_service.get_catalog_aliases()
+                                            except Exception as e:
+                                                logger.exception(f"⚠️ [DRIFT INTERCEPTOR] Error recuperando alias de catálogo desde config_service: {e}")
+                                                
+                                        # Si hay correspondencia semántica o de modelo, hacemos bypass del interceptor
+                                        if self._is_synonym_or_model_match(query, moto_interest_prev, aliases):
+                                            skip_catalog = False
+                                            logger.info(f"🔄 [INTERCEPTOR BYPASS] Búsqueda de '{query}' aprobada por coincidencia de sinónimos/modelos con '{moto_interest_prev}'.")
+                                        else:
+                                            import difflib
+                                            ratio = difflib.SequenceMatcher(None, str(query).lower(), str(moto_interest_prev).lower()).ratio()
+                                            if ratio < 0.30:
+                                                skip_catalog = True
+                                                logger.info(f"🛡️ [INTERCEPTOR] Búsqueda de '{query}' bloqueada. Ratio: {ratio:.2f} (Drift Threshold). Protegiendo '{moto_interest_prev}'.")
                                     
                                     if skip_catalog:
                                         search_results = f"[SISTEMA: El usuario ya tiene en contexto la moto '{moto_interest_prev}'. REGLA OBLIGATORIA: NO listes otras motos ni ofrezcas más opciones. Enfócate en concretar la venta de '{moto_interest_prev}' (preguntar forma de pago o iniciar crédito).]"
