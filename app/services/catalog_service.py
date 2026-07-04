@@ -354,6 +354,31 @@ class CatalogService:
         """Get list of all available categories."""
         return list(self._items_by_category.keys())
     
+    def get_catalog_aliases(self) -> Dict[str, List[str]]:
+        """
+        Get catalog category aliases (synonyms) flattened into lists.
+        Firma estricta Dict[str, List[str]]. Limpia nulos y espacios.
+        """
+        flattened: Dict[str, List[str]] = {}
+        for category, synonyms in self._category_aliases.items():
+            if not category:
+                continue
+            cat_key = str(category).strip()
+            
+            if isinstance(synonyms, dict):
+                values = [str(v).strip() for v in synonyms.values() if v and str(v).strip()]
+            elif isinstance(synonyms, list):
+                values = [str(v).strip() for v in synonyms if v and str(v).strip()]
+            elif isinstance(synonyms, str):
+                v_clean = synonyms.strip()
+                values = [v_clean] if v_clean else []
+            else:
+                continue
+            
+            if values:
+                flattened[cat_key] = values
+        return flattened
+
     def search_items(self, query: str) -> List[Dict[str, Any]]:
         """
         Search for items using rich search index, fuzzy matching, and token tolerance.

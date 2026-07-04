@@ -942,8 +942,12 @@ REGLAS ESTRICTAS DE USO:
                 # into proper search_catalog queries without hardcoding every regional term.
                 synonyms_xml = ""
                 try:
-                    from app.services.config_service import config_service
-                    catalog_aliases = config_service.get_catalog_aliases()
+                    catalog_aliases = {}
+                    if self._catalog_service and hasattr(self._catalog_service, 'get_catalog_aliases'):
+                        catalog_aliases = self._catalog_service.get_catalog_aliases()
+                    else:
+                        logger.warning("⚠️ [SYNONYM INJECTION] Catalog service not initialized or missing get_catalog_aliases method")
+                    
                     if catalog_aliases:
                         alias_lines = []
                         for cat, syns in catalog_aliases.items():
@@ -957,7 +961,7 @@ REGLAS ESTRICTAS DE USO:
                         )
                         logger.info(f"📖 [SYNONYM INJECTION] {len(catalog_aliases)} categorías inyectadas en prompt")
                 except Exception as _syn_err:
-                    logger.warning(f"⚠️ [SYNONYM INJECTION] Failed to inject aliases: {_syn_err}")
+                    logger.exception(f"🚨 [SYNONYM INJECTION] Error crítico recuperando alias del catálogo: {_syn_err}")
 
                 base_instruction = self._get_current_instruction()
 
@@ -1244,16 +1248,11 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         try:
                                             if self._catalog_service and hasattr(self._catalog_service, 'get_catalog_aliases'):
                                                 aliases = self._catalog_service.get_catalog_aliases()
+                                            else:
+                                                logger.warning("⚠️ [DRIFT INTERCEPTOR] Catalog service not initialized or missing get_catalog_aliases method")
                                         except Exception as e:
-                                            logger.warning(f"⚠️ [DRIFT INTERCEPTOR] Error recuperando alias de catálogo desde catalog_service: {e}")
+                                            logger.exception(f"🚨 [DRIFT INTERCEPTOR] Error recuperando alias de catálogo desde catalog_service: {e}")
                                             
-                                        if not aliases:
-                                            try:
-                                                from app.services.config_service import config_service
-                                                aliases = config_service.get_catalog_aliases()
-                                            except Exception as e:
-                                                logger.exception(f"⚠️ [DRIFT INTERCEPTOR] Error recuperando alias de catálogo desde config_service: {e}")
-                                                
                                         # Si hay correspondencia semántica o de modelo, hacemos bypass del interceptor
                                         if self._is_synonym_or_model_match(query, moto_interest_prev, aliases):
                                             skip_catalog = False

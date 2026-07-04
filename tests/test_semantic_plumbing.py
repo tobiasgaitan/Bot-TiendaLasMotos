@@ -56,6 +56,7 @@ def _build_cerebro_with_prompt_capture():
     cerebro = CerebroIA()
     cerebro.client = MagicMock()
     cerebro._catalog_service = MagicMock()
+    cerebro._catalog_service.get_catalog_aliases.return_value = {}
     cerebro.motor_financiero = MagicMock()
 
     captured_prompts = []
@@ -111,20 +112,19 @@ PHASE2_PROSPECT = {
 async def test_synonym_injection_present_when_aliases_exist():
     """
     BOT-QA-PLUMBING-100 / Assertion 1:
-    GIVEN: config_service.get_catalog_aliases() returns a non-empty dict.
+    GIVEN: catalog_service.get_catalog_aliases() returns a non-empty dict.
     WHEN: pensar_respuesta builds the full_prompt.
     THEN: The prompt MUST contain the XML block <diccionario_sinonimos_regionales>
           with the exact category names and synonym values.
     """
     cerebro, captured_prompts = _build_cerebro_with_prompt_capture()
+    cerebro._catalog_service.get_catalog_aliases.return_value = MOCK_ALIASES
 
-    with patch("app.services.config_service.config_service") as mock_cs:
-        mock_cs.get_catalog_aliases.return_value = MOCK_ALIASES
-        await cerebro.pensar_respuesta(
-            texto="Quiero una señoritera",
-            prospect_data=PHASE1_PROSPECT.copy(),
-            history=[]
-        )
+    await cerebro.pensar_respuesta(
+        texto="Quiero una señoritera",
+        prospect_data=PHASE1_PROSPECT.copy(),
+        history=[]
+    )
 
     assert len(captured_prompts) >= 1, "Gemini chat.send_message was never called — prompt not generated."
     full_prompt = captured_prompts[0]
@@ -151,19 +151,18 @@ async def test_synonym_injection_present_when_aliases_exist():
 async def test_synonym_injection_absent_when_no_aliases():
     """
     BOT-QA-PLUMBING-100 / Assertion 2:
-    GIVEN: config_service.get_catalog_aliases() returns an empty dict.
+    GIVEN: catalog_service.get_catalog_aliases() returns an empty dict.
     WHEN: pensar_respuesta builds the full_prompt.
     THEN: The prompt MUST NOT contain <diccionario_sinonimos_regionales>.
     """
     cerebro, captured_prompts = _build_cerebro_with_prompt_capture()
+    cerebro._catalog_service.get_catalog_aliases.return_value = {}
 
-    with patch("app.services.config_service.config_service") as mock_cs:
-        mock_cs.get_catalog_aliases.return_value = {}
-        await cerebro.pensar_respuesta(
-            texto="Hola buenas tardes",
-            prospect_data=PHASE1_PROSPECT.copy(),
-            history=[]
-        )
+    await cerebro.pensar_respuesta(
+        texto="Hola buenas tardes",
+        prospect_data=PHASE1_PROSPECT.copy(),
+        history=[]
+    )
 
     assert len(captured_prompts) >= 1, "Gemini chat.send_message was never called."
     full_prompt = captured_prompts[0]
@@ -187,14 +186,13 @@ async def test_credit_blind_rule_preserved_in_phase1():
     THEN: The string 'REGLA DE CREDITO CIEGO' MUST remain in the prompt (no prompt purging).
     """
     cerebro, captured_prompts = _build_cerebro_with_prompt_capture()
+    cerebro._catalog_service.get_catalog_aliases.return_value = MOCK_ALIASES
 
-    with patch("app.services.config_service.config_service") as mock_cs:
-        mock_cs.get_catalog_aliases.return_value = MOCK_ALIASES
-        await cerebro.pensar_respuesta(
-            texto="¿Cuánto cuesta la Raider?",
-            prospect_data=PHASE1_PROSPECT.copy(),
-            history=[]
-        )
+    await cerebro.pensar_respuesta(
+        texto="¿Cuánto cuesta la Raider?",
+        prospect_data=PHASE1_PROSPECT.copy(),
+        history=[]
+    )
 
     assert len(captured_prompts) >= 1, "Gemini chat.send_message was never called."
     full_prompt = captured_prompts[0]
@@ -224,20 +222,18 @@ async def test_credit_blind_rule_preserved_in_phase2():
     THEN: The string 'REGLA DE CREDITO CIEGO' MUST remain in the prompt.
     """
     cerebro, captured_prompts = _build_cerebro_with_prompt_capture()
+    cerebro._catalog_service.get_catalog_aliases.return_value = MOCK_ALIASES
 
-    with patch("app.services.config_service.config_service") as mock_cs:
-        mock_cs.get_catalog_aliases.return_value = MOCK_ALIASES
+    # Financial history to trigger PHASE_2 via intent detection
+    history = [
+        {"role": "user", "content": "¿Cuánto es la cuota mensual?"}
+    ]
 
-        # Financial history to trigger PHASE_2 via intent detection
-        history = [
-            {"role": "user", "content": "¿Cuánto es la cuota mensual?"}
-        ]
-
-        await cerebro.pensar_respuesta(
-            texto="Quiero saber las cuotas de la Raider",
-            prospect_data=PHASE2_PROSPECT.copy(),
-            history=history
-        )
+    await cerebro.pensar_respuesta(
+        texto="Quiero saber las cuotas de la Raider",
+        prospect_data=PHASE2_PROSPECT.copy(),
+        history=history
+    )
 
     assert len(captured_prompts) >= 1, "Gemini chat.send_message was never called."
     full_prompt = captured_prompts[0]
@@ -358,3 +354,23 @@ def test_catalog_aliases_returns_empty_when_no_aliases():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_catalog_service_get_catalog_aliases_flattening():
+    """
+    Assert that CatalogService.get_catalog_aliases correctly flattens aliases in memory.
+    """
+    from app.services.catalog_service import CatalogService
+    service = CatalogService()
+    service._category_aliases = {
+        "Semiautomatica": {"0": "Señoritera", "1": "   "},
+        "Motocarro": ["Motocarguero", None, "Tricargo"],
+        "Enduro": "Troquera",
+        "Invalid": 1234
+    }
+    result = service.get_catalog_aliases()
+    assert result["Semiautomatica"] == ["Señoritera"]
+    assert result["Motocarro"] == ["Motocarguero", "Tricargo"]
+    assert result["Enduro"] == ["Troquera"]
+    assert "Invalid" not in result
+

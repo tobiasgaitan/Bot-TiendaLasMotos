@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.19.1
-**Último Hito:** bot-resilience-103: Bypass del Drift Interceptor para regionalismos y coincidencia parcial de modelos.
-**Coherence Score:** 1.000 (191/191 Tests PASSED)
+**Versión Actual:** v10.21.0
+**Último Hito:** bot-resilience-104: Desacoplamiento de alias de catálogo y resolución de importación circular deadlock en caliente.
+**Coherence Score:** 1.000 (192/192 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -42,6 +42,7 @@
 | 101 | bot-arch-state-101 (Tool Rejection Pattern) | 2026-07-03 | 4059ae0 | 101-bot-arch-state-101 |
 | 102 | bot-resilience-102 (Drift Interceptor & Null Masking) | 2026-07-04 | 07743c0 | 102-bot-resilience-102 |
 | 103 | bot-resilience-103 (Bypass de Drift Interceptor & logging) | 2026-07-04 | 76c193c | 103-bot-resilience-103 |
+| 104 | bot-resilience-104 (Decouple catalog aliases & remove circular imports) | 2026-07-04 | a6f43b4 | 104-bot-resilience-104 |
 
 - v10.13.1: hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases.
 - v10.14.0: hotfix-brain-return-contingency: Resolución de la contingencia de retorno de PermissionError en `ai_brain.py` y robustecimiento de aserciones en test.
@@ -60,4 +61,6 @@
 - v10.18.2: bot-arch-state-101: Reversión de exclusión de calculate_credit_score en Fase 1, eliminación de purga de prompt y desarrollo del Tool Rejection Pattern en ejecución. Coherence Score: 1.000 (186/186 Tests PASSED).
 - v10.19.0: bot-resilience-102: Flexibilización del Drift Interceptor (umbral a 0.30), Null Masking opcional para summary/descripcion, y fallback de imágenes. Coherence Score: 1.000 (189/189 Tests PASSED).
 - v10.19.1: bot-resilience-103: Bypass del Drift Interceptor para alias regionales y coincidencia parcial de modelos de moto con logging explícito (Zero-Silent-Failures). Coherence Score: 1.000 (191/191 Tests PASSED).
+- v10.21.0: bot-resilience-104: Desacoplamiento de alias de catálogo y resolución de importación circular deadlock en caliente. Coherence Score: 1.000 (192/192 Tests PASSED).
+
 
