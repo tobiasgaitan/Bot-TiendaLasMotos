@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.21.1-revert
-**Último Hito:** hotfix-bot-revert-111: Reversión dura al commit ba3947f (Ticket 104) para restaurar la arquitectura de resiliencia original y purgar código zombi de los tickets 105 al 110.
-**Coherence Score:** 1.000 (192/192 Tests PASSED)
+**Versión Actual:** v10.22.0
+**Último Hito:** hotfix-bot-bugfix-113: Resolución de colisión de Casing ('Semiautomatica' vs 'semiautomatica') en la hidratación de alias de Firestore y mitigación del falso positivo de fallback en el catálogo.
+**Coherence Score:** 1.000 (194/194 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -44,6 +44,7 @@
 | 103 | bot-resilience-103 (Bypass de Drift Interceptor & logging) | 2026-07-04 | 76c193c | 103-bot-resilience-103 |
 | 104 | bot-resilience-104 (Decouple catalog aliases & remove circular imports) | 2026-07-04 | a6f43b4 | 104-bot-resilience-104 |
 | 111 | hotfix-bot-revert-111 (Reversión dura al Ticket 104) | 2026-07-04 | ba3947f | 111-hotfix-bot-revert-111 |
+| 113 | Semiautomatica Casing Collision | 2026-07-05 | 2d15eff | 113-hotfix-bot-bugfix-113 |
 
 
 - v10.13.1: hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases.
