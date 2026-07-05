@@ -227,8 +227,16 @@ class CerebroIA:
             
             # Check if query is category or in syns
             q_matches = (q == cat_lower or q in syns_lower)
-            # Check if moto_interest is category or in syns
-            m_matches = (m == cat_lower or m in syns_lower)
+            
+            # Check if moto_interest matches the category or matches any synonym containing/contained in m
+            m_matches = False
+            if m == cat_lower:
+                m_matches = True
+            else:
+                for syn in syns_lower:
+                    if syn in m or m in syn:
+                        m_matches = True
+                        break
             
             if q_matches and m_matches:
                 return True

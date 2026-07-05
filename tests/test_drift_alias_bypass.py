@@ -197,3 +197,57 @@ async def test_drift_normal_search_cold_start(cerebro_mock, mock_prospect_data):
         
         assert mock_catalog.search_items.called, "FAILURE: catalog_service.search_items was not called for normal search in Cold Start"
         assert mock_catalog.search_items.call_args[0][0] == "TVS Sport 100"
+
+
+@pytest.mark.asyncio
+async def test_drift_alias_bypass_compound_interest():
+    """
+    Test that Drift Interceptor allows bypass (skip_catalog = False) when
+    prospect interest is 'moto señoritera' (compound containing synonym 'señoritera')
+    and query is 'semiautomatica' (which matches the category/synonym).
+    """
+    catalog_service = CatalogService()
+    cerebro = CerebroIA(catalog_service=catalog_service)
+    
+    # Configure aliases
+    mock_aliases = {"moto semiautomatica": ["señoritera", "moped", "semiautomatica"]}
+    catalog_service._category_aliases = mock_aliases
+    
+    prospect_data = {
+        "exists": True,
+        "moto_interest": "moto señoritera",
+        "nombre": "Test User",
+        "ciudad": "Cali",
+        "forma_pago": "Crédito"
+    }
+    
+    # Assert direct method call returns True
+    assert cerebro._is_synonym_or_model_match("semiautomatica", "moto señoritera", mock_aliases) is True
+    
+    with patch.object(cerebro, '_call_gemini_with_retry_async', new_callable=AsyncMock) as mocked_call:
+        mock_response_1 = MagicMock()
+        mock_fc = MagicMock()
+        mock_fc.name = "search_catalog"
+        mock_fc.args = {"query": "semiautomatica"}
+        mock_part_1 = MagicMock(function_call=mock_fc, text=None)
+        mock_response_1.candidates = [MagicMock(content=MagicMock(parts=[mock_part_1]))]
+        
+        mock_response_2 = MagicMock()
+        mock_part_2 = MagicMock(function_call=None, text="La semiautomatica cuesta $7.000.000. ![Scooter](https://img.url) Ficha Tecnica: Excelente moto")
+        mock_response_2.candidates = [MagicMock(content=MagicMock(parts=[mock_part_2]))]
+        
+        mocked_call.side_effect = [mock_response_1, mock_response_2]
+        
+        mock_item = {
+            "name": "Victory Flow",
+            "price": "$7.000.000 (incluye SOAT, Matrícula, y tramites)",
+            "category": "moto semiautomatica",
+            "image_url": "https://img.url",
+            "summary": "Excelente moto"
+        }
+        with patch.object(catalog_service, 'search_items', return_value=[mock_item]) as mock_search:
+            await cerebro.pensar_respuesta("quiero ver la semiautomatica", prospect_data=prospect_data)
+            
+            assert mock_search.called, "Bypass failed for compound interest 'moto señoritera' and query 'semiautomatica'"
+            assert mock_search.call_args[0][0] == "semiautomatica"
+
