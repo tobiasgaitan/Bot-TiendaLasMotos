@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.3
-**Último Hito:** hotfix-bot-bugfix-117: Refactorización dinámica del interceptor de palabras clave de motocicletas e integración del test de alias.
+**Versión Actual:** v10.22.4
+**Último Hito:** hotfix-bot-bugfix-118: Drift Interceptor alias literal validation failure on compuesto/conectores.
 **Coherence Score:** 1.000 (198/198 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 118 | Drift Interceptor alias literal validation failure | 2026-07-05 | 5388b02 | 118-hotfix-bot-bugfix-118 |
 | 117 | Dynamic motorcycle keywords and catalog tool validation turn | 2026-07-05 | 13bf040 | 117-hotfix-bot-bugfix-117 |
 | 115 | Cold Start Drift Interceptor logic restoration | 2026-07-05 | 58738b0 | 115-hotfix-bot-bugfix-115 |
 | 114 | webhook redundant config load protection | 2026-07-05 | 1d55c41 | 114-hotfix-bot-perf-114 |
@@ -70,5 +71,5 @@
 - v10.21.0: bot-resilience-104: Desacoplamiento de alias de catálogo y resolución de importación circular deadlock en caliente. Coherence Score: 1.000 (192/192 Tests PASSED).
 - v10.22.1: hotfix-bot-perf-114: Restauración del blindaje asíncrono en la inicialización del webhook y suite de pruebas unitarias. Coherence Score: 1.000 (195/195 Tests PASSED).
 - v10.22.2: hotfix-bot-bugfix-115: Restauración de la bifurcación lógica de Cold Start en el Drift Interceptor y aserciones de test. Coherence Score: 1.000 (197/197 Tests PASSED).
-
-
+- v10.22.3: hotfix-bot-bugfix-117: Refactorización dinámica del interceptor de palabras clave de motocicletas e integración del test de alias. Coherence Score: 1.000 (198/198 Tests PASSED).
+- v10.22.4: hotfix-bot-bugfix-118: Drift Interceptor alias literal validation failure on compuesto/conectores. Coherence Score: 1.000 (198/198 Tests PASSED).
