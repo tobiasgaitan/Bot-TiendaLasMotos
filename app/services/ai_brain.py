@@ -1073,7 +1073,23 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 # attempts to answer without using search_catalog, we intercept and 
                 # force a tool turn. CRITICAL: We MUST pass tools in the retry config.
                 try:
-                    motorcycle_keywords = ["moto", "raider", "sport", "victory", "tvs", "mrx", "trabajo", "trabajar", "mensajeria", "domicilio", "carga"]
+                    from app.services.config_service import config_service
+                    base_keywords = ["moto", "raider", "sport", "victory", "tvs", "mrx", "trabajo", "trabajar", "mensajeria", "domicilio", "carga"]
+                    motorcycle_keywords = list(base_keywords)
+                    try:
+                        aliases_dict = config_service.get_catalog_aliases()
+                        if aliases_dict:
+                            for category, synonyms in aliases_dict.items():
+                                cat_clean = str(category).lower().strip()
+                                if cat_clean and cat_clean not in motorcycle_keywords:
+                                    motorcycle_keywords.append(cat_clean)
+                                for syn in synonyms:
+                                    syn_clean = str(syn).lower().strip()
+                                    if syn_clean and syn_clean not in motorcycle_keywords:
+                                        motorcycle_keywords.append(syn_clean)
+                    except Exception as alias_err:
+                        logger.warning(f"⚠️ [MOTORCYCLE_KEYWORDS] Error loading catalog aliases dynamically: {alias_err}")
+                        
                     user_mentions_motorcycle = any(kw in texto.lower() for kw in motorcycle_keywords)
                     
                     candidate_parts = response.candidates[0].content.parts
