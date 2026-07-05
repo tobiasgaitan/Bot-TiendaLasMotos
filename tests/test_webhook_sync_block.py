@@ -258,3 +258,25 @@ async def test_task_processor_synchronous_execution():
             assert False, "Should raise HTTPException 403"
         except HTTPException as e:
             assert e.status_code == 403
+
+@pytest.mark.asyncio
+async def test_webhook_no_redundant_config_load():
+    """
+    Verifica que no se carguen de manera redundante las configuraciones de Firestore
+    si config_service ya tiene las configuraciones en memoria.
+    """
+    mock_db = MagicMock()
+    
+    with patch("app.routers.whatsapp.config_service") as mock_config_service, \
+         patch("app.routers.whatsapp.db", mock_db):
+        
+        # Simular que ya está cargado
+        mock_config_service._financial_config = {"loaded": True}
+        
+        from app.routers.whatsapp import _ensure_services_sync
+        
+        # Ejecutar inicialización
+        _ensure_services_sync()
+        
+        # Verificar que no se llamó a initialize ya que ya estaba cargada la config
+        mock_config_service.initialize.assert_not_called()

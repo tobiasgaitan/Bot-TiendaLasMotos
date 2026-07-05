@@ -110,7 +110,7 @@ def _ensure_services_sync():
             logger.error(f"❌ [INIT] ConfigLoader init failed: {e}", exc_info=True)
 
     # 2.1 Config Service (Financial SSOT)
-    if db:
+    if db and not config_service._financial_config:
         try:
             config_service.initialize(db)
         except Exception as e:
