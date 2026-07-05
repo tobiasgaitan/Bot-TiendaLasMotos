@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
 **Versión Actual:** v10.22.4
-**Último Hito:** hotfix-bot-bugfix-118: Drift Interceptor alias literal validation failure on compuesto/conectores.
+**Último Hito:** hotfix-bot-study-120: Forensic trace extraction for search_catalog tool call rejection.
 **Coherence Score:** 1.000 (198/198 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 119 | Forensic trace extraction for search_catalog tool call rejection | 2026-07-05 | 96c5eee | 119-hotfix-bot-study-120 |
 | 118 | Drift Interceptor alias literal validation failure | 2026-07-05 | 5388b02 | 118-hotfix-bot-bugfix-118 |
 | 117 | Dynamic motorcycle keywords and catalog tool validation turn | 2026-07-05 | 13bf040 | 117-hotfix-bot-bugfix-117 |
 | 115 | Cold Start Drift Interceptor logic restoration | 2026-07-05 | 58738b0 | 115-hotfix-bot-bugfix-115 |
