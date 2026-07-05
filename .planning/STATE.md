@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.21.0
-**Último Hito:** bot-resilience-104: Desacoplamiento de alias de catálogo y resolución de importación circular deadlock en caliente.
+**Versión Actual:** v10.21.1-revert
+**Último Hito:** hotfix-bot-revert-111: Reversión dura al commit ba3947f (Ticket 104) para restaurar la arquitectura de resiliencia original y purgar código zombi de los tickets 105 al 110.
 **Coherence Score:** 1.000 (192/192 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -22,7 +22,7 @@
 | 076 | dynamic HMAC signature in k6 test (crypto.hmac) | 2026-06-27 | 2fc3e2d | 076-hotfix-k6-dynamic-hmac |
 | 077 | calibrar umbrales k6 a latencias reales LLM+Firestore | 2026-06-27 | 054e56b | 077-hotfix-k6-thresholds |
 | 078 | ajustar umbrales k6 para CI hardware (p95<30s, p99<40s) | 2026-06-27 | a1a6e89 | 078-hotfix-k6-ci-hardware-thresholds |
-| 079 | hotfix-ci-uv-cache | 2026-06-27 | bea7ab7 | 079-hotfix-ci-uv-cache |
+| 079 | hotfix-ci-uv-cache | 2026-07-02 | bea7ab7 | 079-hotfix-ci-uv-cache |
 | 080 | Log Sink y Pub Sub Alerting | 2026-06-28 | 23640bb | 080-log-sink-pubsub-alerting |
 | 081 | hotfix-anonymous-quota | 2026-06-30 | 5eeb5d6 | 081-hotfix-anonymous-quota |
 | 082 | hotfix-brain-return-contingency | 2026-06-30 | 28cf79c | 082-hotfix-brain-return-contingency |
@@ -43,6 +43,8 @@
 | 102 | bot-resilience-102 (Drift Interceptor & Null Masking) | 2026-07-04 | 07743c0 | 102-bot-resilience-102 |
 | 103 | bot-resilience-103 (Bypass de Drift Interceptor & logging) | 2026-07-04 | 76c193c | 103-bot-resilience-103 |
 | 104 | bot-resilience-104 (Decouple catalog aliases & remove circular imports) | 2026-07-04 | a6f43b4 | 104-bot-resilience-104 |
+| 111 | hotfix-bot-revert-111 (Reversión dura al Ticket 104) | 2026-07-04 | ba3947f | 111-hotfix-bot-revert-111 |
+
 
 - v10.13.1: hotfix-anonymous-quota: Cuotas de simulación ciega preventivas y anonimización de Brilla de Gases.
 - v10.14.0: hotfix-brain-return-contingency: Resolución de la contingencia de retorno de PermissionError en `ai_brain.py` y robustecimiento de aserciones en test.
