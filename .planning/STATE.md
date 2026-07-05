@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.0
-**Último Hito:** hotfix-bot-bugfix-113: Resolución de colisión de Casing ('Semiautomatica' vs 'semiautomatica') en la hidratación de alias de Firestore y mitigación del falso positivo de fallback en el catálogo.
-**Coherence Score:** 1.000 (194/194 Tests PASSED)
+**Versión Actual:** v10.22.1
+**Último Hito:** hotfix-bot-perf-114: Restauración del blindaje asíncrono en la inicialización del webhook y suite de pruebas unitarias.
+**Coherence Score:** 1.000 (195/195 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 114 | webhook redundant config load protection | 2026-07-05 | 1d55c41 | 114-hotfix-bot-perf-114 |
 | 068 | webhook blocking sync awaits | 2026-06-25 | 114e0a0 | 068-hotfix-webhook-sync-block |
 | 069 | corregir mock namespace en test zombie | 2026-06-26 | a07a42b | 069-hotfix-test-namespace-patch |
 | 070 | hotfix reset recovery idempotencia post-borrado | 2026-06-26 | b96b716 | 070-hotfix-reset-recovery |
