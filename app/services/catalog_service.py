@@ -66,7 +66,20 @@ class CatalogService:
                 from app.core.config_loader import ConfigLoader
                 config_loader = ConfigLoader()
                 catalog_config = config_loader.get_catalog_config()
-                self._category_aliases = catalog_config.get("category_aliases", {})
+                raw_aliases = catalog_config.get("category_aliases", {})
+                normalized_aliases = {}
+                if isinstance(raw_aliases, dict):
+                    for k, v in raw_aliases.items():
+                        if not k:
+                            continue
+                        k_norm = str(k).lower().strip()
+                        if isinstance(v, dict):
+                            normalized_aliases[k_norm] = [str(val).lower().strip() for val in v.values() if val and str(val).strip()]
+                        elif isinstance(v, list):
+                            normalized_aliases[k_norm] = [str(val).lower().strip() for val in v if val and str(val).strip()]
+                        elif isinstance(v, str):
+                            normalized_aliases[k_norm] = [v.lower().strip()] if v.strip() else []
+                self._category_aliases = normalized_aliases
             except Exception:
                 logger.warning("⚠️ ConfigLoader not ready. Using empty category aliases.")
                 self._category_aliases = {}
@@ -363,14 +376,14 @@ class CatalogService:
         for category, synonyms in self._category_aliases.items():
             if not category:
                 continue
-            cat_key = str(category).strip()
+            cat_key = str(category).lower().strip()
             
             if isinstance(synonyms, dict):
-                values = [str(v).strip() for v in synonyms.values() if v and str(v).strip()]
+                values = [str(v).lower().strip() for v in synonyms.values() if v and str(v).strip()]
             elif isinstance(synonyms, list):
-                values = [str(v).strip() for v in synonyms if v and str(v).strip()]
+                values = [str(v).lower().strip() for v in synonyms if v and str(v).strip()]
             elif isinstance(synonyms, str):
-                v_clean = synonyms.strip()
+                v_clean = synonyms.lower().strip()
                 values = [v_clean] if v_clean else []
             else:
                 continue

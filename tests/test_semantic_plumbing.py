@@ -137,10 +137,10 @@ async def test_synonym_injection_present_when_aliases_exist():
         "REGRESIÓN SEMÁNTICA: Tag de cierre </diccionario_sinonimos_regionales> ausente."
     )
     # Verify specific aliases are physically present
-    assert "Señoritera" in full_prompt, "El sinónimo 'Señoritera' no fue inyectado en el prompt."
-    assert "Semiautomatica" in full_prompt, "La categoría 'Semiautomatica' no fue inyectada."
-    assert "Motocarguero" in full_prompt, "El sinónimo 'Motocarguero' no fue inyectado."
-    assert "Troquera" in full_prompt, "El sinónimo 'Troquera' no fue inyectado."
+    assert "señoritera" in full_prompt, "El sinónimo 'señoritera' no fue inyectado en el prompt."
+    assert "semiautomatica" in full_prompt, "La categoría 'semiautomatica' no fue inyectada."
+    assert "motocarguero" in full_prompt, "El sinónimo 'motocarguero' no fue inyectado."
+    assert "troquera" in full_prompt, "El sinónimo 'troquera' no fue inyectado."
 
 
 # ============================================================================
@@ -369,8 +369,8 @@ def test_catalog_service_get_catalog_aliases_flattening():
         "Invalid": 1234
     }
     result = service.get_catalog_aliases()
-    assert result["Semiautomatica"] == ["Señoritera"]
-    assert result["Motocarro"] == ["Motocarguero", "Tricargo"]
-    assert result["Enduro"] == ["Troquera"]
-    assert "Invalid" not in result
+    assert result["semiautomatica"] == ["señoritera"]
+    assert result["motocarro"] == ["motocarguero", "tricargo"]
+    assert result["enduro"] == ["troquera"]
+    assert "invalid" not in result
 

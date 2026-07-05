@@ -944,7 +944,8 @@ REGLAS ESTRICTAS DE USO:
                 try:
                     catalog_aliases = {}
                     if self._catalog_service and hasattr(self._catalog_service, 'get_catalog_aliases'):
-                        catalog_aliases = self._catalog_service.get_catalog_aliases()
+                        raw_catalog_aliases = self._catalog_service.get_catalog_aliases()
+                        catalog_aliases = {str(k).lower().strip(): [str(v).lower().strip() for v in val] for k, val in raw_catalog_aliases.items() if val}
                     else:
                         logger.warning("⚠️ [SYNONYM INJECTION] Catalog service not initialized or missing get_catalog_aliases method")
                     
@@ -1247,7 +1248,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         aliases = {}
                                         try:
                                             if self._catalog_service and hasattr(self._catalog_service, 'get_catalog_aliases'):
-                                                aliases = self._catalog_service.get_catalog_aliases()
+                                                raw_aliases = self._catalog_service.get_catalog_aliases()
+                                                aliases = {str(k).lower().strip(): [str(v).lower().strip() for v in (val if isinstance(val, list) else [val])] for k, val in raw_aliases.items() if val}
                                             else:
                                                 logger.warning("⚠️ [DRIFT INTERCEPTOR] Catalog service not initialized or missing get_catalog_aliases method")
                                         except Exception as e:
