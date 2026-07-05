@@ -508,3 +508,95 @@ async def test_meta_payload_leak_prevention_and_bypass():
         assert "tratamiento de tus datos personales" in sent_text or "https://tiendalasmotos.com/politica-de-privacidad" in sent_text, \
             f"Blind simulation bypass! Response does not request Habeas Data consent: '{sent_text}'"
 
+
+@pytest.mark.asyncio
+async def test_alias_pure_catalog_invocation():
+    """
+    Certifica que la consulta 'señoritera' genera obligatoriamente una invocación a 'search_catalog'
+    (debido a la inclusión del alias dinámico en motorcycle_keywords) y devuelve 'success: False'
+    al run_checker si falta la ficha técnica.
+    """
+    from app.services.config_service import config_service
+    from app.services.agentic_loop_service import AgenticOrchestrator
+    
+    # 1. Instanciamos el cerebro y mockeamos los alias dinámicos
+    from app.services.catalog_service import CatalogService
+    catalog_service = CatalogService()
+    cerebro = CerebroIA(catalog_service=catalog_service)
+    
+    mock_aliases = {"semiautomatica": ["señoritera"]}
+    
+    # Mock de las respuestas de Gemini
+    # Intento 1: respuesta sin herramientas. Como el interceptor detecta "señoritera" (alias dinámico),
+    # forzará un segundo turno con instrucción de usar search_catalog.
+    class MockPart:
+        def __init__(self, function_call=None, text=None):
+            self.function_call = function_call
+            self.text = text
+
+    class MockContent:
+        def __init__(self, parts):
+            self.parts = parts
+
+    class MockCandidate:
+        def __init__(self, content):
+            self.content = content
+
+    class MockResponse:
+        def __init__(self, candidates):
+            self.candidates = candidates
+
+    # Turno 1: Gemini responde texto puro (evadiendo la herramienta)
+    candidate_t1 = MockCandidate(content=MockContent(parts=[MockPart(text="La señoritera es una gran moto.")]))
+    response_t1 = MockResponse(candidates=[candidate_t1])
+
+    # Turno 2 (Forzado): Gemini llama a search_catalog con query "señoritera"
+    mock_fc = MagicMock()
+    mock_fc.name = "search_catalog"
+    mock_fc.args = {"query": "señoritera"}
+    candidate_t2 = MockCandidate(content=MockContent(parts=[MockPart(function_call=mock_fc)]))
+    response_t2 = MockResponse(candidates=[candidate_t2])
+
+    # Turno 3 (Final): Gemini responde texto, pero SIN la ficha técnica (para provocar el fallo en run_checker)
+    candidate_t3 = MockCandidate(content=MockContent(parts=[MockPart(text="La señoritera cuesta $7.000.000. ![Scooter](http://img)")]))
+    response_t3 = MockResponse(candidates=[candidate_t3])
+
+    gemini_calls = []
+    async def mock_call_gemini(*args, **kwargs):
+        gemini_calls.append(args)
+        if len(gemini_calls) == 1:
+            return response_t1
+        elif len(gemini_calls) == 2:
+            return response_t2
+        else:
+            return response_t3
+
+    prospect_data = {
+        "exists": True,
+        "nombre": "Tobias",
+        "ciudad": "Santa Marta",
+        "forma_pago": "Crédito",
+        "habeas_data_accepted": True,
+        "moto_interest": "Semiautomatica"
+    }
+
+    # Parcheamos config_service.get_catalog_aliases, _call_gemini_with_retry_async y el search_items
+    with patch("app.services.config_service.config_service.get_catalog_aliases", return_value=mock_aliases), \
+         patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call_gemini), \
+         patch.object(catalog_service, "search_items", return_value=[{"name": "Victory Flow", "price": "$7.000.000", "category": "Semiautomatica", "image_url": "http://img", "summary": "Excelente"}]), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+         
+        # Ejecutamos pensar_respuesta con consulta pura del alias
+        res = await cerebro.pensar_respuesta("quiero ver la señoritera", prospect_data=prospect_data)
+        
+        # Aserción 1: Se debió haber forzado al menos un turno llamando a Gemini con el mensaje de error del sistema
+        assert len(gemini_calls) >= 2, "No se forzó el turno de validación a pesar de tener el alias 'señoritera'."
+        
+        # Aserción 2: Validamos que al run_checker se le devuelva success: False cuando se fuerza la validación de la ficha técnica
+        orchestrator = AgenticOrchestrator()
+        chk = orchestrator.run_checker(res, is_catalog_query=True)
+        assert chk["success"] is False, "El run_checker debió fallar por falta de 'Ficha Tecnica:'."
+        assert chk["report"]["broken_guardrail"] == "PRICE_CONSISTENCY_CHECK"
+
+
