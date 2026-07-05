@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.2
-**Último Hito:** hotfix-bot-bugfix-115: Restauración de la bifurcación lógica de Cold Start en el Drift Interceptor y aserciones de test.
-**Coherence Score:** 1.000 (197/197 Tests PASSED)
+**Versión Actual:** v10.22.3
+**Último Hito:** hotfix-bot-bugfix-117: Refactorización dinámica del interceptor de palabras clave de motocicletas e integración del test de alias.
+**Coherence Score:** 1.000 (198/198 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 117 | Dynamic motorcycle keywords and catalog tool validation turn | 2026-07-05 | 13bf040 | 117-hotfix-bot-bugfix-117 |
 | 115 | Cold Start Drift Interceptor logic restoration | 2026-07-05 | 58738b0 | 115-hotfix-bot-bugfix-115 |
 | 114 | webhook redundant config load protection | 2026-07-05 | 1d55c41 | 114-hotfix-bot-perf-114 |
 | 068 | webhook blocking sync awaits | 2026-06-25 | 114e0a0 | 068-hotfix-webhook-sync-block |

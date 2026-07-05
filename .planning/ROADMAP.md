@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
 
-## Tasks Completadas (v10.22.2)
+## Tasks Completadas (v10.22.3)
+- [x] Refactorización dinámica del interceptor de palabras clave de motocicletas e integración del test de alias (BOT-BUGFIX-117).
 - [x] Restauración de la bifurcación lógica de Cold Start en el Drift Interceptor y aserciones de test (BOT-BUGFIX-115).
 - [x] Restauración del blindaje asíncrono en la inicialización del webhook y suite de pruebas unitarias (BOT-PERF-114).
 - [x] Resolución de colisión de Casing ('Semiautomatica' vs 'semiautomatica') en la hidratación de alias de Firestore y mitigación del falso positivo de fallback en el catálogo (BOT-BUGFIX-113).
