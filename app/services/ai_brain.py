@@ -1243,7 +1243,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     # --- INTERCEPTOR DE NEGOCIO (JSON Voorhees v6.6.6) ---
                                     # [UNIFICACIÓN] moto_interest enforced
                                     moto_interest_prev = prospect_data.get("moto_interest") if prospect_data else None
-                                    if moto_interest_prev:
+                                    if moto_interest_prev is not None:
                                         # Obtener alias regionales de catálogo (Zero-Silent-Failures compliant)
                                         aliases = {}
                                         try:
@@ -1255,16 +1255,32 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         except Exception as e:
                                             logger.exception(f"🚨 [DRIFT INTERCEPTOR] Error recuperando alias de catálogo desde catalog_service: {e}")
                                             
-                                        # Si hay correspondencia semántica o de modelo, hacemos bypass del interceptor
-                                        if self._is_synonym_or_model_match(query, moto_interest_prev, aliases):
+                                        # Lógica de bifurcación para Cold Start vs Interés Previo
+                                        if not str(moto_interest_prev).strip():
+                                            # Cold Start: validar si 'query' es un alias válido en 'aliases'
+                                            is_bypass = False
+                                            q_norm = str(query).lower().strip()
+                                            
+                                            for category in aliases.keys():
+                                                cat_norm = str(category).lower().strip()
+                                                if self._is_synonym_or_model_match(q_norm, cat_norm, aliases):
+                                                    is_bypass = True
+                                                    break
+                                            
                                             skip_catalog = False
-                                            logger.info(f"🔄 [INTERCEPTOR BYPASS] Búsqueda de '{query}' aprobada por coincidencia de sinónimos/modelos con '{moto_interest_prev}'.")
+                                            if is_bypass:
+                                                logger.info(f"🔄 [INTERCEPTOR BYPASS COLD START] Búsqueda de alias '{query}' aprobada en Cold Start.")
                                         else:
-                                            import difflib
-                                            ratio = difflib.SequenceMatcher(None, str(query).lower(), str(moto_interest_prev).lower()).ratio()
-                                            if ratio < 0.30:
-                                                skip_catalog = True
-                                                logger.info(f"🛡️ [INTERCEPTOR] Búsqueda de '{query}' bloqueada. Ratio: {ratio:.2f} (Drift Threshold). Protegiendo '{moto_interest_prev}'.")
+                                            # Si hay correspondencia semántica o de modelo, hacemos bypass del interceptor
+                                            if self._is_synonym_or_model_match(query, moto_interest_prev, aliases):
+                                                skip_catalog = False
+                                                logger.info(f"🔄 [INTERCEPTOR BYPASS] Búsqueda de '{query}' aprobada por coincidencia de sinónimos/modelos con '{moto_interest_prev}'.")
+                                            else:
+                                                import difflib
+                                                ratio = difflib.SequenceMatcher(None, str(query).lower(), str(moto_interest_prev).lower()).ratio()
+                                                if ratio < 0.30:
+                                                    skip_catalog = True
+                                                    logger.info(f"🛡️ [INTERCEPTOR] Búsqueda de '{query}' bloqueada. Ratio: {ratio:.2f} (Drift Threshold). Protegiendo '{moto_interest_prev}'.")
                                     
                                     if skip_catalog:
                                         search_results = f"[SISTEMA: El usuario ya tiene en contexto la moto '{moto_interest_prev}'. REGLA OBLIGATORIA: NO listes otras motos ni ofrezcas más opciones. Enfócate en concretar la venta de '{moto_interest_prev}' (preguntar forma de pago o iniciar crédito).]"
