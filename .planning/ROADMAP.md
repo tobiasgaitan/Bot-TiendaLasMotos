@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
 
-## Tasks Completadas (v10.22.1)
+## Tasks Completadas (v10.22.2)
+- [x] Restauración de la bifurcación lógica de Cold Start en el Drift Interceptor y aserciones de test (BOT-BUGFIX-115).
 - [x] Restauración del blindaje asíncrono en la inicialización del webhook y suite de pruebas unitarias (BOT-PERF-114).
 - [x] Resolución de colisión de Casing ('Semiautomatica' vs 'semiautomatica') en la hidratación de alias de Firestore y mitigación del falso positivo de fallback en el catálogo (BOT-BUGFIX-113).
 - [x] Desacoplamiento de alias de catálogo y resolución de importación circular deadlock en caliente en producción (BOT-RESILIENCE-104).

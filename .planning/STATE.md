@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.1
-**Último Hito:** hotfix-bot-perf-114: Restauración del blindaje asíncrono en la inicialización del webhook y suite de pruebas unitarias.
-**Coherence Score:** 1.000 (195/195 Tests PASSED)
+**Versión Actual:** v10.22.2
+**Último Hito:** hotfix-bot-bugfix-115: Restauración de la bifurcación lógica de Cold Start en el Drift Interceptor y aserciones de test.
+**Coherence Score:** 1.000 (197/197 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 115 | Cold Start Drift Interceptor logic restoration | 2026-07-05 | 58738b0 | 115-hotfix-bot-bugfix-115 |
 | 114 | webhook redundant config load protection | 2026-07-05 | 1d55c41 | 114-hotfix-bot-perf-114 |
 | 068 | webhook blocking sync awaits | 2026-06-25 | 114e0a0 | 068-hotfix-webhook-sync-block |
 | 069 | corregir mock namespace en test zombie | 2026-06-26 | a07a42b | 069-hotfix-test-namespace-patch |
@@ -66,5 +67,7 @@
 - v10.19.0: bot-resilience-102: Flexibilización del Drift Interceptor (umbral a 0.30), Null Masking opcional para summary/descripcion, y fallback de imágenes. Coherence Score: 1.000 (189/189 Tests PASSED).
 - v10.19.1: bot-resilience-103: Bypass del Drift Interceptor para alias regionales y coincidencia parcial de modelos de moto con logging explícito (Zero-Silent-Failures). Coherence Score: 1.000 (191/191 Tests PASSED).
 - v10.21.0: bot-resilience-104: Desacoplamiento de alias de catálogo y resolución de importación circular deadlock en caliente. Coherence Score: 1.000 (192/192 Tests PASSED).
+- v10.22.1: hotfix-bot-perf-114: Restauración del blindaje asíncrono en la inicialización del webhook y suite de pruebas unitarias. Coherence Score: 1.000 (195/195 Tests PASSED).
+- v10.22.2: hotfix-bot-bugfix-115: Restauración de la bifurcación lógica de Cold Start en el Drift Interceptor y aserciones de test. Coherence Score: 1.000 (197/197 Tests PASSED).
 
 
