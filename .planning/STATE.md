@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
 **Versión Actual:** v10.22.5
-**Último Hito:** hotfix-bot-judge-alignment: Stateless alignment of catalog context for the Judge Service in whatsapp.py
+**Último Hito:** hotfix-bot-promotion-main: Branch beta promoted and merged to main for release v10.22.5
 **Coherence Score:** 1.000 (200/200 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 122 | Promoción de rama beta a main para release v10.22.5 | 2026-07-06 | 4b5c45c | 122-promocion-a-main-v10.22.5 |
 | 121 | Stateless alignment of catalog context for the Judge Service in whatsapp.py | 2026-07-06 | c26943a | 121-hotfix-bot-judge-alignment |
 | 119 | Forensic trace extraction for search_catalog tool call rejection | 2026-07-05 | 96c5eee | 119-hotfix-bot-study-120 |
 | 118 | Drift Interceptor alias literal validation failure | 2026-07-05 | 5388b02 | 118-hotfix-bot-bugfix-118 |
