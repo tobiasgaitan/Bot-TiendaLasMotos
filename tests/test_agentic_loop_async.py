@@ -356,3 +356,247 @@ class TestEvaluateProfileEmptyFirestoreConfig:
             f"[E2E-095] link_brilla debe retornar str con excepción en partners, obtenido: {type(result)}"
         assert result == "#", \
             f"[E2E-095] link_brilla debe retornar '#' en fallback de excepción, obtenido: '{result}'"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BOT-BRAIN-FINANCE-089: Integration test for context leak and blind simulation bypass
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_meta_payload_leak_prevention_and_bypass():
+    """
+    [BOT-BRAIN-FINANCE-089] Intercepts the WhatsApp message payload sent to Meta
+    and executes strict Regex checks to prevent context leaks (directives) and
+    detect silent bypasses of the blind simulation for credit queries without Habeas Data.
+    """
+    import re
+    from app.routers.whatsapp import _handle_message_background
+    from fastapi import BackgroundTasks
+    
+    # 1. Setup mock request payload for a prospect requesting credit
+    # but having habeas_data_accepted = False (triggers blind simulation)
+    user_phone = "+573192564288"
+    msg_data = {
+        "from": user_phone,
+        "id": "wamid.test_leak_prevent_089",
+        "timestamp": "1672531199",
+        "text": "Quiero comprar una Raider 125 a crédito",
+        "type": "text",
+        "phone_number_id": "999999"
+    }
+
+    # 2. Mock services to simulate a prospect with habeas_data_accepted = False
+    mock_memory_service = MagicMock()
+    mock_memory_service.save_message = AsyncMock(return_value=True)
+    mock_memory_service.get_prospect_data = AsyncMock(return_value={
+        "exists": True,
+        "status": "PENDING",
+        "chatbot_status": "ACTIVE",
+        "name": "Juan Test",
+        "celular": user_phone,
+        "habeas_data_accepted": False, # Triggers the blind simulation flow!
+        "moto_interest": "Raider 125",
+        "forma_pago": "credito"
+    })
+    mock_memory_service.get_chat_history = AsyncMock(return_value=[])
+    mock_memory_service.create_prospect_if_missing = AsyncMock()
+    mock_memory_service.update_last_interaction = AsyncMock()
+    mock_memory_service.transition_to_in_progress = AsyncMock()
+    mock_memory_service.generate_and_update_summary = AsyncMock()
+    
+    # Mock CerebroIA & JudgeService
+    # Mock self._catalog_service inside cerebro to return the Raider 125 catalog item
+    mock_catalog = MagicMock()
+    mock_catalog.search_items.return_value = [{
+        "name": "Raider 125",
+        "price": 6500000.0,
+        "raw_price": "6500000",
+        "formatted_price": "$6.500.000",
+        "summary": "Excelente moto"
+    }]
+    mock_catalog.search.return_value = [{
+        "name": "Raider 125",
+        "price": 6500000.0,
+        "raw_price": "6500000",
+        "formatted_price": "$6.500.000",
+        "summary": "Excelente moto"
+    }]
+    
+    # We need to mock motor_financiero as well to return a simulated payment
+    mock_financial = MagicMock()
+    mock_financial.calculate_payment.return_value = {
+        "cuota_mensual": 350000.0
+    }
+    
+    # Mock GenAI client
+    mock_client = MagicMock()
+    mock_chat = AsyncMock()
+
+    # Setup the response for chat.send_message
+    mock_response = MagicMock()
+    mock_candidate = MagicMock()
+    mock_part = MagicMock()
+
+    # Setup the function call
+    mock_function_call = MagicMock()
+    mock_function_call.name = "calculate_credit_score"
+    mock_function_call.args = {
+        "ocupacion_y_contrato": "Independiente",
+        "ingresos_demostrables": "1500000",
+        "historial_datacredito": "Al dia"
+    }
+
+    mock_part.function_call = mock_function_call
+    mock_part.text = None
+    mock_candidate.content.parts = [mock_part]
+    mock_response.candidates = [mock_candidate]
+
+    # Configure send_message to return mock_response
+    mock_chat.send_message = AsyncMock(return_value=mock_response)
+
+    # Configure mock_client.aio.chats.create to return mock_chat
+    mock_client.aio.chats.create = MagicMock(return_value=mock_chat)
+    
+    # Mock send_text_message on whatsapp_service to capture the outgoing message
+    captured_messages = []
+    async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
+        captured_messages.append(text)
+        return {"messages": [{"id": "wamid.mocked_123"}]}
+
+    with patch("app.routers.whatsapp.settings") as mock_settings, \
+         patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
+         patch("app.routers.whatsapp.judge_service") as mock_judge, \
+         patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
+         patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+         patch("app.routers.whatsapp.catalog_service_local", mock_catalog), \
+         patch("app.routers.whatsapp.motor_financiero", mock_financial), \
+         patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+         
+        mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+        
+        background_tasks = BackgroundTasks()
+        await _handle_message_background(msg_data, background_tasks)
+        
+        # Verify a message was sent to Meta
+        assert len(captured_messages) > 0, "No messages were sent to Meta."
+        sent_text = captured_messages[0]
+        
+        # 3. STRICT REGEX ASSERTIONS: Context Bleeding / Internal Directives
+        # The text must not contain any system instructions/directives
+        leak_pattern = re.compile(
+            r"(EL USUARIO ESTÁ LISTO PARA EL CRÉDITO|calculate_credit_score|Habeas Data Aceptado|SISTEMA:|MANDATO CRÍTICO|ERROR:)",
+            re.IGNORECASE
+        )
+        assert not leak_pattern.search(sent_text), \
+            f"Context Bleeding detected! Outgoing Meta message contains system directives: '{sent_text}'"
+            
+        # 4. STRICT ASSERTIONS: Silent Bypass of Blind Simulation
+        # The text must contain the blind simulation credit estimation with 10% downpayment pattern and request for consent
+        expected_blind_copy = (
+            "Si te interesa a crédito con la inicial de $650,000, "
+            "las cuotas a 24 meses serían aproximadamente de $350,000 "
+            "(incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*"
+        )
+        assert expected_blind_copy in sent_text, \
+            f"Blind simulation bypass! Response does not contain the exact 10% initial and payment copywriting: '{sent_text}'"
+        assert "sin cuota inicial" not in sent_text, \
+            f"Blind simulation bypass! Response contains illegal phrase 'sin cuota inicial': '{sent_text}'"
+        assert "$" in sent_text, \
+            f"Blind simulation bypass! Response does not contain currency symbol: '{sent_text}'"
+        assert "tratamiento de tus datos personales" in sent_text or "https://tiendalasmotos.com/politica-de-privacidad" in sent_text, \
+            f"Blind simulation bypass! Response does not request Habeas Data consent: '{sent_text}'"
+
+
+@pytest.mark.asyncio
+async def test_alias_pure_catalog_invocation():
+    """
+    Certifica que la consulta 'señoritera' genera obligatoriamente una invocación a 'search_catalog'
+    (debido a la inclusión del alias dinámico en motorcycle_keywords) y devuelve 'success: False'
+    al run_checker si falta la ficha técnica.
+    """
+    from app.services.config_service import config_service
+    from app.services.agentic_loop_service import AgenticOrchestrator
+    
+    # 1. Instanciamos el cerebro y mockeamos los alias dinámicos
+    from app.services.catalog_service import CatalogService
+    catalog_service = CatalogService()
+    cerebro = CerebroIA(catalog_service=catalog_service)
+    
+    mock_aliases = {"semiautomatica": ["señoritera"]}
+    
+    # Mock de las respuestas de Gemini
+    # Intento 1: respuesta sin herramientas. Como el interceptor detecta "señoritera" (alias dinámico),
+    # forzará un segundo turno con instrucción de usar search_catalog.
+    class MockPart:
+        def __init__(self, function_call=None, text=None):
+            self.function_call = function_call
+            self.text = text
+
+    class MockContent:
+        def __init__(self, parts):
+            self.parts = parts
+
+    class MockCandidate:
+        def __init__(self, content):
+            self.content = content
+
+    class MockResponse:
+        def __init__(self, candidates):
+            self.candidates = candidates
+
+    # Turno 1: Gemini responde texto puro (evadiendo la herramienta)
+    candidate_t1 = MockCandidate(content=MockContent(parts=[MockPart(text="La señoritera es una gran moto.")]))
+    response_t1 = MockResponse(candidates=[candidate_t1])
+
+    # Turno 2 (Forzado): Gemini llama a search_catalog con query "señoritera"
+    mock_fc = MagicMock()
+    mock_fc.name = "search_catalog"
+    mock_fc.args = {"query": "señoritera"}
+    candidate_t2 = MockCandidate(content=MockContent(parts=[MockPart(function_call=mock_fc)]))
+    response_t2 = MockResponse(candidates=[candidate_t2])
+
+    # Turno 3 (Final): Gemini responde texto, pero SIN la ficha técnica (para provocar el fallo en run_checker)
+    candidate_t3 = MockCandidate(content=MockContent(parts=[MockPart(text="La señoritera cuesta $7.000.000. ![Scooter](http://img)")]))
+    response_t3 = MockResponse(candidates=[candidate_t3])
+
+    gemini_calls = []
+    async def mock_call_gemini(*args, **kwargs):
+        gemini_calls.append(args)
+        if len(gemini_calls) == 1:
+            return response_t1
+        elif len(gemini_calls) == 2:
+            return response_t2
+        else:
+            return response_t3
+
+    prospect_data = {
+        "exists": True,
+        "nombre": "Tobias",
+        "ciudad": "Santa Marta",
+        "forma_pago": "Crédito",
+        "habeas_data_accepted": True,
+        "moto_interest": "Semiautomatica"
+    }
+
+    # Parcheamos config_service.get_catalog_aliases, _call_gemini_with_retry_async y el search_items
+    with patch("app.services.config_service.config_service.get_catalog_aliases", return_value=mock_aliases), \
+         patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call_gemini), \
+         patch.object(catalog_service, "search_items", return_value=[{"name": "Victory Flow", "price": "$7.000.000", "category": "Semiautomatica", "image_url": "http://img", "summary": "Excelente"}]), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+         
+        # Ejecutamos pensar_respuesta con consulta pura del alias
+        res = await cerebro.pensar_respuesta("quiero ver la señoritera", prospect_data=prospect_data)
+        
+        # Aserción 1: Se debió haber forzado al menos un turno llamando a Gemini con el mensaje de error del sistema
+        assert len(gemini_calls) >= 2, "No se forzó el turno de validación a pesar de tener el alias 'señoritera'."
+        
+        # Aserción 2: Validamos que al run_checker se le devuelva success: False cuando se fuerza la validación de la ficha técnica
+        orchestrator = AgenticOrchestrator()
+        chk = orchestrator.run_checker(res, is_catalog_query=True)
+        assert chk["success"] is False, "El run_checker debió fallar por falta de 'Ficha Tecnica:'."
+        assert chk["report"]["broken_guardrail"] == "PRICE_CONSISTENCY_CHECK"
+
+

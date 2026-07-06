@@ -177,3 +177,77 @@ async def test_whatsapp_handle_message_structured_forensic_logging():
         assert "stack_trace" in fault_data
         assert "AttributeError: Atributo incorrecto simulado" in fault_data["stack_trace"]
 
+
+@pytest.mark.asyncio
+async def test_whatsapp_handle_message_habeas_data_bypass_interrupt():
+    """
+    Verifica que si pensar_respuesta lanza HabeasDataBypassInterrupt:
+    1. El router captura la excepción y no la propaga como error.
+    2. Trata la respuesta de legalización como aprobada (is_approved=True).
+    3. Envía la respuesta legal + simulación al usuario directamente.
+    4. No activa el supervisor / fallback.
+    """
+    from app.core.exceptions import HabeasDataBypassInterrupt
+    
+    msg_data = {
+        "from": "573192564288",
+        "id": "wamid.text_habeas_bypass_123",
+        "type": "text",
+        "text": "quiero simular mi credito",
+        "phone_number_id": "1021779847693778"
+    }
+    background_tasks = BackgroundTasks()
+
+    # CerebroIA que lanza HabeasDataBypassInterrupt
+    mock_cerebro = MagicMock()
+    mock_cerebro.pensar_respuesta = AsyncMock(
+        side_effect=HabeasDataBypassInterrupt("Simulacion ciega + Habeas Data disclaimer")
+    )
+
+    mock_ms = AsyncMock()
+    mock_ms.get_prospect_data = AsyncMock(return_value={"nombre": "Pedro", "habeas_data_accepted": False})
+    mock_ms.get_chat_history = AsyncMock(return_value=[])
+    mock_ms.generate_and_update_summary = AsyncMock()
+    mock_ms.save_message = AsyncMock()
+    mock_ms.create_prospect_if_missing = AsyncMock()
+    mock_ms.update_last_interaction = AsyncMock()
+    mock_ms.transition_to_in_progress = AsyncMock()
+
+    mock_db = MagicMock()
+    mock_db.project = "tiendalasmotos"
+    mock_message_buffer = AsyncMock()
+    mock_message_buffer.add_message = AsyncMock(return_value=True)
+    mock_config_loader = MagicMock()
+    mock_catalog = MagicMock()
+    mock_config_service = MagicMock()
+    mock_judge = AsyncMock()
+    mock_wa_service = AsyncMock()
+
+    with patch("app.routers.whatsapp.db", mock_db), \
+         patch("app.routers.whatsapp.message_buffer", mock_message_buffer), \
+         patch("app.routers.whatsapp.config_loader", mock_config_loader), \
+         patch("app.routers.whatsapp.catalog_service_local", mock_catalog), \
+         patch("app.routers.whatsapp.config_service", mock_config_service), \
+         patch("app.routers.whatsapp.judge_service", mock_judge), \
+         patch("app.routers.whatsapp.memory_service_module") as mock_mem_module, \
+         patch("app.routers.whatsapp._send_whatsapp_message") as mock_send_wa, \
+         patch("app.routers.whatsapp.CerebroIA", return_value=mock_cerebro), \
+         patch("app.services.whatsapp_service.whatsapp_service", mock_wa_service):
+
+        mock_mem_module.memory_service = mock_ms
+
+        await _handle_message_background(msg_data, background_tasks)
+
+        # 1. Asegurar que se llamó a pensar_respuesta
+        mock_cerebro.pensar_respuesta.assert_called_once()
+        
+        # 2. Asegurar que _send_whatsapp_message fue llamado con la respuesta de la excepción
+        mock_send_wa.assert_called_once_with(
+            "+573192564288", 
+            "Simulacion ciega + Habeas Data disclaimer", 
+            phone_number_id="1021779847693778"
+        )
+        
+        # 3. Asegurar que no se llamó a set_human_help_status (que es parte del fallback)
+        mock_ms.set_human_help_status.assert_not_called()
+

@@ -14,6 +14,7 @@ from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
 
 from app.utils.json_processor import clean_json_voorhees
+from app.core.exceptions import HabeasDataBypassInterrupt
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +199,76 @@ class CerebroIA:
             self.client = None
             logger.warning("⚠️  CerebroIA running in fallback mode (no AI)")
 
+    def _is_synonym_or_model_match(self, query: str, moto_interest: str, aliases: dict) -> bool:
+        """
+        Determines if a catalog search query matches the prospect's motorcycle of interest
+        either through regional synonyms (aliases dictionary) or clean alphanumeric substring match.
+        """
+        q = str(query).lower().strip()
+        m = str(moto_interest).lower().strip()
+        
+        if not q or not m:
+            return False
+            
+        if q == m:
+            return True
+            
+        # 1. Coincidencia por subcadena limpia (ej. "TVS Apache 160" y "Apache")
+        q_alnum = "".join(c for c in q if c.isalnum())
+        m_alnum = "".join(c for c in m if c.isalnum())
+        if q_alnum and m_alnum:
+            if q_alnum in m_alnum or m_alnum in q_alnum:
+                return True
+                
+        # 2. Coincidencia por alias de catálogo (regionalismos)
+        for category, syns in aliases.items():
+            cat_lower = str(category).lower().strip()
+            syns_lower = [str(s).lower().strip() for s in syns]
+            
+            # Check if query is category or in syns
+            q_matches = (q == cat_lower or q in syns_lower)
+            
+            # Check if moto_interest matches the category or matches any synonym containing/contained in m
+            m_matches = False
+            if m == cat_lower:
+                m_matches = True
+            else:
+                for syn in syns_lower:
+                    if syn in m or m in syn:
+                        m_matches = True
+                        break
+            
+            if q_matches and m_matches:
+                return True
+                
+        return False
+
+    def _parse_raw_price(self, raw_price_val: Any, price_val: Any) -> float:
+        """
+        Parses price raw and fallback values robustly.
+        Ensures formatted prices like '$9.969.000.*' are cleaned of non-numeric chars
+        and successfully cast to float (e.g. 9969000.0) without ValueError.
+        """
+        if raw_price_val is not None:
+            try:
+                return float(raw_price_val)
+            except (ValueError, TypeError):
+                clean_raw = re.sub(r'[^\d]', '', str(raw_price_val).strip())
+                if clean_raw:
+                    try:
+                        return float(clean_raw)
+                    except (ValueError, TypeError):
+                        pass
+
+        if price_val:
+            try:
+                clean_p = re.sub(r'[^\d]', '', str(price_val).strip())
+                return float(clean_p) if clean_p else 0.0
+            except (ValueError, TypeError):
+                pass
+
+        return 0.0
+
     async def _call_gemini_with_retry_async(self, func, *args, **kwargs):
         """
         Resiliencia de Red (Async): Implementa reintentos con Exponential Backoff
@@ -378,7 +449,7 @@ class CerebroIA:
             return "PHASE_1_PROFILING"
 
         # --- INTENCIÓN FINANCIERA (v1.3.1) ---
-        is_credit = bool(prospect_data.get("forma_pago") == "credito")
+        is_credit = bool(str(prospect_data.get("forma_pago") or "").strip().lower() in ["credito", "crédito"])
         is_financial_intent = False
         if history:
             finance_keywords = ["cuota", "credito", "crédito", "financiar", "mensualidad", "requisitos", "cuanto pago", "papeles"]
@@ -402,10 +473,13 @@ class CerebroIA:
                 logger.info("💰 [INTENT] Financial intent detected.")
                 is_financial_intent = True
 
-        # Evaluamos transiciones en estricto orden secuencial de negocio:
-        if is_credit or is_financial_intent:
-            is_accepted = prospect_data.get("habeas_data_accepted") is True
-            is_sent = prospect_data.get("habeas_data_accepted_sent") is True
+       # Evaluamos transiciones en estricto orden secuencial de negocio:
+        # GUARDRAIL: No permitimos avanzar a fase legal si no hay un modelo inmutable identificado en el CRM
+        has_moto_interest = bool(prospect_data and prospect_data.get("moto_interest"))
+        
+        if (is_credit or is_financial_intent) and has_moto_interest:
+            is_accepted = bool(prospect_data.get("habeas_data_accepted"))
+            is_sent = bool(prospect_data.get("habeas_data_accepted_sent"))
             
             conversation_text = ""
             if history:
@@ -450,7 +524,8 @@ class CerebroIA:
         forced_instruction = None
         forced_temp = None
 
-        while current_attempt < max_validation_attempts:
+        try:
+          while current_attempt < max_validation_attempts:
             current_attempt += 1
             if LANGFUSE_AVAILABLE and prospect_data:
                 _phone = prospect_data.get("phone") or prospect_data.get("id", "unknown")
@@ -562,8 +637,9 @@ class CerebroIA:
                 orchestrator = AgenticOrchestrator()
                 validation = orchestrator.run_checker(final_text, is_catalog_query=is_catalog_query)
                 if not validation["success"]:
+                    user_id = prospect_data.get("phone") or prospect_data.get("id", "unknown") if prospect_data else "unknown"
                     logger.warning(
-                        f"⚠️ [PCC VALIDATION FAILED] Attempt {current_attempt}/{max_validation_attempts} for query '{texto}'. "
+                        f"⚠️ [PCC VALIDATION FAILED] CATALOG_VALIDATION_FAIL - Attempt {current_attempt}/{max_validation_attempts} for query '{texto}' user_id={user_id}. "
                         f"Expected: {validation['report']['expected_behavior']}."
                     )
                     if current_attempt < max_validation_attempts:
@@ -575,12 +651,18 @@ class CerebroIA:
                         forced_temp = 0.1
                         continue  # Force immediate retry with temperature 0.1
                     else:
-                        logger.error("🚨 [PCC VALIDATION] Max validation attempts reached. Returning degraded response.")
+                        logger.error(
+                            f"🚨 [PCC VALIDATION] CATALOG_VALIDATION_FAIL - Max validation attempts reached. "
+                            f"user_id={user_id} query='{texto}' - Returning degraded response."
+                        )
                         return final_text
                 else:
                     return final_text
             else:
                 return final_text
+        except HabeasDataBypassInterrupt as hdbi:
+            logger.info(f"🛡️ [HABEAS-BYPASS] Cortocircuito limpio ejecutado. Propagando al router.")
+            raise
 
     @staticmethod
     def clean_markdown_blocks(text: str) -> str:
@@ -757,14 +839,10 @@ REGLAS ESTRICTAS DE USO:
             phase = self._determine_funnel_phase(prospect_data)
             moto_confirmada = prospect_data.get("moto_confirmada") is True if prospect_data else False
             
-            # REGLA v1.3.1: Desacople de Crédito (Mandatorio)
-            # La herramienta de crédito debe estar disponible en las fases 1, 2 y 3
-            # para cumplir con el protocolo de "Valor Primero" y la Phase 2.
-            if phase in ["PHASE_1_PROFILING", "PHASE_2_HABEAS_DATA", "PHASE_3_CREDIT_PROFILING"]:
-                function_declarations.append(credit_function)
-                logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Phase: {phase})")
-            else:
-                logger.info(f"🛠️ Toolset: [handoff, catalog] (Phase: {phase})")
+            # Reverted: credit_function is now always included to avoid LLM panic loops,
+            # and we reject it at runtime if called in PHASE_1_PROFILING (Tool Rejection Pattern)
+            function_declarations.append(credit_function)
+            logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Phase: {phase})")
 
             return [types.Tool(function_declarations=function_declarations)]
         except Exception as e:
@@ -865,9 +943,41 @@ REGLAS ESTRICTAS DE USO:
                     if captured_fields:
                         captured_data_xml = f"\n<datos_ya_capturados>\n" + "\n".join([f"  <{k}>{prospect_data[k]}</{k}>" for k in captured_fields]) + "\n</datos_ya_capturados>"
                 
-                full_prompt = f"""
-{self._get_current_instruction()}
+                # --- BOT-BRAIN-ALIGNMENT-099: SYNONYM INJECTION ---
+                # WHY: category_aliases exists in Firestore for programmatic search indexing
+                # but the LLM has zero awareness of regional synonyms (e.g. "señoritera" → scooter).
+                # Injecting them into the prompt enables the LLM to translate user colloquialisms
+                # into proper search_catalog queries without hardcoding every regional term.
+                synonyms_xml = ""
+                try:
+                    catalog_aliases = {}
+                    if self._catalog_service and hasattr(self._catalog_service, 'get_catalog_aliases'):
+                        raw_catalog_aliases = self._catalog_service.get_catalog_aliases()
+                        catalog_aliases = {str(k).lower().strip(): [str(v).lower().strip() for v in val] for k, val in raw_catalog_aliases.items() if val}
+                    else:
+                        logger.warning("⚠️ [SYNONYM INJECTION] Catalog service not initialized or missing get_catalog_aliases method")
+                    
+                    if catalog_aliases:
+                        alias_lines = []
+                        for cat, syns in catalog_aliases.items():
+                            csv_syns = ", ".join(syns)
+                            alias_lines.append(f"  <alias categoria=\"{cat}\">{csv_syns}</alias>")
+                        synonyms_xml = (
+                            "\n<diccionario_sinonimos_regionales>\n"
+                            + "\n".join(alias_lines)
+                            + "\n  [INSTRUCCIÓN: Si el usuario usa alguno de estos sinónimos, tradúcelo a la categoría correspondiente al llamar search_catalog.]"
+                            + "\n</diccionario_sinonimos_regionales>\n"
+                        )
+                        logger.info(f"📖 [SYNONYM INJECTION] {len(catalog_aliases)} categorías inyectadas en prompt")
+                except Exception as _syn_err:
+                    logger.exception(f"🚨 [SYNONYM INJECTION] Error crítico recuperando alias del catálogo: {_syn_err}")
 
+                base_instruction = self._get_current_instruction()
+
+
+                full_prompt = f"""
+{base_instruction}
+{synonyms_xml}
 <contexto_dinamico>
   <prospecto>
     <nombre_real>{user_name}</nombre_real>
@@ -971,7 +1081,23 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 # attempts to answer without using search_catalog, we intercept and 
                 # force a tool turn. CRITICAL: We MUST pass tools in the retry config.
                 try:
-                    motorcycle_keywords = ["moto", "raider", "sport", "victory", "tvs", "mrx", "trabajo", "trabajar", "mensajeria", "domicilio", "carga"]
+                    from app.services.config_service import config_service
+                    base_keywords = ["moto", "raider", "sport", "victory", "tvs", "mrx", "trabajo", "trabajar", "mensajeria", "domicilio", "carga"]
+                    motorcycle_keywords = list(base_keywords)
+                    try:
+                        aliases_dict = config_service.get_catalog_aliases()
+                        if aliases_dict:
+                            for category, synonyms in aliases_dict.items():
+                                cat_clean = str(category).lower().strip()
+                                if cat_clean and cat_clean not in motorcycle_keywords:
+                                    motorcycle_keywords.append(cat_clean)
+                                for syn in synonyms:
+                                    syn_clean = str(syn).lower().strip()
+                                    if syn_clean and syn_clean not in motorcycle_keywords:
+                                        motorcycle_keywords.append(syn_clean)
+                    except Exception as alias_err:
+                        logger.warning(f"⚠️ [MOTORCYCLE_KEYWORDS] Error loading catalog aliases dynamically: {alias_err}")
+                        
                     user_mentions_motorcycle = any(kw in texto.lower() for kw in motorcycle_keywords)
                     
                     candidate_parts = response.candidates[0].content.parts
@@ -1097,6 +1223,21 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                     # Execute function calls
                     logger.info(f"⚡ AI triggered {len(function_calls)} function call(s)")
+
+                    # --- BOT-BRAIN-ALIGNMENT-099: HARD-CAP (Max 2 tool calls per turn) ---
+                    # WHY: Without a per-turn cap, the LLM can dispatch unlimited function_calls
+                    # in a single response (e.g. search_catalog + calculate_credit_score + handoff),
+                    # causing an exhaustive agentic loop. Truncating to 2 prevents resource waste
+                    # and forces the LLM to prioritize the most critical tool per turn.
+                    MAX_TOOL_CALLS_PER_TURN = 2
+                    if len(function_calls) > MAX_TOOL_CALLS_PER_TURN:
+                        discarded = [fc.name for fc in function_calls[MAX_TOOL_CALLS_PER_TURN:]]
+                        logger.warning(
+                            f"🛑 [HARD-CAP] LLM dispatched {len(function_calls)} function calls in one turn. "
+                            f"Truncating to {MAX_TOOL_CALLS_PER_TURN}. Discarded: {discarded}"
+                        )
+                        function_calls = function_calls[:MAX_TOOL_CALLS_PER_TURN]
+
                     response_parts = []
                     
                     for fc in function_calls:
@@ -1126,12 +1267,44 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     # --- INTERCEPTOR DE NEGOCIO (JSON Voorhees v6.6.6) ---
                                     # [UNIFICACIÓN] moto_interest enforced
                                     moto_interest_prev = prospect_data.get("moto_interest") if prospect_data else None
-                                    if moto_interest_prev:
-                                        import difflib
-                                        ratio = difflib.SequenceMatcher(None, str(query).lower(), str(moto_interest_prev).lower()).ratio()
-                                        if 0.35 <= ratio < 0.95:
-                                            skip_catalog = True
-                                            logger.info(f"🛡️ [INTERCEPTOR] Búsqueda de '{query}' bloqueada. Ratio: {ratio:.2f} (Drift Threshold). Protegiendo '{moto_interest_prev}'.")
+                                    if moto_interest_prev is not None:
+                                        # Obtener alias regionales de catálogo (Zero-Silent-Failures compliant)
+                                        aliases = {}
+                                        try:
+                                            if self._catalog_service and hasattr(self._catalog_service, 'get_catalog_aliases'):
+                                                raw_aliases = self._catalog_service.get_catalog_aliases()
+                                                aliases = {str(k).lower().strip(): [str(v).lower().strip() for v in (val if isinstance(val, list) else [val])] for k, val in raw_aliases.items() if val}
+                                            else:
+                                                logger.warning("⚠️ [DRIFT INTERCEPTOR] Catalog service not initialized or missing get_catalog_aliases method")
+                                        except Exception as e:
+                                            logger.exception(f"🚨 [DRIFT INTERCEPTOR] Error recuperando alias de catálogo desde catalog_service: {e}")
+                                            
+                                        # Lógica de bifurcación para Cold Start vs Interés Previo
+                                        if not str(moto_interest_prev).strip():
+                                            # Cold Start: validar si 'query' es un alias válido en 'aliases'
+                                            is_bypass = False
+                                            q_norm = str(query).lower().strip()
+                                            
+                                            for category in aliases.keys():
+                                                cat_norm = str(category).lower().strip()
+                                                if self._is_synonym_or_model_match(q_norm, cat_norm, aliases):
+                                                    is_bypass = True
+                                                    break
+                                            
+                                            skip_catalog = False
+                                            if is_bypass:
+                                                logger.info(f"🔄 [INTERCEPTOR BYPASS COLD START] Búsqueda de alias '{query}' aprobada en Cold Start.")
+                                        else:
+                                            # Si hay correspondencia semántica o de modelo, hacemos bypass del interceptor
+                                            if self._is_synonym_or_model_match(query, moto_interest_prev, aliases):
+                                                skip_catalog = False
+                                                logger.info(f"🔄 [INTERCEPTOR BYPASS] Búsqueda de '{query}' aprobada por coincidencia de sinónimos/modelos con '{moto_interest_prev}'.")
+                                            else:
+                                                import difflib
+                                                ratio = difflib.SequenceMatcher(None, str(query).lower(), str(moto_interest_prev).lower()).ratio()
+                                                if ratio < 0.30:
+                                                    skip_catalog = True
+                                                    logger.info(f"🛡️ [INTERCEPTOR] Búsqueda de '{query}' bloqueada. Ratio: {ratio:.2f} (Drift Threshold). Protegiendo '{moto_interest_prev}'.")
                                     
                                     if skip_catalog:
                                         search_results = f"[SISTEMA: El usuario ya tiene en contexto la moto '{moto_interest_prev}'. REGLA OBLIGATORIA: NO listes otras motos ni ofrezcas más opciones. Enfócate en concretar la venta de '{moto_interest_prev}' (preguntar forma de pago o iniciar crédito).]"
@@ -1151,23 +1324,26 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             for m in matches:
                                                 # Validaciones estrictas de Anti-Null Masking
                                                 name = m.get('name')
-                                                summary = m.get('summary')
-                                                price = m.get('price') or m.get('formatted_price')
+                                                # 'summary'/'descripcion' is optional, default: 'Sin descripción'
+                                                summary = m.get('summary') or m.get('descripcion') or m.get('description') or 'Sin descripción'
+                                                price = m.get('price') or m.get('formatted_price') or m.get('precio')
                                                 
-                                                if not name or not summary or not price:
+                                                if not name or not price:
                                                     # [BOT-BUG-040] Anti-Null Masking resiliente: omitir ítem corrupto
                                                     # WHY: Un solo ítem con llave vacía (ej. TVS APACHE 160 sin 'summary')
                                                     # NO debe destruir la iteración completa del catálogo.
                                                     logger.warning(
                                                         f"⚠️ [NULL MASKING DETECTED] Ítem de catálogo omitido por llave crítica nula o vacía: "
-                                                        f"name={name!r}, summary={summary!r}, price={price!r}. "
+                                                        f"name={name!r}, price={price!r}. "
                                                         f"Raw item keys: {list(m.keys())}"
                                                     )
                                                     continue
                                                 
                                                 catalog_response_str += f"- {name} ({m.get('category', 'Moto')}): {price}\n"
-                                                if m.get('image_url'):
-                                                    catalog_response_str += f"  Image URL: {m['image_url']}\n"
+                                                
+                                                image_val = m.get('image_url') or m.get('imagen_url')
+                                                if image_val:
+                                                    catalog_response_str += f"  Image URL: {image_val}\n"
                                                 if m.get('link'):
                                                     catalog_response_str += f"  Link: {m['link']}\n"
                                                 
@@ -1233,18 +1409,31 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                         elif f_name == "calculate_credit_score":
                             logger.info(f"💰 AI calculating credit score...")
+                            # --- TOOL REJECTION PATTERN (BOT-ARCH-STATE-101) ---
+                            # Si calculate_credit_score es invocada prematuramente en PHASE_1_PROFILING,
+                            # retornamos un JSON/dict de error indicando al LLM que la acción está denegada
+                            # y obligándolo a usar search_catalog y mostrar precio/imagen.
+                            if phase == "PHASE_1_PROFILING":
+                                reject_msg = (
+                                    "Acción denegada: La herramienta calculate_credit_score no puede ser utilizada en PHASE_1_PROFILING. "
+                                    "OBLIGATORIO: Debes identificar primero la moto de interés mediante la herramienta search_catalog, "
+                                    "y mostrar el precio exacto y el enlace de imagen al usuario antes de poder realizar cualquier perfilamiento de crédito. "
+                                    "El estudio de crédito está estrictamente denegado en esta fase inicial."
+                                )
+                                logger.warning(f"🛑 [TOOL REJECTION] calculate_credit_score invoked in PHASE_1_PROFILING. Rejecting for LLM.")
+                                response_parts.append(types.Part.from_function_response(
+                                    name=f_name,
+                                    response={"error": reject_msg}
+                                ))
+                                continue
+
                             credit_res = "No disponible."
                             try:
-                                # [BOT-SEC-42] Validar consentimiento Habeas Data antes de interactuar con el simulador
+                                # [BOT-BRAIN-FINANCE-086] Bifurcación lineal: consentimiento Habeas Data
                                 is_accepted = (prospect_data or {}).get("habeas_data_accepted") is True
-                                if not is_accepted:
-                                    _phone = (prospect_data or {}).get("phone") or (prospect_data or {}).get("id", "unknown")
-                                    logger.warning(
-                                        f"SECURITY ALERT [Prompt Injection]: Attempted financial profiling without Habeas Data consent. Phone: {_phone}"
-                                    )
-                                    raise PermissionError("Habeas Data consent required before calling calculate_credit_score.")
 
-                                if self.motor_financiero:
+                                if is_accepted and self.motor_financiero:
+                                    # --- RAMA COMPLETA: Habeas Data aceptado → evaluate_profile ---
                                     res = self.motor_financiero.evaluate_profile(
                                         ocupacion_y_contrato=f_args.get("ocupacion_y_contrato", ""),
                                         ingresos_demostrables=f_args.get("ingresos_demostrables", ""),
@@ -1280,25 +1469,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                 m_results = self._catalog_service.search_items(moto_name)
                                                 if m_results: 
                                                     first_match = m_results[0]
-                                                    raw_val = first_match.get('raw_price')
-                                                    if raw_val is not None:
-                                                        try:
-                                                            m_price = float(raw_val)
-                                                        except (ValueError, TypeError):
-                                                            m_price = 0.0
-                                                    
-                                                    # FALLBACK DE PARSEO MONETARIO ROBUSTO (BOT-PERF-45 Condition 1)
-                                                    if not m_price or m_price <= 0:
-                                                        fallback_price = first_match.get('price')
-                                                        if fallback_price:
-                                                            try:
-                                                                clean_p = re.sub(r'[^\d]', '', str(fallback_price))
-                                                                m_price = float(clean_p) if clean_p else 0.0
-                                                            except (ValueError, TypeError) as parse_err:
-                                                                logger.warning(
-                                                                    f"⚠️ [MONETARY PARSING FAIL] No se pudo parsear fallback price '{fallback_price}': {parse_err}"
-                                                                )
-                                                                m_price = 0.0
+                                                    m_price = self._parse_raw_price(
+                                                        first_match.get('raw_price'),
+                                                        first_match.get('price')
+                                                    )
                                             
                                             if m_price <= 0:
                                                 import traceback
@@ -1346,25 +1520,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                 m_results = self._catalog_service.search_items(moto_name)
                                                 if m_results: 
                                                     first_match = m_results[0]
-                                                    raw_val = first_match.get('raw_price')
-                                                    if raw_val is not None:
-                                                        try:
-                                                            m_price = float(raw_val)
-                                                        except (ValueError, TypeError):
-                                                            m_price = 0.0
-                                                    
-                                                    # FALLBACK DE PARSEO MONETARIO ROBUSTO (BOT-PERF-45 Condition 1)
-                                                    if not m_price or m_price <= 0:
-                                                        fallback_price = first_match.get('price')
-                                                        if fallback_price:
-                                                            try:
-                                                                clean_p = re.sub(r'[^\d]', '', str(fallback_price))
-                                                                m_price = float(clean_p) if clean_p else 0.0
-                                                            except (ValueError, TypeError) as parse_err:
-                                                                logger.warning(
-                                                                    f"⚠️ [MONETARY PARSING FAIL] No se pudo parsear fallback price '{fallback_price}': {parse_err}"
-                                                                )
-                                                                m_price = 0.0
+                                                    m_price = self._parse_raw_price(
+                                                        first_match.get('raw_price'),
+                                                        first_match.get('price')
+                                                    )
                                             
                                             if m_price <= 0:
                                                 import traceback
@@ -1392,8 +1551,62 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             f"{cuota_line}"
                                             f"Link de Pre-aprobación: {res['link_url']}"
                                         )
-                                else:
+                                elif is_accepted and not self.motor_financiero:
                                     credit_res = "Error: Motor financiero no conectado."
+                                else:
+                                    # --- RAMA CIEGA: Sin Habeas Data → simulación ciega + HabeasDataBypassInterrupt ---
+                                    # [BOT-BRAIN-FINANCE-086] Flujo lineal directo (elimina colisión PermissionError)
+                                    _phone = (prospect_data or {}).get("phone") or (prospect_data or {}).get("id", "unknown")
+                                    logger.warning(
+                                        f"SECURITY ALERT [Habeas Data Gate]: Financial profiling without consent. Phone: {_phone}"
+                                    )
+                                    logger.info(f"[BOT-FINANCE-BYPASS] Ejecutando simulación ciega preventiva ante ausencia de Habeas Data para {user_name}")
+                                    m_price = 0.0
+                                    moto_name = (prospect_data or {}).get("moto_interest", "")
+                                    if moto_name and self._catalog_service:
+                                        m_results = self._catalog_service.search_items(moto_name)
+                                        if m_results:
+                                            first_match = m_results[0]
+                                            m_price = self._parse_raw_price(
+                                                first_match.get('raw_price'),
+                                                first_match.get('price')
+                                            )
+
+                                    if m_price <= 0:
+                                        logger.warning(f"⚠️ [Catalog Lock] No se pudo encontrar el precio real para la moto '{moto_name}'. Evitando simulación inventada.")
+                                        raise ValueError(f"Precio no disponible para la simulación financiera de la moto '{moto_name}'.")
+
+                                    if self.motor_financiero:
+                                        inicial_val = m_price * 0.10
+                                        sim = self.motor_financiero.calculate_payment(
+                                            precio=m_price,
+                                            inicial=inicial_val,
+                                            plazo_meses=24,
+                                            entidad="Crediorbe"
+                                        )
+                                        cuota_val = sim.get('cuota_mensual', 0.0)
+                                        credit_res = (
+                                            f"Si te interesa a crédito con la inicial de ${inicial_val:,.0f}, "
+                                            f"las cuotas a 24 meses serían aproximadamente de ${cuota_val:,.0f} "
+                                            f"(incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*"
+                                        )
+                                    else:
+                                        credit_res = "Estimación de cuota base no disponible temporalmente."
+
+                                    credit_res += (
+                                        "\n\nPara hacer el estudio formal de tu crédito y darte las opciones de financiación, "
+                                        "¿me autorizas el tratamiento de tus datos personales de acuerdo con nuestra política de privacidad? "
+                                        "(Política: https://tiendalasmotos.com/politica-de-privacidad). Solo confírmame con un 'Sí'."
+                                    )
+
+                                    credit_res_for_llm = credit_res + f"\n\n{funnel_instruction}"
+                                    response_parts.append(types.Part.from_function_response(
+                                        name="calculate_credit_score",
+                                        response={"result": credit_res_for_llm}
+                                    ))
+                                    raise HabeasDataBypassInterrupt(credit_res)
+                            except HabeasDataBypassInterrupt:
+                                raise
                             except Exception as e:
                                 logger.exception(f"❌ Credit error for prospect {user_name}: {e}")
                                 credit_res = "Error calculando el crédito."
@@ -1434,6 +1647,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 logger.warning(f"⏳ API Limit (429/503). Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
                 await asyncio.sleep(wait_time)
                 
+            except HabeasDataBypassInterrupt:
+                raise
             except Exception as e:
                 error_type = type(e).__name__
                 logger.exception(f"🚨 [AI FALLBACK REASON]: {error_type} - {e} | Prospect: {prospect_data.get('nombre', 'Unknown')}")

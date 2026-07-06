@@ -23,6 +23,7 @@ from google.api_core import exceptions as gcp_exceptions
 from app.core.config import settings
 from app.core.config_loader import ConfigLoader
 from app.core.security import get_firebase_credentials_object
+from app.core.exceptions import HabeasDataBypassInterrupt
 
 from app.services.judge_service import judge_service
 from app.services.financial_service import financial_service
@@ -73,8 +74,14 @@ catalog_service_local = None
 message_buffer = None
 _active_resets = set() # v9.8.3: Guard against concurrent resets
 
-def _ensure_services():
-    """Lazy initialization of services"""
+def _ensure_services_sync():
+    """
+    Lazy initialization of services (SYNCHRONOUS).
+    WHY: Contains Firestore .stream() I/O via CatalogService.initialize().
+    Must be called via asyncio.to_thread() from async handlers to prevent
+    blocking FastAPI's event loop under Meta production load (BOT-INFRA-ASYNC-094).
+    """
+
     global db, config_loader, motor_financiero, catalog_service_local, message_buffer
     
     # 5. Message Buffer (initialized first to ensure availability in tests)
@@ -99,19 +106,22 @@ def _ensure_services():
             config_loader = ConfigLoader(db)
             if not config_loader.get_juan_pablo_personality().get("name"):
                  config_loader.load_all()
-        except Exception: pass
+        except Exception as e:
+            logger.error(f"❌ [INIT] ConfigLoader init failed: {e}", exc_info=True)
 
     # 2.1 Config Service (Financial SSOT)
-    if db:
+    if db and not config_service._financial_config:
         try:
             config_service.initialize(db)
-        except Exception: pass
+        except Exception as e:
+            logger.error(f"❌ [INIT] ConfigService init failed: {e}", exc_info=True)
 
     # 3. Financial Service (Consolidated v1.5.0)
     if db and not motor_financiero:
          try:
             motor_financiero = financial_service
-         except Exception: pass
+         except Exception as e:
+            logger.error(f"❌ [INIT] FinancialService init failed: {e}", exc_info=True)
 
     # 4. Catalog Service
     if db and not catalog_service_local:
@@ -121,6 +131,68 @@ def _ensure_services():
             logger.info("✅ CatalogService initialized")
         except Exception as e:
              logger.error(f"❌ Failed to initialize CatalogService: {e}")
+
+async def _ensure_services():
+    """
+    Async wrapper for _ensure_services_sync().
+    BOT-INFRA-ASYNC-094: Delegates synchronous Firestore I/O (.stream()) to
+    a thread pool to unblock the event loop during lazy initialization.
+    """
+    await asyncio.to_thread(_ensure_services_sync)
+
+def resolve_query_aliases(query: str, catalog_service) -> str:
+    """
+    Translates colloquial query terms or synonyms (e.g. 'señoritera') 
+    to the canonical category name (e.g. 'semiautomatica') based on catalog aliases.
+    """
+    if not query:
+        return query
+    
+    q_norm = query.lower().strip()
+    
+    # Try fetching aliases from catalog service or config service
+    aliases = {}
+    try:
+        if catalog_service and hasattr(catalog_service, 'get_catalog_aliases'):
+            aliases = catalog_service.get_catalog_aliases()
+    except Exception as e:
+        logger.warning(f"⚠️ Error retrieving catalog aliases: {e}")
+        
+    if not aliases:
+        try:
+            aliases = config_service.get_catalog_aliases()
+        except Exception as e:
+            logger.warning(f"⚠️ Error retrieving config aliases: {e}")
+            
+    if not aliases:
+        return query
+
+    # Normalize key/value strings to lowercase for comparison
+    import re
+    for category, synonyms in aliases.items():
+        cat_lower = str(category).lower().strip()
+        
+        # Check category match as a word boundary
+        if re.search(r'\b' + re.escape(cat_lower) + r'\b', q_norm):
+            return cat_lower
+            
+        # Check synonym matches as word boundaries
+        # Handle dict or list values dynamically
+        syns_list = []
+        if isinstance(synonyms, list):
+            syns_list = synonyms
+        elif isinstance(synonyms, dict):
+            syns_list = list(synonyms.values())
+        else:
+            syns_list = [synonyms]
+            
+        for syn in syns_list:
+            syn_lower = str(syn).lower().strip()
+            if syn_lower and re.search(r'\b' + re.escape(syn_lower) + r'\b', q_norm):
+                return cat_lower
+                
+    return query
+
 
 # ============================================================================
 # WEBHOOK ENDPOINTS
@@ -139,6 +211,52 @@ async def verify_webhook(
     else:
         logger.error("❌ Token de verificación incorrecto.")
         raise HTTPException(status_code=403, detail="Forbidden")
+
+async def _enqueue_cloud_task(payload: Dict[str, Any]) -> None:
+    """
+    Enqueue a webhook payload to Cloud Tasks for async processing.
+
+    BOT-BRAIN-ALIGNMENT-099: dispatch_deadline limits total retry window to 120s.
+    This prevents zombie messages when Meta webhook payloads expire or the bot's
+    inference takes too long. After 120s Cloud Tasks stops retrying.
+
+    RESILIENCE CONTRACT: The /webhook/task-processor endpoint SHOULD return HTTP 200
+    and log errors internally for inference failures where we do NOT want Cloud Tasks
+    to retry the message to the client. The dispatch_deadline acts as the primary shield.
+    """
+    try:
+        from google.cloud import tasks_v2
+        from google.protobuf import duration_pb2
+
+        client = tasks_v2.CloudTasksClient()
+        
+        if not settings.cloud_tasks_queue_path or not settings.task_processor_url:
+            raise ValueError("Cloud Tasks environment variables missing.")
+            
+        task = {
+            "http_request": {
+                "http_method": tasks_v2.HttpMethod.POST,
+                "url": settings.task_processor_url,
+                "headers": {
+                    "Content-type": "application/json",
+                    "X-Task-Token": settings.webhook_verify_token
+                },
+                "body": json.dumps(payload).encode(),
+            },
+            # BOT-BRAIN-ALIGNMENT-099: TTL de 120s para descartar webhooks zombi.
+            # WHY: Sin dispatch_deadline, Cloud Tasks reintenta durante 30 min (default),
+            # causando mensajes duplicados al usuario cuando Meta ya expiró el webhook.
+            "dispatch_deadline": duration_pb2.Duration(seconds=120)
+        }
+        
+        await asyncio.to_thread(
+            client.create_task,
+            request={"parent": settings.cloud_tasks_queue_path, "task": task}
+        )
+        logger.info(f"☁️ [CLOUD TASKS] Payload successfully enqueued to {settings.cloud_tasks_queue_path} (TTL: 120s)")
+    except Exception as e:
+        logger.error(f"❌ [CLOUD TASKS] Error enqueueing payload: {e}")
+        raise HTTPException(status_code=500, detail="Failed to enqueue Cloud Task")
 
 @router.post("")
 async def webhook_handler(
@@ -174,9 +292,12 @@ async def webhook_handler(
         # estado de entrega de los templates de campaña masiva. Antes de este parche,
         # _is_valid_message() los ignoraba silenciosamente (KeyError silenciado).
         if _is_valid_statuses(payload):
-            status_data = _extract_status_data(payload)
-            if status_data:
-                await _handle_statuses_background(status_data)
+            if settings.cloud_tasks_queue_path and settings.task_processor_url:
+                await _enqueue_cloud_task(payload)
+            else:
+                status_data = _extract_status_data(payload)
+                if status_data:
+                    await _handle_statuses_background(status_data)
             return {"status": "received"}
 
         # --- RAMA 2: Mensajes reales del usuario ---
@@ -192,13 +313,17 @@ async def webhook_handler(
         user_phone = PhoneNormalizer.normalize(raw_phone)
         msg_id_unique = msg_data.get("id") or f"{user_phone}_{int(datetime.now().timestamp())}"
 
-        _ensure_services()
+        await _ensure_services()
         if message_buffer and user_phone in message_buffer._processed_wamids and msg_id_unique in message_buffer._processed_wamids[user_phone]:
             logger.warning(f"🔄 Duplicate WAMID ignored in handler: {msg_id_unique}")
             return {"status": "ignored", "procesado": False}
 
-        # Procesamiento síncrono bloqueante
-        await _handle_message_background(msg_data, background_tasks)
+        if settings.cloud_tasks_queue_path and settings.task_processor_url:
+            await _enqueue_cloud_task(payload)
+        else:
+            # Procesamiento asíncrono no bloqueante vía BackgroundTasks
+            background_tasks.add_task(_handle_message_background, msg_data, background_tasks)
+            
         return {"status": "received"}
 
     except HTTPException:
@@ -207,6 +332,48 @@ async def webhook_handler(
         logger.exception(f"Error procesando webhook: {e}")
         return {"status": "error"}
 
+
+# ============================================================================
+# INTERNAL WORKER
+# ============================================================================
+
+@router.post("/task-processor")
+async def task_processor(
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> Dict[str, Any]:
+    """Worker interno que procesa las tareas encoladas de manera 100% síncrona."""
+    # 1. Validación de seguridad (Auth interna)
+    token = request.headers.get("X-Task-Token")
+    if not token or token != settings.webhook_verify_token:
+        logger.error("❌ Invalid or missing X-Task-Token in task-processor")
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    try:
+        payload = await request.json()
+    except Exception as e:
+        logger.error(f"❌ Failed to parse JSON payload in task-processor: {e}")
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    # 2. Enrutamiento síncrono
+    try:
+        if _is_valid_statuses(payload):
+            status_data = _extract_status_data(payload)
+            if status_data:
+                await _handle_statuses_background(status_data)
+            return {"status": "processed", "type": "statuses"}
+
+        if _is_valid_message(payload):
+            msg_data = _extract_message_data(payload)
+            if msg_data:
+                await _handle_message_background(msg_data, background_tasks)
+            return {"status": "processed", "type": "message"}
+
+        return {"status": "ignored", "reason": "invalid_payload"}
+    except Exception as e:
+        logger.exception(f"❌ Error during synchronous task processing: {e}")
+        # Zero-Silent-Failures: return 500 so Cloud Tasks can retry if configured
+        raise HTTPException(status_code=500, detail="Task processing failed")
 
 # ============================================================================
 # BACKGROUND LOGIC
@@ -223,7 +390,7 @@ async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
     Zero-Silent-Failures: captura explícita de los errores más comunes para
     evitar que un fallo de Firestore quede invisible en el log.
     """
-    _ensure_services()
+    await _ensure_services()
     try:
         recipient_id = status_data.get("recipient_id", "")
         status_value = status_data.get("status", "")
@@ -271,7 +438,7 @@ async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
 async def _handle_message_background(msg_data: Dict[str, Any], background_tasks: BackgroundTasks) -> None:
     """Lógica principal del bot (Procesamiento Asíncrono)"""
     # Ensure services are initialized before proceeding
-    _ensure_services()
+    await _ensure_services()
 
     try:
         # 1. Extracción de Datos
@@ -449,7 +616,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                             # 1. Handle Moto Detection (Legacy / Main Vision Logic)
                             elif "[MOTO_DETECTADA]" in vision_response:
                                 vision_description = vision_response.replace("[MOTO_DETECTADA]", "").strip()
-                                _ensure_services()
+                                await _ensure_services()
                                 cerebro_ia = CerebroIA(config_loader, catalog_service_local)
                                 cerebro_ia.motor_financiero = motor_financiero
                                 
@@ -485,16 +652,29 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                     return
 
                             # 2. Handle Sentiment / Memes / Stickers
-                            elif vision_response.startswith("[System Note:"):
+                            # Interceptor for affirmative stickers mapping to positive emojis
+                            is_affirmative_sticker = False
+                            if msg_type == "sticker":
+                                sticker_obj = msg_data.get("sticker", {})
+                                sticker_emoji = sticker_obj.get("emoji", "") if isinstance(sticker_obj, dict) else ""
+                                metadata_str = str(sticker_obj).lower() if sticker_obj else ""
+                                vision_str = vision_response.lower() if vision_response else ""
+                                affirmative_terms = ["thumbs_up", "thumbsup", "pulgar arriba", "thumbs-up", "👍", "si", "sí", "ok", "✅", "👌"]
+                                if any(term in vision_str for term in affirmative_terms) or any(term in metadata_str for term in affirmative_terms):
+                                    is_affirmative_sticker = True
+
+                            if vision_response.startswith("[System Note:") or (msg_type == "sticker" and is_affirmative_sticker):
                                 logger.info("🧠 General image/meme/sticker detected.")
-                                _ensure_services()
+                                await _ensure_services()
                                 cerebro_ia = CerebroIA(config_loader, catalog_service_local)
                                 cerebro_ia.motor_financiero = motor_financiero
+                                
+                                input_text = "Sí" if (msg_type == "sticker" and is_affirmative_sticker) else vision_response
                                 
                                 if memory_service_module.memory_service:
                                     ms = memory_service_module.memory_service
                                     await ms.create_prospect_if_missing(user_phone)
-                                    await ms.generate_and_update_summary(user_phone, f"User sent media: {vision_response}", cerebro_ia)
+                                    await ms.generate_and_update_summary(user_phone, f"User sent media: {input_text}", cerebro_ia)
                                     
                                     prospect_data = await ms.get_prospect_data(user_phone)
                                     current_history = await ms.get_chat_history(user_phone, limit=10)
@@ -503,19 +683,24 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                         return
                                     
                                     if prospect_data: prospect_data["phone"] = user_phone
-                                    final_response = await cerebro_ia.pensar_respuesta(
-                                        vision_response,
-                                        context="", 
-                                        prospect_data=prospect_data,
-                                        history=current_history,
-                                        skip_greeting=True
-                                    )
                                     
+                                    try:
+                                        final_response = await cerebro_ia.pensar_respuesta(
+                                            input_text,
+                                            context="", 
+                                            prospect_data=prospect_data,
+                                            history=current_history,
+                                            skip_greeting=True
+                                        )
+                                    except HabeasDataBypassInterrupt as hdbi:
+                                        logger.info("🛡️ [HABEAS-BYPASS-STICKER] Cortocircuito limpio capturado en el router de WhatsApp (Sticker). Aprobación inmediata.")
+                                        final_response = str(hdbi.args[0])
+
                                     if not final_response:
                                         final_response = "¡Estuvo bueno! 😅 Pero cuéntame, ¿en qué moto estabas pensando?"
                                     
                                     await _send_whatsapp_message(user_phone, final_response, phone_number_id=phone_number_id)
-                                    await ms.save_message(user_phone, "user", vision_response)
+                                    await ms.save_message(user_phone, "user", input_text)
                                     await ms.save_message(user_phone, "model", final_response)
                                     return
 
@@ -612,9 +797,10 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     if cmd in ["/update", "/refresh_catalog"]:
                         logger.warning(f"🔄 CATALOG REFRESH TRIGGERED by {user_phone}")
                         try:
-                            _ensure_services()
+                            await _ensure_services()
                             if catalog_service_local:
-                                catalog_service_local.refresh()
+                                # BOT-INFRA-ASYNC-094: Delegate sync .stream() to thread pool
+                                await asyncio.to_thread(catalog_service_local.refresh)
                                 confirm_msg = "✅ Catálogo actualizado en memoria exitosamente."
                             else:
                                 confirm_msg = "❌ Error: Catalog Service no inicializado."
@@ -663,7 +849,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     elif isinstance(last_ts, str): # String ISO format fallback
                         try:
                             last_time = datetime.fromisoformat(last_ts.replace('Z', '+00:00'))
-                        except: pass
+                        except Exception as e:
+                            logger.warning(f"⚠️ [HISTORY] Error parsing timestamp '{last_ts}': {e}")
                     
                     if last_time:
                         # Calculate duration since previous message
@@ -768,11 +955,20 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             
             try:
                 # Contexto para el Juez (Catalog Lock)
-                catalog_results = catalog_service_local.search(message_body)
+                translated_query = resolve_query_aliases(message_body, catalog_service_local)
+                catalog_results = catalog_service_local.search(translated_query)
                 catalog_context = ""
                 for item in catalog_results[:3]:
                     tags_str = ", ".join(item.get('searchBy', []))
-                    catalog_context += f"- {item['name']}: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
+                    net_price_str = ""
+                    if catalog_service_local and hasattr(catalog_service_local, '_items'):
+                        for raw_item in catalog_service_local._items:
+                            if raw_item.get("name") == item["name"]:
+                                net_price_str = raw_item.get("formatted_price")
+                                break
+                    if not net_price_str:
+                        net_price_str = item.get("formatted_price", "")
+                    catalog_context += f"- {item['name']}: Neto: {net_price_str} / Con SOAT: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
 
                 while attempts <= max_retries and not is_approved:
                     attempts += 1
@@ -785,13 +981,19 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     if prospect_data is not None:
                         prospect_data["phone"] = user_phone 
 
-                    response_text = await cerebro_ia.pensar_respuesta(
-                        message_body,
-                        context=current_context,
-                        prospect_data=prospect_data,
-                        history=current_history,
-                        skip_greeting=skip_greeting
-                    )
+                    try:
+                        response_text = await cerebro_ia.pensar_respuesta(
+                            message_body,
+                            context=current_context,
+                            prospect_data=prospect_data,
+                            history=current_history,
+                            skip_greeting=skip_greeting
+                        )
+                    except HabeasDataBypassInterrupt as hdbi:
+                        logger.info("🛡️ [HABEAS-BYPASS] Cortocircuito limpio capturado en el router de WhatsApp. Aprobación inmediata.")
+                        response_text = str(hdbi.args[0])
+                        is_approved = True
+                        break
 
                     # 4. Auditoría del Juez de Fundamentación
                     is_approved, rejection_reason = await judge_service.analyze_response(
@@ -847,7 +1049,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                                 "attempts": attempts
                             }
                         )
-                    except: pass
+                    except Exception as e:
+                        logger.warning(f"⚠️ [JUDGE_FALLBACK] Failed to update Langfuse trace: {e}")
 
                     return # Stop processing
 
@@ -901,7 +1104,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 calculated_delay = base_delay + jitter
                 
                 # 2. Límite de seguridad
-                typing_delay = min(8.0, calculated_delay)
+                typing_delay = min(1.5, calculated_delay)
                 logger.info(f"⏳ Human Latency: len={len(str(response_text))}, delay={typing_delay:.2f}s")
 
             if typing_delay > 0:
@@ -959,11 +1162,20 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     last_criteria_id = "UNKNOWN"
                     
                     # Contexto para el Juez (Catalog Lock)
-                    catalog_results = catalog_service_local.search(transcription)
+                    translated_query = resolve_query_aliases(transcription, catalog_service_local)
+                    catalog_results = catalog_service_local.search(translated_query)
                     catalog_context = ""
                     for item in catalog_results[:3]:
                         tags_str = ", ".join(item.get('searchBy', []))
-                        catalog_context += f"- {item['name']}: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
+                        net_price_str = ""
+                        if catalog_service_local and hasattr(catalog_service_local, '_items'):
+                            for raw_item in catalog_service_local._items:
+                                if raw_item.get("name") == item["name"]:
+                                    net_price_str = raw_item.get("formatted_price")
+                                    break
+                        if not net_price_str:
+                            net_price_str = item.get("formatted_price", "")
+                        catalog_context += f"- {item['name']}: Neto: {net_price_str} / Con SOAT: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
 
                     while attempts <= max_retries and not is_approved:
                         attempts += 1
@@ -973,13 +1185,19 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                         if attempts > 1:
                             current_context += f"\n\n[SISTEMA - ERROR DE CALIDAD]: Tu respuesta anterior fue RECHAZADA por el Juez. Motivo: {rejection_reason}. Por favor, corrige este punto y genera una nueva respuesta válida."
 
-                        response_text = await cerebro_ia.pensar_respuesta(
-                            transcription,
-                            context=current_context, 
-                            prospect_data=prospect_data,
-                            history=current_history,
-                            skip_greeting=True
-                        )
+                        try:
+                            response_text = await cerebro_ia.pensar_respuesta(
+                                transcription,
+                                context=current_context, 
+                                prospect_data=prospect_data,
+                                history=current_history,
+                                skip_greeting=True
+                            )
+                        except HabeasDataBypassInterrupt as hdbi:
+                            logger.info("🛡️ [HABEAS-BYPASS-AUDIO] Cortocircuito limpio capturado en el router de WhatsApp (Audio). Aprobación inmediata.")
+                            response_text = str(hdbi.args[0])
+                            is_approved = True
+                            break
 
                         # 4. Auditoría del Juez
                         is_approved, rejection_reason = await judge_service.analyze_response(

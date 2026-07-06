@@ -1,16 +1,14 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi import BackgroundTasks
-from app.routers.whatsapp import webhook_handler
+from fastapi import BackgroundTasks, HTTPException
+from app.routers.whatsapp import webhook_handler, task_processor
 
 @pytest.mark.asyncio
 async def test_webhook_handler_synchronous_blocking():
     """
-    Verifica que el webhook_handler espere síncronamente (con await) el procesamiento
-    del mensaje, garantizando que el commit de base de datos finalice antes de que
-    el handler retorne la respuesta HTTP 200 a Meta, y asserta que no haya llaves None
-    o strings vacíos silenciosos en el estado inicial de CRM ('PENDING' / 'ACTIVE').
+    Verifica que el webhook_handler retorne HTTP 200 de inmediato a Meta,
+    enviando el procesamiento a BackgroundTasks para evitar Retry Storms.
     """
     # 1. Mock Request Payload (Mensaje de usuario)
     mock_request = MagicMock()
@@ -95,18 +93,18 @@ async def test_webhook_handler_synchronous_blocking():
          patch("app.routers.whatsapp._handle_message_background", side_effect=track_handle_message):
          
         mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        mock_settings.cloud_tasks_queue_path = None
+        mock_settings.task_processor_url = None
         
         background_tasks = BackgroundTasks()
         
-        # Call the webhook handler
+        # Ejecución
         response = await webhook_handler(mock_request, background_tasks)
-        execution_steps.append("handler_returned")
         
-        # Verify execution is synchronous (handler_returned must happen AFTER db_commit_complete)
-        assert execution_steps == ["start_processing", "db_commit_complete", "handler_returned"], \
-            f"❌ Flujo asíncrono no bloqueante detectado: {execution_steps}"
-            
+        # Aserciones
         assert response == {"status": "received"}
+        assert len(background_tasks.tasks) == 1
+        assert "start_processing" not in execution_steps  # Aún no se ejecuta el background
 
 @pytest.mark.asyncio
 async def test_content_assertions_no_silent_none():
@@ -140,3 +138,145 @@ async def test_content_assertions_no_silent_none():
     # Asegurar que las llaves canónicas contienen los valores transformados explícitos
     assert prospect_payload["status"] == "PENDING"
     assert prospect_payload["chatbot_status"] == "ACTIVE"
+
+@pytest.mark.asyncio
+async def test_webhook_cloud_tasks_enqueuing():
+    """
+    Verifica que el webhook_handler encole la tarea en Cloud Tasks cuando está configurado.
+    """
+    # 1. Mock Request Payload (Mensaje de usuario)
+    mock_request = MagicMock()
+    payload_dict = {
+        "object": "whatsapp_business_account",
+        "entry": [{
+            "id": "123",
+            "changes": [{
+                "value": {
+                    "messaging_product": "whatsapp",
+                    "metadata": {"display_phone_number": "123456", "phone_number_id": "999999"},
+                    "messages": [{
+                        "from": "573192564288",
+                        "id": "wamid.test_sync_123",
+                        "timestamp": "1672531199",
+                        "text": {"body": "Quiero cotizar una Raider 125"},
+                        "type": "text"
+                    }]
+                },
+                "field": "messages"
+            }]
+        }]
+    }
+    
+    async def mock_body():
+        import json
+        return json.dumps(payload_dict).encode("utf-8")
+        
+    mock_request.body = mock_body
+    mock_request.headers = {"X-Hub-Signature-256": "sha256=dummy"}
+
+    # Mock Message Buffer duplicate detection
+    mock_message_buffer = MagicMock()
+    mock_message_buffer._processed_wamids = {}
+    
+    with patch("app.routers.whatsapp.settings") as mock_settings, \
+         patch("app.routers.whatsapp._enqueue_cloud_task", new_callable=AsyncMock) as mock_enqueue, \
+         patch("app.routers.whatsapp._ensure_services", new_callable=AsyncMock), \
+         patch("app.routers.whatsapp.message_buffer", mock_message_buffer):
+         
+        mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        mock_settings.cloud_tasks_queue_path = "projects/my-project/locations/us-central1/queues/my-queue"
+        mock_settings.task_processor_url = "https://my-service.run.app/webhook/task-processor"
+        
+        background_tasks = BackgroundTasks()
+        
+        # Ejecución
+        response = await webhook_handler(mock_request, background_tasks)
+        
+        # Aserciones
+        assert response == {"status": "received"}
+        assert len(background_tasks.tasks) == 0  # No local background tasks
+        mock_enqueue.assert_called_once_with(payload_dict)
+
+@pytest.mark.asyncio
+async def test_task_processor_synchronous_execution():
+    """
+    Certifica el comportamiento síncrono del nuevo worker (task_processor)
+    y valida la autenticación interna X-Task-Token.
+    """
+    mock_request = MagicMock()
+    payload_dict = {
+        "object": "whatsapp_business_account",
+        "entry": [{
+            "id": "123",
+            "changes": [{
+                "value": {
+                    "messaging_product": "whatsapp",
+                    "metadata": {"display_phone_number": "123456", "phone_number_id": "999999"},
+                    "messages": [{
+                        "from": "573192564288",
+                        "id": "wamid.test_sync_123",
+                        "timestamp": "1672531199",
+                        "text": {"body": "Test"},
+                        "type": "text"
+                    }]
+                },
+                "field": "messages"
+            }]
+        }]
+    }
+    
+    async def mock_json():
+        return payload_dict
+        
+    mock_request.json = mock_json
+    mock_request.headers = {"X-Task-Token": "secret_token"}
+    
+    background_tasks = BackgroundTasks()
+
+    with patch("app.routers.whatsapp.settings") as mock_settings, \
+         patch("app.routers.whatsapp._handle_message_background", new_callable=AsyncMock) as mock_handle:
+        
+        mock_settings.webhook_verify_token = "secret_token"
+        
+        response = await task_processor(mock_request, background_tasks)
+        
+        assert response == {"status": "processed", "type": "message"}
+        expected_msg_data = {
+            "from": "573192564288",
+            "id": "wamid.test_sync_123",
+            "timestamp": "1672531199",
+            "type": "text",
+            "phone_number_id": "999999",
+            "text": "Test"
+        }
+        mock_handle.assert_called_once_with(expected_msg_data, background_tasks)
+        
+        # Verify 403 when token is missing/wrong
+        mock_request.headers = {"X-Task-Token": "wrong_token"}
+        try:
+            await task_processor(mock_request, background_tasks)
+            assert False, "Should raise HTTPException 403"
+        except HTTPException as e:
+            assert e.status_code == 403
+
+@pytest.mark.asyncio
+async def test_webhook_no_redundant_config_load():
+    """
+    Verifica que no se carguen de manera redundante las configuraciones de Firestore
+    si config_service ya tiene las configuraciones en memoria.
+    """
+    mock_db = MagicMock()
+    
+    with patch("app.routers.whatsapp.config_service") as mock_config_service, \
+         patch("app.routers.whatsapp.db", mock_db):
+        
+        # Simular que ya está cargado
+        mock_config_service._financial_config = {"loaded": True}
+        
+        from app.routers.whatsapp import _ensure_services_sync
+        
+        # Ejecutar inicialización
+        _ensure_services_sync()
+        
+        # Verificar que no se llamó a initialize ya que ya estaba cargada la config
+        mock_config_service.initialize.assert_not_called()

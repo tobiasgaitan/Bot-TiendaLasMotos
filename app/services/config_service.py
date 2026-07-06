@@ -229,6 +229,58 @@ class ConfigService:
             logger.error(f"❌ Error indexing registration matrix: {str(e)}")
             return 0
     
+    def get_catalog_aliases(self) -> Dict[str, List[str]]:
+        """
+        Get catalog category aliases (synonyms) for System Prompt injection.
+
+        WHY (BOT-BRAIN-ALIGNMENT-099): The category_aliases dict exists in Firestore
+        (configuracion/catalog_config) and is used by CatalogService for search indexing,
+        but the LLM has no awareness of regional synonyms (e.g. "señoritera" → scooter).
+        This method exposes the aliases so ai_brain.py can inject them into the prompt.
+
+        Firestore stores indexed dicts: {"Semiautomatica": {"0": "Señoritera"}}.
+        This method flattens them into: {"Semiautomatica": ["Señoritera"]}.
+
+        Returns:
+            Dict mapping category names to lists of synonym strings.
+        """
+        try:
+            from app.core.config_loader import ConfigLoader
+            config_loader = ConfigLoader()
+            catalog_config = config_loader.get_catalog_config()
+            raw_aliases = catalog_config.get("category_aliases", {})
+
+            if not raw_aliases or not isinstance(raw_aliases, dict):
+                return {}
+
+            # Flatten Firestore indexed-dict format to proper lists
+            flattened: Dict[str, List[str]] = {}
+            for category, synonyms in raw_aliases.items():
+                if isinstance(synonyms, dict):
+                    # Firestore indexed dict: {"0": "Señoritera", "1": "Automatica"}
+                    values = [str(v).strip() for v in synonyms.values() if v]
+                elif isinstance(synonyms, list):
+                    # Already a proper list
+                    values = [str(v).strip() for v in synonyms if v]
+                elif isinstance(synonyms, str):
+                    # Single string value
+                    values = [synonyms.strip()] if synonyms.strip() else []
+                else:
+                    logger.warning(
+                        f"⚠️ [CATALOG_ALIASES] Unexpected type for category '{category}': "
+                        f"{type(synonyms).__name__}. Skipping."
+                    )
+                    continue
+
+                if values:
+                    flattened[str(category).strip()] = values
+
+            logger.info(f"📖 [CATALOG_ALIASES] Loaded {len(flattened)} categories with synonyms")
+            return flattened
+        except Exception as e:
+            logger.warning(f"⚠️ [CATALOG_ALIASES] Failed to load aliases: {e}")
+            return {}
+
     def refresh(self) -> None:
         """
         Refresh configurations from Firestore.

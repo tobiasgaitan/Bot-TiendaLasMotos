@@ -3,6 +3,8 @@ from unittest.mock import MagicMock, patch
 import sys
 import os
 
+pytest_plugins = ["tests.conftest_chaos"]
+
 # Asegurar que el path del proyecto esté disponible
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
