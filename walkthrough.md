@@ -1,26 +1,28 @@
-# Walkthrough — Quick Task 067: correccion_contratos_pruebas_firestore
+# Walkthrough — Quick Task 124: bot-arq-singleton-106
 
-Se ha completado la tarea de corregir las discrepancias nomenclaturales y variables en la suite de pruebas unitarias alineándolas a la estructura oficial del `EXTRACTION_SCHEMA` de Firestore (`ocupacion`, `datacredito`), así como la corrección del valor canónico de `forma_pago` y la validación estricta de alertas del guardrail PCC Pro.
+Se ha completado exitosamente la purga de la instancia duplicada local `catalog_service_local` en favor del uso unificado del Singleton global `catalog_service` en `app/routers/whatsapp.py`. Esto garantiza que los hilos concurrentes compartan el mismo estado de catálogo y no queden desincronizados tras comandos de control.
 
 ## Cambios Realizados
 
-1. **Alineación de `forma_pago` (`tests/test_agentic_loop_async.py`)**:
-   - Se reemplazó el valor de prueba `"forma_pago": "credito"` por el valor canónico real en base de datos `"forma_pago": "Crédito - 0 inicial"`.
+1. **Alineación del Singleton en `app/routers/whatsapp.py`**:
+   - Reemplazo de la importación de `CatalogService` por el singleton `catalog_service`.
+   - Purga de la variable global `catalog_service_local` y su correspondiente declaración `global` en `_ensure_services_sync`.
+   - Remoción de la instanciación local duplicada e inicialización redundante en `_ensure_services_sync`.
+   - Reemplazo carácter por carácter de todas las referencias de `catalog_service_local` por `catalog_service`.
 
-2. **Extracción y Validación de Parámetros (`app/services/financial_service.py`)**:
-   - Se actualizó el método `evaluate_profile` para capturar y priorizar los parámetros `'ocupacion'` y `'datacredito'` de forma de mantener alineación con el `EXTRACTION_SCHEMA`. Se conservaron los fallobacks anteriores para asegurar compatibilidad.
-
-3. **Corrección de Parámetros en Suite de Pruebas (`tests/test_agentic_loop_async.py`)**:
-   - Se alinearon todas las llamadas a `evaluate_profile` para utilizar los parámetros `'ocupacion'` y `'datacredito'`.
-
-4. **Alertas del Guardrail PCC Pro (`tests/test_pcc_ficha_tecnica.py`)**:
-   - Se inyectó verificación explícita para asegurar que la mutación de una llave requerida (como `summary` o `price`) active la alerta de fallo de validación del guardrail `PCC Pro` (retornando `success=False` y `broken_guardrail='PRICE_CONSISTENCY_CHECK'`) en lugar de pasar de largo con un retorno vacío.
+2. **Actualización de Mocks en Suite de Pruebas**:
+   - Se actualizaron las referencias de mock patching en los archivos de pruebas para apuntar a la variable singleton `catalog_service` en lugar de la variable local eliminada:
+     - `tests/test_agentic_loop_async.py`
+     - `tests/test_zero_silent_failures_whatsapp.py`
+     - `tests/test_webhook_sync_block.py`
+     - `tests/test_identity_legal_gate.py`
+     - `tests/test_zombie_recovery_flow.py`
 
 ## Evidencia de Verificación
 
-- **Suite de Pruebas**: Todos los 156 tests unitarios pasan exitosamente local y en el pipeline.
-- **Score de Coherencia**: Obtenido un score perfecto de **1.000** verificado vía `npx agent-cli eval`.
-- **Commit GitHub**: Sincronizado en la rama `beta` remota con el hash de commit final `b7a510b`.
+- **Evaluación Conversacional**: La suite de pruebas unitarias pasó en su totalidad de forma exitosa.
+- **Score de Coherencia**: Se obtuvo un score perfecto de **1.000** verificado vía `npx agent-cli eval`.
+- **Commit GitHub**: Sincronizado en la rama `beta` remota con el hash de commit final `8a903fc`.
 
 ---
-*Completado: 2026-06-25*
+*Completado: 2026-07-06*
