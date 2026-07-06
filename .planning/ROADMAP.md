@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
 
-## Tasks Completadas (v10.22.4)
+## Tasks Completadas (v10.22.5)
+- [x] Alineación stateless del contexto del catálogo para el Juez en `whatsapp.py` (BOT-BUGFIX-121-CONSOLIDATED).
 - [x] Corrección de literalidad en Drift Interceptor al cruzar contra el catálogo por alias compuestos (BOT-BUGFIX-118).
 - [x] Refactorización dinámica del interceptor de palabras clave de motocicletas e integración del test de alias (BOT-BUGFIX-117).
 - [x] Restauración de la bifurcación lógica de Cold Start en el Drift Interceptor y aserciones de test (BOT-BUGFIX-115).

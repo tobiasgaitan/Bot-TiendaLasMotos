@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.4
-**Último Hito:** hotfix-bot-study-120: Forensic trace extraction for search_catalog tool call rejection.
-**Coherence Score:** 1.000 (198/198 Tests PASSED)
+**Versión Actual:** v10.22.5
+**Último Hito:** hotfix-bot-judge-alignment: Stateless alignment of catalog context for the Judge Service in whatsapp.py
+**Coherence Score:** 1.000 (200/200 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 121 | Stateless alignment of catalog context for the Judge Service in whatsapp.py | 2026-07-06 | c26943a | 121-hotfix-bot-judge-alignment |
 | 119 | Forensic trace extraction for search_catalog tool call rejection | 2026-07-05 | 96c5eee | 119-hotfix-bot-study-120 |
 | 118 | Drift Interceptor alias literal validation failure | 2026-07-05 | 5388b02 | 118-hotfix-bot-bugfix-118 |
 | 117 | Dynamic motorcycle keywords and catalog tool validation turn | 2026-07-05 | 13bf040 | 117-hotfix-bot-bugfix-117 |
