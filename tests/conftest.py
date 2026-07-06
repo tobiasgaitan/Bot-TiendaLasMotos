@@ -11,7 +11,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 @pytest.fixture(autouse=True)
 def mock_env_vars():
     """Mocks de variables de entorno para evitar fallos de configuración."""
-    with patch.dict(os.environ, {"GOOGLE_APPLICATION_CREDENTIALS": "/tmp/fake-key.json"}):
+    with patch.dict(os.environ, {
+        "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/fake-key.json",
+        "TEST_MODE": "true",
+        "MIN_CATALOG_ITEMS": "0"
+    }):
         yield
 
 @pytest.fixture
