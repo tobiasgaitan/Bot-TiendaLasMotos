@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.8
-**Último Hito:** hotfix-bot-startup-lock: Implemented startup locking and webhook reject guards (BOT-INFRA-LIFESPAN-109)
-**Coherence Score:** 1.000 (206/206 Tests PASSED)
+**Versión Actual:** v10.22.9
+**Último Hito:** hotfix-bot-startup-nonblocking: Implemented non-blocking background startup task (BOT-INFRA-TIMEOUT-110)
+**Coherence Score:** 1.000 (207/207 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 128 | Lifespan non-blocking background initialization and guards | 2026-07-06 | 0082ec3 | 128-bot-startup-nonblocking-110 |
 | 127 | Startup locking, timeout fail-fast and webhook 503 guards | 2026-07-06 | a16e29d | 127-bot-startup-lock-109 |
 | 126 | Normalizar formato Ficha Tecnica y revertir flexibilización en orquestador | 2026-07-06 | c2b142e | 126-bot-perf-align-108 |
 | 125 | Flexibilizar regex de Ficha Tecnica en AgenticOrchestrator | 2026-07-06 | 0d68f16 | 125-bot-perf-align-107 |
