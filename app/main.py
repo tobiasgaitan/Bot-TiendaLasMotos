@@ -39,6 +39,7 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info("🚀 Starting Auteco Las Motos Backend...")
+    app.state.catalog_ready = False
     
     try:
         # 1. Get Firebase credentials from Secret Manager
@@ -60,71 +61,16 @@ async def lifespan(app: FastAPI):
         logger.info("⚡ Initializing config loader singleton...")
         config_loader = ConfigLoader(db)
         
-        # Define sequential, synchronous and blocking startup
-        def run_initialization_sync():
-            # 1. config_service.initialize(db)
-            logger.info("⚡ Linear Startup: Initializing config service...")
-            config_service.initialize(db)
-            
-            # 2. config_loader.load_all()
-            logger.info("⚡ Linear Startup: Loading dynamic configurations...")
-            config_loader.load_all()
-            
-            # 3. catalog_service.initialize(db)
-            logger.info("🏍️  Linear Startup: Initializing catalog service...")
-            catalog_service.initialize(db)
-            
-            # 4. Load Financial Config
-            logger.info("💰 Linear Startup: Loading Financial Configuration...")
-            finance_config_loader_inst = FinanceConfigLoader(db)
-            
-            return finance_config_loader_inst
-
-        # Wrap sequence in a strict timeout (5 seconds)
-        logger.info(f"⏳ Running startup database synchronization with timeout of {settings.db_timeout}s...")
-        try:
-            finance_config_loader = await asyncio.wait_for(
-                asyncio.to_thread(run_initialization_sync),
-                timeout=float(settings.db_timeout)
-            )
-        except asyncio.TimeoutError as te:
-            logger.exception(f"❌ [STARTUP-TIMEOUT] Database synchronization exceeded timeout of {settings.db_timeout} seconds (BOT-INFRA-33).")
-            raise RuntimeError(f"Database synchronization timed out after {settings.db_timeout}s") from te
-        except Exception as exc:
-            logger.exception(f"❌ [STARTUP-ERROR] Critical failure during database synchronization: {exc}")
-            raise RuntimeError(f"Database synchronization failed: {exc}") from exc
-        
-        # Check catalog size guard
-        catalog_items_count = len(catalog_service.get_all_items())
-        min_items_val = settings.min_catalog_items
-        if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
-            min_items = 0
-        else:
-            try:
-                min_items = int(min_items_val)
-            except (TypeError, ValueError):
-                min_items = 60
-                
-        if os.getenv("TEST_MODE") == "true":
-            logger.warning(f"🧪 TEST_MODE: Catalog has {catalog_items_count} items (Settings min expected: {min_items}). Bypassing size check.")
-        elif catalog_items_count < min_items:
-            logger.error(f"❌ [STARTUP-GUARD] Catalog is not fully loaded. Expected at least {min_items} items, but loaded {catalog_items_count}.")
-            raise RuntimeError(
-                f"Catalog is not fully loaded. Expected at least {min_items} items, "
-                f"but loaded {catalog_items_count}."
-            )
-        
         # Store in app state for access in routes
         app.state.config_loader = config_loader
-        app.state.finance_config_loader = finance_config_loader
         app.state.db = db
         app.state.db_async = db_async
         
-        # 5. Initialize Cloud Storage
+        # 4. Initialize Cloud Storage
         logger.info("☁️  Initializing Cloud Storage...")
         storage_service.initialize(credentials)
         
-        # 6. Initialize Memory Service for CRM Integration (ASYNC ONLY)
+        # 5. Initialize Memory Service for CRM Integration (ASYNC ONLY)
         logger.info("🧠 Initializing Memory Service (Async)...")
         try:
             init_memory_service(db_async)
@@ -132,15 +78,68 @@ async def lifespan(app: FastAPI):
         except Exception as mem_error:
             logger.error(f"❌ Failed to initialize Memory Service: {str(mem_error)}", exc_info=True)
             logger.warning("⚠️  Bot will continue without CRM memory integration")
+
+        # Define background startup task
+        async def run_background_initialization():
+            def run_initialization_sync():
+                # 1. config_service.initialize(db)
+                logger.info("⚡ Linear Startup: Initializing config service...")
+                config_service.initialize(db)
+                
+                # 2. config_loader.load_all()
+                logger.info("⚡ Linear Startup: Loading dynamic configurations...")
+                config_loader.load_all()
+                
+                # 3. catalog_service.initialize(db)
+                logger.info("🏍️  Linear Startup: Initializing catalog service...")
+                catalog_service.initialize(db)
+                
+                # 4. Load Financial Config
+                logger.info("💰 Linear Startup: Loading Financial Configuration...")
+                finance_config_loader_inst = FinanceConfigLoader(db)
+                
+                return finance_config_loader_inst
+
+            logger.info(f"⏳ Running background database synchronization with timeout of {settings.db_timeout}s...")
+            try:
+                finance_config_loader = await asyncio.wait_for(
+                    asyncio.to_thread(run_initialization_sync),
+                    timeout=float(settings.db_timeout)
+                )
+                app.state.finance_config_loader = finance_config_loader
+                
+                # Check catalog size guard
+                catalog_items_count = len(catalog_service.get_all_items())
+                min_items_val = settings.min_catalog_items
+                if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
+                    min_items = 0
+                else:
+                    try:
+                        min_items = int(min_items_val)
+                    except (TypeError, ValueError):
+                        min_items = 60
+                        
+                if os.getenv("TEST_MODE") == "true":
+                    logger.warning(f"🧪 TEST_MODE: Catalog has {catalog_items_count} items (Settings min expected: {min_items}). Bypassing size check.")
+                    app.state.catalog_ready = True
+                elif catalog_items_count < min_items:
+                    logger.error(f"❌ [STARTUP-GUARD] Catalog size validation failed in background: {catalog_items_count} < {min_items}")
+                else:
+                    app.state.catalog_ready = True
+                    logger.info("✅ Background startup completed successfully, catalog is ready.")
+            except asyncio.TimeoutError as te:
+                logger.exception(f"❌ [STARTUP-TIMEOUT] Database synchronization exceeded timeout of {settings.db_timeout} seconds (BOT-INFRA-33).")
+            except Exception as exc:
+                logger.exception(f"❌ [STARTUP-ERROR] Critical failure during background database synchronization: {exc}")
+
+        # Start the background task immediately (non-blocking)
+        logger.info("🚀 Launching background database synchronization task...")
+        app.state.startup_task = asyncio.create_task(run_background_initialization())
         
-        
-        logger.info("✅ Application startup complete!")
-        # logger.info(f"📊 Loaded {len(catalog_service.get_all_items())} catalog items")
-        logger.info(f"🧠 V6.0 Config: {config_loader.get_juan_pablo_personality().get('name')} personality loaded (model: {config_loader.get_juan_pablo_personality().get('model_version')})")
-        logger.info("🚀 STARTUP CHECK: v10.8.0 - API Boundary Protection")
+        logger.info("✅ Lifespan yield prepared immediately (port unblocked)!")
         
     except Exception as e:
-        logger.error(f"❌ Startup failed: {str(e)}")
+        logger.error(f"❌ Startup failed during early setup: {str(e)}")
         if os.getenv("TEST_MODE") == "true":
             logger.warning("🧪 TEST_MODE: Ignoring startup failure to allow mock integration testing")
             from unittest.mock import MagicMock
@@ -154,6 +153,7 @@ async def lifespan(app: FastAPI):
             app.state.finance_config_loader = DummyFinanceConfigLoader()
             app.state.db = MagicMock()
             app.state.db_async = MagicMock()
+            app.state.catalog_ready = True
         else:
             raise
     

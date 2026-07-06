@@ -289,25 +289,34 @@ async def webhook_handler(
 
         # Enforce startup / catalog lock guard early
         await _ensure_services()
-        catalog_items_count = len(catalog_service.get_all_items())
-        min_items_val = settings.min_catalog_items
-        if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
-            min_items = 0
-        else:
-            try:
-                min_items = int(min_items_val)
-            except (TypeError, ValueError):
-                min_items = 0
+        
+        # Check atomic boolean flag catalog_ready with dynamic count fallback
+        catalog_ready = False
+        if request and hasattr(request, "app") and hasattr(request.app, "state"):
+            val = getattr(request.app.state, "catalog_ready", False)
+            if val is True:
+                catalog_ready = True
             
-        if catalog_items_count < min_items:
-            logger.error(
-                f"❌ [STARTUP-GUARD] Webhook rejected: catalog is not fully loaded "
-                f"({catalog_items_count}/{min_items} items)."
-            )
-            raise HTTPException(
-                status_code=503,
-                detail=f"Service Unavailable: Catalog not fully loaded ({catalog_items_count}/{min_items} items)."
-            )
+        if not catalog_ready:
+            catalog_items_count = len(catalog_service.get_all_items())
+            min_items_val = settings.min_catalog_items
+            if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
+                min_items = 0
+            else:
+                try:
+                    min_items = int(min_items_val)
+                except (TypeError, ValueError):
+                    min_items = 0
+                
+            if catalog_items_count < min_items:
+                logger.error(
+                    f"❌ [STARTUP-GUARD] Webhook rejected: catalog is not fully loaded "
+                    f"({catalog_items_count}/{min_items} items, catalog_ready={catalog_ready})."
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Service Unavailable: Catalog not fully loaded ({catalog_items_count}/{min_items} items)."
+                )
 
         # --- RAMA 1: Acuses de recibo Meta (sent/delivered/read/failed) ---
         # [ARCH-BULK-META-010] WHY: Meta envía webhooks 'statuses' para confirmar el
@@ -378,25 +387,34 @@ async def task_processor(
     # 2. Enrutamiento síncrono
     try:
         await _ensure_services()
-        catalog_items_count = len(catalog_service.get_all_items())
-        min_items_val = settings.min_catalog_items
-        if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
-            min_items = 0
-        else:
-            try:
-                min_items = int(min_items_val)
-            except (TypeError, ValueError):
-                min_items = 0
+        
+        # Check atomic boolean flag catalog_ready with dynamic count fallback
+        catalog_ready = False
+        if request and hasattr(request, "app") and hasattr(request.app, "state"):
+            val = getattr(request.app.state, "catalog_ready", False)
+            if val is True:
+                catalog_ready = True
             
-        if catalog_items_count < min_items:
-            logger.error(
-                f"❌ [STARTUP-GUARD] Task processor rejected: catalog is not fully loaded "
-                f"({catalog_items_count}/{min_items} items)."
-            )
-            raise HTTPException(
-                status_code=503,
-                detail=f"Service Unavailable: Catalog not fully loaded ({catalog_items_count}/{min_items} items)."
-            )
+        if not catalog_ready:
+            catalog_items_count = len(catalog_service.get_all_items())
+            min_items_val = settings.min_catalog_items
+            if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
+                min_items = 0
+            else:
+                try:
+                    min_items = int(min_items_val)
+                except (TypeError, ValueError):
+                    min_items = 0
+                
+            if catalog_items_count < min_items:
+                logger.error(
+                    f"❌ [STARTUP-GUARD] Task processor rejected: catalog is not fully loaded "
+                    f"({catalog_items_count}/{min_items} items, catalog_ready={catalog_ready})."
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Service Unavailable: Catalog not fully loaded ({catalog_items_count}/{min_items} items)."
+                )
 
         if _is_valid_statuses(payload):
             status_data = _extract_status_data(payload)
