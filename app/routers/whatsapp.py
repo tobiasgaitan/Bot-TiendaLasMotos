@@ -411,6 +411,8 @@ async def task_processor(
             return {"status": "processed", "type": "message"}
 
         return {"status": "ignored", "reason": "invalid_payload"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"❌ Error during synchronous task processing: {e}")
         # Zero-Silent-Failures: return 500 so Cloud Tasks can retry if configured
