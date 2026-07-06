@@ -4,6 +4,7 @@ Main application entry point with startup/shutdown lifecycle management.
 """
 
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -58,24 +59,50 @@ async def lifespan(app: FastAPI):
         logger.info("⚡ Initializing config loader singleton...")
         config_loader = ConfigLoader(db)
         
-        import concurrent.futures
-        logger.info("⚡ Loading configurations in parallel (Stage 1)...")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            future_config = executor.submit(config_service.initialize, db)
-            future_loader = executor.submit(config_loader.load_all)
-            concurrent.futures.wait([future_config, future_loader])
+        # Define sequential, synchronous and blocking startup
+        def run_initialization_sync():
+            # 1. config_service.initialize(db)
+            logger.info("⚡ Linear Startup: Initializing config service...")
+            config_service.initialize(db)
             
-            # Propagate exceptions if any occurred during loading
-            future_config.result()
-            future_loader.result()
+            # 2. config_loader.load_all()
+            logger.info("⚡ Linear Startup: Loading dynamic configurations...")
+            config_loader.load_all()
             
-        # 4. Servicios dependientes (🏍️ Catalog)
-        logger.info("🏍️  Loading catalog service...")
-        catalog_service.initialize(db)
+            # 3. catalog_service.initialize(db)
+            logger.info("🏍️  Linear Startup: Initializing catalog service...")
+            catalog_service.initialize(db)
+            
+            # 4. Load Financial Config
+            logger.info("💰 Linear Startup: Loading Financial Configuration...")
+            finance_config_loader_inst = FinanceConfigLoader(db)
+            
+            return finance_config_loader_inst
+
+        # Wrap sequence in a strict timeout (5 seconds)
+        logger.info(f"⏳ Running startup database synchronization with timeout of {settings.db_timeout}s...")
+        try:
+            finance_config_loader = await asyncio.wait_for(
+                asyncio.to_thread(run_initialization_sync),
+                timeout=float(settings.db_timeout)
+            )
+        except asyncio.TimeoutError as te:
+            logger.exception(f"❌ [STARTUP-TIMEOUT] Database synchronization exceeded timeout of {settings.db_timeout} seconds (BOT-INFRA-33).")
+            raise RuntimeError(f"Database synchronization timed out after {settings.db_timeout}s") from te
+        except Exception as exc:
+            logger.exception(f"❌ [STARTUP-ERROR] Critical failure during database synchronization: {exc}")
+            raise RuntimeError(f"Database synchronization failed: {exc}") from exc
         
-        # 4.6 Load Financial Config (Fase 1)
-        logger.info("💰 Loading Financial Configuration...")
-        finance_config_loader = FinanceConfigLoader(db)
+        # Check catalog size guard
+        catalog_items_count = len(catalog_service.get_all_items())
+        if os.getenv("TEST_MODE") == "true":
+            logger.warning(f"🧪 TEST_MODE: Catalog has {catalog_items_count} items (Settings min expected: {settings.min_catalog_items}). Bypassing size check.")
+        elif catalog_items_count < settings.min_catalog_items:
+            logger.error(f"❌ [STARTUP-GUARD] Catalog is not fully loaded. Expected at least {settings.min_catalog_items} items, but loaded {catalog_items_count}.")
+            raise RuntimeError(
+                f"Catalog is not fully loaded. Expected at least {settings.min_catalog_items} items, "
+                f"but loaded {catalog_items_count}."
+            )
         
         # Store in app state for access in routes
         app.state.config_loader = config_loader
