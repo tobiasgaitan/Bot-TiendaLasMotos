@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 124 | Purge duplicate local catalog service and use singleton | 2026-07-06 | bc4ae40 | 124-bot-arq-singleton-106 |
 | 105 | Double buffering in CatalogService.load_catalog | 2026-07-06 | cf4d660 | 105-hotfix-catalog-double-buffer |
 | 123 | Align _LangfuseContextShim interface | 2026-07-06 | fba73eb | 123-hotfix-bot-telemetry-123 |
 | 122 | Promoción de rama beta a main para release v10.22.5 | 2026-07-06 | 4b5c45c | 122-promocion-a-main-v10.22.5 |
