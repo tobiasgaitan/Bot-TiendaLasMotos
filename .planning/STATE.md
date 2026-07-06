@@ -1,18 +1,19 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.9
-**Último Hito:** hotfix-bot-startup-nonblocking: Implemented non-blocking background startup task (BOT-INFRA-TIMEOUT-110)
+**Versión Actual:** v10.22.10
+**Último Hito:** hotfix-bot-infra-gcp-connection: Restored external environment variables and disabled CPU throttling to fix startup Firestore timeouts (BOT-INFRA-GCP-CONNECTION-111)
 **Coherence Score:** 1.000 (207/207 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
 - Desacoplamiento asíncrono asumiendo reenvíos vía tópicos de Pub/Sub con Dead Letter Topic (DLT) y Exponential Backoff en la suscripción push del webhook.
 - Aislamiento en `.gcloudignore` canónico de GCP para omitir exclusiones locales y empaquetar de forma correcta.
-- Enriquecimiento estructurado en `ai_brain.py` asociando `user_id` y `query` a logs forenses de error de validación.
+- Enriquecimiento estructurado en `ai_brain.py` asociando `user_id` and `query` a logs forenses de error de validación.
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 129 | Restore environment variables and disable CPU throttling on Cloud Run | 2026-07-06 | e28f48f | 129-bot-infra-gcp-connection-111 |
 | 128 | Lifespan non-blocking background initialization and guards | 2026-07-06 | 0082ec3 | 128-bot-startup-nonblocking-110 |
 | 127 | Startup locking, timeout fail-fast and webhook 503 guards | 2026-07-06 | a16e29d | 127-bot-startup-lock-109 |
 | 126 | Normalizar formato Ficha Tecnica y revertir flexibilización en orquestador | 2026-07-06 | c2b142e | 126-bot-perf-align-108 |
