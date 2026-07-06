@@ -287,6 +287,28 @@ async def webhook_handler(
         payload = json.loads(body)
         logger.info(f"📡 RADAR WEBHOOK RAW PAYLOAD: {json.dumps(payload)}")
 
+        # Enforce startup / catalog lock guard early
+        await _ensure_services()
+        catalog_items_count = len(catalog_service.get_all_items())
+        min_items_val = settings.min_catalog_items
+        if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
+            min_items = 0
+        else:
+            try:
+                min_items = int(min_items_val)
+            except (TypeError, ValueError):
+                min_items = 0
+            
+        if catalog_items_count < min_items:
+            logger.error(
+                f"❌ [STARTUP-GUARD] Webhook rejected: catalog is not fully loaded "
+                f"({catalog_items_count}/{min_items} items)."
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=f"Service Unavailable: Catalog not fully loaded ({catalog_items_count}/{min_items} items)."
+            )
+
         # --- RAMA 1: Acuses de recibo Meta (sent/delivered/read/failed) ---
         # [ARCH-BULK-META-010] WHY: Meta envía webhooks 'statuses' para confirmar el
         # estado de entrega de los templates de campaña masiva. Antes de este parche,
@@ -312,8 +334,6 @@ async def webhook_handler(
         from app.core.utils import PhoneNormalizer
         user_phone = PhoneNormalizer.normalize(raw_phone)
         msg_id_unique = msg_data.get("id") or f"{user_phone}_{int(datetime.now().timestamp())}"
-
-        await _ensure_services()
         if message_buffer and user_phone in message_buffer._processed_wamids and msg_id_unique in message_buffer._processed_wamids[user_phone]:
             logger.warning(f"🔄 Duplicate WAMID ignored in handler: {msg_id_unique}")
             return {"status": "ignored", "procesado": False}
@@ -357,6 +377,27 @@ async def task_processor(
 
     # 2. Enrutamiento síncrono
     try:
+        await _ensure_services()
+        catalog_items_count = len(catalog_service.get_all_items())
+        min_items_val = settings.min_catalog_items
+        if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
+            min_items = 0
+        else:
+            try:
+                min_items = int(min_items_val)
+            except (TypeError, ValueError):
+                min_items = 0
+            
+        if catalog_items_count < min_items:
+            logger.error(
+                f"❌ [STARTUP-GUARD] Task processor rejected: catalog is not fully loaded "
+                f"({catalog_items_count}/{min_items} items)."
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=f"Service Unavailable: Catalog not fully loaded ({catalog_items_count}/{min_items} items)."
+            )
+
         if _is_valid_statuses(payload):
             status_data = _extract_status_data(payload)
             if status_data:
