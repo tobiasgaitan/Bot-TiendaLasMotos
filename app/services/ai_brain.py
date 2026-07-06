@@ -1351,7 +1351,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                     catalog_response_str += f"  Link: {m['link']}\n"
                                                 
                                                 # Aserción obligatoria de Ficha Tecnica
-                                                catalog_response_str += f"  Ficha Tecnica: {summary}\n"
+                                                catalog_response_str += f"Ficha Tecnica: {summary}\n"
                                                 
                                             # Pivotar a la competencia si aplica
                                             competitor_brands = ["boxer", "nkd", "pulsar", "yamaha", "honda", "suzuki", "akt"]

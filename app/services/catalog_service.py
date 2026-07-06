@@ -632,7 +632,7 @@ class CatalogService:
                 search_results += f"- {name} ({category}): {price}{bonus_str}\n"
                 if m.get('image_url'): search_results += f"  Image URL: {m['image_url']}\n"
                 if m.get('link'): search_results += f"  Link: {m['link']}\n"
-                if m.get('summary'): search_results += f"  Ficha Tecnica: {m['summary']}\n"
+                if m.get('summary'): search_results += f"Ficha Tecnica: {m['summary']}\n"
                 
             competitor_brands = ["boxer", "nkd", "pulsar", "yamaha", "honda", "suzuki", "akt"]
             if any(b in query.lower() for b in competitor_brands):
