@@ -1,7 +1,9 @@
 # Roadmap - Bot-TiendaLasMotos
 
-## Tasks Completadas (v10.22.6)
+## Tasks Completadas (v10.22.7)
+- [x] Flexibilizar expresión regular de Ficha Tecnica en AgenticOrchestrator para tolerar espacios iniciales y evitar fallos falsos en el auto-healing (BOT-PERF-ALIGN-107).
 - [x] Doble búfer en `CatalogService.load_catalog` para prevención de reseteo en fallos de Firestore (BOT-INFRA-RELIABILITY-105).
+
 - [x] Alineación de interfaz para _LangfuseContextShim (BOT-BUGFIX-123).
 - [x] Fusión y promoción de la rama beta a main para release v10.22.5 (BOT-RELEASE-MAIN-v10.22.5).
 - [x] Alineación stateless del contexto del catálogo para el Juez en `whatsapp.py` (BOT-BUGFIX-121-CONSOLIDATED).

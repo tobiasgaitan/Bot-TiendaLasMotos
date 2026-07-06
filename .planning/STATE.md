@@ -1,5 +1,5 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.6
+**Versión Actual:** v10.22.7
 **Último Hito:** hotfix-bot-promotion-main: Branch beta promoted and merged to main for release v10.22.5
 **Coherence Score:** 1.000 (202/202 Tests PASSED)
 
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 125 | Flexibilizar regex de Ficha Tecnica en AgenticOrchestrator | 2026-07-06 | 0d68f16 | 125-bot-perf-align-107 |
 | 124 | Purge duplicate local catalog service and use singleton | 2026-07-06 | bc4ae40 | 124-bot-arq-singleton-106 |
 | 105 | Double buffering in CatalogService.load_catalog | 2026-07-06 | cf4d660 | 105-hotfix-catalog-double-buffer |
 | 123 | Align _LangfuseContextShim interface | 2026-07-06 | fba73eb | 123-hotfix-bot-telemetry-123 |
