@@ -140,6 +140,60 @@ async def _ensure_services():
     """
     await asyncio.to_thread(_ensure_services_sync)
 
+def resolve_query_aliases(query: str, catalog_service) -> str:
+    """
+    Translates colloquial query terms or synonyms (e.g. 'señoritera') 
+    to the canonical category name (e.g. 'semiautomatica') based on catalog aliases.
+    """
+    if not query:
+        return query
+    
+    q_norm = query.lower().strip()
+    
+    # Try fetching aliases from catalog service or config service
+    aliases = {}
+    try:
+        if catalog_service and hasattr(catalog_service, 'get_catalog_aliases'):
+            aliases = catalog_service.get_catalog_aliases()
+    except Exception as e:
+        logger.warning(f"⚠️ Error retrieving catalog aliases: {e}")
+        
+    if not aliases:
+        try:
+            aliases = config_service.get_catalog_aliases()
+        except Exception as e:
+            logger.warning(f"⚠️ Error retrieving config aliases: {e}")
+            
+    if not aliases:
+        return query
+
+    # Normalize key/value strings to lowercase for comparison
+    import re
+    for category, synonyms in aliases.items():
+        cat_lower = str(category).lower().strip()
+        
+        # Check category match as a word boundary
+        if re.search(r'\b' + re.escape(cat_lower) + r'\b', q_norm):
+            return cat_lower
+            
+        # Check synonym matches as word boundaries
+        # Handle dict or list values dynamically
+        syns_list = []
+        if isinstance(synonyms, list):
+            syns_list = synonyms
+        elif isinstance(synonyms, dict):
+            syns_list = list(synonyms.values())
+        else:
+            syns_list = [synonyms]
+            
+        for syn in syns_list:
+            syn_lower = str(syn).lower().strip()
+            if syn_lower and re.search(r'\b' + re.escape(syn_lower) + r'\b', q_norm):
+                return cat_lower
+                
+    return query
+
+
 # ============================================================================
 # WEBHOOK ENDPOINTS
 # ============================================================================
@@ -901,11 +955,20 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             
             try:
                 # Contexto para el Juez (Catalog Lock)
-                catalog_results = catalog_service_local.search(message_body)
+                translated_query = resolve_query_aliases(message_body, catalog_service_local)
+                catalog_results = catalog_service_local.search(translated_query)
                 catalog_context = ""
                 for item in catalog_results[:3]:
                     tags_str = ", ".join(item.get('searchBy', []))
-                    catalog_context += f"- {item['name']}: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
+                    net_price_str = ""
+                    if catalog_service_local and hasattr(catalog_service_local, '_items'):
+                        for raw_item in catalog_service_local._items:
+                            if raw_item.get("name") == item["name"]:
+                                net_price_str = raw_item.get("formatted_price")
+                                break
+                    if not net_price_str:
+                        net_price_str = item.get("formatted_price", "")
+                    catalog_context += f"- {item['name']}: Neto: {net_price_str} / Con SOAT: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
 
                 while attempts <= max_retries and not is_approved:
                     attempts += 1
@@ -1099,11 +1162,20 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     last_criteria_id = "UNKNOWN"
                     
                     # Contexto para el Juez (Catalog Lock)
-                    catalog_results = catalog_service_local.search(transcription)
+                    translated_query = resolve_query_aliases(transcription, catalog_service_local)
+                    catalog_results = catalog_service_local.search(translated_query)
                     catalog_context = ""
                     for item in catalog_results[:3]:
                         tags_str = ", ".join(item.get('searchBy', []))
-                        catalog_context += f"- {item['name']}: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
+                        net_price_str = ""
+                        if catalog_service_local and hasattr(catalog_service_local, '_items'):
+                            for raw_item in catalog_service_local._items:
+                                if raw_item.get("name") == item["name"]:
+                                    net_price_str = raw_item.get("formatted_price")
+                                    break
+                        if not net_price_str:
+                            net_price_str = item.get("formatted_price", "")
+                        catalog_context += f"- {item['name']}: Neto: {net_price_str} / Con SOAT: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
 
                     while attempts <= max_retries and not is_approved:
                         attempts += 1
