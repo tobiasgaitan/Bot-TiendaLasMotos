@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
-
-## Tasks Completadas (v10.22.7)
+ 
+## Tasks Completadas (v10.22.8)
+- [x] Implementación de bloqueo de arranque en lifespan, timeout fail-fast y guardas de rechazo HTTP 503 ante catálogos vacíos (BOT-INFRA-LIFESPAN-109).
 - [x] Flexibilizar expresión regular de Ficha Tecnica en AgenticOrchestrator para tolerar espacios iniciales y evitar fallos falsos en el auto-healing (BOT-PERF-ALIGN-107).
 - [x] Doble búfer en `CatalogService.load_catalog` para prevención de reseteo en fallos de Firestore (BOT-INFRA-RELIABILITY-105).
 
