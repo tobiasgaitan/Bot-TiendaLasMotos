@@ -56,3 +56,25 @@ async def test_trace_propagation_context_update():
         mock_message_buffer.add_message.assert_called_once_with(
             "+573001234567", "Hola, me interesa la TVS Sport 100", "wamid.HBgLNTczMDAxMjM0NTY3FQIAERgSRTk0OTM5OTg1RkMxMEM5NTI3AA=="
         )
+
+def test_langfuse_context_shim_methods():
+    """
+    Verify that _LangfuseContextShim in both ai_brain.py and whatsapp.py has
+    the expected mock methods and that they can be invoked with arbitrary kwargs.
+    """
+    from app.services.ai_brain import _LangfuseContextShim as ShimBrain
+    from app.routers.whatsapp import _LangfuseContextShim as ShimWhatsapp
+    
+    for shim_class in [ShimBrain, ShimWhatsapp]:
+        shim_inst = shim_class()
+        # Verify update_current_trace exists and accepts any args/kwargs
+        assert hasattr(shim_inst, "update_current_trace")
+        # Verify update_current_observation exists and accepts any args/kwargs
+        assert hasattr(shim_inst, "update_current_observation")
+        # Verify update_current_generation exists and accepts any args/kwargs
+        assert hasattr(shim_inst, "update_current_generation")
+        
+        # Test call compatibility
+        shim_inst.update_current_trace(user_id="test", session_id="test", tags=["test"], metadata={"x": "y"})
+        shim_inst.update_current_observation(output="ok", usage_details={"prompt_tokens": 10})
+        shim_inst.update_current_generation(output="ok", usage_details={"prompt_tokens": 10}, extra_param="value")
