@@ -126,7 +126,7 @@ async def lifespan(app: FastAPI):
                     logger.error(f"❌ [STARTUP-GUARD] Catalog size validation failed in background: {catalog_items_count} < {min_items}")
                 else:
                     app.state.catalog_ready = True
-                    logger.info("✅ Background startup completed successfully, catalog is ready.")
+                    logger.info("✅ [STARTUP-SUCCESS] Catálogo hidratado sin timeouts.")
             except asyncio.TimeoutError as te:
                 logger.exception(f"❌ [STARTUP-TIMEOUT] Database synchronization exceeded timeout of {settings.db_timeout} seconds (BOT-INFRA-33).")
             except Exception as exc:
