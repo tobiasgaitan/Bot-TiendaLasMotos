@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.5
+**Versión Actual:** v10.22.6
 **Último Hito:** hotfix-bot-promotion-main: Branch beta promoted and merged to main for release v10.22.5
-**Coherence Score:** 1.000 (201/201 Tests PASSED)
+**Coherence Score:** 1.000 (202/202 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 105 | Double buffering in CatalogService.load_catalog | 2026-07-06 | cf4d660 | 105-hotfix-catalog-double-buffer |
 | 123 | Align _LangfuseContextShim interface | 2026-07-06 | fba73eb | 123-hotfix-bot-telemetry-123 |
 | 122 | Promoción de rama beta a main para release v10.22.5 | 2026-07-06 | 4b5c45c | 122-promocion-a-main-v10.22.5 |
 | 121 | Stateless alignment of catalog context for the Judge Service in whatsapp.py | 2026-07-06 | c26943a | 121-hotfix-bot-judge-alignment |
