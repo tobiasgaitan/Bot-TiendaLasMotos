@@ -468,7 +468,7 @@ async def test_meta_payload_leak_prevention_and_bypass():
          patch("app.routers.whatsapp.judge_service") as mock_judge, \
          patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
          patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
-         patch("app.routers.whatsapp.catalog_service_local", mock_catalog), \
+         patch("app.routers.whatsapp.catalog_service", mock_catalog), \
          patch("app.routers.whatsapp.motor_financiero", mock_financial), \
          patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
          patch("app.services.ai_brain.SDK_AVAILABLE", True):

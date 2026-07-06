@@ -71,7 +71,7 @@ async def test_handle_message_background_zombie_recovery():
     with patch("app.routers.whatsapp.db", mock_db), \
          patch("app.routers.whatsapp.message_buffer", mock_message_buffer), \
          patch("app.routers.whatsapp.config_loader", mock_config_loader), \
-         patch("app.routers.whatsapp.catalog_service_local", mock_catalog), \
+         patch("app.routers.whatsapp.catalog_service", mock_catalog), \
          patch("app.routers.whatsapp.config_service", mock_config_service), \
          patch("app.routers.whatsapp.judge_service", mock_judge), \
          patch("app.routers.whatsapp.memory_service_module") as mock_mem_module, \
@@ -185,7 +185,7 @@ async def test_handle_message_background_post_reset_recovery():
     with patch("app.routers.whatsapp.db", mock_db), \
          patch("app.routers.whatsapp.message_buffer", mock_message_buffer), \
          patch("app.routers.whatsapp.config_loader", mock_config_loader), \
-         patch("app.routers.whatsapp.catalog_service_local", mock_catalog), \
+         patch("app.routers.whatsapp.catalog_service", mock_catalog), \
          patch("app.routers.whatsapp.config_service", mock_config_service), \
          patch("app.routers.whatsapp.judge_service", mock_judge), \
          patch("app.routers.whatsapp.memory_service_module") as mock_mem_module, \

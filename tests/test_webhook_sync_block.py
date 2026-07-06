@@ -89,7 +89,7 @@ async def test_webhook_handler_synchronous_blocking():
          patch("app.routers.whatsapp.CerebroIA", return_value=mock_cerebro), \
          patch("app.routers.whatsapp.judge_service", mock_judge), \
          patch("app.services.whatsapp_service.whatsapp_service", mock_whatsapp), \
-         patch("app.routers.whatsapp.catalog_service_local", mock_catalog), \
+         patch("app.routers.whatsapp.catalog_service", mock_catalog), \
          patch("app.routers.whatsapp._handle_message_background", side_effect=track_handle_message):
          
         mock_settings.whatsapp_app_secret = None  # Bypass signature verification

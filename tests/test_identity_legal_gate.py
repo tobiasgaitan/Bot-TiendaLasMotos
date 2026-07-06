@@ -116,7 +116,7 @@ class TestIdentityLegalGate(unittest.TestCase):
     @patch("app.routers.whatsapp.db")
     @patch("app.routers.whatsapp.message_buffer")
     @patch("app.routers.whatsapp.config_loader")
-    @patch("app.routers.whatsapp.catalog_service_local")
+    @patch("app.routers.whatsapp.catalog_service")
     @patch("app.routers.whatsapp.config_service")
     @patch("app.routers.whatsapp.judge_service")
     @patch("app.routers.whatsapp.memory_service_module")

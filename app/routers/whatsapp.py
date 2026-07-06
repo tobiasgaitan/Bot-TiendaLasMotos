@@ -30,7 +30,7 @@ from app.services.financial_service import financial_service
 from app.services.ai_brain import CerebroIA
 from app.services.vision_service import VisionService
 from app.services.audio_service import AudioService
-from app.services.catalog_service import CatalogService # Local instantiation class
+from app.services.catalog_service import catalog_service
 from app.services.storage_service import storage_service # Singleton
 from app.services.message_buffer import MessageBuffer # Local instantiation
 
@@ -72,7 +72,6 @@ status_semaphore = asyncio.Semaphore(5)
 db = None
 config_loader = None
 motor_financiero = None
-catalog_service_local = None
 message_buffer = None
 _active_resets = set() # v9.8.3: Guard against concurrent resets
 
@@ -84,7 +83,7 @@ def _ensure_services_sync():
     blocking FastAPI's event loop under Meta production load (BOT-INFRA-ASYNC-094).
     """
 
-    global db, config_loader, motor_financiero, catalog_service_local, message_buffer
+    global db, config_loader, motor_financiero, message_buffer
     
     # 5. Message Buffer (initialized first to ensure availability in tests)
     if not message_buffer:
@@ -126,10 +125,9 @@ def _ensure_services_sync():
             logger.error(f"❌ [INIT] FinancialService init failed: {e}", exc_info=True)
 
     # 4. Catalog Service
-    if db and not catalog_service_local:
+    if db and not catalog_service._db:
         try:
-            catalog_service_local = CatalogService()
-            catalog_service_local.initialize(db)
+            catalog_service.initialize(db)
             logger.info("✅ CatalogService initialized")
         except Exception as e:
              logger.error(f"❌ Failed to initialize CatalogService: {e}")
@@ -619,7 +617,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                             elif "[MOTO_DETECTADA]" in vision_response:
                                 vision_description = vision_response.replace("[MOTO_DETECTADA]", "").strip()
                                 await _ensure_services()
-                                cerebro_ia = CerebroIA(config_loader, catalog_service_local)
+                                cerebro_ia = CerebroIA(config_loader, catalog_service)
                                 cerebro_ia.motor_financiero = motor_financiero
                                 
                                 if memory_service_module.memory_service:
@@ -668,7 +666,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                             if vision_response.startswith("[System Note:") or (msg_type == "sticker" and is_affirmative_sticker):
                                 logger.info("🧠 General image/meme/sticker detected.")
                                 await _ensure_services()
-                                cerebro_ia = CerebroIA(config_loader, catalog_service_local)
+                                cerebro_ia = CerebroIA(config_loader, catalog_service)
                                 cerebro_ia.motor_financiero = motor_financiero
                                 
                                 input_text = "Sí" if (msg_type == "sticker" and is_affirmative_sticker) else vision_response
@@ -749,7 +747,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         
         # Initialize Services Locally
         logger.info("🧠 Initializing CerebroIA...")
-        cerebro_ia = CerebroIA(config_loader, catalog_service_local)
+        cerebro_ia = CerebroIA(config_loader, catalog_service)
         cerebro_ia.motor_financiero = motor_financiero # Inject Financial Motor
         vision_service = VisionService(db)
         audio_service = AudioService(config_loader)
@@ -800,9 +798,9 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                         logger.warning(f"🔄 CATALOG REFRESH TRIGGERED by {user_phone}")
                         try:
                             await _ensure_services()
-                            if catalog_service_local:
+                            if catalog_service:
                                 # BOT-INFRA-ASYNC-094: Delegate sync .stream() to thread pool
-                                await asyncio.to_thread(catalog_service_local.refresh)
+                                await asyncio.to_thread(catalog_service.refresh)
                                 confirm_msg = "✅ Catálogo actualizado en memoria exitosamente."
                             else:
                                 confirm_msg = "❌ Error: Catalog Service no inicializado."
@@ -957,14 +955,14 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             
             try:
                 # Contexto para el Juez (Catalog Lock)
-                translated_query = resolve_query_aliases(message_body, catalog_service_local)
-                catalog_results = catalog_service_local.search(translated_query)
+                translated_query = resolve_query_aliases(message_body, catalog_service)
+                catalog_results = catalog_service.search(translated_query)
                 catalog_context = ""
                 for item in catalog_results[:3]:
                     tags_str = ", ".join(item.get('searchBy', []))
                     net_price_str = ""
-                    if catalog_service_local and hasattr(catalog_service_local, '_items'):
-                        for raw_item in catalog_service_local._items:
+                    if catalog_service and hasattr(catalog_service, '_items'):
+                        for raw_item in catalog_service._items:
                             if raw_item.get("name") == item["name"]:
                                 net_price_str = raw_item.get("formatted_price")
                                 break
@@ -1164,14 +1162,14 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     last_criteria_id = "UNKNOWN"
                     
                     # Contexto para el Juez (Catalog Lock)
-                    translated_query = resolve_query_aliases(transcription, catalog_service_local)
-                    catalog_results = catalog_service_local.search(translated_query)
+                    translated_query = resolve_query_aliases(transcription, catalog_service)
+                    catalog_results = catalog_service.search(translated_query)
                     catalog_context = ""
                     for item in catalog_results[:3]:
                         tags_str = ", ".join(item.get('searchBy', []))
                         net_price_str = ""
-                        if catalog_service_local and hasattr(catalog_service_local, '_items'):
-                            for raw_item in catalog_service_local._items:
+                        if catalog_service and hasattr(catalog_service, '_items'):
+                            for raw_item in catalog_service._items:
                                 if raw_item.get("name") == item["name"]:
                                     net_price_str = raw_item.get("formatted_price")
                                     break
@@ -1281,15 +1279,15 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                         moto_interest = prospect_data.get("moto_interest") if prospect_data else None
                         moto_to_search = moto_interest if moto_interest else "RAIDER 125"
                         
-                        if catalog_service_local:
+                        if catalog_service:
                             try:
                                 # Search for interested bike or default
-                                moto_results = catalog_service_local.search_catalog(moto_to_search)
+                                moto_results = catalog_service.search_catalog(moto_to_search)
                                 
                                 # Fallback if interest search failed (Competitor or not found)
                                 if not moto_results and moto_interest:
                                     logger.info(f"🔄 No results for '{moto_interest}' (Competitor?). Falling back to Raider 125.")
-                                    moto_results = catalog_service_local.search_catalog("RAIDER 125")
+                                    moto_results = catalog_service.search_catalog("RAIDER 125")
                                 
                                 if moto_results:
                                     moto = moto_results[0]
