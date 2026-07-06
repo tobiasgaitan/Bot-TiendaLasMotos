@@ -79,19 +79,19 @@ class CatalogService:
                             normalized_aliases[k_norm] = [str(val).lower().strip() for val in v if val and str(val).strip()]
                         elif isinstance(v, str):
                             normalized_aliases[k_norm] = [v.lower().strip()] if v.strip() else []
-                self._category_aliases = normalized_aliases
+                temp_category_aliases = normalized_aliases
             except Exception:
                 logger.warning("⚠️ ConfigLoader not ready. Using empty category aliases.")
-                self._category_aliases = {}
+                temp_category_aliases = {}
 
             # Query all items from sub-collection 'pagina/catalogo/items'
             items_ref = self._db.collection("pagina").document("catalogo").collection("items")
             items_docs = items_ref.stream()
             
-            # Reset indexes
-            self._items = []
-            self._items_by_id = {}
-            self._items_by_category = {}
+            # Local buffers (Double Buffer)
+            temp_items = []
+            temp_items_by_id = {}
+            temp_items_by_category = {}
             
             # Process each item
             for doc in items_docs:
@@ -180,8 +180,8 @@ class CatalogService:
                     # the use of forward slashes ('/') in Map keys, ensuring admins can safely 
                     # create keys like "urbana y_o trabajo" instead of failing.
                     clean_cat = str(cat).lower().strip().replace('/', '_')
-                    if clean_cat in self._category_aliases:
-                        corpus_parts.extend(self._category_aliases[clean_cat])
+                    if clean_cat in temp_category_aliases:
+                        corpus_parts.extend(temp_category_aliases[clean_cat])
                 
                 if isinstance(raw_specs, dict):
                     for spec_key in ["cilindraje", "transmision", "potencia", "torque", "frenos"]:
@@ -230,17 +230,23 @@ class CatalogService:
                     "bonusEndDate": bonus_end_date
                 }
 
-                self._items.append(mapped_item)
+                temp_items.append(mapped_item)
                 
                 # Index by ID
-                self._items_by_id[doc.id] = mapped_item
+                temp_items_by_id[doc.id] = mapped_item
                 
                 # Index by category
                 cat_key = mapped_item["category"]
-                if cat_key not in self._items_by_category:
-                    self._items_by_category[cat_key] = []
-                self._items_by_category[cat_key].append(mapped_item)
+                if cat_key not in temp_items_by_category:
+                    temp_items_by_category[cat_key] = []
+                temp_items_by_category[cat_key].append(mapped_item)
             
+            # Atomic swap (Atomic Swap / Double Buffer)
+            self._category_aliases = temp_category_aliases
+            self._items = temp_items
+            self._items_by_id = temp_items_by_id
+            self._items_by_category = temp_items_by_category
+
             logger.info(f"✅ Catalog loaded: {len(self._items)} items from 'pagina/catalogo/items'")
             logger.info(f"📂 Categories: {list(self._items_by_category.keys())}")
             
@@ -248,10 +254,7 @@ class CatalogService:
             self._hydrate_cache()
             
         except Exception as e:
-            logger.error(f"❌ Error loading catalog: {str(e)}")
-            self._items = []
-            self._items_by_id = {}
-            self._items_by_category = {}
+            logger.exception(f"❌ Error loading catalog: {str(e)}")
 
     def _hydrate_cache(self) -> None:
         """
