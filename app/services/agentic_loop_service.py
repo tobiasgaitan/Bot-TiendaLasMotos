@@ -43,7 +43,8 @@ class AgenticOrchestrator:
     def run_checker(self, bot_response: str, is_catalog_query: bool = False) -> Dict[str, Any]:
         has_price = bool(re.search(r"\$\d+", bot_response))
         has_image = bool(re.search(r"!\[.*?\]\(.*?\)|\[IMAGE:.*?\]", bot_response))
-        has_ficha = "Ficha Tecnica:" in bot_response if is_catalog_query else True
+        has_ficha = bool(re.search(r"\s*Ficha Tecnica:", bot_response)) if is_catalog_query else True
+
 
         if not (has_price and has_image and has_ficha):
             report = {
