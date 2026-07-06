@@ -69,6 +69,9 @@ class _LangfuseContextShim:
     def update_current_observation(self, **kwargs):
         pass
 
+    def update_current_generation(self, **kwargs):
+        pass
+
 langfuse_context = _LangfuseContextShim()
 
 # Inject into sys.modules to satisfy any inline imports of langfuse.decorators

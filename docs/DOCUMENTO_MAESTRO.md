@@ -1,5 +1,5 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.22.5)
-Versión: v10.22.5 (Catalog Aliases Decoupling & Import Lock Resilience)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.22.6)
+Versión: v10.22.6 (Catalog Aliases Decoupling & Import Lock Resilience)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
 Último Hito: Desacoplamiento de alias del catálogo para erradicar el import circular deadlock concurrent en producción. Cierre de ticket [BOT-RESILIENCE-104].
 **Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 192/192 Tests PASSED)
@@ -104,5 +104,5 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.16.1] Cierre de Hotfix BOT-BRAIN-CATALOG-091 (Desalineación de scores de difflib y fallback de tokens de la base normalizada). Expansión de sinónimos coloquiales, fallback de coincidencia de tokens y contingencias anti-vacías en búsqueda de catálogo. Coherence Score: 1.000 (171/171 Tests PASSED).
 - [v10.18.2] Cierre de ticket BOT-ARCH-STATE-101 (Tool Rejection Pattern). Reversión de la exclusión de `calculate_credit_score` de Phase 1, remoción de la purga regex del prompt y desarrollo del Tool Rejection Pattern en ejecución de herramientas para retornar error explícito en `PHASE_1_PROFILING`. Coherence Score: 1.000 (186/186 Tests PASSED).
 - [v10.20.0] Cierre de ticket BOT-RESILIENCE-102 (Flexibilización de Interceptores y Null Masking). Flexibilización del Drift Interceptor (umbral a 0.30), Null Masking opcional para summary/descripcion con valor por defecto, y fallback de imágenes. Coherence Score: 1.000 (189/189 Tests PASSED).
-- [v10.22.5] Cierre de ticket BOT-RESILIENCE-104 (Desacoplamiento de alias del catálogo y eliminación de circular import deadlock). Erradicación de importaciones dinámicas de `config_service` en `ai_brain.py` y exposición directa de `get_catalog_aliases` en `CatalogService`. Coherence Score: 1.000 (192/192 Tests PASSED).
+- [v10.22.6] Cierre de ticket BOT-RESILIENCE-104 (Desacoplamiento de alias del catálogo y eliminación de circular import deadlock). Erradicación de importaciones dinámicas de `config_service` en `ai_brain.py` y exposición directa de `get_catalog_aliases` en `CatalogService`. Coherence Score: 1.000 (192/192 Tests PASSED).
 

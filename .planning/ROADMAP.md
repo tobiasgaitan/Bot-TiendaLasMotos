@@ -1,6 +1,8 @@
 # Roadmap - Bot-TiendaLasMotos
 
 ## Tasks Completadas (v10.22.5)
+- [x] Alineación de interfaz para _LangfuseContextShim (BOT-BUGFIX-123).
+- [x] Fusión y promoción de la rama beta a main para release v10.22.5 (BOT-RELEASE-MAIN-v10.22.5).
 - [x] Alineación stateless del contexto del catálogo para el Juez en `whatsapp.py` (BOT-BUGFIX-121-CONSOLIDATED).
 - [x] Corrección de literalidad en Drift Interceptor al cruzar contra el catálogo por alias compuestos (BOT-BUGFIX-118).
 - [x] Refactorización dinámica del interceptor de palabras clave de motocicletas e integración del test de alias (BOT-BUGFIX-117).

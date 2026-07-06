@@ -40,6 +40,11 @@ from app.services.config_service import config_service # [SSOT] Unified Config
 # Note: Access via memory_service_module.memory_service to get the updated instance
 
 # --- LANGFUSE OBSERVABILITY (Graceful Fallback & Context Sharing) ---
+class _LangfuseContextShim:
+    def update_current_trace(self, **kwargs): pass
+    def update_current_observation(self, **kwargs): pass
+    def update_current_generation(self, **kwargs): pass
+
 try:
     from langfuse.decorators import observe, langfuse_context
 except Exception:
@@ -49,9 +54,6 @@ except Exception:
         if args and callable(args[0]):
             return args[0]
         return decorator
-    class _LangfuseContextShim:
-        def update_current_trace(self, **kwargs): pass
-        def update_current_observation(self, **kwargs): pass
     langfuse_context = _LangfuseContextShim()
 
 
