@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 126 | Normalizar formato Ficha Tecnica y revertir flexibilización en orquestador | 2026-07-06 | c2b142e | 126-bot-perf-align-108 |
 | 125 | Flexibilizar regex de Ficha Tecnica en AgenticOrchestrator | 2026-07-06 | 0d68f16 | 125-bot-perf-align-107 |
 | 124 | Purge duplicate local catalog service and use singleton | 2026-07-06 | bc4ae40 | 124-bot-arq-singleton-106 |
 | 105 | Double buffering in CatalogService.load_catalog | 2026-07-06 | cf4d660 | 105-hotfix-catalog-double-buffer |
