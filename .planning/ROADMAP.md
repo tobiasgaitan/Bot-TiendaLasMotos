@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.22.13)
+## Tasks Completadas (v10.22.14)
+- [x] Corregir desalineación de la Capa de Identidad en search_items para coincidencia exacta con searchBy tags (BOT-PERF-IDENTITY-TAG-FIX-115).
 - [x] Desacoplar lista de marcas competidoras a Firestore y solucionar bypass de intercepción en caché comercial (BOT-PATCH-CATALOG-COMPETITION-CACHE-BULLSEYE).
 - [x] Inyección de normalización fonética y mapeo de sinónimos tipográficos ('rayder' -> 'raider') en el servicio de catálogo para resolver variaciones de búsqueda (BOT-PERF-FUZZY-CALIBRATION-114).
 - [x] Corrección de precedencia de variables de entorno para MIN_CATALOG_ITEMS asegurando prioridad del entorno real (BOT-INFRA-CONFIG-112).
