@@ -201,6 +201,8 @@ async def test_habeas_data_gate_before_credit_score():
         
         assert "Para hacer el estudio formal de tu crédito" in response
         assert "politica-de-privacidad" in response
+        assert "👍" in response, "La respuesta debe incluir el emoji de pulgar arriba 👍"
+        assert "emoji de pulgar arriba (👍)" in response, "La respuesta debe incluir explícitamente la frase 'emoji de pulgar arriba (👍)'"
 
         # Aserciones rígidas de contenido de BOT-BRAIN-RETURN-082
         assert "$" in response, "El resultado debe contener el signo pesos ($)."
@@ -434,6 +436,8 @@ async def test_habeas_bypass_interrupt_e2e():
 
         # ASSERT 5: Habeas Data legal script present
         assert "politica-de-privacidad" in response, "El script legal de Habeas Data debe estar presente."
+        assert "👍" in response, "La respuesta debe incluir el emoji de pulgar arriba 👍"
+        assert "emoji de pulgar arriba (👍)" in response, "La respuesta debe incluir explícitamente la frase 'emoji de pulgar arriba (👍)'"
 
         # ASSERT 6: Verify the HABEAS-BYPASS log was emitted
         bypass_logged = any(

@@ -1611,7 +1611,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     credit_res += (
                                         "\n\nPara hacer el estudio formal de tu crédito y darte las opciones de financiación, "
                                         "¿me autorizas el tratamiento de tus datos personales de acuerdo con nuestra política de privacidad? "
-                                        "(Política: https://tiendalasmotos.com/politica-de-privacidad). Solo confírmame con un 'Sí'."
+                                        "(Política: https://tiendalasmotos.com/politica-de-privacidad). Solo confírmame con un 'Sí' o con un emoji de pulgar arriba (👍)."
                                     )
 
                                     credit_res_for_llm = credit_res + f"\n\n{funnel_instruction}"
@@ -1628,11 +1628,47 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                             is_accepted = (prospect_data or {}).get("habeas_data_accepted") is True
                             if not is_accepted:
+                                # [CORRECCIÓN QUIRÚRGICA: PASO 4 CON EMOJI INMUTABLE 👍]
+                                _phone = (prospect_data or {}).get("phone") or (prospect_data or {}).get("id", "unknown")
+                                logger.warning(f"SECURITY ALERT [Habeas Data Gate]: Financial profiling without consent. Phone: {_phone}")
+                                logger.info(f"[BOT-FINANCE-BYPASS] Ejecutando simulación ciega preventiva ante ausencia de Habeas Data para {user_name}")
+                                
+                                m_price = 0.0
+                                moto_name = (prospect_data or {}).get("moto_interest", "")
+                                if moto_name and self._catalog_service:
+                                    m_results = self._catalog_service.search_items(moto_name)
+                                    if m_results:
+                                        first_match = m_results[0]
+                                        m_price = self._parse_raw_price(first_match.get('raw_price'), first_match.get('price'))
+
+                                if m_price <= 0:
+                                    logger.warning(f"⚠️ [Catalog Lock] No se pudo encontrar el precio real para la moto '{moto_name}'. Evitando simulación inventada.")
+                                    raise ValueError(f"Precio no disponible para la simulación financiera de la moto '{moto_name}'.")
+
+                                if self.motor_financiero:
+                                    inicial_val = m_price * 0.10
+                                    sim = self.motor_financiero.calculate_payment(precio=m_price, inicial=inicial_val, plazo_meses=24, entity="Crediorbe")
+                                    cuota_val = sim.get('cuota_mensual', 0.0)
+                                    credit_res = (
+                                        f"Si te interesa a crédito con la inicial de ${inicial_val:,.0f}, "
+                                        f"las cuotas a 24 meses serían aproximadamente de ${cuota_val:,.0f} "
+                                        f"(incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*"
+                                    )
+                                else:
+                                    credit_res = "Estimación de cuota base no disponible temporalmente."
+
                                 credit_res += (
                                     "\n\nPara hacer el estudio formal de tu crédito y darte las opciones de financiación, "
                                     "¿me autorizas el tratamiento de tus datos personales de acuerdo con nuestra política de privacidad? "
-                                    "(Política: https://tiendalasmotos.com/politica-de-privacidad). Solo confírmame con un 'Sí'."
+                                    "(Política: https://tiendalasmotos.com/politica-de-privacidad). Solo confírmame con un 'Sí' o con un emoji de pulgar arriba (👍)."
                                 )
+
+                                credit_res_for_llm = credit_res + f"\n\n{funnel_instruction}"
+                                response_parts.append(types.Part.from_function_response(
+                                    name="calculate_credit_score",
+                                    response={"result": credit_res_for_llm}
+                                ))
+                                raise HabeasDataBypassInterrupt(credit_res)
 
                             credit_res += f"\n\n{funnel_instruction}"
                             response_parts.append(types.Part.from_function_response(
