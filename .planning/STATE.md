@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.11
-**Último Hito:** hotfix-bot-infra-config: Correct environment variable precedence for MIN_CATALOG_ITEMS (BOT-INFRA-CONFIG-112)
-**Coherence Score:** 1.000 (210/210 Tests PASSED)
+**Versión Actual:** v10.22.12
+**Último Hito:** hotfix-bot-perf-fuzzy-calibration: Inject phonetic normalization and spelling corrections in catalog search (BOT-PERF-FUZZY-CALIBRATION-114)
+**Coherence Score:** 1.000 (211/211 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 131 | Inject phonetic normalization and spelling corrections in catalog search | 2026-07-07 | 8d44f80 | 131-bot-perf-fuzzy-calibration-114 |
 | 130 | Correct environment variable precedence for MIN_CATALOG_ITEMS | 2026-07-07 | 58da607 | 130-bot-infra-config-112 |
 | 129 | Restore environment variables and disable CPU throttling on Cloud Run | 2026-07-06 | e28f48f | 129-bot-infra-gcp-connection-111 |
 | 128 | Lifespan non-blocking background initialization and guards | 2026-07-06 | 0082ec3 | 128-bot-startup-nonblocking-110 |
