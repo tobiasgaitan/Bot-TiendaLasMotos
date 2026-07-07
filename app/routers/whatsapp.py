@@ -576,6 +576,8 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             
             if not message_body:
                 return
+            
+            msg_type = "text"
 
             # --- DEBOUNCE LOGIC END ---
             
