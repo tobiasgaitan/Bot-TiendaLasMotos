@@ -308,6 +308,35 @@ class CatalogService:
         stop_words = {"quiero", "una", "un", "moto", "motos", "busco", "la", "el", "de", "las", "los", "con", "en", "para", "y", "o", "tienen", "tienes", "tiene", "contas", "disponible", "venden", "precio", "valor", "cuanto", "cuesta", "vale"}
         return [t for t in tokens if t not in stop_words]
 
+    def _phonetic_normalize(self, token: str) -> str:
+        """
+        Secondary phonetic and homophone normalization.
+        Cleans punctuation, replaces common Spanish homophones (y->i, v->b, z->s, etc.)
+        to increase robustness against user typographical variations.
+        """
+        if not token:
+            return ""
+        t = token.lower().strip()
+        # Clean punctuation
+        t = re.sub(r'[^a-z0-9]', '', t)
+        # Remove silent h
+        if t.startswith("h") and len(t) > 1:
+            t = t[1:]
+        # Replace double L with y before converting y to i
+        t = t.replace("ll", "y")
+        # Replace y with i (except single 'y')
+        if len(t) > 1:
+            t = t.replace("y", "i")
+        # Replace v with b
+        t = t.replace("v", "b")
+        # Replace z with s
+        t = t.replace("z", "s")
+        # Replace qu with c, k with c
+        t = t.replace("qu", "c").replace("k", "c")
+        # Simplify other double letters
+        t = t.replace("rr", "r").replace("cc", "c")
+        return t
+
     def _parse_specs(self, specs_input: Any) -> str:
         """
         Parse technical specifications into a single formatted string.
@@ -406,6 +435,15 @@ class CatalogService:
         
         query_tokens = self._tokenize(query)
         
+        # Typographical/colloquial spelling expansion mapping
+        spelling_map = {
+            "rayder": "raider",
+            "raydr": "raider",
+            "raidr": "raider",
+            "raiyder": "raider",
+        }
+        query_tokens = [spelling_map.get(t, t) for t in query_tokens]
+        
         # Colloquial synonym expansion to align translated categories with actual catalog values
         colloquial_map = {
             "scooter": ["moped", "scooter", "senoritera", "automatica", "life"],
@@ -450,7 +488,20 @@ class CatalogService:
             core_name_tokens = [t for t in name_tokens if t not in brands and len(t) >= 2 and not t.isdigit()]
             
             # Identity match if query contains any core model token or vice-versa
-            name_match = any(t in query_tokens for t in core_name_tokens) if core_name_tokens else (clean_query in name_clean)
+            # Enriched with phonetic matching for robust typo handling
+            name_match = False
+            if core_name_tokens:
+                for t in query_tokens:
+                    t_phone = self._phonetic_normalize(t)
+                    for core_t in core_name_tokens:
+                        if t == core_t or self._phonetic_normalize(core_t) == t_phone:
+                            name_match = True
+                            break
+                    if name_match:
+                        break
+            else:
+                name_match = (clean_query in name_clean)
+                
             corpus_match = clean_query in item_search_text
             
             # 1. Exact Substring (Highest Confidence)
@@ -467,14 +518,24 @@ class CatalogService:
                     if t in item_tokens:
                         matches += 1
                     else:
-                        # Fuzzy matches for tokens (e.g., "raidr" -> "raider")
-                        fuzzy_hit = False
+                        # Try exact match on phonetically normalized tokens
+                        t_phone = self._phonetic_normalize(t)
+                        phone_match = False
                         for target_token in set(item_tokens):
-                            if difflib.SequenceMatcher(None, t, target_token).ratio() > 0.8:
-                                fuzzy_hit = True
+                            if self._phonetic_normalize(target_token) == t_phone:
+                                phone_match = True
                                 break
-                        if fuzzy_hit:
-                            matches += 0.8 # Slightly less than exact token match
+                        if phone_match:
+                            matches += 0.95  # Almost perfect match!
+                        else:
+                            # Fuzzy matches for tokens (e.g., "raidr" -> "raider")
+                            fuzzy_hit = False
+                            for target_token in set(item_tokens):
+                                if difflib.SequenceMatcher(None, t, target_token).ratio() > 0.8:
+                                    fuzzy_hit = True
+                                    break
+                            if fuzzy_hit:
+                                matches += 0.8 # Slightly less than exact token match
 
                 if matches >= len(query_tokens):
                     score += 90 
