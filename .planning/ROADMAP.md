@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.22.9)
+## Tasks Completadas (v10.22.11)
+- [x] Corrección de precedencia de variables de entorno para MIN_CATALOG_ITEMS asegurando prioridad del entorno real (BOT-INFRA-CONFIG-112).
 - [x] Desacoplamiento de lifespan para ejecución secuencial no bloqueante en background y guardas de rechazo HTTP 503 ante catálogos vacíos (BOT-INFRA-TIMEOUT-110).
 - [x] Implementación de bloqueo de arranque en lifespan, timeout fail-fast y guardas de rechazo HTTP 503 ante catálogos vacíos (BOT-INFRA-LIFESPAN-109).
 - [x] Flexibilizar expresión regular de Ficha Tecnica en AgenticOrchestrator para tolerar espacios iniciales y evitar fallos falsos en el auto-healing (BOT-PERF-ALIGN-107).
