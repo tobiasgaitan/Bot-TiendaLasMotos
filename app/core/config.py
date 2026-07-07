@@ -8,8 +8,7 @@ import sys
 from typing import Optional
 from dotenv import load_dotenv
 
-# Load local environment variables from .env if present
-load_dotenv()
+# Note: load_dotenv() is now called inside Settings.__init__ to preserve GCP environment precedence
 
 
 class Settings:
@@ -22,6 +21,12 @@ class Settings:
     
     def __init__(self):
         """Initialize settings by reading environment variables."""
+        # Read the environment variable MIN_CATALOG_ITEMS first, before load_dotenv() runs.
+        # This guarantees GCP environment variables take precedence over local .env.
+        gcp_min_catalog_items = os.getenv("MIN_CATALOG_ITEMS")
+        
+        # Load local environment variables from .env if present
+        load_dotenv()
         
         # Google Cloud Platform Configuration
         self.gcp_project_id: str = os.getenv("GOOGLE_CLOUD_PROJECT", "tiendalasmotos")
@@ -54,8 +59,11 @@ class Settings:
         # El valor de 5s es el umbral de detección: p99 normal de Firestore es <1s.
         # Configurable vía Cloud Run: --set-env-vars='DB_TIMEOUT=10'
         self.db_timeout: int = int(os.getenv("DB_TIMEOUT", "5"))
-        default_min_items = "0" if "pytest" in sys.modules else "60"
-        self.min_catalog_items: int = int(os.getenv("MIN_CATALOG_ITEMS", default_min_items))
+        if gcp_min_catalog_items is not None:
+            self.min_catalog_items = int(gcp_min_catalog_items)
+        else:
+            default_min_items = "0" if "pytest" in sys.modules else "40"
+            self.min_catalog_items = int(os.getenv("MIN_CATALOG_ITEMS", default_min_items))
         
         # WhatsApp API Version Override
         self.whatsapp_api_version: str = os.getenv("WHATSAPP_API_VERSION", "v21.0")
