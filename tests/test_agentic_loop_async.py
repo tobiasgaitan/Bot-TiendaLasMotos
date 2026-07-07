@@ -600,3 +600,96 @@ async def test_alias_pure_catalog_invocation():
         assert chk["report"]["broken_guardrail"] == "PRICE_CONSISTENCY_CHECK"
 
 
+
+@pytest.mark.asyncio
+async def test_whatsapp_reaction_payload_processing():
+    """
+    Test unitario para certificar que un payload de tipo 'reaction' con emoji '👍'
+    no aborta prematuramente, recupera la intención afirmativa 'Sí'
+    y la procesa correctamente hacia el motor de CerebroIA.
+    """
+    from app.routers import whatsapp
+    from app.routers.whatsapp import _handle_message_background
+    from fastapi import BackgroundTasks
+    
+    # 1. Asegurar la inicialización del message_buffer y forzar debounce_seconds a 0.0
+    whatsapp._ensure_services_sync()
+    orig_debounce = whatsapp.message_buffer.debounce_seconds
+    whatsapp.message_buffer.debounce_seconds = 0.0
+    
+    user_phone = "+573192564288"
+    
+    try:
+        # Clear buffer to guarantee complete test isolation
+        await whatsapp.message_buffer.clear_buffer(user_phone)
+        if user_phone in whatsapp.message_buffer._processed_wamids:
+            whatsapp.message_buffer._processed_wamids[user_phone].clear()
+        msg_data = {
+            "from": user_phone,
+            "id": "wamid.test_reaction_134",
+            "timestamp": "1672531199",
+            "type": "reaction",
+            "reaction": {
+                "emoji": "👍",
+                "message_id": "wamid.target_msg_123"
+            },
+            "phone_number_id": "999999"
+        }
+
+        # Mock memory service
+        mock_memory_service = MagicMock()
+        mock_memory_service.save_message = AsyncMock(return_value=True)
+        mock_memory_service.get_prospect_data = AsyncMock(return_value={
+            "exists": True,
+            "status": "PENDING",
+            "chatbot_status": "ACTIVE",
+            "name": "Juan Test",
+            "celular": user_phone,
+            "habeas_data_accepted": True,
+            "moto_interest": "Raider 125",
+            "forma_pago": "credito"
+        })
+        mock_memory_service.get_chat_history = AsyncMock(return_value=[])
+        mock_memory_service.create_prospect_if_missing = AsyncMock()
+        mock_memory_service.update_last_interaction = AsyncMock()
+        mock_memory_service.transition_to_in_progress = AsyncMock()
+        mock_memory_service.generate_and_update_summary = AsyncMock()
+        mock_memory_service.set_human_help_status = AsyncMock()
+        
+        # Mock CerebroIA.pensar_respuesta
+        captured_user_message = []
+        async def mock_pensar_respuesta(*args, **kwargs):
+            captured_user_message.append(args[0])
+            return "Respuesta simulada de la IA"
+
+        # Mock send_text_message to capture response to user
+        captured_outgoing = []
+        async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
+            captured_outgoing.append(text)
+            return {"messages": [{"id": "wamid.mocked_123"}]}
+
+        with patch("app.routers.whatsapp.settings") as mock_settings, \
+             patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
+             patch("app.routers.whatsapp.judge_service") as mock_judge, \
+             patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
+             patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+             patch.object(CerebroIA, "pensar_respuesta", side_effect=mock_pensar_respuesta), \
+             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+             patch("app.services.ai_brain.SDK_AVAILABLE", True):
+             
+            mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+            mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+            
+            background_tasks = BackgroundTasks()
+            await _handle_message_background(msg_data, background_tasks)
+            
+            # Verify that CerebroIA was indeed called with "Sí"
+            assert len(captured_user_message) == 1, "CerebroIA was not invoked."
+            assert captured_user_message[0] == "Sí", f"Expected 'Sí', but got '{captured_user_message[0]}'"
+            
+            # Verify that a response was sent to the user
+            assert len(captured_outgoing) == 1, "No outgoing WhatsApp message sent."
+            assert captured_outgoing[0] == "Respuesta simulada de la IA"
+
+    finally:
+        whatsapp.message_buffer.debounce_seconds = orig_debounce
