@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.22.8)
-Versión: v10.22.8 (Catalog Aliases Decoupling & Import Lock Resilience)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.22.12)
+Versión: v10.22.12 (Fuzzy Catalog Calibration & Phonetic Normalization)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Desacoplamiento de alias del catálogo para erradicar el import circular deadlock concurrent en producción. Cierre de ticket [BOT-RESILIENCE-104].
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 192/192 Tests PASSED)
+Último Hito: Inyección de normalización fonética y mapeo de sinónimos tipográficos ('rayder' -> 'raider') en el servicio de catálogo para resolver variaciones de búsqueda. Cierre de ticket [BOT-PERF-FUZZY-CALIBRATION-114].
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 211/211 Tests PASSED)
 
 
 1. Contexto y Persona (Juan Pablo)
@@ -105,4 +105,5 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.18.2] Cierre de ticket BOT-ARCH-STATE-101 (Tool Rejection Pattern). Reversión de la exclusión de `calculate_credit_score` de Phase 1, remoción de la purga regex del prompt y desarrollo del Tool Rejection Pattern en ejecución de herramientas para retornar error explícito en `PHASE_1_PROFILING`. Coherence Score: 1.000 (186/186 Tests PASSED).
 - [v10.20.0] Cierre de ticket BOT-RESILIENCE-102 (Flexibilización de Interceptores y Null Masking). Flexibilización del Drift Interceptor (umbral a 0.30), Null Masking opcional para summary/descripcion con valor por defecto, y fallback de imágenes. Coherence Score: 1.000 (189/189 Tests PASSED).
 - [v10.22.8] Cierre de ticket BOT-RESILIENCE-104 (Desacoplamiento de alias del catálogo y eliminación de circular import deadlock). Erradicación de importaciones dinámicas de `config_service` en `ai_brain.py` y exposición directa de `get_catalog_aliases` en `CatalogService`. Coherence Score: 1.000 (192/192 Tests PASSED).
+- [v10.22.12] Cierre de ticket BOT-PERF-FUZZY-CALIBRATION-114 (Fuzzy Catalog Calibration). Inyección de normalización fonética y de sinónimos tipográficos ('rayder' -> 'raider') en `CatalogService` para resolver variaciones de búsqueda. Coherence Score: 1.000 (211/211 Tests PASSED).
 
