@@ -560,6 +560,7 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         if msg_type == "reaction":
             # La deduplicación ya se hizo al inicio en v9.8.3
             # Wait for debounce window (3s) para permitir agregación si llegaran otros mensajes
+            orig_body = message_body
             await asyncio.sleep(message_buffer.debounce_seconds)
             
             # Check if this task is still active
@@ -568,8 +569,10 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 return
             
             # Get aggregated message
-            message_body = await message_buffer.get_aggregated_message(user_phone)
+            aggregated_body = await message_buffer.get_aggregated_message(user_phone)
             await message_buffer.clear_buffer(user_phone)
+            
+            message_body = aggregated_body if aggregated_body else orig_body
             
             if not message_body:
                 return
