@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.10
-**Último Hito:** hotfix-bot-infra-gcp-connection: Restored external environment variables and disabled CPU throttling to fix startup Firestore timeouts (BOT-INFRA-GCP-CONNECTION-111)
-**Coherence Score:** 1.000 (207/207 Tests PASSED)
+**Versión Actual:** v10.22.11
+**Último Hito:** hotfix-bot-infra-config: Correct environment variable precedence for MIN_CATALOG_ITEMS (BOT-INFRA-CONFIG-112)
+**Coherence Score:** 1.000 (210/210 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 130 | Correct environment variable precedence for MIN_CATALOG_ITEMS | 2026-07-07 | 58da607 | 130-bot-infra-config-112 |
 | 129 | Restore environment variables and disable CPU throttling on Cloud Run | 2026-07-06 | e28f48f | 129-bot-infra-gcp-connection-111 |
 | 128 | Lifespan non-blocking background initialization and guards | 2026-07-06 | 0082ec3 | 128-bot-startup-nonblocking-110 |
 | 127 | Startup locking, timeout fail-fast and webhook 503 guards | 2026-07-06 | a16e29d | 127-bot-startup-lock-109 |
@@ -84,3 +85,4 @@
 - v10.22.2: hotfix-bot-bugfix-115: Restauración de la bifurcación lógica de Cold Start en el Drift Interceptor y aserciones de test. Coherence Score: 1.000 (197/197 Tests PASSED).
 - v10.22.3: hotfix-bot-bugfix-117: Refactorización dinámica del interceptor de palabras clave de motocicletas e integración del test de alias. Coherence Score: 1.000 (198/198 Tests PASSED).
 - v10.22.4: hotfix-bot-bugfix-118: Drift Interceptor alias literal validation failure on compuesto/conectores. Coherence Score: 1.000 (198/198 Tests PASSED).
+- v10.22.11: hotfix-bot-infra-config: Correct environment variable precedence for MIN_CATALOG_ITEMS (BOT-INFRA-CONFIG-112). Coherence Score: 1.000 (210/210 Tests PASSED).
