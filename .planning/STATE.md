@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.12
-**Último Hito:** hotfix-bot-perf-fuzzy-calibration: Inject phonetic normalization and spelling corrections in catalog search (BOT-PERF-FUZZY-CALIBRATION-114)
-**Coherence Score:** 1.000 (211/211 Tests PASSED)
+**Versión Actual:** v10.22.13
+**Último Hito:** hotfix-dynamic-competitor-gate: Resolve competitor brand cache bypass and make list dynamic (BOT-PATCH-CATALOG-COMPETITION-CACHE-BULLSEYE)
+**Coherence Score:** 1.000 (214/214 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 132 | Resolve competitor brand cache bypass and make list dynamic | 2026-07-07 | de8b5f3 | 132-bot-audit-competition-cache |
 | 131 | Inject phonetic normalization and spelling corrections in catalog search | 2026-07-07 | 8d44f80 | 131-bot-perf-fuzzy-calibration-114 |
 | 130 | Correct environment variable precedence for MIN_CATALOG_ITEMS | 2026-07-07 | 58da607 | 130-bot-infra-config-112 |
 | 129 | Restore environment variables and disable CPU throttling on Cloud Run | 2026-07-06 | e28f48f | 129-bot-infra-gcp-connection-111 |

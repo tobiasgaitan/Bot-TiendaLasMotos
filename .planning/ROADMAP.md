@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.22.12)
+## Tasks Completadas (v10.22.13)
+- [x] Desacoplar lista de marcas competidoras a Firestore y solucionar bypass de intercepción en caché comercial (BOT-PATCH-CATALOG-COMPETITION-CACHE-BULLSEYE).
 - [x] Inyección de normalización fonética y mapeo de sinónimos tipográficos ('rayder' -> 'raider') en el servicio de catálogo para resolver variaciones de búsqueda (BOT-PERF-FUZZY-CALIBRATION-114).
 - [x] Corrección de precedencia de variables de entorno para MIN_CATALOG_ITEMS asegurando prioridad del entorno real (BOT-INFRA-CONFIG-112).
 - [x] Desacoplamiento de lifespan para ejecución secuencial no bloqueante en background y guardas de rechazo HTTP 503 ante catálogos vacíos (BOT-INFRA-TIMEOUT-110).
