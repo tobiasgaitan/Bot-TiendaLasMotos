@@ -179,5 +179,33 @@ class TestCatalogScoring(unittest.TestCase):
         
         print("✅ Competitor Brand Resolution & Visual Payload Integrity Tests Passed!")
 
+    def test_searchby_token_forces_identity_match(self):
+        """
+        Verify that if a search token exactly matches one of the catalog item's
+        'searchBy' tags, 'name_match' is forced to True and the +20,000 identity boost is applied.
+        """
+        from unittest.mock import patch
+        
+        # Let's perform a search for "economica", which is in TVS Sport's searchBy tags
+        results = self.service.search_items("economica")
+        
+        # Verify TVS Sport is returned as the top result
+        self.assertTrue(len(results) > 0)
+        top_match = results[0]
+        self.assertEqual(top_match["name"], "TVS Sport 100")
+        
+        # Verify that the score indeed has the identity boost (+20,000) applied.
+        # We wrap _apply_scoring_adaptor to check if is_identity_match is set to True.
+        with patch.object(self.service, '_apply_scoring_adaptor', wraps=self.service._apply_scoring_adaptor) as mock_adaptor:
+            self.service.search_items("economica")
+            called_with_identity_true = False
+            for call in mock_adaptor.call_args_list:
+                item_arg = call[0][0]
+                is_identity_match_arg = call[0][3]
+                if item_arg["id"] == "tvs_sport" and is_identity_match_arg is True:
+                    called_with_identity_true = True
+                    break
+            self.assertTrue(called_with_identity_true, "Expected _apply_scoring_adaptor to be called with is_identity_match=True for tvs_sport")
+
 if __name__ == '__main__':
     unittest.main()

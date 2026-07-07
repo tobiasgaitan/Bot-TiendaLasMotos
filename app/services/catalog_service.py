@@ -490,7 +490,12 @@ class CatalogService:
             # Identity match if query contains any core model token or vice-versa
             # Enriched with phonetic matching for robust typo handling
             name_match = False
-            if core_name_tokens:
+            
+            # Max priority identity force: If any search token matches a searchBy tag exactly
+            search_by_tags = item.get("searchBy", [])
+            if any(t in search_by_tags for t in query_tokens):
+                name_match = True
+            elif core_name_tokens:
                 for t in query_tokens:
                     t_phone = self._phonetic_normalize(t)
                     for core_t in core_name_tokens:
