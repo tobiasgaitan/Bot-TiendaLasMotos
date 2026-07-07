@@ -1354,8 +1354,20 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                 catalog_response_str += f"Ficha Tecnica: {summary}\n"
                                                 
                                             # Pivotar a la competencia si aplica
-                                            competitor_brands = ["boxer", "nkd", "pulsar", "yamaha", "honda", "suzuki", "akt"]
-                                            if any(b in query.lower() for b in competitor_brands):
+                                            competitor_brands = []
+                                            try:
+                                                from app.core.config_loader import ConfigLoader
+                                                config_loader = ConfigLoader()
+                                                catalog_config = config_loader.get_catalog_config()
+                                                competitor_brands = catalog_config.get("competitor_brands")
+                                            except Exception as e:
+                                                logger.error(f"⚠️ Error loading competitor brands in AI Brain: {e}")
+                                                
+                                            if not competitor_brands or not isinstance(competitor_brands, list):
+                                                competitor_brands = ["boxer", "nkd", "pulsar", "yamaha", "honda", "suzuki", "akt"]
+                                                
+                                            competitor_brands_norm = [str(b).lower().strip() for b in competitor_brands if b]
+                                            if any(b in query.lower() for b in competitor_brands_norm):
                                                 catalog_response_str = f"[SISTEMA: El usuario preguntó por la competencia. ESTÁS OBLIGADO a pivotar a nuestras alternativas...]\n\n" + catalog_response_str
                                                 
                                             catalog_returned_results = True

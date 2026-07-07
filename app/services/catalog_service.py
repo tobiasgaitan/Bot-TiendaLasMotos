@@ -672,36 +672,58 @@ class CatalogService:
         cached_result, score = self._cache_service.get(query)
         if cached_result and score > 0.85:
             logger.info(f"⚡ Semantic Cache Hit (score: {score:.2f})")
-            return cached_result
-            
-        matches = self.search_items(query)
-        
-        if matches:
-            search_results = f"Encontré {len(matches)} motos relacionados:\n"
-            for m in matches: 
-                name = m.get('name', 'Moto')
-                category = m.get('category', 'Moto')
-                price = m.get('price', m.get('formatted_price', 'Consultar'))
-                
-                bonus_str = ""
-                b_amt = m.get("bonusAmount", 0)
-                b_end = m.get("bonusEndDate")
-                if b_amt > 0 and b_end:
-                    formatted_amt = f"${b_amt:,.0f}".replace(",", ".")
-                    bonus_str = f" [BONO EXCLUSIVO DE CONTADO: {formatted_amt} válido hasta {b_end}]"
-                
-                search_results += f"- {name} ({category}): {price}{bonus_str}\n"
-                if m.get('image_url'): search_results += f"  Image URL: {m['image_url']}\n"
-                if m.get('link'): search_results += f"  Link: {m['link']}\n"
-                if m.get('summary'): search_results += f"Ficha Tecnica: {m['summary']}\n"
-                
-            competitor_brands = ["boxer", "nkd", "pulsar", "yamaha", "honda", "suzuki", "akt"]
-            if any(b in query.lower() for b in competitor_brands):
-                search_results = f"[SISTEMA: El usuario preguntó por la competencia. ESTÁS OBLIGADO a pivotar a nuestras alternativas...]\n\n" + search_results
+            search_results = cached_result
         else:
-            search_results = "No encontré motos en el catálogo para esa búsqueda."
+            matches = self.search_items(query)
             
-        self._cache_service.set(query, search_results)
+            if matches:
+                search_results = f"Encontré {len(matches)} motos relacionados:\n"
+                for m in matches: 
+                    name = m.get('name', 'Moto')
+                    category = m.get('category', 'Moto')
+                    price = m.get('price', m.get('formatted_price', 'Consultar'))
+                    
+                    bonus_str = ""
+                    b_amt = m.get("bonusAmount", 0)
+                    b_end = m.get("bonusEndDate")
+                    if b_amt > 0 and b_end:
+                        formatted_amt = f"${b_amt:,.0f}".replace(",", ".")
+                        bonus_str = f" [BONO EXCLUSIVO DE CONTADO: {formatted_amt} válido hasta {b_end}]"
+                    
+                    search_results += f"- {name} ({category}): {price}{bonus_str}\n"
+                    if m.get('image_url'): search_results += f"  Image URL: {m['image_url']}\n"
+                    if m.get('link'): search_results += f"  Link: {m['link']}\n"
+                    if m.get('summary'): search_results += f"Ficha Tecnica: {m['summary']}\n"
+            else:
+                search_results = "No encontré motos en el catálogo para esa búsqueda."
+                
+            self._cache_service.set(query, search_results)
+
+        # dynamic competitor brand loading via ConfigLoader
+        competitor_brands = None
+        try:
+            from app.core.config_loader import ConfigLoader
+            config_loader = ConfigLoader()
+            catalog_config = config_loader.get_catalog_config()
+            competitor_brands = catalog_config.get("competitor_brands")
+        except Exception as e:
+            logger.error(f"⚠️ Error loading competitor brands from ConfigLoader: {str(e)}")
+
+        if not competitor_brands or not isinstance(competitor_brands, list):
+            competitor_brands = ["boxer", "nkd", "pulsar", "yamaha", "honda", "suzuki", "akt"]
+
+        competitor_brands_norm = [str(b).lower().strip() for b in competitor_brands if b]
+        
+        # Intercept post-cache
+        warning_prefix = "[SISTEMA: El usuario preguntó por la competencia. ESTÁS OBLIGADO a pivotar a nuestras alternativas...]\n\n"
+        
+        # Clean any pre-existing warning to avoid duplication
+        if search_results.startswith(warning_prefix):
+            search_results = search_results[len(warning_prefix):]
+            
+        if any(b in query.lower() for b in competitor_brands_norm):
+            search_results = warning_prefix + search_results
+
         return search_results
 
     def _summarize(self, text: str, max_words: int = 10) -> str:
