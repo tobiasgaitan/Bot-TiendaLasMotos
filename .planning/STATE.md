@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.14
-**Último Hito:** hotfix-catalog-identity: Force identity match on searchBy tags matching search query (BOT-PERF-IDENTITY-TAG-FIX-115)
-**Coherence Score:** 1.000 (215/215 Tests PASSED)
+**Versión Actual:** v10.22.15
+**Último Hito:** hotfix-reaction-debounce: Corregir vaciado de variable por agregación de buffer en reacciones e inyectar test unitario (BOT-INFRA-REACTION-DEBOUNCE-AND-QA-PATCH)
+**Coherence Score:** 1.000 (216/216 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 134 | Corregir vaciado de variable por agregación de buffer en reacciones e inyectar test | 2026-07-07 | 28c7d2a | 134-hotfix-reaction-debounce |
 | 133 | Force identity match on searchBy tags matching search query | 2026-07-07 | f6e0aa6 | 133-hotfix-catalog-identity |
 | 132 | Resolve competitor brand cache bypass and make list dynamic | 2026-07-07 | de8b5f3 | 132-bot-audit-competition-cache |
 | 131 | Inject phonetic normalization and spelling corrections in catalog search | 2026-07-07 | 8d44f80 | 131-bot-perf-fuzzy-calibration-114 |
