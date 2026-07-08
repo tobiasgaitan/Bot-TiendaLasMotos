@@ -280,3 +280,72 @@ async def test_webhook_no_redundant_config_load():
         
         # Verificar que no se llamó a initialize ya que ya estaba cargada la config
         mock_config_service.initialize.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_webhook_handler_status_delegation_to_background():
+    """
+    Verifica que el webhook_handler retorne HTTP 200 a Meta
+    y delegue el procesamiento de statuses a BackgroundTasks en lugar
+    de procesarlo síncronamente cuando Cloud Tasks no está activo.
+    """
+    mock_request = MagicMock()
+    payload_dict = {
+        "object": "whatsapp_business_account",
+        "entry": [{
+            "id": "123",
+            "changes": [{
+                "value": {
+                    "messaging_product": "whatsapp",
+                    "metadata": {"display_phone_number": "123456", "phone_number_id": "999999"},
+                    "statuses": [{
+                        "id": "wamid.status_test_123",
+                        "recipient_id": "573192564288",
+                        "status": "delivered",
+                        "timestamp": "1672531199"
+                    }]
+                },
+                "field": "messages"
+            }]
+        }]
+    }
+
+    async def mock_body():
+        import json
+        return json.dumps(payload_dict).encode("utf-8")
+
+    mock_request.body = mock_body
+    mock_request.headers = {"X-Hub-Signature-256": "sha256=dummy"}
+
+    # Mock settings & background handler
+    with patch("app.routers.whatsapp.settings") as mock_settings, \
+         patch("app.routers.whatsapp._ensure_services", new_callable=AsyncMock), \
+         patch("app.routers.whatsapp._handle_statuses_background") as mock_handle_statuses:
+
+        mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        mock_settings.cloud_tasks_queue_path = None
+        mock_settings.task_processor_url = None
+
+        background_tasks = BackgroundTasks()
+
+        # Ejecución
+        response = await webhook_handler(mock_request, background_tasks)
+
+        # Aserciones
+        assert response == {"status": "received"}
+        assert len(background_tasks.tasks) == 1
+        
+        # El status no debe haber sido llamado de forma síncrona
+        mock_handle_statuses.assert_not_called()
+
+        from app.routers.whatsapp import _handle_statuses_background
+        task = background_tasks.tasks[0]
+        assert task.func == _handle_statuses_background
+        assert task.args[0] == {
+            "id": "wamid.status_test_123",
+            "recipient_id": "573192564288",
+            "status": "delivered",
+            "timestamp": "1672531199",
+            "phone_number_id": "999999",
+            "errors": []
+        }
