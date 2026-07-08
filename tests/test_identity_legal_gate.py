@@ -259,7 +259,11 @@ class TestIdentityLegalGate(unittest.TestCase):
         mock_ms.get_chat_history = AsyncMock(return_value=[])
         mock_ms.save_message = AsyncMock()
         mock_ms.generate_and_update_summary = AsyncMock()
-        mock_ms.update_prospect_summary = AsyncMock()
+        
+        async def mock_update_summary(phone, summary, data):
+            if "habeas_data_accepted" in data:
+                mock_prospect_data["habeas_data_accepted"] = data["habeas_data_accepted"]
+        mock_ms.update_prospect_summary = AsyncMock(side_effect=mock_update_summary)
         mock_mem_module.memory_service = mock_ms
 
         mock_cerebro = AsyncMock()

@@ -836,3 +836,133 @@ async def test_cerebro_ia_scoring_service_direct_alignment():
         assert "980" in result_text or "980 Puntos" in result_text
         assert "BANCO" in result_text
         assert "Banco de Bogotá" in result_text
+
+
+@pytest.mark.asyncio
+async def test_clean_text_message_bypasses_reaction_interceptor_and_preserves_difflib_matching():
+    """
+    Test unitario para certificar que un mensaje de texto limpio no pasa por el
+    interceptor de reacciones y conserva la lógica fonética de coincidencia fuzzy de 'difflib'.
+    """
+    from app.routers import whatsapp
+    from app.routers.whatsapp import _handle_message_background
+    from fastapi import BackgroundTasks
+    
+    # 1. Asegurar la inicialización de servicios
+    whatsapp._ensure_services_sync()
+    orig_debounce = whatsapp.message_buffer.debounce_seconds
+    whatsapp.message_buffer.debounce_seconds = 0.0
+    
+    from app.services.catalog_service import catalog_service
+    original_items = getattr(catalog_service, "_items", [])
+    original_items_by_id = getattr(catalog_service, "_items_by_id", {})
+    
+    item = {
+        "id": "tvs_raider",
+        "name": "TVS Raider 125",
+        "price": 6000000,
+        "category": "deportiva",
+        "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/tvs_raider.jpg",
+        "search_tags": ["sport", "tecnologia"],
+        "search_text": "tvs raider 125 deportiva sport tecnologia",
+        "search_tokens": ["tvs", "raider", "125", "deportiva", "sport", "tecnologia"],
+        "searchBy": ["sport", "tecnologia"],
+        "description": "Moto deportiva con tecnologia de punta y gran desempeño.",
+        "link": "https://tiendalasmotos.com/tvs-raider",
+        "active": True
+    }
+    catalog_service._items = [item]
+    catalog_service._items_by_id = {"tvs_raider": item}
+    
+    user_phone = "+573192564288"
+    
+    try:
+        # Clear buffer to guarantee complete test isolation
+        await whatsapp.message_buffer.clear_buffer(user_phone)
+        if user_phone in whatsapp.message_buffer._processed_wamids:
+            whatsapp.message_buffer._processed_wamids[user_phone].clear()
+            
+        # Payload de mensaje de texto limpio
+        msg_data = {
+            "from": user_phone,
+            "id": "wamid.test_text_fuzzy_139",
+            "timestamp": "1672531199",
+            "type": "text",
+            "text": "quiero ver la rayder",
+            "phone_number_id": "999999"
+        }
+
+        # Mock memory service
+        mock_memory_service = MagicMock()
+        mock_memory_service.save_message = AsyncMock(return_value=True)
+        # Indicar que no ha aceptado habeas data, y tiene moto_interest Raider 125
+        mock_prospect_data = {
+            "exists": True,
+            "status": "PENDING",
+            "chatbot_status": "ACTIVE",
+            "name": "Juan Test",
+            "celular": user_phone,
+            "habeas_data_accepted": False,
+            "moto_interest": "Raider 125",
+            "forma_pago": "credito"
+        }
+        mock_memory_service.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+        mock_memory_service.get_chat_history = AsyncMock(return_value=[])
+        mock_memory_service.create_prospect_if_missing = AsyncMock()
+        mock_memory_service.update_last_interaction = AsyncMock()
+        mock_memory_service.transition_to_in_progress = AsyncMock()
+        mock_memory_service.generate_and_update_summary = AsyncMock()
+        mock_memory_service.set_human_help_status = AsyncMock()
+        mock_memory_service.update_prospect_summary = AsyncMock()
+        
+        # Mock CerebroIA.pensar_respuesta
+        captured_user_message = []
+        async def mock_pensar_respuesta(*args, **kwargs):
+            captured_user_message.append(args[0])
+            # Assert that the prospect_data was NOT modified by the reaction interceptor
+            assert kwargs["prospect_data"]["habeas_data_accepted"] is False
+            return "Respuesta de la IA"
+
+        # Mock send_text_message to capture response to user
+        captured_outgoing = []
+        async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
+            captured_outgoing.append(text)
+            return {"messages": [{"id": "wamid.mocked_123"}]}
+
+        with patch("app.routers.whatsapp.settings") as mock_settings, \
+             patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
+             patch("app.routers.whatsapp.judge_service") as mock_judge, \
+             patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
+             patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+             patch.object(CerebroIA, "pensar_respuesta", side_effect=mock_pensar_respuesta), \
+             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+             patch("app.services.ai_brain.SDK_AVAILABLE", True):
+             
+            mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+            mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+            
+            background_tasks = BackgroundTasks()
+            await _handle_message_background(msg_data, background_tasks)
+            
+            # Verificaciones
+            # 1. CerebroIA fue invocado con la consulta de texto
+            assert len(captured_user_message) == 1
+            assert captured_user_message[0] == "quiero ver la rayder"
+            
+            # 2. No se llamó al interceptor de reacciones (update_prospect_summary no se llamó para forzar aceptación)
+            for call in mock_memory_service.update_prospect_summary.call_args_list:
+                args, kwargs_call = call
+                if len(args) >= 3 and "habeas_data_accepted" in args[2]:
+                    assert False, "update_prospect_summary was called to accept habeas data on a text message!"
+                if "habeas_data_accepted" in kwargs_call.get("data", {}):
+                    assert False, "update_prospect_summary was called to accept habeas data on a text message!"
+            
+            # 3. La lógica difflib se conserva (los mocks no interceptaron de más y delegaron limpio)
+            # Para esto, llamamos directamente al CatalogService para demostrar que 'rayder' coincide con 'Raider 125' por difflib.
+            results = catalog_service.search("rayder")
+            assert any("Raider 125" in item["name"] for item in results), "Coincidencia fuzzy de difflib falló para 'rayder'!"
+
+    finally:
+        catalog_service._items = original_items
+        catalog_service._items_by_id = original_items_by_id
+        whatsapp.message_buffer.debounce_seconds = orig_debounce

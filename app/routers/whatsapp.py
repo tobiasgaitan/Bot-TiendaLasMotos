@@ -580,6 +580,15 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             if not message_body:
                 return
             
+            # --- INTERCEPT REACTION SÍNCRONAMENTE (👍) PARA HABEAS DATA ---
+            if is_positive_reaction:
+                logger.info(f"👍 [REACTION INTERCEPT] Forzando aceptación de Habeas Data para {user_phone}")
+                if memory_service_module.memory_service:
+                    ms_instance = memory_service_module.memory_service
+                    fut = ms_instance.update_prospect_summary(user_phone, "", {"habeas_data_accepted": True})
+                    if hasattr(fut, "__await__"):
+                        await fut
+            
             msg_type = "text"
 
             # --- DEBOUNCE LOGIC END ---
@@ -828,15 +837,6 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                 # 1. Get existing data FIRST to decide on greeting
                 prospect_data = await ms.get_prospect_data(user_phone)
                 
-                # --- INTERCEPT REACTION SÍNCRONAMENTE (👍) PARA HABEAS DATA (BOT-BRAIN-HABEAS-EMOJI-FIX-118) ---
-                if is_positive_reaction:
-                    logger.info(f"👍 [REACTION INTERCEPT] Forzando aceptación de Habeas Data para {user_phone}")
-                    fut = ms.update_prospect_summary(user_phone, "", {"habeas_data_accepted": True})
-                    if hasattr(fut, "__await__"):
-                        await fut
-                    if prospect_data:
-                        prospect_data["habeas_data_accepted"] = True
-                
                 # --- SYSTEM COMMANDS INTERCEPTION (v9.8.3) ---
                 # Movemos esto aquí para tener acceso a prospect_data y evitar duplicados
                 if msg_type == "text":
@@ -1016,8 +1016,6 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     
                     # 2. GESTIÓN DE VERDAD: Re-fetch fresh prospect data from Firestore
                     prospect_data = await ms.get_prospect_data(user_phone)
-                    if is_positive_reaction and prospect_data:
-                        prospect_data["habeas_data_accepted"] = True
                     logger.info(f"✅ [LINEAR BLOCKING] Memory Synced. Identity: {prospect_data.get('name')}")
     
                 except Exception as e:
@@ -1025,8 +1023,6 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
                     # Fallback to local data if sync fails
                     if not prospect_data:
                         prospect_data = await ms.get_prospect_data(user_phone)
-                    if is_positive_reaction and prospect_data:
-                        prospect_data["habeas_data_accepted"] = True
 
             # 3. Inferencia de la IA con Auditoría de Vida o Muerte (v9.8.0)
             max_retries = 2

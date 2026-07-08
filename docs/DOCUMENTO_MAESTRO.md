@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.23.1)
-Versión: v10.23.1 (Catalog Identity Alignment & searchBy Exact Matching)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.25.0)
+Versión: v10.25.0 (Isolate Reaction Interceptor & Text Flow Fix)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Corregir desalineación de la Capa de Identidad en search_items para coincidencia exacta con searchBy tags. Cierre de ticket [BOT-PERF-IDENTITY-TAG-FIX-115].
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 215/215 Tests PASSED)
+Último Hito: Aislar interceptor de reacciones y asegurar flujo limpio de mensajes de texto con lógica fuzzy. Cierre de ticket [BOT-ROUTER-REGRESSION-FIX-119].
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 220/220 Tests PASSED)
 
 
 1. Contexto y Persona (Juan Pablo)
@@ -106,5 +106,7 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.20.0] Cierre de ticket BOT-RESILIENCE-102 (Flexibilización de Interceptores y Null Masking). Flexibilización del Drift Interceptor (umbral a 0.30), Null Masking opcional para summary/descripcion con valor por defecto, y fallback de imágenes. Coherence Score: 1.000 (189/189 Tests PASSED).
 - [v10.22.8] Cierre de ticket BOT-RESILIENCE-104 (Desacoplamiento de alias del catálogo y eliminación de circular import deadlock). Erradicación de importaciones dinámicas de `config_service` en `ai_brain.py` y exposición directa de `get_catalog_aliases` en `CatalogService`. Coherence Score: 1.000 (192/192 Tests PASSED).
 - [v10.22.12] Cierre de ticket BOT-PERF-FUZZY-CALIBRATION-114 (Fuzzy Catalog Calibration). Inyección de normalización fonética y de sinónimos tipográficos ('rayder' -> 'raider') en `CatalogService` para resolver variaciones de búsqueda. Coherence Score: 1.000 (211/211 Tests PASSED).
-- [v10.23.1] Cierre de ticket BOT-PERF-IDENTITY-TAG-FIX-115 (Catalog Identity Alignment). Modificación en la fase de detección de identidad de `search_items` en `CatalogService` para forzar `name_match = True` cuando un token de búsqueda limpia coincida exactamente con las etiquetas `searchBy` de Firestore, otorgando máxima prioridad (+20,000) en el scoring del catálogo. Coherence Score: 1.000 (215/215 Tests PASSED).
+- [v10.24.0] Cierre de ticket BOT-PERF-IDENTITY-TAG-FIX-115 (Catalog Identity Alignment). Modificación en la fase de detección de identidad de `search_items` en `CatalogService` para forzar `name_match = True` cuando un token de búsqueda limpia coincida exactamente con las etiquetas `searchBy` de Firestore, otorgando máxima prioridad (+20,000) en el scoring del catálogo. Coherence Score: 1.000 (215/215 Tests PASSED).
 - [v10.22.17] Cierre de ticket BOT-PERF-IDENTITY-TAG-FIX-116 (Credit Score Copywriting Alignment). Modificación quirúrgica en 'app/core/personality.json' y 'app/core/prompts.py' para integrar las 4 reglas duras de evaluación por score crediticio dentro de '<MATRIZ_DE_PERFILAMIENTO_ESTRICTA>', reemplazando la línea simplificada de 'CIERRE' para alinearse exactamente con Firestore. Coherence Score: 1.000 (217/217 Tests PASSED).
+- [v10.25.0] Cierre de ticket BOT-ROUTER-REGRESSION-FIX-119 (Isolate Reaction Interceptor). Aislamiento total de la lógica de aceptación de Habeas Data basada en reacciones de WhatsApp (emoji 👍) en un bloque exclusivo para el tipo 'reaction', asegurando que los mensajes de texto ordinarios sigan el flujo sin mutaciones de prospect_data y conserven la coincidencia fonética fuzzy de difflib. Coherence Score: 1.000 (220/220 Tests PASSED).
+
