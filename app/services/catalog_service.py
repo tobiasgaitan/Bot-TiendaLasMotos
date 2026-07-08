@@ -437,6 +437,7 @@ class CatalogService:
         
         # Typographical/colloquial spelling expansion mapping
         spelling_map = {
+            "meo": "neo",      # Fat-finger typo correction for Victory Neo
             "rayder": "raider",
             "raydr": "raider",
             "raidr": "raider",
