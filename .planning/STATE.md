@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.15
-**Último Hito:** hotfix-reaction-debounce: Corregir vaciado de variable por agregación de buffer en reacciones e inyectar test unitario (BOT-INFRA-REACTION-DEBOUNCE-AND-QA-PATCH)
-**Coherence Score:** 1.000 (216/216 Tests PASSED)
+**Versión Actual:** v10.22.16
+**Último Hito:** hotfix-webhook-race: Delegar statuses a background_tasks en local/beta y bypass en MemoryService (BOT-INFRA-RACE-CONDITION-116)
+**Coherence Score:** 1.000 (217/217 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 135 | Delegar statuses a background_tasks en local/beta y bypass en MemoryService | 2026-07-07 | 7e05392 | 135-hotfix-webhook-race |
 | 134 | Corregir vaciado de variable por agregación de buffer en reacciones e inyectar test | 2026-07-07 | 28c7d2a | 134-hotfix-reaction-debounce |
 | 133 | Force identity match on searchBy tags matching search query | 2026-07-07 | f6e0aa6 | 133-hotfix-catalog-identity |
 | 132 | Resolve competitor brand cache bypass and make list dynamic | 2026-07-07 | de8b5f3 | 132-bot-audit-competition-cache |
