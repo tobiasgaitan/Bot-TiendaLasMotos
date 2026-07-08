@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.17
+**Versión Actual:** v10.22.18
 **Último Hito:** alineacion-personalidad-scoring: Sincronizar reglas de score crediticio en fallbacks locales (BOT-PERF-IDENTITY-TAG-FIX-116)
-**Coherence Score:** 1.000 (217/217 Tests PASSED)
+**Coherence Score:** 1.000 (219/219 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 138 | Intercept WhatsApp affirmative reactions and force immediate Habeas Data acceptance in Firestore/memory | 2026-07-08 | cd061ec | 138-hotfix-habeas-emoji-reaction |
 | 137 | Fallo de importación y llamada síncrona/bloqueante a ScoringService | 2026-07-08 | 982b060 | 137-hotfix-scoring-api-alignment |
 | 136 | Integrar 4 reglas duras de evaluación por score crediticio en prompt fallback local | 2026-07-08 | 19b2d3a | 136-alineacion-personalidad-scoring |
 | 135 | Delegar statuses a background_tasks en local/beta y bypass en MemoryService | 2026-07-07 | 7e05392 | 135-hotfix-webhook-race |
