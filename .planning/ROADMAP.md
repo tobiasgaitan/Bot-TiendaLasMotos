@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.22.16)
+## Tasks Completadas (v10.22.17)
+- [x] Sincronizar las 4 reglas duras de evaluación de crédito en los fallbacks locales de personalidad (BOT-PERF-IDENTITY-TAG-FIX-116).
 - [x] Delegar statuses a background_tasks en local/beta y bypass en MemoryService (BOT-INFRA-RACE-CONDITION-116).
 - [x] Corregir desalineación de la Capa de Identidad en search_items para coincidencia exacta con searchBy tags (BOT-PERF-IDENTITY-TAG-FIX-115).
 - [x] Desacoplar lista de marcas competidoras a Firestore y solucionar bypass de intercepción en caché comercial (BOT-PATCH-CATALOG-COMPETITION-CACHE-BULLSEYE).

@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.16
-**Último Hito:** hotfix-webhook-race: Delegar statuses a background_tasks en local/beta y bypass en MemoryService (BOT-INFRA-RACE-CONDITION-116)
+**Versión Actual:** v10.22.17
+**Último Hito:** alineacion-personalidad-scoring: Sincronizar reglas de score crediticio en fallbacks locales (BOT-PERF-IDENTITY-TAG-FIX-116)
 **Coherence Score:** 1.000 (217/217 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 136 | Integrar 4 reglas duras de evaluación por score crediticio en prompt fallback local | 2026-07-08 | 19b2d3a | 136-alineacion-personalidad-scoring |
 | 135 | Delegar statuses a background_tasks en local/beta y bypass en MemoryService | 2026-07-07 | 7e05392 | 135-hotfix-webhook-race |
 | 134 | Corregir vaciado de variable por agregación de buffer en reacciones e inyectar test | 2026-07-07 | 28c7d2a | 134-hotfix-reaction-debounce |
 | 133 | Force identity match on searchBy tags matching search query | 2026-07-07 | f6e0aa6 | 133-hotfix-catalog-identity |
