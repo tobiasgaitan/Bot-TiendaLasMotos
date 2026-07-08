@@ -693,3 +693,146 @@ async def test_whatsapp_reaction_payload_processing():
 
     finally:
         whatsapp.message_buffer.debounce_seconds = orig_debounce
+
+
+@pytest.mark.asyncio
+async def test_cerebro_ia_scoring_service_direct_alignment():
+    """
+    [BOT-BRAIN-FINANCE-091] Test that CerebroIA correctly routes calculate_credit_score
+    directly to ScoringService (without evaluate_profile) using await/asyncio.to_thread
+    and respecting the EXTRACTION_SCHEMA fields.
+    """
+    class MockFunctionCall:
+        def __init__(self, name, args):
+            self.name = name
+            self.args = args
+
+    class MockPart:
+        def __init__(self, function_call=None, text=None):
+            self.function_call = function_call
+            self.text = text
+
+    class MockContent:
+        def __init__(self, parts):
+            self.parts = parts
+
+    class MockCandidate:
+        def __init__(self, content):
+            self.content = content
+
+    class MockResponse:
+        def __init__(self, candidates):
+            self.candidates = candidates
+
+    from app.services.scoring_service import ScoringService
+
+    cerebro = CerebroIA()
+    cerebro.client = MagicMock()
+    cerebro._model_id = "gemini-2.0-flash"
+    
+    mock_catalog = MagicMock()
+    mock_catalog.search_items.return_value = [
+        {
+            "name": "TVS Raider 125",
+            "price": "$ 6.500.000",
+            "raw_price": 6500000.0,
+            "category": "Sport",
+            "image_url": "https://img.url",
+            "summary": "Excelente moto"
+        }
+    ]
+    cerebro._catalog_service = mock_catalog
+    
+    scoring_svc = ScoringService()
+    cerebro.motor_financiero = scoring_svc
+
+    mock_config = MagicMock()
+    mock_config.get_partners_config.return_value = {
+        "link_brilla": "https://brilla-link.com",
+        "link_crediorbe": "https://crediorbe-link.com"
+    }
+    cerebro._config_loader = mock_config
+
+    mock_config_service = MagicMock()
+    mock_config_service.get_financial_entity_config.return_value = {
+        "fngRate": 20.66,
+        "registro": 0,
+        "brillaManagementRate": 0,
+        "coverageRate": 4,
+        "life_insurance_monthly": 15000,
+    }
+    mock_config_service.get_financial_matrix.return_value = []
+    mock_config_service.get_financial_config.return_value = {
+        "tasa_nmv_banco": 1.87,
+        "tasa_nmv_fintech": 2.22,
+        "life_insurance_mode": "fixed",
+        "life_insurance_monthly": 15000,
+    }
+    
+    from app.services.financial_service import financial_service
+    financial_service._config_service = mock_config_service
+
+    fc = MockFunctionCall(
+        name="calculate_credit_score", 
+        args={
+            "ocupacion_y_contrato": "empleado fijo",
+            "ingresos_demostrables": "3 millones",
+            "historial_datacredito": "al dia",
+            "tiene_gas_natural": False,
+            "plan_celular": "Sí"
+        }
+    )
+    candidate1 = MockCandidate(content=MockContent(parts=[MockPart(function_call=fc)]))
+    response1 = MockResponse(candidates=[candidate1])
+    
+    candidate2 = MockCandidate(content=MockContent(parts=[MockPart(text="Felicidades, pre-aprobado.")]))
+    response2 = MockResponse(candidates=[candidate2])
+
+    call_count = 0
+    captured_function_response = None
+
+    async def mock_call(*args, **kwargs):
+        nonlocal call_count, captured_function_response
+        call_count += 1
+        if call_count == 1:
+            return response1
+        
+        if "contents" in kwargs:
+            contents = kwargs["contents"]
+            for content in contents:
+                for part in content.parts:
+                    if hasattr(part, "function_response") or (isinstance(part, dict) and "function_response" in part):
+                        captured_function_response = part
+        for arg in args:
+            if isinstance(arg, list):
+                for part in arg:
+                    if hasattr(part, "function_response") or (isinstance(part, dict) and "function_response" in part):
+                        captured_function_response = part
+        return response2
+
+    with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
+         patch('app.services.financial_service.config_service', mock_config_service), \
+         patch('app.services.ai_brain.SDK_AVAILABLE', True):
+
+        history_msg = {"role": "user", "content": "Ver políticas en tiendalasmotos.com/politica-de-privacidad"}
+        res_text = await cerebro.pensar_respuesta(
+            texto="quiero solicitar un crédito",
+            prospect_data={
+                "nombre": "Carlos",
+                "ciudad": "Santa Marta",
+                "habeas_data_accepted": True,
+                "habeas_data_accepted_sent": True,
+                "moto_interest": "Raider 125",
+                "forma_pago": "crédito"
+            },
+            history=[history_msg]
+        )
+
+        assert res_text == "Felicidades, pre-aprobado."
+        assert captured_function_response is not None
+        
+        resp_payload = captured_function_response.function_response.response
+        result_text = resp_payload.get("result", "")
+        assert "980" in result_text or "980 Puntos" in result_text
+        assert "BANCO" in result_text
+        assert "Banco de Bogotá" in result_text

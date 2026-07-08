@@ -202,6 +202,29 @@ class CerebroIA:
             self.client = None
             logger.warning("⚠️  CerebroIA running in fallback mode (no AI)")
 
+    def _calculate_payment_helper(self, precio: float, inicial: float, plazo_meses: int, entidad: str = "Crediorbe", **kwargs) -> Dict[str, Any]:
+        """
+        Helper to delegate payment calculation to the financial motor,
+        falling back to the canonical financial_service instance if the injected motor
+        doesn't expose calculate_payment (e.g. when it's ScoringService).
+        """
+        service = self.motor_financiero
+        if not service or not hasattr(service, "calculate_payment"):
+            from app.services.financial_service import financial_service
+            service = financial_service
+            
+        # Handle 'entity' vs 'entidad' parameter naming
+        ent = entidad or kwargs.get("entity", "Crediorbe")
+        # Extract and pass other kwargs safely (e.g. moto_cc, category)
+        other_args = {k: v for k, v in kwargs.items() if k not in ("entidad", "entity")}
+        return service.calculate_payment(
+            precio=precio,
+            inicial=inicial,
+            plazo_meses=plazo_meses,
+            entidad=ent,
+            **other_args
+        )
+
     def _is_synonym_or_model_match(self, query: str, moto_interest: str, aliases: dict) -> bool:
         """
         Determines if a catalog search query matches the prospect's motorcycle of interest
@@ -1448,18 +1471,80 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 is_accepted = (prospect_data or {}).get("habeas_data_accepted") is True
 
                                 if is_accepted and self.motor_financiero:
-                                    # --- RAMA COMPLETA: Habeas Data aceptado → evaluate_profile ---
-                                    res = self.motor_financiero.evaluate_profile(
-                                        ocupacion_y_contrato=f_args.get("ocupacion_y_contrato", ""),
-                                        ingresos_demostrables=f_args.get("ingresos_demostrables", ""),
-                                        historial_datacredito=f_args.get("historial_datacredito", ""),
-                                        mora_y_paz_salvo=f_args.get("mora_y_paz_salvo", ""),
-                                        gastos_vivienda=f_args.get("gastos_vivienda", ""),
-                                        tiene_gas_natural=f_args.get("tiene_gas_natural", False),
-                                        plan_celular=f_args.get("plan_celular", "No"),
-                                        entidad=f_args.get("entidad"),
-                                        reportes=f_args.get("reportes")
-                                    )
+                                    # [BOT-BRAIN-FINANCE-091] Check if we should call calculate_score/determine_strategy directly
+                                    is_scoring_service = False
+                                    try:
+                                        from app.services.scoring_service import ScoringService
+                                        if isinstance(self.motor_financiero, ScoringService):
+                                            is_scoring_service = True
+                                    except ImportError:
+                                        pass
+
+                                    if is_scoring_service or not hasattr(self.motor_financiero, "evaluate_profile"):
+                                        # Mapear la llamada síncrona/bloqueante usando await (asyncio.to_thread) hacia calculate_score y determine_strategy
+                                        # de ScoringService, respetando las llaves del EXTRACTION_SCHEMA de Firestore ('ocupacion', 'datacredito')
+                                        ocupacion_val = f_args.get("ocupacion") or f_args.get("ocupacion_y_contrato") or (prospect_data or {}).get("ocupacion", "")
+                                        datacredito_val = f_args.get("datacredito") or f_args.get("historial_datacredito") or (prospect_data or {}).get("datacredito", "")
+                                        ingresos_val = str(f_args.get("ingresos_demostrables") or (prospect_data or {}).get("ingresos_demostrables", ""))
+                                        plan_celular_val = f_args.get("plan_celular") or (prospect_data or {}).get("plan_celular", "No")
+                                        tiene_gas_val = f_args.get("tiene_gas_natural", False) or (prospect_data or {}).get("tiene_gas_natural", False)
+                                        mora_y_paz_val = f_args.get("mora_y_paz_salvo", "") or (prospect_data or {}).get("mora_y_paz_salvo", "")
+
+                                        score = await asyncio.to_thread(
+                                            self.motor_financiero.calculate_score,
+                                            ocupacion_y_contrato=ocupacion_val,
+                                            historial_datacredito=datacredito_val,
+                                            ingresos_demostrables=ingresos_val,
+                                            plan_celular=plan_celular_val
+                                        )
+
+                                        strategy_info = await asyncio.to_thread(
+                                            self.motor_financiero.determine_strategy,
+                                            score=score,
+                                            tiene_gas_natural=tiene_gas_val,
+                                            historial_datacredito=datacredito_val,
+                                            mora_y_paz_salvo=mora_y_paz_val
+                                        )
+
+                                        link_url = "#"
+                                        try:
+                                            partners = self._config_loader.get_partners_config() if self._config_loader else {}
+                                            if partners and strategy_info.get("link_key"):
+                                                link_url = partners.get(strategy_info["link_key"], "#")
+                                        except Exception as e:
+                                            logger.exception(f"[BOT-ARQ-E2E-095] Fallo al obtener partners config. Error: {e}")
+
+                                        requires_documents = False
+                                        if strategy_info.get("entity") in ["Brilla de Gases", "Brilla"]:
+                                            link_url = None
+                                            requires_documents = True
+
+                                        res = {
+                                            "score": score,
+                                            "strategy": strategy_info["strategy"],
+                                            "entity": strategy_info["entity"],
+                                            "rate_key": strategy_info["rate_key"],
+                                            "link_url": link_url,
+                                            "requires_aval": strategy_info["requires_aval"],
+                                            "is_fallback": strategy_info.get("is_fallback", False),
+                                            "requires_documents": requires_documents,
+                                            "explanation": f"Basado en tu perfil (Score: {score}), la mejor opción es {strategy_info.get('entity', 'N/A')}.",
+                                            "entidad": f_args.get("entidad"),
+                                            "reportes": f_args.get("reportes")
+                                        }
+                                    else:
+                                        # Legacy call to evaluate_profile (keeps tests/mocks passing perfectly)
+                                        res = self.motor_financiero.evaluate_profile(
+                                            ocupacion_y_contrato=f_args.get("ocupacion_y_contrato", ""),
+                                            ingresos_demostrables=f_args.get("ingresos_demostrables", ""),
+                                            historial_datacredito=f_args.get("historial_datacredito", ""),
+                                            mora_y_paz_salvo=f_args.get("mora_y_paz_salvo", ""),
+                                            gastos_vivienda=f_args.get("gastos_vivienda", ""),
+                                            tiene_gas_natural=f_args.get("tiene_gas_natural", False),
+                                            plan_celular=f_args.get("plan_celular", "No"),
+                                            entidad=f_args.get("entidad"),
+                                            reportes=f_args.get("reportes")
+                                        )
                                     if res.get('entity') == "Brilla de Gases":
                                         credit_res = (
                                             f"✅ RESULTADO: {res['score']} Puntos\n"
@@ -1498,7 +1583,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                 raise ValueError(f"Precio no disponible para la simulación financiera de la moto '{moto_name}'.")
 
                                             # Use 0 initial as baseline for Crediorbe if not specified
-                                            sim = self.motor_financiero.calculate_payment(
+                                            sim = self._calculate_payment_helper(
                                                 precio=m_price,
                                                 inicial=0,
                                                 plazo_meses=24,
@@ -1549,7 +1634,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                 raise ValueError(f"Precio no disponible para la simulación financiera de la moto '{moto_name}'.")
 
                                             # Use 0 initial as baseline for Crediorbe if not specified
-                                            sim = self.motor_financiero.calculate_payment(
+                                            sim = self._calculate_payment_helper(
                                                 precio=m_price,
                                                 inicial=0,
                                                 plazo_meses=24,
@@ -1593,7 +1678,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                                     if self.motor_financiero:
                                         inicial_val = m_price * 0.10
-                                        sim = self.motor_financiero.calculate_payment(
+                                        sim = self._calculate_payment_helper(
                                             precio=m_price,
                                             inicial=inicial_val,
                                             plazo_meses=24,
@@ -1647,7 +1732,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                                 if self.motor_financiero:
                                     inicial_val = m_price * 0.10
-                                    sim = self.motor_financiero.calculate_payment(precio=m_price, inicial=inicial_val, plazo_meses=24, entity="Crediorbe")
+                                    sim = self._calculate_payment_helper(precio=m_price, inicial=inicial_val, plazo_meses=24, entidad="Crediorbe")
                                     cuota_val = sim.get('cuota_mensual', 0.0)
                                     credit_res = (
                                         f"Si te interesa a crédito con la inicial de ${inicial_val:,.0f}, "
