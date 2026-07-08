@@ -203,5 +203,93 @@ class TestIdentityLegalGate(unittest.TestCase):
             mock_send_wa.assert_called_with("+573192564288", "Bypass Approved", phone_number_id="1021779847693778")
             mock_ms.save_message.assert_any_call("+573192564288", "user", "Sí")
 
+    @patch("app.routers.whatsapp.db")
+    @patch("app.routers.whatsapp.message_buffer")
+    @patch("app.routers.whatsapp.config_loader")
+    @patch("app.routers.whatsapp.catalog_service")
+    @patch("app.routers.whatsapp.config_service")
+    @patch("app.routers.whatsapp.judge_service")
+    @patch("app.routers.whatsapp.memory_service_module")
+    @patch("app.routers.whatsapp.CerebroIA")
+    @patch("app.routers.whatsapp.storage_service")
+    @patch("app.routers.whatsapp._send_whatsapp_message")
+    @patch("app.services.whatsapp_service.whatsapp_service")
+    def test_whatsapp_reaction_payload_direct_legal_acceptance(
+        self, mock_wa_service, mock_send_wa, mock_storage, mock_cerebro_class, 
+        mock_mem_module, mock_judge, mock_config_service, mock_catalog, 
+        mock_config_loader, mock_message_buffer, mock_db
+    ):
+        """
+        GIVEN: Un payload de webhook con msg_type: 'reaction' y emoji afirmativo '👍'.
+        WHEN: El router de WhatsApp recibe la reacción.
+        THEN: Debe mutar el body a 'Sí', interceptar y actualizar habeas_data_accepted = True síncronamente
+              en la base de datos/memoria antes de que se llame a pensar_respuesta.
+        """
+        import asyncio
+        from fastapi import BackgroundTasks
+        from app.routers.whatsapp import _handle_message_background
+        
+        # 1. Payload de reacción crudo estructurado de WhatsApp
+        msg_data = {
+            "from": "573192564288",
+            "id": "wamid.reaction_test_999",
+            "type": "reaction",
+            "reaction": {
+                "message_id": "wamid.parent_message_123",
+                "emoji": "👍"
+            },
+            "phone_number_id": "1021779847693778"
+        }
+        background_tasks = BackgroundTasks()
+
+        # 2. Mock Prospect data sin consentimiento inicial
+        mock_prospect_data = {
+            "exists": True,
+            "celular": "+573192564288",
+            "chatbot_status": "ACTIVE",
+            "status": "PENDING",
+            "source": "whatsapp_bot",
+            "habeas_data_accepted": False
+        }
+
+        # 3. Setup mocks
+        mock_ms = AsyncMock()
+        mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+        mock_ms.create_prospect_if_missing = AsyncMock()
+        mock_ms.get_chat_history = AsyncMock(return_value=[])
+        mock_ms.save_message = AsyncMock()
+        mock_ms.generate_and_update_summary = AsyncMock()
+        mock_ms.update_prospect_summary = AsyncMock()
+        mock_mem_module.memory_service = mock_ms
+
+        mock_cerebro = AsyncMock()
+        mock_cerebro.pensar_respuesta = AsyncMock(return_value="Entendido, habeas data firmado.")
+        mock_cerebro_class.return_value = mock_cerebro
+        
+        mock_message_buffer.add_message = AsyncMock(return_value=True)
+        mock_message_buffer.is_task_active = MagicMock(return_value=True)
+        mock_message_buffer.get_aggregated_message = AsyncMock(return_value=None)
+        mock_message_buffer.clear_buffer = AsyncMock()
+        mock_message_buffer.debounce_seconds = 0.0  # Sin delay en tests
+        
+        mock_wa_service.mark_as_read = AsyncMock(return_value=True)
+        mock_send_wa.return_value = True
+        mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+
+        # 4. Ejecutar el handler
+        asyncio.run(_handle_message_background(msg_data, background_tasks))
+
+        # 5. Verificaciones
+        # Debe haberse llamado a update_prospect_summary indicando mutación síncrona
+        mock_ms.update_prospect_summary.assert_any_call("+573192564288", "", {"habeas_data_accepted": True})
+        
+        # Debió llamarse a pensar_respuesta con el body mutado a "Sí"
+        mock_cerebro.pensar_respuesta.assert_called_once()
+        args, kwargs = mock_cerebro.pensar_respuesta.call_args
+        self.assertEqual(args[0], "Sí")
+        
+        # prospect_data debió actualizarse a True
+        self.assertTrue(kwargs["prospect_data"]["habeas_data_accepted"])
+
 if __name__ == '__main__':
     unittest.main()
