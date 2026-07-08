@@ -611,6 +611,9 @@ class MemoryService:
 
             # Si el documento fue borrado por un /reset, inicializamos las llaves mínimas de estructura
             if is_new_doc:
+                if status_value in ("sent", "delivered"):
+                    logger.info(f"🛡️ [STATUSES] Ignorando acuse '{status_value}' para prospecto inexistente/purgado {clean_phone} (Bypass de Webhook Recovery).")
+                    return
                 logger.warning(f"⚠️ [WEBHOOK_RECOVERY] Registrando acuse '{status_value}' en prospecto inexistente/purgado {clean_phone}. Inicializando claves canónicas.")
                 payload.update({
                     "celular": clean_phone,
