@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.22.18
-**Último Hito:** alineacion-personalidad-scoring: Sincronizar reglas de score crediticio en fallbacks locales (BOT-PERF-IDENTITY-TAG-FIX-116)
-**Coherence Score:** 1.000 (219/219 Tests PASSED)
+**Versión Actual:** v10.25.0
+**Último Hito:** hotfix-router-reaction-text: Aislar interceptor de reacciones y asegurar flujo limpio de mensajes de texto (BOT-ROUTER-REGRESSION-FIX-119)
+**Coherence Score:** 1.000 (220/220 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 139 | Isolate reaction interceptor and preserve fuzzy matching under text messages | 2026-07-08 | dec9c1e | 139-hotfix-router-reaction-text |
 | 138 | Intercept WhatsApp affirmative reactions and force immediate Habeas Data acceptance in Firestore/memory | 2026-07-08 | cd061ec | 138-hotfix-habeas-emoji-reaction |
 | 137 | Fallo de importación y llamada síncrona/bloqueante a ScoringService | 2026-07-08 | 982b060 | 137-hotfix-scoring-api-alignment |
 | 136 | Integrar 4 reglas duras de evaluación por score crediticio en prompt fallback local | 2026-07-08 | 19b2d3a | 136-alineacion-personalidad-scoring |
@@ -94,3 +95,5 @@
 - v10.22.3: hotfix-bot-bugfix-117: Refactorización dinámica del interceptor de palabras clave de motocicletas e integración del test de alias. Coherence Score: 1.000 (198/198 Tests PASSED).
 - v10.22.4: hotfix-bot-bugfix-118: Drift Interceptor alias literal validation failure on compuesto/conectores. Coherence Score: 1.000 (198/198 Tests PASSED).
 - v10.22.11: hotfix-bot-infra-config: Correct environment variable precedence for MIN_CATALOG_ITEMS (BOT-INFRA-CONFIG-112). Coherence Score: 1.000 (210/210 Tests PASSED).
+- v10.25.0: hotfix-router-reaction-text: Aislar interceptor de reacciones y asegurar flujo limpio de mensajes de texto (BOT-ROUTER-REGRESSION-FIX-119). Coherence Score: 1.000 (220/220 Tests PASSED).
+

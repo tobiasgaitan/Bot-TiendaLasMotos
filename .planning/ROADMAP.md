@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.22.17)
+## Tasks Completadas (v10.25.0)
+- [x] Aislar la lógica de interceptación de reacciones e inyectar validación fonética difflib en whatsapp.py (BOT-ROUTER-REGRESSION-FIX-119).
 - [x] Sincronizar las 4 reglas duras de evaluación de crédito en los fallbacks locales de personalidad (BOT-PERF-IDENTITY-TAG-FIX-116).
 - [x] Delegar statuses a background_tasks en local/beta y bypass en MemoryService (BOT-INFRA-RACE-CONDITION-116).
 - [x] Corregir desalineación de la Capa de Identidad en search_items para coincidencia exacta con searchBy tags (BOT-PERF-IDENTITY-TAG-FIX-115).
