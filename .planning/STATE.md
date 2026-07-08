@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 137 | Fallo de importación y llamada síncrona/bloqueante a ScoringService | 2026-07-08 | 982b060 | 137-hotfix-scoring-api-alignment |
 | 136 | Integrar 4 reglas duras de evaluación por score crediticio en prompt fallback local | 2026-07-08 | 19b2d3a | 136-alineacion-personalidad-scoring |
 | 135 | Delegar statuses a background_tasks en local/beta y bypass en MemoryService | 2026-07-07 | 7e05392 | 135-hotfix-webhook-race |
 | 134 | Corregir vaciado de variable por agregación de buffer en reacciones e inyectar test | 2026-07-07 | 28c7d2a | 134-hotfix-reaction-debounce |
