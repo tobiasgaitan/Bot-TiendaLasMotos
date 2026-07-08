@@ -328,7 +328,8 @@ async def webhook_handler(
             else:
                 status_data = _extract_status_data(payload)
                 if status_data:
-                    await _handle_statuses_background(status_data)
+                    # Procesamiento asíncrono no bloqueante vía BackgroundTasks en ausencia de Cloud Tasks
+                    background_tasks.add_task(_handle_statuses_background, status_data)
             return {"status": "received"}
 
         # --- RAMA 2: Mensajes reales del usuario ---
