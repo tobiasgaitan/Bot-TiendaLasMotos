@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.26.2)
+## Tasks Completadas (v10.26.3)
+- [x] Document session-based locking in the Master Spec architecture document (DOC-MASTER-SPEC-UPDATE-143).
 - [x] Implement session-based locking to serialize webhook message processing and prevent race conditions (BOT-ROUTER-ASYNC-LOOP-120).
 - [x] Prevent visual leak and duplicate motorcycle details on Paso 5 transition (BOT-BRAIN-VISUAL-LEAK-142).
 - [x] Sincronización forzada de infraestructura y confirmación de commits remotos (BOT-INFRA-SYNC-FORCE-141).

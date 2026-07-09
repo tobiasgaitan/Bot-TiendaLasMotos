@@ -1,6 +1,6 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.26.2
-**Último Hito:** Implement session-based locking to serialize webhook message processing (BOT-ROUTER-ASYNC-LOOP-120)
+**Versión Actual:** v10.26.3
+**Último Hito:** Document session-based locking in Master Spec (DOC-MASTER-SPEC-UPDATE-143)
 **Coherence Score:** 1.000 (223/223 Tests PASSED)
 
 ## Estado de la Ruta Crítica
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 144 | Update Master Spec with session locking specs | 2026-07-09 | 6b9caca | 144-doc-update-master-spec |
 | 143 | Implement session-based locking to serialize webhook message processing | 2026-07-09 | 0b3c6c2 | 143-hotfix-async-loop |
 | 142 | Prevent visual leak and duplicate motorcycle details on Paso 5 transition | 2026-07-09 | ee44b98 | 142-visual-leak-step-5 |
 | 141 | Synchronize local development commits with origin beta and trigger build | 2026-07-09 | 3dc78e3 | 141-infra-sync-force |
