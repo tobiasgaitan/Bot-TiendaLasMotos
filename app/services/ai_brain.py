@@ -661,7 +661,12 @@ class CerebroIA:
             if final_text and not final_text.startswith("HANDOFF_TRIGGERED:") and (mentions_moto or is_moto_query):
                 from app.services.agentic_loop_service import AgenticOrchestrator
                 orchestrator = AgenticOrchestrator()
-                validation = orchestrator.run_checker(final_text, is_catalog_query=is_catalog_query)
+                validation = orchestrator.run_checker(
+                    final_text,
+                    is_catalog_query=is_catalog_query,
+                    prospect_data=prospect_data,
+                    user_prompt=texto
+                )
                 if not validation["success"]:
                     user_id = prospect_data.get("phone") or prospect_data.get("id", "unknown") if prospect_data else "unknown"
                     logger.warning(

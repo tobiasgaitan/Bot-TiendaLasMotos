@@ -707,3 +707,51 @@ async def test_resilience_drift_interceptor_ratio_035():
         assert "Encontré" in captured_tool_output
         assert "Apache 160" in captured_tool_output
         assert "REGLA OBLIGATORIA: NO listes otras motos" not in captured_tool_output
+
+
+def test_run_checker_faq_bypass():
+    """
+    Verifica que el AgenticOrchestrator.run_checker aplique correctamente
+    el bypass condicional de aserción estricta de imágenes y precios cuando:
+    1. No es una consulta de catálogo (is_catalog_query = False).
+    2. Es una intención de FAQ pura y no hay modelo de motocicleta en el CRM.
+    Adicionalmente, valida la retrocompatibilidad con las firmas legacy.
+    """
+    from app.services.agentic_loop_service import AgenticOrchestrator
+    orchestrator = AgenticOrchestrator()
+
+    # 1. Retrocompatibilidad / Firma Legacy (is_catalog_query=True, sin más args)
+    # Si is_catalog_query=True, exige ficha técnica. Como bot_response no la tiene y no hay bypass, falla.
+    res_no_ficha = "Precio $10.000.000 ![moto](http://img)"
+    val_legacy_fail = orchestrator.run_checker(res_no_ficha, is_catalog_query=True)
+    assert val_legacy_fail["success"] is False
+
+    # 2. Caso de bypass 1: No es una consulta de catálogo (is_catalog_query = False)
+    # Debe omitir precios e imágenes. Por lo tanto, una respuesta sin precio ni imagen pasa.
+    res_faq = "Nuestros horarios de atención son de lunes a viernes."
+    val_faq = orchestrator.run_checker(res_faq, is_catalog_query=False)
+    assert val_faq["success"] is True
+
+    # 3. Caso de bypass 2: Consulta de catálogo=True, pero es FAQ pura (user_prompt con keyword)
+    # y sin moto_interest asignada en prospect_data.
+    res_faq_specs = "Atendemos de 8 a 6."
+    prospect_no_interest = {"nombre": "Juan", "ciudad": "Medellin"}
+    val_faq_prompt = orchestrator.run_checker(
+        res_faq_specs, 
+        is_catalog_query=True, 
+        prospect_data=prospect_no_interest, 
+        user_prompt="¿Cuál es el horario de atención?"
+    )
+    assert val_faq_prompt["success"] is True
+
+    # 4. Caso estricto: Consulta de catálogo=True, pero SÍ hay moto de interés en CRM
+    # (a pesar de que el prompt tenga keyword de FAQ, el interés en CRM activa control estricto).
+    prospect_with_interest = {"nombre": "Juan", "ciudad": "Medellin", "moto_interest": "TVS Raider"}
+    val_faq_strict_fail = orchestrator.run_checker(
+        res_faq_specs, 
+        is_catalog_query=True, 
+        prospect_data=prospect_with_interest, 
+        user_prompt="¿Cuál es el horario de atención?"
+    )
+    assert val_faq_strict_fail["success"] is False
+

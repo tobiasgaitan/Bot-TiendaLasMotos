@@ -40,26 +40,52 @@ class AgenticOrchestrator:
             logger.exception(f"Error forense al crear Git Worktree: {err_msg}")
             raise e
 
-    def run_checker(self, bot_response: str, is_catalog_query: bool = False) -> Dict[str, Any]:
+    def run_checker(self, bot_response: str, is_catalog_query: bool = False, prospect_data: Dict[str, Any] = None, user_prompt: str = None) -> Dict[str, Any]:
         has_price = bool(re.search(r"\$\d+", bot_response))
         has_image = bool(re.search(r"!\[.*?\]\(.*?\)|\[IMAGE:.*?\]", bot_response))
         has_ficha = "Ficha Tecnica:" in bot_response if is_catalog_query else True
 
+        # Detección semántica de intenciones de FAQ puras
+        is_faq_intent = False
+        if user_prompt:
+            faq_keywords = [
+                "horario", "direccion", "dirección", "ubicacion", "ubicación", "donde estan", "dónde están",
+                "donde queda", "dónde queda", "taller", "mantenimiento", "requisitos", "papeles",
+                "contacto", "telefono", "teléfono", "pagina", "página", "web", "correo", "email",
+                "habeas", "politica", "política", "privacidad", "datos", "legal", "quienes somos",
+                "quiénes somos", "nosotros", "pago", "pagar", "efectivo", "tarjeta", "transferencia",
+                "nequi", "daviplata", "financiacion", "financiación", "interes", "interés", "banco",
+                "cuota", "inicial", "credito", "crédito", "financiar", "mensualidad", "papeles",
+                "requisitos", "asesor", "humano", "ayuda", "soporte", "faq", "pregunta", "duda"
+            ]
+            prompt_lower = user_prompt.lower()
+            if any(re.search(rf"\b{kw}\b" if kw.isalnum() else re.escape(kw), prompt_lower) for kw in faq_keywords):
+                is_faq_intent = True
 
-        if not (has_price and has_image and has_ficha):
-            report = {
-                "scenario_key": "CATALOG_VALIDATION_FAIL",
-                "input_stimulus": "Consulta de catálogo de motocicletas",
-                "expected_behavior": "Respuesta con precio ($), imagen Markdown y prefijo Ficha Tecnica:",
-                "output_obtained": bot_response if bot_response else "None / String Vacío",
-                "broken_guardrail": "PRICE_CONSISTENCY_CHECK",
-                "code_context": {
-                    "target_file": "app/services/catalog_service.py",
-                    "surrounding_code": "def search_items(): ...",
-                    "logs_trace": "PCC Pro Validation Triggered: Assertion Error"
+        has_moto_interest = bool(prospect_data and prospect_data.get("moto_interest"))
+        
+        # Bypass estricto si:
+        # 1. No es una consulta de catálogo activa.
+        # 2. Es una intención de FAQ pura y no hay moto de interés en el CRM.
+        bypass_strict = (not is_catalog_query) or (is_faq_intent and not has_moto_interest)
+
+        if bypass_strict:
+            return {"success": True, "report": {}}
+        else:
+            if not (has_price and has_image and has_ficha):
+                report = {
+                    "scenario_key": "CATALOG_VALIDATION_FAIL",
+                    "input_stimulus": "Consulta de catálogo de motocicletas",
+                    "expected_behavior": "Respuesta con precio ($), imagen Markdown y prefijo Ficha Tecnica:",
+                    "output_obtained": bot_response if bot_response else "None / String Vacío",
+                    "broken_guardrail": "PRICE_CONSISTENCY_CHECK",
+                    "code_context": {
+                        "target_file": "app/services/catalog_service.py",
+                        "surrounding_code": "def search_items(): ...",
+                        "logs_trace": "PCC Pro Validation Triggered: Assertion Error"
+                    }
                 }
-            }
-            return {"success": False, "report": report}
+                return {"success": False, "report": report}
         
         return {"success": True, "report": {}}
 
