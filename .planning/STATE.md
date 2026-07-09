@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.26.0
-**Último Hito:** infra-sync-force: Synchronize local development commits with origin beta (BOT-INFRA-SYNC-FORCE-141)
-**Coherence Score:** 1.000 (221/221 Tests PASSED)
+**Versión Actual:** v10.26.1
+**Último Hito:** Prevent visual leak and duplicate motorcycle details on Paso 5 transition (BOT-BRAIN-VISUAL-LEAK-142)
+**Coherence Score:** 1.000 (222/222 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 142 | Prevent visual leak and duplicate motorcycle details on Paso 5 transition | 2026-07-09 | ee44b98 | 142-visual-leak-step-5 |
 | 141 | Synchronize local development commits with origin beta and trigger build | 2026-07-09 | 3dc78e3 | 141-infra-sync-force |
 | 140 | Isolate webhook statuses loop processing and verify fuzzy 'boser' query under stress | 2026-07-09 | 7ad6fca | 140-qa-concurrency-robustness |
 | 139 | Isolate reaction interceptor and preserve fuzzy matching under text messages | 2026-07-08 | dec9c1e | 139-hotfix-router-reaction-text |
