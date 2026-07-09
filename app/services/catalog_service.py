@@ -442,6 +442,7 @@ class CatalogService:
             "raydr": "raider",
             "raidr": "raider",
             "raiyder": "raider",
+            "boser": "boxer",
         }
         query_tokens = [spelling_map.get(t, t) for t in query_tokens]
         

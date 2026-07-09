@@ -966,3 +966,161 @@ async def test_clean_text_message_bypasses_reaction_interceptor_and_preserves_di
         catalog_service._items = original_items
         catalog_service._items_by_id = original_items_by_id
         whatsapp.message_buffer.debounce_seconds = orig_debounce
+
+
+async def test_concurrency_stress_phonetic_boser():
+    """
+    Test de estrés secuencial/concurrente: Emula la llegada paralela de 3 acuses de estado
+    (delivered/read) simultáneamente con una petición de texto fuzzy ('boser').
+    Asegura que el aislamiento de bucles en procesos masivos y la hidratación semántica
+    no se vean afectados, y que 'boser' resuelva a 'Boxer' (TVS Sport 100).
+    """
+    import app.routers.whatsapp as whatsapp
+    from app.routers.whatsapp import _handle_message_background, _handle_statuses_background
+    # 1. Asegurar la inicialización de servicios
+    whatsapp._ensure_services_sync()
+    orig_debounce = whatsapp.message_buffer.debounce_seconds
+    whatsapp.message_buffer.debounce_seconds = 0.0
+    
+    from app.services.catalog_service import catalog_service
+    original_items = getattr(catalog_service, "_items", [])
+    original_items_by_id = getattr(catalog_service, "_items_by_id", {})
+    
+    item = {
+        "id": "tvs_sport",
+        "name": "TVS Sport 100",
+        "price": 5000000,
+        "category": "trabajo",
+        "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/tvs_sport.jpg",
+        "search_tags": ["trabajo", "economica", "mensajeria", "nkd", "boxer"],
+        "search_text": "tvs sport 100 trabajo economica mensajeria nkd boxer",
+        "search_tokens": ["tvs", "sport", "100", "trabajo", "economica", "mensajeria", "nkd", "boxer"],
+        "searchBy": ["trabajo", "economica", "mensajeria", "nkd", "boxer"],
+        "description": "Moto de trabajo muy economica y duradera con excelente consumo de combustible.",
+        "link": "https://tiendalasmotos.com/tvs-sport",
+        "active": True
+    }
+    catalog_service._items = [item]
+    catalog_service._items_by_id = {"tvs_sport": item}
+    
+    user_phone = "+573192564288"
+    
+    try:
+        # Clear buffer to guarantee complete test isolation
+        await whatsapp.message_buffer.clear_buffer(user_phone)
+        if user_phone in whatsapp.message_buffer._processed_wamids:
+            whatsapp.message_buffer._processed_wamids[user_phone].clear()
+            
+        # Payload de mensaje de texto con query fuzzy 'boser'
+        msg_data = {
+            "from": user_phone,
+            "id": "wamid.test_concurrency_msg",
+            "timestamp": "1672531199",
+            "type": "text",
+            "text": "tienen la boser",
+            "phone_number_id": "999999"
+        }
+
+        # Mock memory service
+        mock_memory_service = MagicMock()
+        mock_memory_service.save_message = AsyncMock(return_value=True)
+        # Indicar que no ha aceptado habeas data, y tiene moto_interest Boxer
+        mock_prospect_data = {
+            "exists": True,
+            "status": "PENDING",
+            "chatbot_status": "ACTIVE",
+            "name": "Juan Test",
+            "celular": user_phone,
+            "habeas_data_accepted": False,
+            "moto_interest": "TVS Sport 100",
+            "forma_pago": "credito"
+        }
+        mock_memory_service.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+        mock_memory_service.get_chat_history = AsyncMock(return_value=[])
+        mock_memory_service.create_prospect_if_missing = AsyncMock()
+        mock_memory_service.update_last_interaction = AsyncMock()
+        mock_memory_service.transition_to_in_progress = AsyncMock()
+        mock_memory_service.generate_and_update_summary = AsyncMock()
+        mock_memory_service.set_human_help_status = AsyncMock()
+        mock_memory_service.update_prospect_summary = AsyncMock()
+        
+        # Una de las actualizaciones de estado lanzará una excepción para testear try/except
+        async def mock_update_whatsapp_status(phone_number, status_value, wamid, errors=None):
+            if wamid == "wamid.status_fail":
+                raise ConnectionError("Simulated network failure on status update")
+            return None
+
+        mock_memory_service.update_whatsapp_status = AsyncMock(side_effect=mock_update_whatsapp_status)
+        
+        # Mock CerebroIA.pensar_respuesta
+        captured_user_message = []
+        async def mock_pensar_respuesta(*args, **kwargs):
+            captured_user_message.append(args[0])
+            return "Respuesta de la IA"
+
+        # Mock send_text_message to capture response to user
+        captured_outgoing = []
+        async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
+            captured_outgoing.append(text)
+            return {"messages": [{"id": "wamid.mocked_123"}]}
+
+        # Payload de acuses de recibo (delivered/read) para simulación paralela
+        status_payload_1 = {
+            "id": "wamid.status_ok_1",
+            "recipient_id": user_phone,
+            "status": "delivered",
+            "errors": []
+        }
+        status_payload_2 = {
+            "id": "wamid.status_ok_2",
+            "recipient_id": user_phone,
+            "status": "read",
+            "errors": []
+        }
+        status_payload_3 = {
+            "id": "wamid.status_fail", # Este fallará
+            "recipient_id": user_phone,
+            "status": "delivered",
+            "errors": [{"message": "Network Timeout"}]
+        }
+
+        with patch("app.routers.whatsapp.settings") as mock_settings, \
+             patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
+             patch("app.routers.whatsapp.judge_service") as mock_judge, \
+             patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
+             patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+             patch.object(CerebroIA, "pensar_respuesta", side_effect=mock_pensar_respuesta), \
+             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+             patch("app.services.ai_brain.SDK_AVAILABLE", True):
+             
+            mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+            mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+            
+            from fastapi import BackgroundTasks
+            background_tasks = BackgroundTasks()
+
+            # Emulamos la llegada simultánea de los 3 acuses de estado y la consulta fuzzy
+            await asyncio.gather(
+                _handle_statuses_background(status_payload_1),
+                _handle_statuses_background(status_payload_2),
+                _handle_statuses_background(status_payload_3),
+                _handle_message_background(msg_data, background_tasks),
+                return_exceptions=True
+            )
+
+            # Verificaciones
+            # 1. CerebroIA fue invocado con la consulta de texto
+            assert len(captured_user_message) == 1
+            assert "boser" in captured_user_message[0]
+            
+            # 2. La consulta fonética 'boser' resolvió a la Boxer (TVS Sport 100) en CatalogService
+            results = catalog_service.search("boser")
+            assert any("TVS Sport 100" in item["name"] for item in results), "Coincidencia fuzzy de difflib falló para 'boser'!"
+            
+            # 3. La actualización fallida de estado no interrumpió el flujo ni el catálogo
+            assert mock_memory_service.update_whatsapp_status.call_count == 3
+
+    finally:
+        catalog_service._items = original_items
+        catalog_service._items_by_id = original_items_by_id
+        whatsapp.message_buffer.debounce_seconds = orig_debounce

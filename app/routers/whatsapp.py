@@ -12,7 +12,7 @@ import asyncio
 import re
 import hmac
 import hashlib
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request, Query, HTTPException, BackgroundTasks
@@ -326,10 +326,14 @@ async def webhook_handler(
             if settings.cloud_tasks_queue_path and settings.task_processor_url:
                 await _enqueue_cloud_task(payload)
             else:
-                status_data = _extract_status_data(payload)
-                if status_data:
-                    # Procesamiento asíncrono no bloqueante vía BackgroundTasks en ausencia de Cloud Tasks
-                    background_tasks.add_task(_handle_statuses_background, status_data)
+                statuses_list = _extract_statuses_list(payload)
+                for status_data in statuses_list:
+                    try:
+                        # Procesamiento asíncrono no bloqueante vía BackgroundTasks en ausencia de Cloud Tasks
+                        background_tasks.add_task(_handle_statuses_background, status_data)
+                    except Exception as e:
+                        logger.error(f"❌ Error encolando acuse individual en webhook_handler: {e}", exc_info=True)
+                        continue
             return {"status": "received"}
 
         # --- RAMA 2: Mensajes reales del usuario ---
@@ -418,9 +422,13 @@ async def task_processor(
                 )
 
         if _is_valid_statuses(payload):
-            status_data = _extract_status_data(payload)
-            if status_data:
-                await _handle_statuses_background(status_data)
+            statuses_list = _extract_statuses_list(payload)
+            for status_data in statuses_list:
+                try:
+                    await _handle_statuses_background(status_data)
+                except Exception as e:
+                    logger.error(f"❌ Error procesando acuse individual en task_processor: {e}", exc_info=True)
+                    continue
             return {"status": "processed", "type": "statuses"}
 
         if _is_valid_message(payload):
@@ -452,8 +460,8 @@ async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
     Zero-Silent-Failures: captura explícita de los errores más comunes para
     evitar que un fallo de Firestore quede invisible en el log.
     """
-    await _ensure_services()
     try:
+        await _ensure_services()
         recipient_id = status_data.get("recipient_id", "")
         status_value = status_data.get("status", "")
         wamid = status_data.get("id", "")
@@ -1508,6 +1516,34 @@ def _extract_status_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.warning(f"⚠️ [STATUSES] Error extrayendo status_data: {e}")
         return None
+
+
+def _extract_statuses_list(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    [ARCH-BULK-META-010] Extrae todos los acuses de recibo del payload de Meta
+    para procesamiento masivo en bucle.
+    """
+    try:
+        entry = payload.get("entry", [{}])[0]
+        changes = entry.get("changes", [{}])[0]
+        value = changes.get("value", {})
+        statuses = value.get("statuses", [])
+        metadata = value.get("metadata", {})
+        extracted = []
+        for status_obj in statuses:
+            errors = status_obj.get("errors", [])
+            extracted.append({
+                "id": status_obj.get("id", ""),
+                "recipient_id": status_obj.get("recipient_id", ""),
+                "status": status_obj.get("status", ""),
+                "timestamp": status_obj.get("timestamp", ""),
+                "phone_number_id": metadata.get("phone_number_id"),
+                "errors": errors,
+            })
+        return extracted
+    except Exception as e:
+        logger.warning(f"⚠️ [STATUSES] Error extrayendo lista de status_data: {e}")
+        return []
 
 
 def _is_valid_message(payload: Dict[str, Any]) -> bool:
