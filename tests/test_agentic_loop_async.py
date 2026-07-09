@@ -1124,3 +1124,134 @@ async def test_concurrency_stress_phonetic_boser():
         catalog_service._items = original_items
         catalog_service._items_by_id = original_items_by_id
         whatsapp.message_buffer.debounce_seconds = orig_debounce
+
+
+@pytest.mark.asyncio
+async def test_whatsapp_reaction_payload_direct_legal_acceptance():
+    """
+    GIVEN: Un payload de webhook con msg_type: 'reaction' y emoji afirmativo '👍'.
+    WHEN: El router de WhatsApp recibe la reacción.
+    THEN: Debe mutar el body a 'Sí', interceptar y actualizar habeas_data_accepted = True síncronamente,
+          llamar a la instancia viva de CerebroIA en PHASE_2_HABEAS_DATA (sin mockear pensar_respuesta),
+          inyectar la directiva de interrupción semántica en el prompt y enviar la respuesta
+          sin enlaces de imágenes (![) ni precios ($).
+    """
+    import app.routers.whatsapp as whatsapp
+    from app.routers.whatsapp import _handle_message_background
+    from fastapi import BackgroundTasks
+    
+    # 1. Asegurar la inicialización del message_buffer y forzar debounce_seconds a 0.0
+    whatsapp._ensure_services_sync()
+    orig_debounce = whatsapp.message_buffer.debounce_seconds
+    whatsapp.message_buffer.debounce_seconds = 0.0
+    
+    user_phone = "+573192564288"
+    
+    try:
+        # Clear buffer to guarantee complete test isolation
+        await whatsapp.message_buffer.clear_buffer(user_phone)
+        if user_phone in whatsapp.message_buffer._processed_wamids:
+            whatsapp.message_buffer._processed_wamids[user_phone].clear()
+            
+        msg_data = {
+            "from": user_phone,
+            "id": "wamid.reaction_test_999",
+            "type": "reaction",
+            "reaction": {
+                "message_id": "wamid.parent_message_123",
+                "emoji": "👍"
+            },
+            "phone_number_id": "1021779847693778"
+        }
+        
+        # 2. Mock Prospect data sin consentimiento inicial y con identidad ausente (nombre/ciudad vacíos)
+        mock_prospect_data = {
+            "exists": True,
+            "celular": user_phone,
+            "chatbot_status": "ACTIVE",
+            "status": "PENDING",
+            "source": "whatsapp_bot",
+            "habeas_data_accepted": False,
+            "nombre": "",
+            "ciudad": "",
+            "forma_pago": "credito",
+            "moto_interest": "TVS Sport 100"
+        }
+
+        # Setup mock memory service
+        mock_ms = AsyncMock()
+        mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+        mock_ms.create_prospect_if_missing = AsyncMock()
+        mock_ms.get_chat_history = AsyncMock(return_value=[])
+        mock_ms.save_message = AsyncMock()
+        mock_ms.generate_and_update_summary = AsyncMock()
+        mock_ms.update_last_interaction = AsyncMock()
+        mock_ms.transition_to_in_progress = AsyncMock()
+        mock_ms.set_human_help_status = AsyncMock()
+        
+        async def mock_update_summary(phone, summary, data):
+            if "habeas_data_accepted" in data:
+                mock_prospect_data["habeas_data_accepted"] = data["habeas_data_accepted"]
+        mock_ms.update_prospect_summary = AsyncMock(side_effect=mock_update_summary)
+
+        # Mock GenAI client to return a clean text response
+        mock_client = MagicMock()
+        mock_chat = AsyncMock()
+        mock_response = MagicMock()
+        mock_candidate = MagicMock()
+        mock_part = MagicMock()
+
+        # Simulated response from Gemini adhering to our instruction
+        mock_part.text = "¡Excelente! He registrado tu consentimiento. Para continuar, indícame tu nombre completo y la ciudad en la que te encuentras."
+        mock_part.function_call = None
+        mock_candidate.content.parts = [mock_part]
+        mock_response.candidates = [mock_candidate]
+
+        mock_chat.send_message = AsyncMock(return_value=mock_response)
+        mock_client.aio.chats.create = MagicMock(return_value=mock_chat)
+
+        # Mock send_text_message on whatsapp_service to capture the outgoing message
+        captured_messages = []
+        async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
+            captured_messages.append(text)
+            return {"messages": [{"id": "wamid.mocked_123"}]}
+
+        with patch("app.routers.whatsapp.settings") as mock_settings, \
+             patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
+             patch("app.routers.whatsapp.judge_service") as mock_judge, \
+             patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
+             patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+             patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+             patch("app.services.ai_brain.SDK_AVAILABLE", True):
+
+            mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+            mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+
+            # 4. Ejecutar el handler
+            background_tasks = BackgroundTasks()
+            await _handle_message_background(msg_data, background_tasks)
+
+            # 5. Verificaciones
+            # Debe haberse llamado a update_prospect_summary síncronamente
+            mock_ms.update_prospect_summary.assert_any_call("+573192564288", "", {"habeas_data_accepted": True})
+            
+            # prospect_data debió actualizarse a True
+            assert mock_prospect_data["habeas_data_accepted"] is True
+
+            # Verificar que se llamó al chat con el prompt formateado
+            mock_chat.send_message.assert_called_once()
+            prompt_sent = mock_chat.send_message.call_args[0][0]
+            
+            # Verificar que la directiva de interrupción semántica esté presente en el prompt consolidado
+            assert "El consentimiento ya ha sido firmado en este turno. Tienes ESTRICTAMENTE PROHIBIDO" in prompt_sent
+            assert "incluir enlaces de imágenes (![]) o precios ($) en tu respuesta" in prompt_sent
+
+            # Verificar que el mensaje enviado de vuelta no contiene imágenes ni precios
+            assert len(captured_messages) == 1
+            response = captured_messages[0]
+            assert '![' not in response, "La respuesta no debe incluir enlaces de imágenes (![)"
+            assert '$' not in response, "La respuesta no debe incluir precios ($)"
+
+    finally:
+        whatsapp.message_buffer.debounce_seconds = orig_debounce

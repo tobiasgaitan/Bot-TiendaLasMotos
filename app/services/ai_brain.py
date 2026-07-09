@@ -937,10 +937,15 @@ REGLAS ESTRICTAS DE USO:
         elif phase == "PHASE_2_HABEAS_DATA":
             is_accepted = data.get("habeas_data_accepted") is True
             if is_accepted:
+                interruption_directive = (
+                    " El consentimiento ya ha sido firmado en este turno. Tienes ESTRICTAMENTE PROHIBIDO "
+                    "incluir enlaces de imágenes (![]) o precios ($) en tu respuesta. "
+                    "Limítate exclusivamente a solicitar el nombre completo y la ciudad de forma concisa."
+                )
                 if not p_name:
-                    funnel_instruction = "El consentimiento de datos ya está firmado. El sistema requiere el nombre del prospecto para continuar con su solicitud de crédito. Cierra tu mensaje pidiendo su nombre de forma clara y amable."
+                    funnel_instruction = "El consentimiento de datos ya está firmado. El sistema requiere el nombre del prospecto para continuar con su solicitud de crédito. Cierra tu mensaje pidiendo su nombre de forma clara y amable." + interruption_directive
                 elif not p_ciudad:
-                    funnel_instruction = "El consentimiento de datos ya está firmado. El sistema requiere la ciudad del prospecto para continuar con su solicitud de crédito. Cierra tu mensaje pidiendo su ciudad de forma clara y amable."
+                    funnel_instruction = "El consentimiento de datos ya está firmado. El sistema requiere la ciudad del prospecto para continuar con su solicitud de crédito. Cierra tu mensaje pidiendo su ciudad de forma clara y amable." + interruption_directive
             else:
                 funnel_instruction = "EL USUARIO ESTÁ LISTO PARA EL CRÉDITO. Debes presentar el script legal de Habeas Data y pedir su aceptación explícita (Sí/No)."
         
