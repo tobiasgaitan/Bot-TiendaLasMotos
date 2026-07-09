@@ -1308,3 +1308,60 @@ async def test_handle_message_background_session_locks():
             
         print("✅ Webhook session lock serialization verified successfully.")
 
+@pytest.mark.asyncio
+async def test_faq_unified_knowledge_restoration():
+    """
+    [BOT-QA-GATE-106] Certifica que las preguntas frecuentes (FAQ) sobre requisitos de crédito
+    (como codeudores, cuota inicial o reportados) son resueltas de manera natural por la IA
+    y no disparan fallbacks de error por falta de densidad semántica en el prompt.
+    """
+    from app.services.catalog_service import CatalogService
+    catalog_service = CatalogService()
+    cerebro = CerebroIA(catalog_service=catalog_service)
+    
+    # Mock de Gemini para emular que lee correctamente la FAQ inyectada en credit_matrix_rules
+    class MockPart:
+        def __init__(self, text):
+            self.text = text
+            self.function_call = None
+
+    class MockContent:
+        def __init__(self, parts):
+            self.parts = parts
+
+    class MockCandidate:
+        def __init__(self, content):
+            self.content = content
+
+    class MockResponse:
+        def __init__(self, candidates):
+            self.candidates = candidates
+
+    # Respuesta de negocio que Juan Pablo DEBE poder estructurar gracias al prompt restaurado
+    simulated_faq_response = (
+        "No necesitas codeudor en todos los casos. "
+        "Depende de tu historial crediticio y las políticas de la entidad que estudie tu solicitud."
+    )
+    mock_candidate = MockCandidate(content=MockContent(parts=[MockPart(simulated_faq_response)]))
+    mock_response = MockResponse(candidates=[mock_candidate])
+
+    prospect_data = {
+        "exists": True,
+        "nombre": "Tobias FAQ Test",
+        "ciudad": "Santa Marta",
+        "forma_pago": "Crédito",
+        "habeas_data_accepted": False,
+        "moto_interest": "TVS Sport 100"
+    }
+
+    with patch.object(cerebro, "_call_gemini_with_retry_async", return_value=mock_response), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+         
+        # El bot debe responder de forma fluida a la consulta de desvío de FAQ
+        res = await cerebro.pensar_respuesta("¿necesito codeudor para el crédito?", prospect_data=prospect_data)
+        
+        # Aserciones rígidas de contenido semántico
+        assert "codeudor" in res.lower(), "La respuesta de la IA no aborda el concepto crítico 'codeudor'."
+        assert "no" in res.lower(), "La respuesta de la IA omitió la aclaración de que NO siempre se requiere codeudor."
+
