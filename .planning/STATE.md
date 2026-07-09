@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.25.0
-**Último Hito:** hotfix-router-reaction-text: Aislar interceptor de reacciones y asegurar flujo limpio de mensajes de texto (BOT-ROUTER-REGRESSION-FIX-119)
-**Coherence Score:** 1.000 (220/220 Tests PASSED)
+**Versión Actual:** v10.26.0
+**Último Hito:** concurrency-stress-phonetic: Isolate webhook status updates loops and add phonetic stress test (BOT-QA-CONCURRENCY-ROBUST-140)
+**Coherence Score:** 1.000 (221/221 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 140 | Isolate webhook statuses loop processing and verify fuzzy 'boser' query under stress | 2026-07-09 | 7ad6fca | 140-qa-concurrency-robustness |
 | 139 | Isolate reaction interceptor and preserve fuzzy matching under text messages | 2026-07-08 | dec9c1e | 139-hotfix-router-reaction-text |
 | 138 | Intercept WhatsApp affirmative reactions and force immediate Habeas Data acceptance in Firestore/memory | 2026-07-08 | cd061ec | 138-hotfix-habeas-emoji-reaction |
 | 137 | Fallo de importación y llamada síncrona/bloqueante a ScoringService | 2026-07-08 | 982b060 | 137-hotfix-scoring-api-alignment |
