@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.25.0)
-Versión: v10.25.0 (Isolate Reaction Interceptor & Text Flow Fix)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.26.2)
+Versión: v10.26.2 (Session Locks for Webhook Concurrency)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Aislar interceptor de reacciones y asegurar flujo limpio de mensajes de texto con lógica fuzzy. Cierre de ticket [BOT-ROUTER-REGRESSION-FIX-119].
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 220/220 Tests PASSED)
+Último Hito: Implementar control de concurrencia mediante Locks de Sesión asíncronos en el enrutador de WhatsApp, mitigando de forma permanente las condiciones de carrera (Race Conditions) en la Matriz de Perfilamiento Estricta. Cierre de ticket [BOT-ROUTER-ASYNC-LOOP-120].
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 223/223 Tests PASSED)
 
 
 1. Contexto y Persona (Juan Pablo)
@@ -28,7 +28,7 @@ Unificación de Esquema: Empleo estricto de llaves canónicas en español (nombr
 Higiene de Base de Datos: Catálogo 100% normalizado (60/60 ítems devueltos). Llaves legacy erradicadas en producción.
 Linear Blocking & Timeouts (BOT-INFRA-33): Uso obligatorio de await para la confirmación síncrona de escritura en Firestore.
 Adición del interceptor quirúrgico global _firestore_io mediante asyncio.wait_for parametrizado por la variable autovalidada settings.db_timeout (por defecto 5 segundos) protegiendo de forma síncrona los 9 métodos core de I/O de base de datos contra bloqueos y congelamiento.
-Control de Concurrencia (Burst Mitigation): Aislamiento de la función update_whatsapp_status mediante un semáforo asíncrono (asyncio.Semaphore(5)) para prevenir la saturación del pool de sockets de red ante ráfagas de Meta.
+Control de Concurrencia (Burst Mitigation): Aislamiento de la función update_whatsapp_status mediante un semáforo asíncrono (asyncio.Semaphore(5)) para prevenir la saturación del pool de sockets de red ante ráfagas de Meta. Adicionalmente, se implementa el control de concurrencia de sesiones mediante Locks de Sesión asíncronos (`_session_locks` utilizando `asyncio.Lock`) por cada número telefónico canónico E.164 en `app/routers/whatsapp.py`. Esta medida establece un "Mandato de Bloqueo" que serializa el procesamiento de webhooks entrantes por usuario, garantizando que el ciclo conversacional y el commit atómico en Firestore de las variables extraídas en `generate_and_update_summary` (`vivienda`, `servicios_publicos`) se completen mediante `await` estricto antes de enviar la respuesta de Meta, liberar el hilo de red externa, o aceptar nuevos webhooks concurrentes para el mismo identificador telefónico.
 Gobernanza de Datos Compartidos (BOT-INFRA-31): Blindaje atómico de la colección única prospectos contra sobreescrituras accidentales de la IA mediante la constante _CRM_PROTECTED_FIELDS.
 Los campos financieros manuales del asesor quedan aislados del motor de mezcla de extracción (_merge_extracted_data), permitiendo la coexistencia pacífica en tiempo real con el frontend Next.js.
 
@@ -109,4 +109,6 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.24.0] Cierre de ticket BOT-PERF-IDENTITY-TAG-FIX-115 (Catalog Identity Alignment). Modificación en la fase de detección de identidad de `search_items` en `CatalogService` para forzar `name_match = True` cuando un token de búsqueda limpia coincida exactamente con las etiquetas `searchBy` de Firestore, otorgando máxima prioridad (+20,000) en el scoring del catálogo. Coherence Score: 1.000 (215/215 Tests PASSED).
 - [v10.22.17] Cierre de ticket BOT-PERF-IDENTITY-TAG-FIX-116 (Credit Score Copywriting Alignment). Modificación quirúrgica en 'app/core/personality.json' y 'app/core/prompts.py' para integrar las 4 reglas duras de evaluación por score crediticio dentro de '<MATRIZ_DE_PERFILAMIENTO_ESTRICTA>', reemplazando la línea simplificada de 'CIERRE' para alinearse exactamente con Firestore. Coherence Score: 1.000 (217/217 Tests PASSED).
 - [v10.25.0] Cierre de ticket BOT-ROUTER-REGRESSION-FIX-119 (Isolate Reaction Interceptor). Aislamiento total de la lógica de aceptación de Habeas Data basada en reacciones de WhatsApp (emoji 👍) en un bloque exclusivo para el tipo 'reaction', asegurando que los mensajes de texto ordinarios sigan el flujo sin mutaciones de prospect_data y conserven la coincidencia fonética fuzzy de difflib. Coherence Score: 1.000 (220/220 Tests PASSED).
+- [v10.26.2] Cierre de ticket BOT-ROUTER-ASYNC-LOOP-120 (Session Locks for Webhook Concurrency). Implementación de control de concurrencia mediante Locks de Sesión asíncronos (`_session_locks` utilizando `asyncio.Lock`) para cada número telefónico canónico E.164 en `app/routers/whatsapp.py`. Este mecanismo garantiza que el procesamiento de webhooks entrantes para el mismo usuario se ejecute secuencialmente, asegurando que la persistencia en Firestore mediante `generate_and_update_summary` se complete mediante `await` estricto antes de despachar respuestas o procesar nuevos eventos. Coherence Score: 1.000 (223/223 Tests PASSED).
+
 
