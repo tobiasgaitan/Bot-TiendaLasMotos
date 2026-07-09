@@ -1255,3 +1255,56 @@ async def test_whatsapp_reaction_payload_direct_legal_acceptance():
 
     finally:
         whatsapp.message_buffer.debounce_seconds = orig_debounce
+
+
+@pytest.mark.asyncio
+async def test_handle_message_background_session_locks():
+    """
+    Verifies that _handle_message_background enforces session-based locking
+    for the same phone number, ensuring serial execution and preventing race conditions.
+    """
+    from app.routers.whatsapp import _handle_message_background
+    from fastapi import BackgroundTasks
+    
+    execution_order = []
+    
+    # We will mock _handle_message_background_impl to sleep and log start/end
+    async def mock_impl(msg_data, background_tasks):
+        phone = msg_data["from"]
+        execution_order.append(f"start_{phone}_{msg_data['id']}")
+        await asyncio.sleep(0.1)
+        execution_order.append(f"end_{phone}_{msg_data['id']}")
+        
+    with patch("app.routers.whatsapp._handle_message_background_impl", side_effect=mock_impl), \
+         patch("app.routers.whatsapp._ensure_services", AsyncMock()):
+         
+        # We trigger three concurrent calls:
+        # Two for "+573001111111" (should be serialized)
+        # One for "+573002222222" (should run concurrently/independently)
+        msg1 = {"from": "+573001111111", "id": "msg1"}
+        msg2 = {"from": "+573001111111", "id": "msg2"}
+        msg3 = {"from": "+573002222222", "id": "msg3"}
+        
+        bg_tasks = BackgroundTasks()
+        
+        # We start them concurrently
+        await asyncio.gather(
+            _handle_message_background(msg1, bg_tasks),
+            _handle_message_background(msg2, bg_tasks),
+            _handle_message_background(msg3, bg_tasks)
+        )
+        
+        # Verificamos que msg1 y msg2 se ejecutaron de manera secuencial
+        idx_start_1 = execution_order.index("start_+573001111111_msg1")
+        idx_end_1 = execution_order.index("end_+573001111111_msg1")
+        idx_start_2 = execution_order.index("start_+573001111111_msg2")
+        idx_end_2 = execution_order.index("end_+573001111111_msg2")
+        
+        # Verify serialization: either 1 ran before 2, or 2 ran before 1
+        if idx_start_1 < idx_start_2:
+            assert idx_end_1 < idx_start_2, "msg2 started before msg1 finished!"
+        else:
+            assert idx_end_2 < idx_start_1, "msg1 started before msg2 finished!"
+            
+        print("✅ Webhook session lock serialization verified successfully.")
+

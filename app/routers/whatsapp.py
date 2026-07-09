@@ -64,6 +64,16 @@ router = APIRouter(prefix="/webhook", tags=["WhatsApp"])
 # Semáforo para controlar concurrencia de acuses de recibo Meta (Burst Mitigation)
 status_semaphore = asyncio.Semaphore(5)
 
+# locks for E.164 phone numbers (session locks) to prevent webhook race conditions
+_session_locks = {}
+_session_locks_lock = asyncio.Lock()
+
+async def _get_session_lock(phone_number: str) -> asyncio.Lock:
+    async with _session_locks_lock:
+        if phone_number not in _session_locks:
+            _session_locks[phone_number] = asyncio.Lock()
+        return _session_locks[phone_number]
+
 # ============================================================================
 # STATE & INITIALIZATION
 # ============================================================================
@@ -506,7 +516,20 @@ async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
 
 @observe(name="whatsapp_webhook_background")
 async def _handle_message_background(msg_data: Dict[str, Any], background_tasks: BackgroundTasks) -> None:
-    """Lógica principal del bot (Procesamiento Asíncrono)"""
+    """Lógica principal del bot (Procesamiento Asíncrono con bloqueo por sesión)"""
+    from app.core.utils import PhoneNormalizer
+    raw_phone = msg_data.get("from")
+    if not raw_phone:
+        logger.error("❌ Message payload missing 'from' phone number")
+        return
+    user_phone = PhoneNormalizer.normalize(raw_phone)
+    
+    lock = await _get_session_lock(user_phone)
+    async with lock:
+        await _handle_message_background_impl(msg_data, background_tasks)
+
+async def _handle_message_background_impl(msg_data: Dict[str, Any], background_tasks: BackgroundTasks) -> None:
+    """Lógica principal del bot (Procesamiento Asíncrono - Implementación)"""
     # Ensure services are initialized before proceeding
     await _ensure_services()
 
