@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.26.3)
+## Tasks Completadas (v10.26.5)
+- [x] Implement bypass in AgenticOrchestrator for abstract FAQs to prevent false positives in PCC Pro validator (BOT-BRAIN-FAQ-ABSTRACT-ALIGN-145).
 - [x] Document session-based locking in the Master Spec architecture document (DOC-MASTER-SPEC-UPDATE-143).
 - [x] Implement session-based locking to serialize webhook message processing and prevent race conditions (BOT-ROUTER-ASYNC-LOOP-120).
 - [x] Prevent visual leak and duplicate motorcycle details on Paso 5 transition (BOT-BRAIN-VISUAL-LEAK-142).

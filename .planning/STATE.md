@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.26.4
-**Último Hito:** Document session-based locking in Master Spec (DOC-MASTER-SPEC-UPDATE-143)
-**Coherence Score:** 1.000 (223/223 Tests PASSED)
+**Versión Actual:** v10.26.5
+**Último Hito:** Implement bypass in AgenticOrchestrator for abstract FAQs (BOT-BRAIN-FAQ-ABSTRACT-ALIGN-145)
+**Coherence Score:** 1.000 (225/225 Tests PASSED)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 145 | Implement bypass in AgenticOrchestrator for abstract FAQs | 2026-07-09 | c8ce390 | 145-hotfix-faq-bypass |
 | 144 | Update Master Spec with session locking specs | 2026-07-09 | 6b9caca | 144-doc-update-master-spec |
 | 143 | Implement session-based locking to serialize webhook message processing | 2026-07-09 | 0b3c6c2 | 143-hotfix-async-loop |
 | 142 | Prevent visual leak and duplicate motorcycle details on Paso 5 transition | 2026-07-09 | ee44b98 | 142-visual-leak-step-5 |
