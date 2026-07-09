@@ -435,7 +435,9 @@ async def task_processor(
             statuses_list = _extract_statuses_list(payload)
             for status_data in statuses_list:
                 try:
-                    await _handle_statuses_background(status_data)
+                    # Desacoplamiento asíncrono preventivo usando background_tasks nativo de FastAPI
+                    # para evitar que la ráfaga de acuses bloquee el procesador de Cloud Tasks
+                    background_tasks.add_task(_handle_statuses_background, status_data)
                 except Exception as e:
                     logger.error(f"❌ Error procesando acuse individual en task_processor: {e}", exc_info=True)
                     continue
