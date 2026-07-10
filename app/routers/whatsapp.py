@@ -1271,13 +1271,20 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                     if memory_service_module.memory_service:
                         await ms.save_message(user_phone, "user", transcription)
                     
+                    # Identify last bot question for anchoring
+                    last_bot_q = ""
+                    for m in reversed(current_history or []):
+                        if m.get("role") == "model":
+                            last_bot_q = m.get("content", "")
+                            break
+
                     # 1. LINEAR BLOCKING: Memory Sync (Wait for Firestore)
                     logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync (Audio) for {user_phone}")
                     await ms.generate_and_update_summary(
                         user_phone, 
                         f"User sent audio. Transcription: {transcription}", 
                         cerebro_ia, 
-                        last_bot_question=""
+                        last_bot_question=last_bot_q
                     )
                     
                     # 2. Re-fetch
