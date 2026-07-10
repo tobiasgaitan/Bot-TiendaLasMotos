@@ -26,6 +26,8 @@ from app.core.security import get_firebase_credentials_object
 from app.core.exceptions import HabeasDataBypassInterrupt
 
 from app.services.judge_service import judge_service
+from app.services.agentic_loop_service import AgenticOrchestrator as _AgenticOrchestrator
+_router_orchestrator = _AgenticOrchestrator()
 from app.services.financial_service import financial_service
 from app.services.ai_brain import CerebroIA
 from app.services.vision_service import VisionService
@@ -1106,13 +1108,28 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                         is_approved = True
                         break
 
-                    # 4. Auditoría del Juez de Fundamentación
+                    # 4. Evaluación FAQ Bypass (BOT-BRAIN-FAQ-ROOT-CAUSE-HUNT-147)
+                    # run_checker determina semánticamente si la respuesta es FAQ pura
+                    # para propagar el flag is_faq_bypass al Juez y evitar falsos positivos
+                    # en C1_VISUAL_LOCK ("soporte"→"Sport") y C9_CITY_MISSING ("requisitos"→crédito).
+                    _pcc_result = _router_orchestrator.run_checker(
+                        response_text or "",
+                        is_catalog_query=any(kw in message_body.lower() for kw in ["ficha", "tecnica", "especificaciones"]),
+                        prospect_data=prospect_data,
+                        user_prompt=message_body
+                    )
+                    _is_faq_bypass = bool(_pcc_result.get("bypass_strict", False))
+                    if _is_faq_bypass:
+                        logger.info(f"✅ [ROUTER-PCC] FAQ bypass detectado. Propagando is_faq_bypass=True al Juez para {user_phone}.")
+
+                    # 5. Auditoría del Juez de Fundamentación
                     is_approved, rejection_reason = await judge_service.analyze_response(
                         user_input=message_body,
                         ai_response=response_text,
                         catalog_context=catalog_context,
                         prospect_data=prospect_data,
-                        history=current_history
+                        history=current_history,
+                        is_faq_bypass=_is_faq_bypass
                     )
 
                     if not is_approved:
@@ -1166,7 +1183,9 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                     return # Stop processing
 
             except Exception as e:
-                logger.error(f"🔥 [JUDGE_CRITICAL_ERROR] AI Inference failed: {e}", exc_info=True)
+                # MANDATO Zero-Silent-Failures: exc_info=True garantiza stack trace forense.
+                # Capturar el cuerpo nativo del error antes de activar human_help_requested.
+                logger.exception(f"🔥 [JUDGE_CRITICAL_ERROR] AI Inference failed for {user_phone}: {e}")
                 fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
                 if memory_service_module.memory_service:
                     await memory_service_module.memory_service.set_human_help_status(user_phone, True)

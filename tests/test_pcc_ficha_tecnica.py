@@ -755,3 +755,166 @@ def test_run_checker_faq_bypass():
     )
     assert val_faq_strict_fail["success"] is False
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BOT-BRAIN-FAQ-ROOT-CAUSE-HUNT-147: Regression Tests
+# Validates fix for secondary trigger: JudgeService false positives on FAQs.
+# ─────────────────────────────────────────────────────────────────────────────
+
+import pytest
+
+
+# ─── Test 1: Aislamiento del Juez ────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_judge_service_faq_bypass():
+    """
+    BOT-BRAIN-FAQ-ROOT-CAUSE-HUNT-147 — Regresión Crítica:
+    Verifica que JudgeService.analyze_response con is_faq_bypass=True NO genere
+    falsos positivos para respuestas de FAQ que contienen palabras que colisionan
+    con keywords de motos o avance de crédito:
+      - "Sport" => colisiona con C1_VISUAL_LOCK (_mentions_bike substring)
+      - "requisitos" => colisiona con C9_CITY_MISSING (_detect_credit_advance)
+    Con is_faq_bypass=True, el Juez DEBE aprobar sin exigir precio ni imagen.
+    """
+    from app.services.judge_service import JudgeService
+
+    judge = JudgeService()
+
+    # Caso 1: FAQ con "Sport" (colision historica con TVS Sport en _mentions_bike)
+    faq_sport_collision = (
+        "Nuestros asesores de soporte te pueden ayudar con los Sport de credito disponibles."
+    )
+    result_sport = await judge.analyze_response(
+        user_input="Como me pueden ayudar?",
+        ai_response=faq_sport_collision,
+        catalog_context="",
+        prospect_data={"habeas_data_accepted": True},
+        history=[],
+        is_faq_bypass=True
+    )
+    is_approved_sport, reason_sport = result_sport
+    assert is_approved_sport is True, (
+        f"C1_VISUAL_LOCK falso positivo detectado con is_faq_bypass=True. "
+        f"Motivo: {reason_sport}"
+    )
+
+    # Caso 2: FAQ con "requisitos" (colision historica con C9_CITY_MISSING)
+    faq_requisitos_collision = (
+        "Nuestros requisitos de soporte para credito no exigen codeudor."
+    )
+    result_req = await judge.analyze_response(
+        user_input="cuales son los requisitos?",
+        ai_response=faq_requisitos_collision,
+        catalog_context="",
+        prospect_data={"habeas_data_accepted": True},
+        history=[],
+        is_faq_bypass=True
+    )
+    is_approved_req, reason_req = result_req
+    assert is_approved_req is True, (
+        f"C9_CITY_MISSING falso positivo detectado con is_faq_bypass=True. "
+        f"Motivo: {reason_req}"
+    )
+
+    # Caso 3: C3_HABEAS_DATA_VIOLATION SIGUE activo con bypass activo
+    # (el bypass NO debe desactivar guardrails de seguridad de datos personales)
+    faq_profiling_attempt = (
+        "Cuanto ganas mensualmente? Eres independiente o empleado?"
+    )
+    result_profiling = await judge.analyze_response(
+        user_input="quiero credito",
+        ai_response=faq_profiling_attempt,
+        catalog_context="",
+        prospect_data={"habeas_data_accepted": False},
+        history=[],
+        is_faq_bypass=True
+    )
+    is_approved_profiling, reason_profiling = result_profiling
+    assert is_approved_profiling is False, (
+        "C3_HABEAS_DATA_VIOLATION debio detectar perfilamiento financiero "
+        "incluso con is_faq_bypass=True."
+    )
+    assert "C3_HABEAS_DATA_VIOLATION" in reason_profiling
+
+
+# ─── Test 2: Integracion del Flujo de Mensajeria ─────────────────────────────
+
+@pytest.mark.asyncio
+async def test_router_faq_bypass_propagation_to_judge():
+    """
+    BOT-BRAIN-FAQ-ROOT-CAUSE-HUNT-147 — Test de Integracion:
+    Valida que cuando run_checker detecta bypass_strict=True (FAQ pura sin
+    moto_interest en CRM), el flag is_faq_bypass=True se propaga sincronamente
+    hacia la llamada de auditoria de judge_service.analyze_response.
+
+    Simula la logica del handler de mensajes sin levantar el servidor completo.
+    """
+    from app.services.agentic_loop_service import AgenticOrchestrator
+
+    orchestrator = AgenticOrchestrator()
+
+    # Respuesta de FAQ pura: contiene "Sport" pero NO es nombre de modelo completo
+    faq_response = "Nuestro equipo de soporte te ayuda de lunes a viernes."
+    faq_user_prompt = "cual es el horario de soporte?"
+
+    prospect_without_moto_interest = {
+        "nombre": "Maria",
+        "ciudad": "Bogota",
+        # Sin "moto_interest" => bypass debe activarse
+    }
+
+    # Paso 1: run_checker detecta bypass
+    pcc_result = orchestrator.run_checker(
+        faq_response,
+        is_catalog_query=False,  # Sin keywords de especificaciones tecnicas
+        prospect_data=prospect_without_moto_interest,
+        user_prompt=faq_user_prompt
+    )
+    assert pcc_result["success"] is True, "run_checker debio aprobar la FAQ pura."
+    assert pcc_result.get("bypass_strict") is True, (
+        "run_checker debio emitir bypass_strict=True para FAQ sin moto_interest."
+    )
+
+    # Paso 2: El flag se extrae correctamente (logica del router)
+    _is_faq_bypass = bool(pcc_result.get("bypass_strict", False))
+    assert _is_faq_bypass is True, "El flag is_faq_bypass debio ser True."
+
+    # Paso 3: El Juez recibe el flag y no genera falsos positivos C1/C9
+    from app.services.judge_service import JudgeService
+    judge = JudgeService()
+
+    is_approved, rejection_reason = await judge.analyze_response(
+        user_input=faq_user_prompt,
+        ai_response=faq_response,
+        catalog_context="",
+        prospect_data=prospect_without_moto_interest,
+        history=[],
+        is_faq_bypass=_is_faq_bypass
+    )
+
+    assert is_approved is True, (
+        f"El Juez debio aprobar la FAQ pura con is_faq_bypass=True. "
+        f"Motivo de rechazo: {rejection_reason}"
+    )
+    assert rejection_reason == "", (
+        f"No debio haber motivo de rechazo. Recibido: '{rejection_reason}'"
+    )
+
+    # Paso 4: Con moto_interest en CRM, el bypass NO se activa para catalog queries
+    prospect_with_moto_interest = {
+        "nombre": "Carlos",
+        "ciudad": "Medellin",
+        "moto_interest": "TVS Raider 125",
+    }
+    pcc_result_strict = orchestrator.run_checker(
+        "Los requisitos para financiacion son minimos.",
+        is_catalog_query=True,
+        prospect_data=prospect_with_moto_interest,
+        user_prompt="cuales son los requisitos?"
+    )
+    # Con moto_interest activo + is_catalog_query=True sin precio/imagen => fallo esperado
+    assert pcc_result_strict.get("bypass_strict") is not True, (
+        "Con moto_interest activo, el bypass NO debe activarse sobre is_catalog_query=True."
+    )
+

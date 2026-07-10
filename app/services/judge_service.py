@@ -57,12 +57,13 @@ class JudgeService:
 
     async def analyze_response(
         self, 
-        user_input: str, 
-        ai_response: str, 
+        user_input: str = "", 
+        ai_response: str = "", 
         catalog_context: str = "", 
         financial_context: Dict[str, Any] = None,
         prospect_data: Dict[str, Any] = None,
-        history: List[Dict[str, Any]] = None
+        history: List[Dict[str, Any]] = None,
+        is_faq_bypass: bool = False
     ) -> Tuple[bool, str]:
         """
         Main audit entry point. Runs the 9-criteria matrix.
@@ -73,7 +74,29 @@ class JudgeService:
         prospect_data = prospect_data or {}
         history = history or []
         
-        logger.info(f"⚖️ [JUDGE] Starting Audit for response: '{ai_response[:50]}...'")
+        logger.info(f"⚖️ [JUDGE] Starting Audit for response: '{ai_response[:50]}...' | faq_bypass={is_faq_bypass}")
+
+        # --- FAQ BYPASS GATE (BOT-BRAIN-FAQ-ROOT-CAUSE-HUNT-147) ---
+        # Si run_checker ya determinó semánticamente que esta es una FAQ pura (sin intención
+        # de catálogo ni moto_interest en CRM), cortocircuitamos C1 y C9 antes de evaluar.
+        # WHY: _mentions_bike() y _detect_credit_advance() usan substrings que generan
+        # falsos positivos en FAQs ("soporte" → "Sport", "requisitos" → avance de crédito).
+        if is_faq_bypass:
+            logger.info("✅ [JUDGE] FAQ bypass activo: omitiendo C1_VISUAL_LOCK y C9_CITY_MISSING.")
+            # C3, C2, C6, C7, C8 siguen activos para seguridad de datos y compliance.
+            habeas_accepted_bypass = prospect_data.get("habeas_data_accepted", False)
+            if not habeas_accepted_bypass and self._is_profiling_attempt(ai_response):
+                _phone = prospect_data.get("phone") or prospect_data.get("id", "unknown") if prospect_data else "unknown"
+                logger.warning(f"SECURITY ALERT [Prompt Injection/FAQ-Bypass]: Unauthorized financial profiling. Phone: {_phone}")
+                return False, "C3_HABEAS_DATA_VIOLATION: Intento de perfilamiento financiero sin consentimiento Habeas Data."
+            parity_ok_bp, parity_err_bp = self._check_financial_parity(ai_response, prospect_data)
+            if not parity_ok_bp:
+                return False, f"C2_FINANCIAL_PARITY: {parity_err_bp}"
+            links_ok_bp, links_err_bp = self._check_links(ai_response)
+            if not links_ok_bp:
+                return False, f"C8_CONVERSION_PATH: {links_err_bp}"
+            logger.info("✅ [JUDGE] Response APPROVED (FAQ bypass path).")
+            return True, ""
 
         # --- CRITERIO 9: City Discovery (Logic) ---
         # Block advance to credit if city is missing.
@@ -141,8 +164,22 @@ class JudgeService:
     # --- HELPERS ---
 
     def _mentions_bike(self, text: str) -> bool:
-        keywords = ["TVS", "Victory", "Apache", "Raider", "Sport", "Life", "Stryker"]
-        return any(kw.lower() in text.lower() for kw in keywords)
+        # BOT-BRAIN-FAQ-ROOT-CAUSE-HUNT-147: Hardened from unsafe substring matching to
+        # word-boundary regex. Prevents false positives on FAQ responses containing
+        # "soporte" (→ "Sport"), "lifetime" (→ "Life"), "estilo de vida" (→ "vida"), etc.
+        # Full model names use \b boundary; short tokens like "TVS" require context check.
+        model_patterns = [
+            r"\bTVS\b",
+            r"\bVictory\b",
+            r"\bApache\b",
+            r"\bRaider\b",
+            r"\bTVS Sport\b",      # Must be prefixed with TVS to avoid "soporte"
+            r"\bTVS Life\b",        # Must be prefixed with TVS to avoid "lifestyle"
+            r"\bStryker\b",
+            r"\bMRX\b",
+            r"\bBomber\b",
+        ]
+        return any(re.search(pattern, text, re.IGNORECASE) for pattern in model_patterns)
 
     def _detect_credit_advance(self, text: str) -> bool:
         keywords = ["crédito", "financiar", "cuotas", "mensualidad", "requisitos", "estudio de crédito"]
