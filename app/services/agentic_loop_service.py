@@ -70,6 +70,8 @@ class AgenticOrchestrator:
         bypass_strict = (not is_catalog_query) or (is_faq_intent and not has_moto_interest)
 
         if bypass_strict:
+            # En bypass de FAQ abstracta sin moto de interés asignada,
+            # no exigimos precio, imagen, ni tampoco el prefijo Ficha Tecnica.
             return {"success": True, "report": {}}
         else:
             if not (has_price and has_image and has_ficha):
