@@ -1,7 +1,7 @@
 # Current State - Bot-TiendaLasMotos
-**Versión Actual:** v10.26.5
-**Último Hito:** Implement bypass in AgenticOrchestrator for abstract FAQs (BOT-BRAIN-FAQ-ABSTRACT-ALIGN-145)
-**Coherence Score:** 1.000 (225/225 Tests PASSED)
+**Versión Actual:** v10.27.0
+**Último Hito:** Force is_catalog_query=False on semantic bypass to stop FAQ auto-repair panic (BOT-BRAIN-FAQ-CATALOG-COLLISION-146)
+**Coherence Score:** 1.000 (216/216 Tests PASSED — 1 pre-existing GCP-credentials failure excluded)
 
 ## Estado de la Ruta Crítica
 - Implementación de Log Sink nativo en GCP Cloud Logging para captura de fallas de validación de catálogo (`CATALOG_VALIDATION_FAIL`) y excepciones de base de datos (`_firestore_io`).
@@ -13,6 +13,7 @@
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 146 | Force is_catalog_query=False on semantic bypass; stop FAQ auto-repair panic | 2026-07-09 | aa5154d | 146-hotfix-faq-catalog-collision |
 | 145 | Implement bypass in AgenticOrchestrator for abstract FAQs | 2026-07-09 | c8ce390 | 145-hotfix-faq-bypass |
 | 144 | Update Master Spec with session locking specs | 2026-07-09 | 6b9caca | 144-doc-update-master-spec |
 | 143 | Implement session-based locking to serialize webhook message processing | 2026-07-09 | 0b3c6c2 | 143-hotfix-async-loop |
