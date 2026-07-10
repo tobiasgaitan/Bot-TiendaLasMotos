@@ -688,6 +688,16 @@ class CerebroIA:
                         )
                         return final_text
                 else:
+                    # BOT-BRAIN-FAQ-CATALOG-COLLISION-146: Si run_checker determinó un bypass semántico
+                    # (FAQ pura sin moto_interest en CRM), forzar is_catalog_query=False de forma síncrona
+                    # para impedir que el supervisor de formato penalice FAQs abstractas en sucesivos ciclos.
+                    if validation.get("bypass_strict"):
+                        is_catalog_query = False
+                        user_id = prospect_data.get("phone") or prospect_data.get("id", "unknown") if prospect_data else "unknown"
+                        logger.info(
+                            f"✅ [PCC BYPASS] Semantic bypass exitoso: FAQ intent sin moto_interest en CRM. "
+                            f"is_catalog_query forzado a False. user_id={user_id} query='{texto}'"
+                        )
                     return final_text
             else:
                 return final_text

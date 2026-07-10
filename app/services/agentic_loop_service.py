@@ -72,7 +72,9 @@ class AgenticOrchestrator:
         if bypass_strict:
             # En bypass de FAQ abstracta sin moto de interés asignada,
             # no exigimos precio, imagen, ni tampoco el prefijo Ficha Tecnica.
-            return {"success": True, "report": {}}
+            # EXPOSE bypass_strict=True para que ai_brain.py pueda forzar
+            # is_catalog_query=False y cortar el retry loop sincrónicamente.
+            return {"success": True, "bypass_strict": True, "report": {}}
         else:
             if not (has_price and has_image and has_ficha):
                 report = {
