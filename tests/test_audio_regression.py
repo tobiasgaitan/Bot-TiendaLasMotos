@@ -149,7 +149,7 @@ async def test_audio_service_live_integration():
     fallos gRPC de Google o DefaultCredentialsError, aplicando la Regla de Oro Forense.
     """
     from google.auth.exceptions import DefaultCredentialsError
-    from google.genai.errors import APIError
+    from google.genai.errors import APIError, ClientError
     from app.services.audio_service import AudioService
     import logging
 
@@ -171,14 +171,20 @@ async def test_audio_service_live_integration():
         
     except DefaultCredentialsError as e:
         logger.exception("❌ [INTEGRATION TEST] Se capturó un fallo de credenciales predeterminadas (DefaultCredentialsError)")
-        # El test pasa porque el fallo de credenciales es capturado explícitamente y esperado en entornos sin configurar
-        assert True
+        raise e
+    except ClientError as e:
+        logger.exception("❌ [INTEGRATION TEST] Se capturó un ClientError del SDK de Google GenAI")
+        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+            logger.error(f"Response Body: {e.response.text}")
+        raise e
     except APIError as e:
         logger.exception("❌ [INTEGRATION TEST] Se capturó un fallo de API/gRPC de Google (APIError)")
         if hasattr(e, 'response') and hasattr(e.response, 'text'):
             logger.error(f"Response Body: {e.response.text}")
-        # El test pasa porque el fallo del API es capturado explícitamente y esperado
-        assert True
+        raise e
+    except ValueError as e:
+        logger.exception("❌ [INTEGRATION TEST] Se capturó un ValueError")
+        raise e
     except Exception as e:
         logger.exception("❌ [INTEGRATION TEST] Se capturó una excepción inesperada")
         if hasattr(e, 'response') and hasattr(e.response, 'text'):

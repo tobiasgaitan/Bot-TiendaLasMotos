@@ -39,14 +39,35 @@ class AudioService:
         
         if GENAI_AVAILABLE:
             try:
-                # Gemini 1.5/2.0 Flash is effective for audio
-                self.client = genai.Client(
-                    vertexai=True,
-                    project=os.getenv("GOOGLE_CLOUD_PROJECT", "tiendali_las_motos"),
-                    location="us-central1"
-                )
-                self._model_id = "gemini-2.0-flash"
-                logger.info(f"🎤 AudioService initialized with {self._model_id} via google-genai")
+                # Check for Gemini API key first to use Developer API
+                api_key = os.getenv("GEMINI_API_KEY")
+                use_vertex = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "false").lower() in ("true", "1")
+                
+                # Check for Google Cloud Application Default Credentials (ADC)
+                import google.auth
+                from google.auth.exceptions import DefaultCredentialsError
+                
+                credentials, project = None, None
+                try:
+                    credentials, project = google.auth.default()
+                except DefaultCredentialsError:
+                    pass
+                
+                project = os.getenv("GOOGLE_CLOUD_PROJECT", project or "tiendali_las_motos")
+                
+                if api_key and not use_vertex:
+                    self.client = genai.Client(api_key=api_key)
+                    self._model_id = "gemini-2.0-flash"
+                    logger.info(f"🎤 AudioService initialized with {self._model_id} via Gemini Developer API (API Key)")
+                else:
+                    self.client = genai.Client(
+                        vertexai=True,
+                        project=project,
+                        location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                        credentials=credentials
+                    )
+                    self._model_id = "gemini-2.0-flash"
+                    logger.info(f"🎤 AudioService initialized with {self._model_id} via google-genai (Vertex AI + Explicit ADC)")
             except (DefaultCredentialsError, APIError) as e:
                 logger.exception("❌ Error de credenciales o API gRPC al inicializar el cliente de AudioService")
                 if hasattr(e, 'response') and hasattr(e.response, 'text'):
