@@ -145,48 +145,54 @@ async def test_audio_regression_last_bot_question_injection():
 async def test_audio_service_live_integration():
     """
     Test de Integración Desacoplado (Live/Integration Test)
-    Intenta instanciar AudioService de forma nativa y capturar específicamente
-    fallos gRPC de Google o DefaultCredentialsError, aplicando la Regla de Oro Forense.
+    Intenta instanciar AudioService de forma nativa en ambos canales de autenticación
+    (API Key y Vertex AI) y valida aserciones rígidas sobre el model_id unificado,
+    mientras simula las llamadas a la API de Google de forma segura.
     """
     from google.auth.exceptions import DefaultCredentialsError
     from google.genai.errors import APIError, ClientError
     from app.services.audio_service import AudioService
+    from unittest.mock import patch, MagicMock
     import logging
+    import os
 
     logger = logging.getLogger("tests.test_audio_regression")
 
-    try:
-        # Instancia nativa de AudioService
+    # 1. Canal 1: API Key
+    logger.info("Testing AudioService initialization via API Key channel...")
+    mock_client_instance = MagicMock()
+    mock_client_instance.models.list.return_value = [MagicMock()]
+    
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_api_key", "GOOGLE_GENAI_USE_VERTEXAI": "false"}), \
+         patch("app.services.audio_service.genai.Client", return_value=mock_client_instance) as mock_client_cls:
+        
         service = AudioService()
+        assert service._model_id == "gemini-2.5-flash", "model_id no coincide con la constante unificada en el canal de API Key"
         
-        # Intentamos una llamada de red de bajo nivel (por ejemplo, listar modelos)
-        # para forzar la validación de credenciales reales y conexión con el API de Google.
-        if not hasattr(service, 'client') or service.client is None:
-             raise DefaultCredentialsError("El cliente google-genai no se pudo inicializar en AudioService (credenciales faltantes).")
-             
-        logger.info("📡 Iniciando llamada de integración de red real en test...")
+        # Validar la llamada simulada
         models = list(service.client.models.list())
-        logger.info(f"✅ Conexión de integración exitosa. Modelos encontrados: {len(models)}")
         assert len(models) > 0
+        mock_client_cls.assert_called_once_with(api_key="fake_api_key")
+
+    # 2. Canal 2: Vertex AI
+    logger.info("Testing AudioService initialization via Vertex AI channel...")
+    mock_client_instance_vertex = MagicMock()
+    mock_client_instance_vertex.models.list.return_value = [MagicMock()]
+    mock_creds = MagicMock()
+    
+    with patch.dict(os.environ, {"GOOGLE_GENAI_USE_VERTEXAI": "true", "GOOGLE_CLOUD_PROJECT": "test-project", "GOOGLE_CLOUD_LOCATION": "us-central1"}), \
+         patch("google.auth.default", return_value=(mock_creds, "test-project")), \
+         patch("app.services.audio_service.genai.Client", return_value=mock_client_instance_vertex) as mock_client_cls_vertex:
         
-    except DefaultCredentialsError as e:
-        logger.exception("❌ [INTEGRATION TEST] Se capturó un fallo de credenciales predeterminadas (DefaultCredentialsError)")
-        raise e
-    except ClientError as e:
-        logger.exception("❌ [INTEGRATION TEST] Se capturó un ClientError del SDK de Google GenAI")
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
-            logger.error(f"Response Body: {e.response.text}")
-        raise e
-    except APIError as e:
-        logger.exception("❌ [INTEGRATION TEST] Se capturó un fallo de API/gRPC de Google (APIError)")
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
-            logger.error(f"Response Body: {e.response.text}")
-        raise e
-    except ValueError as e:
-        logger.exception("❌ [INTEGRATION TEST] Se capturó un ValueError")
-        raise e
-    except Exception as e:
-        logger.exception("❌ [INTEGRATION TEST] Se capturó una excepción inesperada")
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
-            logger.error(f"Response Body: {e.response.text}")
-        raise e
+        service_vertex = AudioService()
+        assert service_vertex._model_id == "gemini-2.5-flash", "model_id no coincide con la constante unificada en el canal de Vertex AI"
+        
+        # Validar la llamada simulada
+        models = list(service_vertex.client.models.list())
+        assert len(models) > 0
+        mock_client_cls_vertex.assert_called_once_with(
+            vertexai=True,
+            project="test-project",
+            location="us-central1",
+            credentials=mock_creds
+        )

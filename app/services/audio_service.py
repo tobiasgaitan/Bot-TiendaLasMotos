@@ -57,7 +57,7 @@ class AudioService:
                 
                 if api_key and not use_vertex:
                     self.client = genai.Client(api_key=api_key)
-                    self._model_id = "gemini-2.0-flash"
+                    self._model_id = "gemini-2.5-flash"
                     logger.info(f"🎤 AudioService initialized with {self._model_id} via Gemini Developer API (API Key)")
                 else:
                     self.client = genai.Client(
@@ -66,7 +66,7 @@ class AudioService:
                         location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
                         credentials=credentials
                     )
-                    self._model_id = "gemini-2.0-flash"
+                    self._model_id = "gemini-2.5-flash"
                     logger.info(f"🎤 AudioService initialized with {self._model_id} via google-genai (Vertex AI + Explicit ADC)")
             except (DefaultCredentialsError, APIError) as e:
                 logger.exception("❌ Error de credenciales o API gRPC al inicializar el cliente de AudioService")
