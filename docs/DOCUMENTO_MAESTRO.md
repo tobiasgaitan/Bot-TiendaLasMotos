@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.26.6)
-Versión: v10.26.6 (Session Locks for Webhook Concurrency)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.26.7)
+Versión: v10.26.7 (Audio last_bot_question Injection Fix)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Implementar control de concurrencia mediante Locks de Sesión asíncronos en el enrutador de WhatsApp, mitigando de forma permanente las condiciones de carrera (Race Conditions) en la Matriz de Perfilamiento Estricta. Cierre de ticket [BOT-ROUTER-ASYNC-LOOP-120].
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 223/223 Tests PASSED)
+Último Hito: Corregir la regresión en el procesamiento de audios en whatsapp.py mediante la extracción de last_bot_question desde el historial e inyección en generate_and_update_summary, evitando payloads vacíos y colisiones en hilos. Cierre de ticket [BOT-BUGFIX-AUDIO-REGRESSION-121].
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 229/229 Tests PASSED)
 
 
 1. Contexto y Persona (Juan Pablo)
@@ -110,5 +110,4 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.22.17] Cierre de ticket BOT-PERF-IDENTITY-TAG-FIX-116 (Credit Score Copywriting Alignment). Modificación quirúrgica en 'app/core/personality.json' y 'app/core/prompts.py' para integrar las 4 reglas duras de evaluación por score crediticio dentro de '<MATRIZ_DE_PERFILAMIENTO_ESTRICTA>', reemplazando la línea simplificada de 'CIERRE' para alinearse exactamente con Firestore. Coherence Score: 1.000 (217/217 Tests PASSED).
 - [v10.25.0] Cierre de ticket BOT-ROUTER-REGRESSION-FIX-119 (Isolate Reaction Interceptor). Aislamiento total de la lógica de aceptación de Habeas Data basada en reacciones de WhatsApp (emoji 👍) en un bloque exclusivo para el tipo 'reaction', asegurando que los mensajes de texto ordinarios sigan el flujo sin mutaciones de prospect_data y conserven la coincidencia fonética fuzzy de difflib. Coherence Score: 1.000 (220/220 Tests PASSED).
 - [v10.26.6] Cierre de ticket BOT-ROUTER-ASYNC-LOOP-120 (Session Locks for Webhook Concurrency). Implementación de control de concurrencia mediante Locks de Sesión asíncronos (`_session_locks` utilizando `asyncio.Lock`) para cada número telefónico canónico E.164 en `app/routers/whatsapp.py`. Este mecanismo garantiza que el procesamiento de webhooks entrantes para el mismo usuario se ejecute secuencialmente, asegurando que la persistencia en Firestore mediante `generate_and_update_summary` se complete mediante `await` estricto antes de despachar respuestas o procesar nuevos eventos. Coherence Score: 1.000 (223/223 Tests PASSED).
-
-
+- [v10.26.7] Cierre de ticket BOT-BUGFIX-AUDIO-REGRESSION-121 (Audio last_bot_question Injection Fix). Corrección de la regresión en el procesamiento de audios en `app/routers/whatsapp.py` mediante la extracción de `last_bot_question` desde el historial de conversación e inyección en `generate_and_update_summary`, evitando payloads vacíos, roturas en la persistencia semántica y colisiones en hilos que derivan en respuestas HTTP 503. Coherence Score: 1.000 (229/229 Tests PASSED).
