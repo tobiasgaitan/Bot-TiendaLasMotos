@@ -20,10 +20,13 @@ try:
     from google import genai
     from google.genai import types
     from google.genai.errors import APIError
+    from google.auth.exceptions import DefaultCredentialsError
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
-    logger.warning("⚠️ google-genai not available for Audio Service.")
+    class APIError(Exception): pass
+    class DefaultCredentialsError(Exception): pass
+    logger.warning("⚠️ google-genai or google-auth not available for Audio Service.")
 
 class AudioService:
     """
@@ -44,8 +47,16 @@ class AudioService:
                 )
                 self._model_id = "gemini-2.0-flash"
                 logger.info(f"🎤 AudioService initialized with {self._model_id} via google-genai")
+            except (DefaultCredentialsError, APIError) as e:
+                logger.exception("❌ Error de credenciales o API gRPC al inicializar el cliente de AudioService")
+                if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                    logger.error(f"Response Body: {e.response.text}")
+                raise e
             except Exception as e:
-                logger.error(f"❌ AudioService init error: {e}")
+                logger.exception("❌ Error inesperado al inicializar AudioService")
+                if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                    logger.error(f"Response Body: {e.response.text}")
+                raise e
 
     async def _call_gemini_with_retry_async(self, func, *args, **kwargs):
         """
@@ -103,9 +114,16 @@ class AudioService:
                 
             return text_out
             
+        except (DefaultCredentialsError, APIError) as e:
+            logger.exception("❌ Error de credenciales o API gRPC en la transcripción de audio")
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                logger.error(f"Response Body: {e.response.text}")
+            raise e
         except Exception as e:
-            logger.error(f"❌ Error transcribing audio with AI: {e}")
-            return ""
+            logger.exception("❌ Error inesperado al transcribir el audio con la IA")
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                logger.error(f"Response Body: {e.response.text}")
+            raise e
         finally:
             # Cleanup
             if mp3_path and os.path.exists(mp3_path):
@@ -151,4 +169,47 @@ class AudioService:
              personality = self._config_loader.get_juan_pablo_personality()
              return personality.get("system_instruction", "")
         return "You are Juan Pablo, a professional and agile motorcycle expert in Colombia. Respond in Spanish, be helpful and formal but dynamic."
+
+    @classmethod
+    def test_integration(cls):
+        """
+        Test de integración desacoplado para ejecutar desde CLI.
+        Instancia de forma nativa AudioService y realiza una petición a Gemini
+        para forzar la resolución de credenciales y validar fallos de gRPC o de credenciales.
+        """
+        import os
+        from google.auth.exceptions import DefaultCredentialsError
+        from google.genai.errors import APIError
+        
+        logger.info("🎤 Iniciando prueba de integración desacoplada nativa para AudioService...")
+        
+        # Validar disponibilidad de la librería
+        if not GENAI_AVAILABLE:
+            raise ImportError("La librería 'google-genai' no está disponible.")
+            
+        try:
+            service = cls()
+            if not hasattr(service, 'client') or service.client is None:
+                raise ValueError("El cliente google-genai no se pudo inicializar en AudioService.")
+            
+            logger.info("📡 Ejecutando llamada real de integración (listar modelos) para verificar credenciales...")
+            # Una llamada simple para forzar resolución de credenciales contra Google Cloud
+            # Si las credenciales no existen, lanzará DefaultCredentialsError o APIError de gRPC
+            models = list(service.client.models.list())
+            logger.info(f"✅ Integración exitosa. Modelos disponibles encontrados: {len(models)}")
+            return True
+            
+        except DefaultCredentialsError as e:
+            logger.exception("❌ [FORENSIC] Error de credenciales predeterminadas de Google (DefaultCredentialsError)")
+            raise e
+        except APIError as e:
+            logger.exception("❌ [FORENSIC] Error de API / gRPC de Google (APIError)")
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                logger.error(f"Cuerpo de respuesta del API: {e.response.text}")
+            raise e
+        except Exception as e:
+            logger.exception("❌ [FORENSIC] Error inesperado en la prueba de integración de AudioService")
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                logger.error(f"Cuerpo de respuesta: {e.response.text}")
+            raise e
 
