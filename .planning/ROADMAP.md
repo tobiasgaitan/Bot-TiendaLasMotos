@@ -51,3 +51,4 @@
 
 ## Próximos Pasos
 - [ ] Validación en producción (GCP Live Logs) del flujo completo post-reset con telemetría Langfuse end-to-end.
+- [x] BOT-QA-GATE-110: Observabilidad Langfuse - Certificada (v10.26.6)
