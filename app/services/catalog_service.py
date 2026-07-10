@@ -554,6 +554,20 @@ class CatalogService:
             if ratio > 0.6: # Reasonable similarity threshold
                 score += ratio * 60
 
+            # --- FUZZY IDENTITY ESCALATION (BOT-PERF-IDENTITY-CALIBRATION-122) ---
+            # Why: The ratio calculated above was completely isolated from the name_match flag.
+            # A query like "rider" → "Raider" yields ratio ~0.83–0.91 (≥0.85) but name_match
+            # stayed False, blocking the +20,000 identity boost in _apply_scoring_adaptor.
+            # Fix: Dynamically promote name_match = True when the overall name ratio exceeds
+            # the open phonetic threshold (0.85), making organic identity detection automatic
+            # without injecting manual aliases into the spelling_map.
+            if ratio >= 0.85 and not name_match:
+                name_match = True
+                logger.debug(
+                    f"🧬 FUZZY IDENTITY ESCALATION: ratio={ratio:.3f} >= 0.85 "
+                    f"→ name_match promoted for '{item.get('name', '')}'"
+                )
+
             # --- CAPA DE ADAPTADOR: Intent Scoring Bonus (1.5x) ---
             # Why: Apply a 50% multiplier if the query matches category tags or aliases
             # while protecting "identity" searches (exact name match).

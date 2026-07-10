@@ -83,5 +83,41 @@ class TestCatalogFuzzy(unittest.TestCase):
         text_output = self.service.search_catalog("rayder")
         self.assertIn("TVS Raider 125", text_output)
 
+    def test_fuzzy_identity_escalation_rider(self):
+        """
+        [BOT-PERF-IDENTITY-CALIBRATION-122] RIGID ASSERTION — Fuzzy Identity Escalation.
+        
+        Validates that searching "rider" (missing 'a', common colloquial variation)
+        triggers the FUZZY IDENTITY ESCALATION path (ratio >= 0.85 → name_match = True)
+        and returns TVS Raider 125 as the first result.
+        
+        Without the fix, ratio ~ 0.91 would only add ratio*60 score points but
+        name_match would stay False, blocking the critical +20,000 identity boost
+        in _apply_scoring_adaptor Tier 1.
+        """
+        results = self.service.search_items("rider")
+        # RIGID: Must return at least one result
+        self.assertTrue(len(results) > 0, "search_items('rider') returned no results — escalación de identidad fallida")
+        # RIGID: First result MUST be the Raider (identity match, not a random fuzzy result)
+        self.assertEqual(
+            results[0]["name"], "TVS Raider 125",
+            f"Expected 'TVS Raider 125' as top result for 'rider', got '{results[0]['name']}'. "
+            "Fuzzy Identity Escalation (+20,000 boost) is NOT firing correctly."
+        )
+
+    def test_fuzzy_identity_escalation_raidr(self):
+        """
+        [BOT-PERF-IDENTITY-CALIBRATION-122] Cobertura fonética adicional.
+        
+        Validates "raidr" (previously handled only in spelling_map but without
+        a guarantee of the +20,000 identity boost). Ratio >= 0.85 path must fire.
+        """
+        results = self.service.search_items("raidr")
+        self.assertTrue(len(results) > 0, "search_items('raidr') returned no results")
+        self.assertEqual(
+            results[0]["name"], "TVS Raider 125",
+            f"Expected 'TVS Raider 125' as top result for 'raidr', got '{results[0]['name']}'"
+        )
+
 if __name__ == '__main__':
     unittest.main()
