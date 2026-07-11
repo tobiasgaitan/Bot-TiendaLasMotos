@@ -530,7 +530,7 @@ class MemoryService:
             # de Langfuse para garantizar observabilidad end-to-end. El import lazy
             # previene ImportError si Langfuse no está configurado en el entorno.
             try:
-                from langfuse.decorators import langfuse_context
+                from app.utils.observability import langfuse_context
                 langfuse_context.update_current_observation(
                     metadata={"update_last_interaction": phone_number, "idempotent": True}
                 )

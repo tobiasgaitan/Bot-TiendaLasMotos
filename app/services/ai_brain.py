@@ -27,58 +27,17 @@ except ImportError:
     SDK_AVAILABLE = False
     logger.warning("⚠️  google-genai SDK not available, using fallback responses")
 
-# [BOT-TRACE-201] Langfuse Observability — optional, graceful degradation
-# WHY: Langfuse keys may not be set in local dev. The guard ensures the app
-# boots and operates normally even without observability configured.
-import sys
-import types as py_types
+# [BOT-TRACE-201] Langfuse Observability
+from app.utils.observability import observe, langfuse_context, LANGFUSE_AVAILABLE
 
-try:
-    from langfuse import observe
-    LANGFUSE_AVAILABLE = True
-    logger.info("🔭 [LANGFUSE] Observability context initialized.")
-except Exception as _lf_err:
-    LANGFUSE_AVAILABLE = False
-    logger.warning(f"⚠️ [LANGFUSE] Observability disabled: {_lf_err}")
-    
-    # Provide no-op fallback
-    def observe(*args, **kwargs):
-        def decorator(fn): return fn
-        return args[0] if args and callable(args[0]) else decorator
 
+# Unused class kept for backward compatibility with tests/test_trace_propagation.py
 class _LangfuseContextShim:
-    def update_current_trace(self, user_id=None, session_id=None, tags=None, metadata=None):
-        try:
-            from opentelemetry import trace
-            from langfuse._client.attributes import LangfuseOtelSpanAttributes
-            
-            span = trace.get_current_span()
-            if span is not None and span.is_recording():
-                if user_id is not None:
-                    span.set_attribute(LangfuseOtelSpanAttributes.TRACE_USER_ID, str(user_id)[:200])
-                if session_id is not None:
-                    span.set_attribute(LangfuseOtelSpanAttributes.TRACE_SESSION_ID, str(session_id)[:200])
-                if tags is not None:
-                    span.set_attribute(LangfuseOtelSpanAttributes.TRACE_TAGS, [str(t) for t in tags])
-                if metadata is not None:
-                    for k, v in metadata.items():
-                        span.set_attribute(f"{LangfuseOtelSpanAttributes.TRACE_METADATA}.{k}", str(v)[:200])
-        except Exception as e:
-            logger.warning(f"⚠️ [LANGFUSE_SHIM] Failed to update current trace: {e}")
+    def update_current_trace(self, **kwargs): pass
+    def update_current_observation(self, **kwargs): pass
+    def update_current_generation(self, **kwargs): pass
 
-    def update_current_observation(self, **kwargs):
-        pass
 
-    def update_current_generation(self, **kwargs):
-        pass
-
-langfuse_context = _LangfuseContextShim()
-
-# Inject into sys.modules to satisfy any inline imports of langfuse.decorators
-decorators_mock = py_types.ModuleType("langfuse.decorators")
-decorators_mock.observe = observe
-decorators_mock.langfuse_context = langfuse_context
-sys.modules["langfuse.decorators"] = decorators_mock
 
 EXTRACTION_SCHEMA = {
     "type": "OBJECT",

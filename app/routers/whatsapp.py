@@ -41,22 +41,16 @@ import app.services.memory_service as memory_service_module
 from app.services.config_service import config_service # [SSOT] Unified Config
 # Note: Access via memory_service_module.memory_service to get the updated instance
 
-# --- LANGFUSE OBSERVABILITY (Graceful Fallback & Context Sharing) ---
+# --- LANGFUSE OBSERVABILITY ---
+from app.utils.observability import observe, langfuse_context
+
+# Unused class kept for backward compatibility with tests/test_trace_propagation.py
 class _LangfuseContextShim:
     def update_current_trace(self, **kwargs): pass
     def update_current_observation(self, **kwargs): pass
     def update_current_generation(self, **kwargs): pass
 
-try:
-    from langfuse.decorators import observe, langfuse_context
-except Exception:
-    def observe(*args, **kwargs):
-        def decorator(fn):
-            return fn
-        if args and callable(args[0]):
-            return args[0]
-        return decorator
-    langfuse_context = _LangfuseContextShim()
+
 
 
 logger = logging.getLogger(__name__)
