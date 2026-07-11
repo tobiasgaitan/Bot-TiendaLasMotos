@@ -337,6 +337,83 @@ class CatalogService:
         t = t.replace("rr", "r").replace("cc", "c")
         return t
 
+    def normalize_transcription(self, transcription: str) -> str:
+        """
+        [BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124] Sanitiza y alinea la transcripción de audio
+        utilizando las llaves de búsqueda y mapa de errores tipográficos para evitar desalineación
+        en el Juez y PCC.
+        """
+        if not transcription:
+            return transcription
+            
+        spelling_map = {
+            "meo": "neo",
+            "rayder": "raider",
+            "raydr": "raider",
+            "raidr": "raider",
+            "raiyder": "raider",
+            "rader": "raider",  # Nota de voz degradada
+            "boser": "boxer",
+        }
+        
+        words = transcription.split()
+        normalized_words = []
+        import difflib
+        
+        # Recopilar todos los tokens válidos del catálogo para comparación fuzzy
+        target_tokens = set()
+        for item in self._items:
+            target_tokens.update(item.get("search_tokens", []))
+            target_tokens.update(self._tokenize(item.get("name", "")))
+            
+        # Incluir marcas comunes y categorías
+        brands = {"tvs", "victory", "bajaj", "hero", "yamaha", "honda", "suzuki", "akt", "apache", "boxer", "raider", "neo", "sport"}
+        target_tokens.update(brands)
+        
+        # Stop words que no debemos reemplazar bajo ninguna circunstancia
+        stop_words = {"quiero", "una", "un", "moto", "motos", "busco", "la", "el", "de", "las", "los", "con", "en", "para", "y", "o", "tienen", "tienes", "tiene", "contas", "disponible", "venden", "precio", "valor", "cuanto", "cuesta", "vale"}
+        
+        for w in words:
+            # Remover puntuación solo para la comparación
+            clean_w = re.sub(r'[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]', '', w).lower()
+            if not clean_w or clean_w in stop_words or len(clean_w) < 3:
+                normalized_words.append(w)
+                continue
+                
+            # 1. Mapa tipográfico directo
+            if clean_w in spelling_map:
+                corrected = spelling_map[clean_w]
+                normalized_words.append(w.lower().replace(clean_w, corrected))
+                continue
+                
+            # 2. Normalización fonética
+            w_phone = self._phonetic_normalize(clean_w)
+            matched_token = None
+            for t in target_tokens:
+                if self._phonetic_normalize(t) == w_phone:
+                    matched_token = t
+                    break
+            if matched_token:
+                normalized_words.append(w.lower().replace(clean_w, matched_token))
+                continue
+                
+            # 3. SequenceMatcher (Umbral alto >= 0.8)
+            best_ratio = 0.0
+            best_match = None
+            for t in target_tokens:
+                if abs(len(t) - len(clean_w)) <= 2:
+                    ratio = difflib.SequenceMatcher(None, clean_w, t).ratio()
+                    if ratio > best_ratio:
+                        best_ratio = ratio
+                        best_match = t
+            
+            if best_ratio >= 0.8 and best_match:
+                normalized_words.append(w.lower().replace(clean_w, best_match))
+            else:
+                normalized_words.append(w)
+                
+        return " ".join(normalized_words)
+
     def _parse_specs(self, specs_input: Any) -> str:
         """
         Parse technical specifications into a single formatted string.
