@@ -295,5 +295,249 @@ class TestIdentityLegalGate(unittest.TestCase):
         # prospect_data debió actualizarse a True
         self.assertTrue(kwargs["prospect_data"]["habeas_data_accepted"])
 
+    @patch("app.routers.whatsapp.db")
+    @patch("app.routers.whatsapp.message_buffer")
+    @patch("app.routers.whatsapp.config_loader")
+    @patch("app.routers.whatsapp.catalog_service")
+    @patch("app.routers.whatsapp.config_service")
+    @patch("app.routers.whatsapp.judge_service")
+    @patch("app.routers.whatsapp.memory_service_module")
+    @patch("app.routers.whatsapp.CerebroIA")
+    @patch("app.routers.whatsapp.storage_service")
+    @patch("app.routers.whatsapp._send_whatsapp_message")
+    @patch("app.services.whatsapp_service.whatsapp_service")
+    def test_image_routing_legacy_moto_token(
+        self, mock_wa_service, mock_send_wa, mock_storage, mock_cerebro_class, 
+        mock_mem_module, mock_judge, mock_config_service, mock_catalog, 
+        mock_config_loader, mock_message_buffer, mock_db
+    ):
+        """
+        GIVEN: El prompt del motor de IA devuelve la respuesta heredada con "[MOTO_DETECTADA]"
+        WHEN: Se recibe y procesa el webhook de imagen en whatsapp.py
+        THEN: Se enruta al flujo de catálogo, sanitizando el token y llamando a CerebroIA.
+        """
+        import asyncio
+        from fastapi import BackgroundTasks
+        from app.routers.whatsapp import _handle_message_background
+        
+        msg_data = {
+            "from": "573192564288",
+            "id": "wamid.image_test_legacy",
+            "type": "image",
+            "image": {
+                "id": "image_media_123",
+                "mime_type": "image/jpeg",
+                "caption": ""
+            },
+            "phone_number_id": "1021779847693778"
+        }
+        background_tasks = BackgroundTasks()
+
+        mock_prospect_data = {
+            "exists": True,
+            "celular": "+573192564288",
+            "chatbot_status": "ACTIVE",
+            "status": "PENDING",
+            "source": "whatsapp_bot",
+            "habeas_data_accepted": True
+        }
+
+        mock_ms = AsyncMock()
+        mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+        mock_ms.create_prospect_if_missing = AsyncMock()
+        mock_ms.get_chat_history = AsyncMock(return_value=[])
+        mock_ms.save_message = AsyncMock()
+        mock_ms.generate_and_update_summary = AsyncMock()
+        mock_mem_module.memory_service = mock_ms
+
+        mock_storage.download_media = AsyncMock(return_value=b"fake_image_bytes")
+        
+        mock_vision_instance = AsyncMock()
+        mock_vision_instance.analyze_image = AsyncMock(return_value="[MOTO_DETECTADA] TVS Raider 125")
+        
+        with patch("app.routers.whatsapp.VisionService", return_value=mock_vision_instance):
+            mock_cerebro = AsyncMock()
+            mock_cerebro.pensar_respuesta = AsyncMock(return_value="Aquí tienes la TVS Raider 125")
+            mock_cerebro_class.return_value = mock_cerebro
+            
+            mock_message_buffer.add_message = AsyncMock(return_value=True)
+            mock_wa_service.mark_as_read = AsyncMock(return_value=True)
+            mock_send_wa.return_value = True
+
+            asyncio.run(_handle_message_background(msg_data, background_tasks))
+
+            mock_storage.download_media.assert_called_with("image_media_123")
+            mock_vision_instance.analyze_image.assert_called_once()
+            
+            mock_cerebro.pensar_respuesta.assert_called_once()
+            args, kwargs = mock_cerebro.pensar_respuesta.call_args
+            self.assertIn("TVS Raider 125", args[0])
+            self.assertNotIn("[MOTO_DETECTADA]", args[0])
+            
+            mock_send_wa.assert_called_with("+573192564288", "Aquí tienes la TVS Raider 125", phone_number_id="1021779847693778")
+
+    @patch("app.routers.whatsapp.db")
+    @patch("app.routers.whatsapp.message_buffer")
+    @patch("app.routers.whatsapp.config_loader")
+    @patch("app.routers.whatsapp.catalog_service")
+    @patch("app.routers.whatsapp.config_service")
+    @patch("app.routers.whatsapp.judge_service")
+    @patch("app.routers.whatsapp.memory_service_module")
+    @patch("app.routers.whatsapp.CerebroIA")
+    @patch("app.routers.whatsapp.storage_service")
+    @patch("app.routers.whatsapp._send_whatsapp_message")
+    @patch("app.services.whatsapp_service.whatsapp_service")
+    def test_image_routing_clean_moto_description(
+        self, mock_wa_service, mock_send_wa, mock_storage, mock_cerebro_class, 
+        mock_mem_module, mock_judge, mock_config_service, mock_catalog, 
+        mock_config_loader, mock_message_buffer, mock_db
+    ):
+        """
+        GIVEN: El prompt de la IA devuelve la respuesta sin el prefijo rígido heredado
+        WHEN: Se recibe y procesa el webhook de imagen en whatsapp.py
+        THEN: Se enruta exitosamente por defecto al flujo de catálogo y se sanitiza.
+        """
+        import asyncio
+        from fastapi import BackgroundTasks
+        from app.routers.whatsapp import _handle_message_background
+        
+        for raw_response in ["MOTO_DETECTADA: TVS Raider 125", "TVS Raider 125"]:
+            with self.subTest(raw_response=raw_response):
+                mock_cerebro_class.reset_mock()
+                mock_send_wa.reset_mock()
+                
+                msg_data = {
+                    "from": "573192564288",
+                    "id": f"wamid.image_test_{abs(hash(raw_response))}",
+                    "type": "image",
+                    "image": {
+                        "id": "image_media_123",
+                        "mime_type": "image/jpeg",
+                        "caption": ""
+                    },
+                    "phone_number_id": "1021779847693778"
+                }
+                background_tasks = BackgroundTasks()
+
+                mock_prospect_data = {
+                    "exists": True,
+                    "celular": "+573192564288",
+                    "chatbot_status": "ACTIVE",
+                    "status": "PENDING",
+                    "source": "whatsapp_bot",
+                    "habeas_data_accepted": True
+                }
+
+                mock_ms = AsyncMock()
+                mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+                mock_ms.create_prospect_if_missing = AsyncMock()
+                mock_ms.get_chat_history = AsyncMock(return_value=[])
+                mock_ms.save_message = AsyncMock()
+                mock_ms.generate_and_update_summary = AsyncMock()
+                mock_mem_module.memory_service = mock_ms
+
+                mock_storage.download_media = AsyncMock(return_value=b"fake_image_bytes")
+                
+                mock_vision_instance = AsyncMock()
+                mock_vision_instance.analyze_image = AsyncMock(return_value=raw_response)
+                
+                with patch("app.routers.whatsapp.VisionService", return_value=mock_vision_instance):
+                    mock_cerebro = AsyncMock()
+                    mock_cerebro.pensar_respuesta = AsyncMock(return_value="Aquí tienes la TVS Raider 125")
+                    mock_cerebro_class.return_value = mock_cerebro
+                    
+                    mock_message_buffer.add_message = AsyncMock(return_value=True)
+                    mock_wa_service.mark_as_read = AsyncMock(return_value=True)
+                    mock_send_wa.return_value = True
+
+                    asyncio.run(_handle_message_background(msg_data, background_tasks))
+
+                    mock_cerebro.pensar_respuesta.assert_called_once()
+                    args, kwargs = mock_cerebro.pensar_respuesta.call_args
+                    self.assertIn("TVS Raider 125", args[0])
+                    self.assertNotIn("MOTO_DETECTADA", args[0])
+                    
+                    mock_send_wa.assert_called_with("+573192564288", "Aquí tienes la TVS Raider 125", phone_number_id="1021779847693778")
+
+    @patch("app.routers.whatsapp.db")
+    @patch("app.routers.whatsapp.message_buffer")
+    @patch("app.routers.whatsapp.config_loader")
+    @patch("app.routers.whatsapp.catalog_service")
+    @patch("app.routers.whatsapp.config_service")
+    @patch("app.routers.whatsapp.judge_service")
+    @patch("app.routers.whatsapp.memory_service_module")
+    @patch("app.routers.whatsapp.CerebroIA")
+    @patch("app.routers.whatsapp.storage_service")
+    @patch("app.routers.whatsapp._send_whatsapp_message")
+    @patch("app.services.whatsapp_service.whatsapp_service")
+    def test_image_routing_null_response_triggers_exception(
+        self, mock_wa_service, mock_send_wa, mock_storage, mock_cerebro_class, 
+        mock_mem_module, mock_judge, mock_config_service, mock_catalog, 
+        mock_config_loader, mock_message_buffer, mock_db
+    ):
+        """
+        GIVEN: La API de Google Vision devuelve None o una respuesta vacía
+        WHEN: Se recibe y procesa el webhook de imagen en whatsapp.py
+        THEN: Se lanza una excepción controlada, se loguea structured y se envía un mensaje fallback.
+        """
+        import asyncio
+        from fastapi import BackgroundTasks
+        from app.routers.whatsapp import _handle_message_background
+        
+        msg_data = {
+            "from": "573192564288",
+            "id": "wamid.image_test_null",
+            "type": "image",
+            "image": {
+                "id": "image_media_123",
+                "mime_type": "image/jpeg",
+                "caption": ""
+            },
+            "phone_number_id": "1021779847693778"
+        }
+        background_tasks = BackgroundTasks()
+
+        mock_prospect_data = {
+            "exists": True,
+            "celular": "+573192564288",
+            "chatbot_status": "ACTIVE",
+            "status": "PENDING",
+            "source": "whatsapp_bot",
+            "habeas_data_accepted": True
+        }
+
+        mock_ms = AsyncMock()
+        mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+        mock_ms.create_prospect_if_missing = AsyncMock()
+        mock_ms.get_chat_history = AsyncMock(return_value=[])
+        mock_ms.save_message = AsyncMock()
+        mock_ms.generate_and_update_summary = AsyncMock()
+        mock_mem_module.memory_service = mock_ms
+
+        mock_storage.download_media = AsyncMock(return_value=b"fake_image_bytes")
+        
+        mock_vision_instance = AsyncMock()
+        mock_vision_instance.analyze_image = AsyncMock(return_value=None)
+        
+        with patch("app.routers.whatsapp.VisionService", return_value=mock_vision_instance):
+            mock_message_buffer.add_message = AsyncMock(return_value=True)
+            mock_wa_service.mark_as_read = AsyncMock(return_value=True)
+            mock_send_wa.return_value = True
+
+            with patch("app.routers.whatsapp.logger.error") as mock_log_error:
+                asyncio.run(_handle_message_background(msg_data, background_tasks))
+                
+                mock_log_error.assert_any_call(
+                    "❌ [VISION_API_ERROR] La respuesta de Vision AI llegó vacía o nula. Forzando flujo de excepción controlada.",
+                    extra={
+                        "user_phone": "+573192564288",
+                        "msg_type": "image",
+                        "media_id": "image_media_123",
+                        "caption": ""
+                    }
+                )
+                
+            mock_send_wa.assert_called_with("+573192564288", "Tuve un problema viendo el archivo. ¿Me cuentas qué es? 😅", phone_number_id="1021779847693778")
+
 if __name__ == '__main__':
     unittest.main()

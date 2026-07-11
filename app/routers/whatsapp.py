@@ -665,106 +665,89 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                         vision_response = await vision_service.analyze_image(image_bytes, mime_type, user_phone, caption=caption)
                         logger.info(f"🧠 Raw Vision response: {vision_response}")
                         
-                        if vision_response:
-                            # 0. Handle Document Quality & Classification (v6.7.x)
-                            if "QUALITY_CHECK:" in vision_response:
-                                if "QUALITY_CHECK: FAILED" in vision_response:
-                                    motivo = "borrosa o ilegible"
-                                    if "|" in vision_response:
-                                        parts = vision_response.split("|")
-                                        for p in parts:
-                                            if "Motivo:" in p:
-                                                motivo = p.replace("Motivo:", "").strip().lower()
-                                    
-                                    p_name = "amigo"
-                                    if memory_service_module.memory_service:
-                                        pd = await memory_service_module.memory_service.get_prospect_data(user_phone)
-                                        p_name = pd.get("name") or "amigo"
-                                    
-                                    await _send_whatsapp_message(user_phone, f"¡Uy {p_name}! 📸 La foto parece {motivo}. ¿Podrías enviarla de nuevo que se vea bien clarita? Así el banco no nos la rechaza.", phone_number_id=phone_number_id)
-                                    return
-                                elif "QUALITY_CHECK: PASSED" in vision_response:
-                                    tipo = "CEDULA" # Default
-                                    if "DOCUMENTO_DETECTADO:" in vision_response:
-                                        tipo_raw = vision_response.split("DOCUMENTO_DETECTADO:")[1].strip().upper()
-                                        if "CEDULA" in tipo_raw: tipo = "CEDULA"
-                                        elif "RECIBO" in tipo_raw or "GAS" in tipo_raw: tipo = "RECIBO_GAS"
-                                    
-                                    logger.info(f"✅ Document quality passed: {tipo}. Uploading to Storage...")
-                                    
-                                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                    filename = f"prospectos/{user_phone}/{tipo.lower()}_{timestamp}.jpg"
-                                    
-                                    try:
-                                        public_url = await asyncio.to_thread(
-                                            storage_service.upload_document, 
-                                            image_bytes, 
-                                            filename, 
-                                            mime_type
-                                        )
+                        if not vision_response:
+                            logger.error(
+                                "❌ [VISION_API_ERROR] La respuesta de Vision AI llegó vacía o nula. Forzando flujo de excepción controlada.",
+                                extra={
+                                    "user_phone": user_phone,
+                                    "msg_type": msg_type,
+                                    "media_id": media_id,
+                                    "caption": caption
+                                }
+                            )
+                            raise ValueError("Vision AI response is empty or None (Google API issue)")
+
+                        try:
+                            # Check if the response contains financial document tags
+                            is_financial_doc = "CEDULA" in vision_response.upper() or "RECIBO" in vision_response.upper()
+
+                            if is_financial_doc:
+                                # 0. Handle Document Quality & Classification (v6.7.x)
+                                if "QUALITY_CHECK:" in vision_response:
+                                    if "QUALITY_CHECK: FAILED" in vision_response:
+                                        motivo = "borrosa o ilegible"
+                                        if "|" in vision_response:
+                                            parts = vision_response.split("|")
+                                            for p in parts:
+                                                if "Motivo:" in p:
+                                                    motivo = p.replace("Motivo:", "").strip().lower()
                                         
+                                        p_name = "amigo"
                                         if memory_service_module.memory_service:
-                                            ms = memory_service_module.memory_service
-                                            field_url = "doc_cedula_url" if tipo == "CEDULA" else "doc_recibo_gas_url"
-                                            field_flag = "doc_cedula" if tipo == "CEDULA" else "doc_recibo_gas"
+                                            pd = await memory_service_module.memory_service.get_prospect_data(user_phone)
+                                            p_name = pd.get("name") or "amigo"
+                                        
+                                        await _send_whatsapp_message(user_phone, f"¡Uy {p_name}! 📸 La foto parece {motivo}. ¿Podrías enviarla de nuevo que se vea bien clarita? Así el banco no nos la rechaza.", phone_number_id=phone_number_id)
+                                        return
+                                    elif "QUALITY_CHECK: PASSED" in vision_response:
+                                        tipo = "CEDULA" # Default
+                                        if "DOCUMENTO_DETECTADO:" in vision_response:
+                                            tipo_raw = vision_response.split("DOCUMENTO_DETECTADO:")[1].strip().upper()
+                                            if "CEDULA" in tipo_raw: tipo = "CEDULA"
+                                            elif "RECIBO" in tipo_raw or "GAS" in tipo_raw: tipo = "RECIBO_GAS"
+                                        
+                                        logger.info(f"✅ Document quality passed: {tipo}. Uploading to Storage...")
+                                        
+                                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                        filename = f"prospectos/{user_phone}/{tipo.lower()}_{timestamp}.jpg"
+                                        
+                                        try:
+                                            public_url = await asyncio.to_thread(
+                                                storage_service.upload_document, 
+                                                image_bytes, 
+                                                filename, 
+                                                mime_type
+                                            )
                                             
-                                            await ms.update_prospect_summary(user_phone, "", {
-                                                field_url: public_url,
-                                                field_flag: True
-                                            })
-                                            
-                                            prospect = await ms.get_prospect_data(user_phone)
-                                            if prospect.get("doc_cedula") and prospect.get("doc_recibo_gas"):
-                                                await _send_whatsapp_message(user_phone, "¡Excelente! Ya tengo todo tu expediente completo. ✅ Un asesor lo revisará en breve.", phone_number_id=phone_number_id)
-                                            else:
-                                                faltante = "el recibo de gas" if tipo == "CEDULA" else "tu cédula"
-                                                nombre_doc = "cédula" if tipo == "CEDULA" else "recibo de gas"
-                                                await _send_whatsapp_message(user_phone, f"¡Recibida tu {nombre_doc}! ✅ Ya solo me falta {faltante} para terminar.", phone_number_id=phone_number_id)
-                                        return
-                                    except Exception as e:
-                                        logger.exception(f"❌ Error uploading document: {e}")
-                                        await _send_whatsapp_message(user_phone, "Tuve un problemita guardando tu documento. ¿Podrías intentarlo de nuevo?", phone_number_id=phone_number_id)
-                                        return
-
-                            # 1. Handle Moto Detection (Legacy / Main Vision Logic)
-                            elif "[MOTO_DETECTADA]" in vision_response:
-                                vision_description = vision_response.replace("[MOTO_DETECTADA]", "").strip()
-                                await _ensure_services()
-                                cerebro_ia = CerebroIA(config_loader, catalog_service)
-                                cerebro_ia.motor_financiero = motor_financiero
-                                
-                                if memory_service_module.memory_service:
-                                    ms = memory_service_module.memory_service
-                                    await ms.create_prospect_if_missing(user_phone)
-                                    # Memory Sync for context
-                                    await ms.generate_and_update_summary(user_phone, f"User sent image of: {vision_description}", cerebro_ia)
-                                    
-                                    prospect_data = await ms.get_prospect_data(user_phone)
-                                    current_history = await ms.get_chat_history(user_phone, limit=10)
-                                    
-                                    if prospect_data and prospect_data.get('human_help_requested', False):
-                                        logger.info(f"🛑 Human Help Requested active for {user_phone}. Silencing bot.")
-                                        return
-
-                                    simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
-                                    if prospect_data: prospect_data["phone"] = user_phone
-                                    final_response = await cerebro_ia.pensar_respuesta(
-                                        simulated_user_msg, 
-                                        context="", 
-                                        prospect_data=prospect_data,
-                                        history=current_history,
-                                        skip_greeting=True
-                                    )
-                                    
-                                    if not final_response:
-                                        final_response = "Lo siento, tuve un problema procesando esa información. ¿Podrías repetirme qué buscas?"
-                                    
-                                    await _send_whatsapp_message(user_phone, final_response, phone_number_id=phone_number_id)
-                                    await ms.save_message(user_phone, "user", simulated_user_msg)
-                                    await ms.save_message(user_phone, "model", final_response)
+                                            if memory_service_module.memory_service:
+                                                ms = memory_service_module.memory_service
+                                                field_url = "doc_cedula_url" if tipo == "CEDULA" else "doc_recibo_gas_url"
+                                                field_flag = "doc_cedula" if tipo == "CEDULA" else "doc_recibo_gas"
+                                                
+                                                await ms.update_prospect_summary(user_phone, "", {
+                                                    field_url: public_url,
+                                                    field_flag: True
+                                                })
+                                                
+                                                prospect = await ms.get_prospect_data(user_phone)
+                                                if prospect.get("doc_cedula") and prospect.get("doc_recibo_gas"):
+                                                    await _send_whatsapp_message(user_phone, "¡Excelente! Ya tengo todo tu expediente completo. ✅ Un asesor lo revisará en breve.", phone_number_id=phone_number_id)
+                                                else:
+                                                    faltante = "el recibo de gas" if tipo == "CEDULA" else "tu cédula"
+                                                    nombre_doc = "cédula" if tipo == "CEDULA" else "recibo de gas"
+                                                    await _send_whatsapp_message(user_phone, f"¡Recibida tu {nombre_doc}! ✅ Ya solo me falta {faltante} para terminar.", phone_number_id=phone_number_id)
+                                            return
+                                        except Exception as e:
+                                            logger.exception(f"❌ Error uploading document: {e}")
+                                            await _send_whatsapp_message(user_phone, "Tuve un problemita guardando tu documento. ¿Podrías intentarlo de nuevo?", phone_number_id=phone_number_id)
+                                            return
+                                else:
+                                    logger.warning(f"⚠️ Documento financiero detectado pero sin formato de QUALITY_CHECK: {vision_response}")
+                                    response_text = f"🏍️ **Documento Recibido**\n\n{vision_response}"
+                                    await _send_whatsapp_message(user_phone, response_text, phone_number_id=phone_number_id)
                                     return
 
-                            # 2. Handle Sentiment / Memes / Stickers
+                            # 1. Handle Sentiment / Memes / Stickers
                             # Interceptor for affirmative stickers mapping to positive emojis
                             is_affirmative_sticker = False
                             if msg_type == "sticker":
@@ -817,19 +800,76 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                     await ms.save_message(user_phone, "model", final_response)
                                     return
 
-                            # 3. Fallback text
+                            # 2. Default: Handle Moto Detection (Legacy / Main Vision Logic)
                             else:
-                                logger.info("🧠 Fallback text returned from Vision AI.")
-                                response_text = f"🏍️ **Catálogo Auteco Las Motos**\n\n{vision_response}"
-                                await _send_whatsapp_message(user_phone, response_text, phone_number_id=phone_number_id)
-                                return
-                        
-                        else:
-                            await _send_whatsapp_message(user_phone, "¡Uff! Pero no alcanzo a ver bien los detalles. ¿Me cuentas qué es?", phone_number_id=phone_number_id)
+                                # Sanitizar el texto crudo de la respuesta de la visión quitando tokens heredados
+                                vision_description = vision_response
+                                for token in ["[MOTO_DETECTADA]", "MOTO_DETECTADA:", "MOTO_DETECTADA"]:
+                                    vision_description = vision_description.replace(token, "")
+                                vision_description = vision_description.strip(" []\n\r\t:")
+
+                                logger.info(f"🏍️ Procesando imagen como consulta de catálogo de moto: '{vision_description}'")
+                                await _ensure_services()
+                                cerebro_ia = CerebroIA(config_loader, catalog_service)
+                                cerebro_ia.motor_financiero = motor_financiero
+                                
+                                if memory_service_module.memory_service:
+                                    ms = memory_service_module.memory_service
+                                    await ms.create_prospect_if_missing(user_phone)
+                                    # Memory Sync for context
+                                    await ms.generate_and_update_summary(user_phone, f"User sent image of: {vision_description}", cerebro_ia)
+                                    
+                                    prospect_data = await ms.get_prospect_data(user_phone)
+                                    current_history = await ms.get_chat_history(user_phone, limit=10)
+                                    
+                                    if prospect_data and prospect_data.get('human_help_requested', False):
+                                        logger.info(f"🛑 Human Help Requested active for {user_phone}. Silencing bot.")
+                                        return
+
+                                    simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
+                                    if prospect_data: prospect_data["phone"] = user_phone
+                                    final_response = await cerebro_ia.pensar_respuesta(
+                                        simulated_user_msg, 
+                                        context="", 
+                                        prospect_data=prospect_data,
+                                        history=current_history,
+                                        skip_greeting=True
+                                    )
+                                    
+                                    if not final_response:
+                                        final_response = "Lo siento, tuve un problema procesando esa información. ¿Podrías repetirme qué buscas?"
+                                    
+                                    await _send_whatsapp_message(user_phone, final_response, phone_number_id=phone_number_id)
+                                    await ms.save_message(user_phone, "user", simulated_user_msg)
+                                    await ms.save_message(user_phone, "model", final_response)
+                                    return
+
+                        except Exception as inner_e:
+                            logger.error(
+                                "❌ Fallo catastrófico procesando respuesta de Vision AI",
+                                extra={
+                                    "user_phone": user_phone,
+                                    "msg_type": msg_type,
+                                    "vision_response_raw": vision_response if 'vision_response' in locals() else None,
+                                    "error_details": str(inner_e)
+                                },
+                                exc_info=True
+                            )
+                            await _send_whatsapp_message(user_phone, "Tuve un problema viendo el archivo. ¿Me cuentas qué es? 😅", phone_number_id=phone_number_id)
+                            return
                     else:
                         await _send_whatsapp_message(user_phone, "No pude descargar el archivo. Intenta de nuevo.", phone_number_id=phone_number_id)
                 except Exception as e:
-                    logger.exception(f"❌ Error processing media: {e}")
+                    logger.error(
+                        f"❌ Error processing media: {e}",
+                        extra={
+                            "user_phone": user_phone,
+                            "msg_type": msg_type,
+                            "vision_response_raw": vision_response if 'vision_response' in locals() else None,
+                            "error_details": str(e)
+                        },
+                        exc_info=True
+                    )
                     await _send_whatsapp_message(user_phone, "Tuve un problema viendo el archivo. ¿Me cuentas qué es? 😅", phone_number_id=phone_number_id)
             
             return  # EARLY EXIT: Stop processing here
