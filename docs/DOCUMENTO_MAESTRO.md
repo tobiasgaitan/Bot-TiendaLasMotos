@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.31.0)
-Versión: v10.31.0 (Lifespan Hydration Alignment)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.32.0)
+Versión: v10.32.0 (Catalog Search Threshold Calibration)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Reestructurar el Lifespan de FastAPI y la inicialización a nivel de módulo en app/main.py para garantizar hidratación secuencial y bloqueante (60/60 ítems devueltos) en producción y CLI, con inicialización inline en pytest. Cierre de ticket [BOT-ARCHITECTURE-LIFESPAN-LINEAR-159].
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 246/246 Tests PASSED)
+Último Hito: Implementación de validación perimetral alfabética y aislamiento numérico puro en CatalogService.search_items para eliminar falsos positivos de coincidencia en consultas que contienen tokens de cilindraje sin match en la raíz de texto, garantizando retorno vacío [] y previniendo alucinaciones. Cierre de ticket [BOT-BACKEND-CATALOG-THRESHOLD-163].
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 245/245 Tests PASSED)
 
 
 1. Contexto y Persona (Juan Pablo)
@@ -114,4 +114,5 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 
 - **Hito Resuelto [BOT-VISION-UPGRADE-156]**: Actualización de infraestructura multimodal core a Gemini 2.5 Flash y blindaje Anti-Null Masking. Score de Coherencia: 1.000 Certificado (239/239 Tests Passed).
 - [v10.30.0] Cierre de ticket BOT-FEATURE-MULTIMODAL-IMAGE-SIMILITUDE-158 (Similitud Multimodal de Imagen). Implementación de la capa adaptadora `match_catalog_item_by_image` en `CatalogService` (ID -> URL -> SequenceMatcher), actualización de `VisionService` para recibir el pool del catálogo con anti-null masking (warnings con traceback) y enrutador de WhatsApp integrado con persistencia síncrona en Firestore. Score de Coherencia: 1.000 (244/244 Tests PASSED).
+- [v10.32.0] Cierre de ticket BOT-BACKEND-CATALOG-THRESHOLD-163 (Catalog Search Threshold Calibration). Implementación de validación perimetral alfabética y aislamiento numérico en CatalogService para evitar falsos positivos de marcas/cilindrajes en consultas combinadas. Coherence Score: 1.000 (245/245 Tests PASSED).
 

@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.31.0)
+## Tasks Completadas (v10.32.0)
+- [x] Calibración de Umbral de Catálogo y Aislamiento Numérico en CatalogService para evitar colisiones de marcas y cilindrajes (BOT-BACKEND-CATALOG-THRESHOLD-163).
 - [x] Reestructuración del Lifespan de FastAPI y la inicialización de servicios core a nivel de módulo en app/main.py para garantizar hidratación secuencial y bloqueante (60/60 ítems devueltos) en producción y CLI, con inicialización inline en pytest (BOT-ARCHITECTURE-LIFESPAN-LINEAR-159).
 - [x] Implementar Adaptador Local de Observabilidad Langfuse v4 bajo el Patrón Adaptador sin modificar site-packages ni provocar shadowing en namespaces (BOT-BUGFIX-LANGFUSE-DECORATOR-REGRESSION).
 - [x] Unificar el pipeline de egreso de mensajes de texto y de imágenes en whatsapp.py para evitar Mocking Blindness y omitir la persistencia duplicada (BOT-BUGFIX-UNIFIED-EGRESS-PIPELINE-125).
