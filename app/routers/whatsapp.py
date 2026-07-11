@@ -1246,17 +1246,22 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
             audio_bytes = await storage_service.download_media(media_id)
             
             # GET HISTORY BEFORE AI
+            # [BOT-ROUTER-AUDIO-LINEAGE-123] NOTA DE ARQUITECTURA:
+            # El check de human_help_requested se realiza DESPUÉS del LINEAR BLOCKING
+            # (generate_and_update_summary + re-fetch), NO aquí.
+            # WHY: Un payload de audio post-reset puede encontrar un documento de Firestore
+            # recién recreado con un flag human_help_requested=True residual de la sesión
+            # anterior. Si verificamos aquí (pre-sync), silenciamos el bot con datos obsoletos.
+            # El re-fetch post-LINEAR-BLOCKING es la única fuente de verdad autoritativa.
             current_history = []
             if memory_service_module.memory_service:
                 ms = memory_service_module.memory_service
                 await ms.create_prospect_if_missing(user_phone) # Good practice
                 await ms.update_last_interaction(user_phone)
                 
-                # Check for Human Handoff status
+                # Pre-fetch inicial: solo para cargar current_history pre-transcripción.
+                # NO usamos este prospect_data para el check de human_help_requested.
                 prospect_data = await ms.get_prospect_data(user_phone)
-                if prospect_data and prospect_data.get("human_help_requested", False):
-                     logger.info(f"👤 User {user_phone} is assigned to Human. Ignoring AI.")
-                     return
                 
                 current_history = await ms.get_chat_history(user_phone, limit=10)
                 
@@ -1287,9 +1292,21 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                         last_bot_question=last_bot_q
                     )
                     
-                    # 2. Re-fetch
+                    # 2. GESTIÓN DE VERDAD: Re-fetch autoritativo post-sync (Espeja patrón TEXT)
+                    # [BOT-ROUTER-AUDIO-LINEAGE-123] Este es el único prospect_data confiable.
+                    # El pre-fetch (arriba) puede contener flags residuales de sesiones anteriores.
                     prospect_data = await ms.get_prospect_data(user_phone)
                     current_history = await ms.get_chat_history(user_phone, limit=10)
+                    logger.info(f"✅ [LINEAR BLOCKING AUDIO] Memory Synced. Identity: {prospect_data.get('name') if prospect_data else 'None'}")
+
+                    # 3. HUMAN HANDOFF CHECK (post-sync, datos autorizativos)
+                    # [BOT-ROUTER-AUDIO-LINEAGE-123] MANDATO: Esta verificación DEBE ejecutarse
+                    # después del re-fetch, no antes. Un flag human_help_requested=True en el
+                    # pre-fetch puede ser un residuo de una sesión pre-reset. Solo el dato
+                    # post-generate_and_update_summary refleja el estado real de Firestore.
+                    if prospect_data and prospect_data.get("human_help_requested", False):
+                        logger.info(f"🛑 [AUDIO-POST-SYNC] Human Help Requested activo para {user_phone} (dato post-sync). Silenziando bot.")
+                        return
 
                     # 3. AI Inference with Judge Audit (v9.8.0)
                     max_retries = 2
