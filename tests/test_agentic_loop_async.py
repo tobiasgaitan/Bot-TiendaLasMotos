@@ -1365,3 +1365,132 @@ async def test_faq_unified_knowledge_restoration():
         assert "codeudor" in res.lower(), "La respuesta de la IA no aborda el concepto crítico 'codeudor'."
         assert "no" in res.lower(), "La respuesta de la IA omitió la aclaración de que NO siempre se requiere codeudor."
 
+
+@pytest.mark.asyncio
+async def test_whatsapp_image_url_with_complex_query_params_regression():
+    """
+    [BOT-BUGFIX-MARKDOWN-IMAGE-REGRESSION-122]
+    Verifies that the WhatsApp router correctly parses and intercepts Firebase Storage
+    image URLs with complex and extensive query parameters (e.g. including slashes, percent encoding,
+    and multiple query parameters), extracting the clean URL and removing the raw Markdown from the text.
+    """
+    import app.routers.whatsapp as whatsapp
+    from app.routers.whatsapp import _handle_message_background
+    from fastapi import BackgroundTasks
+    
+    # 1. Asegurar la inicialización del message_buffer y forzar debounce_seconds a 0.0
+    whatsapp._ensure_services_sync()
+    orig_debounce = whatsapp.message_buffer.debounce_seconds
+    whatsapp.message_buffer.debounce_seconds = 0.0
+    
+    user_phone = "+573192564289" # Use a distinct phone number
+    
+    try:
+        # Clear buffer to guarantee complete test isolation
+        await whatsapp.message_buffer.clear_buffer(user_phone)
+        if user_phone in whatsapp.message_buffer._processed_wamids:
+            whatsapp.message_buffer._processed_wamids[user_phone].clear()
+            
+        msg_data = {
+            "from": user_phone,
+            "id": "wamid.image_param_test_122",
+            "type": "text",
+            "text": "Quiero ver la Victory Advance R 125",
+            "phone_number_id": "1021779847693778"
+        }
+        
+        # 2. Mock Prospect data con habeas_data firmado y moto de interés asignada
+        mock_prospect_data = {
+            "exists": True,
+            "celular": user_phone,
+            "chatbot_status": "ACTIVE",
+            "status": "IN_PROGRESS",
+            "source": "whatsapp_bot",
+            "habeas_data_accepted": True,
+            "nombre": "Juan Victory",
+            "ciudad": "Medellin",
+            "forma_pago": "credito",
+            "moto_interest": "Victory Advance R 125"
+        }
+
+        # Setup mock memory service
+        mock_ms = AsyncMock()
+        mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+        mock_ms.create_prospect_if_missing = AsyncMock()
+        mock_ms.get_chat_history = AsyncMock(return_value=[])
+        mock_ms.save_message = AsyncMock()
+        mock_ms.generate_and_update_summary = AsyncMock()
+        mock_ms.update_last_interaction = AsyncMock()
+        mock_ms.transition_to_in_progress = AsyncMock()
+        mock_ms.set_human_help_status = AsyncMock()
+        mock_ms.update_prospect_summary = AsyncMock()
+
+        # Firebase Storage URL with extensive query parameters representing Victory Advance R 125
+        complex_image_url = (
+            "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/motos%2Fvictory_advance_r_125.webp"
+            "?alt=media&token=12345678-abcd-efgh-ijkl-1234567890ab&another_param=xyz%20abc"
+        )
+        
+        # Simulated response from Gemini adhering to our instruction
+        bot_response = (
+            "Perfecto. La Victory Advance R 125 cuesta $8.900.000. Ficha Tecnica: Gran rendimiento. "
+            f"![Victory Advance R 125]({complex_image_url})"
+        )
+
+        # Mock GenAI client to return this response
+        mock_client = MagicMock()
+        mock_chat = AsyncMock()
+        mock_response = MagicMock()
+        mock_candidate = MagicMock()
+        mock_part = MagicMock()
+        
+        mock_part.text = bot_response
+        mock_part.function_call = None
+        mock_candidate.content.parts = [mock_part]
+        mock_response.candidates = [mock_candidate]
+
+        mock_chat.send_message = AsyncMock(return_value=mock_response)
+        mock_client.aio.chats.create = MagicMock(return_value=mock_chat)
+
+        # Mock send_image_message on whatsapp_service to capture outgoing images and captions
+        captured_images = []
+        async def mock_send_image(to, url, caption="", reply_to_id=None, phone_number_id=None):
+            captured_images.append((url, caption))
+            return {"messages": [{"id": "wamid.mocked_image_123"}]}
+
+        with patch("app.routers.whatsapp.settings") as mock_settings, \
+             patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
+             patch("app.routers.whatsapp.judge_service") as mock_judge, \
+             patch("app.services.whatsapp_service.whatsapp_service.send_image_message", side_effect=mock_send_image), \
+             patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+             patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+             patch("app.services.ai_brain.SDK_AVAILABLE", True):
+
+            mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+            mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+
+            # 4. Ejecutar el handler
+            background_tasks = BackgroundTasks()
+            await _handle_message_background(msg_data, background_tasks)
+
+            # 5. Verificaciones
+            assert len(captured_images) == 1, "Debe haber enviado exactamente 1 imagen nativa."
+            sent_url, sent_caption = captured_images[0]
+            
+            # Verificación del asertor rígido del PCC Pro:
+            # - Debe extraer la URL exacta incluyendo todos los query parameters
+            assert sent_url == complex_image_url, "La URL enviada no coincide con la URL compleja con query parameters."
+            # - El texto limpio del caption no debe contener ningún Markdown crudo o remanente del tag ![alt](url)
+            assert "![" not in sent_caption, "El caption retiene Markdown crudo de imagen."
+            assert "https://firebasestorage.googleapis.com" not in sent_caption, "El caption retiene la URL de la imagen."
+            
+            # - El caption debe contener la información comercial y la ficha técnica
+            assert "Victory Advance R 125" in sent_caption
+            assert "$8.900.000" in sent_caption
+            assert "Ficha Tecnica:" in sent_caption
+
+    finally:
+        whatsapp.message_buffer.debounce_seconds = orig_debounce
+
+

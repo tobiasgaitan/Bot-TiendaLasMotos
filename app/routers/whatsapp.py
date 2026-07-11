@@ -1512,11 +1512,11 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                 # --- NATIVE IMAGE INTEGRATION ---
                 # Support both Markdown ![alt](url) and legacy [IMAGE: url]
                 # RESILIENCE FIX: Handle optional ! and spaces between ] and ( to catch degraded LLM formatting
-                image_pattern = r'!?\[.*?\]\s*\((https?://[^\s\)]+)\)|\[IMAGE:\s*(https?://[^\s\]]+)\]'
+                image_pattern = r'(?:!?\[.*?\]\s*\((https?://[^\s\)]+)\)|\[IMAGE:\s*(https?://[^\s\]]+)\])'
                 all_matches = re.findall(image_pattern, response_text)
                 
-                # Extract clean URLs from both groups
-                images_found = [m[0] or m[1] for m in all_matches if m[0] or m[1]]
+                # Extract clean URLs from both groups and purge empty ones via list comprehension
+                images_found = [url for m in all_matches for url in m if url]
                 
                 # Remove all image tags from the text to avoid showing raw markdown/tags to the user
                 cleaned_response_text = re.sub(image_pattern, '', response_text).strip()
