@@ -791,7 +791,23 @@ class CatalogService:
                     search_results += f"- {name} ({category}): {price}{bonus_str}\n"
                     if m.get('image_url'): search_results += f"  Image URL: {m['image_url']}\n"
                     if m.get('link'): search_results += f"  Link: {m['link']}\n"
-                    if m.get('summary'): search_results += f"Ficha Tecnica: {m['summary']}\n"
+                    # [BOT-QA-HARDENING-126] Zero-Silent-Failure: Distinguir entre llave AUSENTE (OK, omitir)
+                    # y llave PRESENTE con valor None (mutación de llave = error crítico de integridad).
+                    # Si 'summary' está en el dict pero es None, es una mutación silenciosa que debe lanzar
+                    # KeyError duro para que el sistema de monitoring lo capture en lugar de alucinarlo.
+                    if 'summary' in m:
+                        summary_val = m['summary']
+                        if summary_val is None:
+                            raise KeyError(
+                                f"[CATALOG INTEGRITY VIOLATION] El ítem '{m.get('name', 'UNKNOWN')}' "
+                                f"contiene la llave 'summary' con valor None. "
+                                f"Esto indica una mutación de llave que enmascara un fallo de Ficha Tecnica. "
+                                f"Verifica el pipeline de load_catalog() y el schema de Firestore."
+                            )
+                        if summary_val:
+                            search_results += f"Ficha Tecnica: {summary_val}\n"
+                    elif m.get('summary'):  # Fallback si llave ausente pero accesible (no debería ocurrir)
+                        search_results += f"Ficha Tecnica: {m['summary']}\n"
             else:
                 search_results = "No encontré motos en el catálogo para esa búsqueda."
                 

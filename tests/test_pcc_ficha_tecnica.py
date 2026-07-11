@@ -51,6 +51,7 @@ def test_pcc_ficha_tecnica_no_silent_null():
         "image_url": "http://img.url",
         "link": "http://link.url",
         "resumen_tecnico": "Excelente moto urbana."
+        # 'summary' ausente (no en el dict) — comportamiento: omitir sección Ficha Tecnica silenciosamente
     }
     
     with patch.object(catalog_service, '_items', [mock_item_mutated]), \
@@ -72,6 +73,45 @@ def test_pcc_ficha_tecnica_no_silent_null():
         validation = orchestrator.run_checker(res_mutated, is_catalog_query=True)
         assert validation["success"] is False, "Se esperaba que el guardrail PCC Pro fallara debido a la mutación de llaves."
         assert validation["report"]["broken_guardrail"] == "PRICE_CONSISTENCY_CHECK"
+
+    # ─── Escenario 2b: Mutación EXPLÍCITA (summary=None) — KeyError duro [BOT-QA-HARDENING-126] ──────
+    # WHY: A diferencia del Escenario 2 donde la llave simplemente está ausente (ok, omitir sección),
+    # este escenario simula cuando el pipeline de load_catalog() recibió la llave pero con valor None.
+    # Esto es una mutación silenciosa que el guardrail debe detectar como error de integridad critica.
+    # NOTA: Parchear search_items es obligatorio porque el engine fuzzy no hace match semántico
+    # con el nombre de prueba sintético, impidiendo que el ítem corrupto llegue al loop de formateo.
+    mock_item_null_summary = {
+        "id": "2",
+        "name": "Moto Ghost Null",
+        "price": 5000000,
+        "cc": 125,
+        "category": "Urban",
+        "image_url": "http://img.url",
+        "link": "http://link.url",
+        "summary": None  # Mutación explícita: llave presente pero valor None
+    }
+
+    with patch.object(catalog_service, '_items', [mock_item_null_summary]), \
+         patch.object(catalog_service, 'search_items', return_value=[mock_item_null_summary]), \
+         patch.object(catalog_service, '_db', MagicMock()), \
+         patch.object(config_service, '_financial_config', None), \
+         patch.object(config_service, 'get_registration_cost', return_value=0):
+
+        catalog_service.load_configurations = MagicMock()
+        catalog_service._cache_service.clear()
+
+        # [BOT-QA-HARDENING-126] El sistema DEBE lanzar KeyError duro, no omitir silenciosamente.
+        # Esto previene que el LLM alucine una ficha técnica a partir de un payload None.
+        with pytest.raises(KeyError) as exc_info:
+            catalog_service.search_catalog("Ghost Null")
+
+        assert "CATALOG INTEGRITY VIOLATION" in str(exc_info.value), (
+            f"KeyError debe contener 'CATALOG INTEGRITY VIOLATION' para diagnóstico forense. "
+            f"Obtenido: {str(exc_info.value)}"
+        )
+        assert "summary" in str(exc_info.value).lower() or "Moto Ghost Null" in str(exc_info.value), (
+            "KeyError debe identificar el ítem afectado para trazabilidad forense."
+        )
 
 
 @pytest.mark.asyncio
