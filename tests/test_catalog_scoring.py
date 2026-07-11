@@ -207,5 +207,49 @@ class TestCatalogScoring(unittest.TestCase):
                     break
             self.assertTrue(called_with_identity_true, "Expected _apply_scoring_adaptor to be called with is_identity_match=True for tvs_sport")
 
+    def test_numeric_collision_prevention(self):
+        """
+        Verify that searching for 'Milan 150' or 'CR4 150' yields empty results
+        because of strict alphabetical perimeter validation, preventing purely numeric
+        displacement tokens from forcing false positive identity matches or passing search thresholds.
+        Also verifies that searching only for '100' or '125' (purely numeric)
+        properly delegará the flow and returns relevant items.
+        """
+        # Inject an item that has "150" in its searchBy/name to simulate the real scenario
+        mrx_150 = {
+            "id": "victory_mrx_150",
+            "name": "Victory MRX 150 Trakku",
+            "price": 9000000,
+            "category": "motos",
+            "image_url": "https://tiendalasmotos.com/mrx-150.jpg",
+            "search_tags": ["mrx", "150", "tk", "victory"],
+            "search_text": "victory mrx 150 trakku enduro",
+            "search_tokens": ["victory", "mrx", "150", "trakku", "enduro"],
+            "searchBy": ["mrx", "150", "tk", "victory"],
+            "description": "Moto enduro MRX 150.",
+            "link": "https://tiendalasmotos.com/mrx-150",
+            "active": True
+        }
+        self.service._items.append(mrx_150)
+        self.service._items_by_id[mrx_150["id"]] = mrx_150
+        
+        # 1. Milan 150 must return empty results
+        results_milan = self.service.search_items("Milan 150")
+        self.assertEqual(len(results_milan), 0, f"Expected empty results for 'Milan 150', got {results_milan}")
+        
+        # 2. CR4 150 must return empty results
+        results_cr4 = self.service.search_items("CR4 150")
+        self.assertEqual(len(results_cr4), 0, f"Expected empty results for 'CR4 150', got {results_cr4}")
+        
+        # 3. Purely numeric search "150" must NOT be forced to 0 and should return Victory MRX 150 Trakku
+        results_150 = self.service.search_items("150")
+        self.assertTrue(len(results_150) > 0, "Expected results for purely numeric query '150'")
+        self.assertEqual(results_150[0]["name"], "Victory MRX 150 Trakku")
+        
+        # 4. Purely numeric search "100" should return TVS Sport 100
+        results_100 = self.service.search_items("100")
+        self.assertTrue(len(results_100) > 0, "Expected results for purely numeric query '100'")
+        self.assertEqual(results_100[0]["name"], "TVS Sport 100")
+
 if __name__ == '__main__':
     unittest.main()

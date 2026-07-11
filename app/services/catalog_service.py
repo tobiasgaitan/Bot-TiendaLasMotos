@@ -567,10 +567,14 @@ class CatalogService:
         if not query_tokens:
             query_tokens = ["moto"]
 
+        # Extracción de tokens alfabéticos core (longitud >= 2 y no puramente numéricos)
+        # Permite realizar el control perimetral estricto exigido por la directiva de negocio
+        query_alphabetic_tokens = [t for t in query_tokens if len(t) >= 2 and not t.isdigit()]
+
         clean_query = " ".join(query_tokens)
         scored_results = []
         
-        logger.info(f"🔎 DEBUG SEARCH: Original='{query}' Clean='{clean_query}' Tokens={query_tokens}")
+        logger.info(f"🔎 DEBUG SEARCH: Original='{query}' Clean='{clean_query}' Tokens={query_tokens} CoreAlpha={query_alphabetic_tokens}")
         
         for item in self._items:
             score = 0
@@ -579,12 +583,42 @@ class CatalogService:
             name_clean = " ".join(self._tokenize(name))
             item_tokens = item.get("search_tokens", [])
             item_search_text = item.get("search_text", "")
-            
+            search_by_tags = item.get("searchBy", [])
+            name_tokens = self._tokenize(name)
+
+            # --- VALIDACIÓN PERIMETRAL ALFABÉTICA (BOT-BACKEND-CATALOG-THRESHOLD-163) ---
+            # Si la consulta incluye tokens alfabéticos core, se exige que al menos uno coincida
+            # exacta, fonéticamente, o de forma fuzzy (ratio >= 0.8) con el nombre del ítem o sus searchBy tags.
+            has_alphabetic_match = True
+            if query_alphabetic_tokens:
+                has_alphabetic_match = False
+                for t in query_alphabetic_tokens:
+                    t_phone = self._phonetic_normalize(t)
+                    if t in search_by_tags or t in name_tokens:
+                        has_alphabetic_match = True
+                        break
+                    if any(self._phonetic_normalize(st) == t_phone for st in search_by_tags):
+                        has_alphabetic_match = True
+                        break
+                    if any(self._phonetic_normalize(nt) == t_phone for nt in name_tokens):
+                        has_alphabetic_match = True
+                        break
+                    # Fuzzy match con tokens de nombre o tags con ratio >= 0.8
+                    if any(difflib.SequenceMatcher(None, t, nt).ratio() >= 0.8 for nt in name_tokens):
+                        has_alphabetic_match = True
+                        break
+                    if any(difflib.SequenceMatcher(None, t, st).ratio() >= 0.8 for st in search_by_tags):
+                        has_alphabetic_match = True
+                        break
+
+            # Si no hay match alfabético cuando la consulta lo exige, se fuerza el score a 0 y se omite
+            if not has_alphabetic_match:
+                continue
+
             # Detect matches in different areas for the adaptor
             # --- IDENTITY DETECTION (v9.8.1) ---
             # Brand exclusion list to focus on model identity
             brands = {"tvs", "victory", "bajaj", "hero", "yamaha", "honda", "suzuki", "akt", "apache"}
-            name_tokens = self._tokenize(name)
             # Core tokens: Not a brand, length >= 2, and not purely digits
             core_name_tokens = [t for t in name_tokens if t not in brands and len(t) >= 2 and not t.isdigit()]
             
@@ -593,8 +627,9 @@ class CatalogService:
             name_match = False
             
             # Max priority identity force: If any search token matches a searchBy tag exactly
-            search_by_tags = item.get("searchBy", [])
-            if any(t in search_by_tags for t in query_tokens):
+            # Para evitar colisiones numéricas puras, solo permitimos match exacto en searchBy de query_tokens
+            # si el token que hace match no es puramente numérico (evita colisión de "150").
+            if any(t in search_by_tags and not t.isdigit() for t in query_tokens):
                 name_match = True
             elif core_name_tokens:
                 for t in query_tokens:
@@ -644,9 +679,9 @@ class CatalogService:
                                 matches += 0.8 # Slightly less than exact token match
 
                 if matches >= len(query_tokens):
-                    score += 90 
+                     score += 90 
                 elif matches > 0:
-                    score += (matches / len(query_tokens)) * 70
+                     score += (matches / len(query_tokens)) * 70
 
             # 3. Fuzzy Overall Name Match (Typos: "Raidr" -> "Raider")
             ratio = difflib.SequenceMatcher(None, clean_query, name_clean).ratio()
@@ -680,6 +715,36 @@ class CatalogService:
         if not scored_results and query_tokens:
             logger.info(f"⚠️ No results above threshold 30 for '{query}'. Executing token overlap fallback.")
             for item in self._items:
+                name = item.get("name", "").lower()
+                name_tokens = self._tokenize(name)
+                search_by_tags = item.get("searchBy", [])
+                
+                # --- VALIDACIÓN PERIMETRAL ALFABÉTICA EN FALLBACK ---
+                has_alphabetic_match = True
+                if query_alphabetic_tokens:
+                    has_alphabetic_match = False
+                    for t in query_alphabetic_tokens:
+                        t_phone = self._phonetic_normalize(t)
+                        if t in search_by_tags or t in name_tokens:
+                            has_alphabetic_match = True
+                            break
+                        if any(self._phonetic_normalize(st) == t_phone for st in search_by_tags):
+                            has_alphabetic_match = True
+                            break
+                        if any(self._phonetic_normalize(nt) == t_phone for nt in name_tokens):
+                            has_alphabetic_match = True
+                            break
+                        # Fuzzy match con tokens de nombre o tags con ratio >= 0.8
+                        if any(difflib.SequenceMatcher(None, t, nt).ratio() >= 0.8 for nt in name_tokens):
+                            has_alphabetic_match = True
+                            break
+                        if any(difflib.SequenceMatcher(None, t, st).ratio() >= 0.8 for st in search_by_tags):
+                            has_alphabetic_match = True
+                            break
+                            
+                if not has_alphabetic_match:
+                    continue
+
                 item_tokens = item.get("search_tokens", [])
                 overlap = [t for t in query_tokens if t in item_tokens]
                 if overlap:
@@ -689,7 +754,9 @@ class CatalogService:
 
         # --- DEFAULT CATALOG FALLBACK ---
         # If still no results, guarantee at least some default items are returned
-        if not scored_results and self._items:
+        # Para evitar violar la directiva de inexistencia, solo activamos el fallback por defecto
+        # si la consulta no incluye tokens alfabéticos core de longitud >= 2.
+        if not scored_results and self._items and not query_alphabetic_tokens:
             logger.warning("⚠️ Still no search results. Returning top default catalog items.")
             scored_results = [(10.0 - i, item) for i, item in enumerate(self._items[:3])]
 
@@ -752,8 +819,8 @@ class CatalogService:
                 seen_ids.add(item["id"])
                 
         # --- EMERGENCY FALLBACK ITEM (Zero-Silent-Failure) ---
-        # If catalog is empty or somehow all items are omitted, return a valid emergency item
-        if not unique_results:
+        # Solo inyectar si el catálogo cargado en Firestore está completamente vacío.
+        if not unique_results and not self._items:
             logger.error("🚨 Catalog database is empty or has no active items. Generating emergency fallback item.")
             fallback_item = {
                 "name": "TVS Sport 100",
