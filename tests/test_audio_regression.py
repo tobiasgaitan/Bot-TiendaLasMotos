@@ -85,6 +85,7 @@ async def test_audio_regression_last_bot_question_injection():
     mock_catalog = MagicMock()
     mock_catalog.search = MagicMock(return_value=[])
     mock_catalog.get_all_items = MagicMock(return_value=[{"name": "Victory"}] * 100)
+    mock_catalog.normalize_transcription = MagicMock(side_effect=lambda x: x)
 
     mock_judge = MagicMock()
     mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
@@ -234,6 +235,7 @@ async def test_audio_lineage_post_reset_no_desertion():
     mock_catalog.search = MagicMock(return_value=[])
     mock_catalog.get_all_items = MagicMock(return_value=[{"name": "TVS Sport 100"}] * 50)
     mock_catalog._items = []
+    mock_catalog.normalize_transcription = MagicMock(side_effect=lambda x: x)
 
     mock_judge = MagicMock()
     mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
@@ -341,3 +343,119 @@ async def test_audio_service_live_integration():
             location="us-central1",
             credentials=mock_creds
         )
+
+
+@pytest.mark.asyncio
+async def test_audio_fuzzy_alignment_rader():
+    """
+    [BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124] Test de Caracterización Abierto:
+    Valida que una nota de voz con la transcripción degradada 'rader' sea normalizada
+    y alineada a 'raider' usando el motor fonético de CatalogService, y que el Juez
+    la apruebe sin forzar la deserción humana (human_help_requested=False).
+    """
+    from app.routers.whatsapp import _handle_message_background_impl
+    from fastapi import BackgroundTasks
+    from app.services.catalog_service import CatalogService
+
+    msg_data = {
+        "from": "573198888888",
+        "id": "wamid.audio_fuzzy_rader_999",
+        "timestamp": "1672531300",
+        "type": "audio",
+        "media_id": "audio_media_rader_999",
+        "mime_type": "audio/ogg; codecs=opus",
+        "phone_number_id": "555555"
+    }
+
+    # Instanciamos CatalogService real pero con un catálogo mockeado en memoria para aislar
+    real_catalog = CatalogService()
+    # Cargamos ítems ficticios de prueba (ej. TVS Raider 125)
+    real_catalog._items = [
+        {
+            "id": "tvs_raider",
+            "name": "TVS Raider 125",
+            "price": 6000000,
+            "category": "deportiva",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/tvs_raider.jpg",
+            "search_tags": ["sport", "tecnologia"],
+            "search_text": "tvs raider 125 deportiva sport tecnologia",
+            "search_tokens": ["tvs", "raider", "125", "deportiva", "sport", "tecnologia"],
+            "searchBy": ["sport", "tecnologia"],
+            "description": "Moto deportiva con tecnologia de punta y gran desempeño.",
+            "link": "https://tiendalasmotos.com/tvs-raider",
+            "active": True,
+            "cc": 125
+        }
+    ]
+    real_catalog._items_by_id = {i["id"]: i for i in real_catalog._items}
+
+    mock_memory_service = MagicMock()
+    mock_memory_service.create_prospect_if_missing = AsyncMock()
+    mock_memory_service.update_last_interaction = AsyncMock()
+    mock_memory_service.save_message = AsyncMock()
+    mock_memory_service.transition_to_in_progress = AsyncMock()
+    mock_memory_service.get_prospect_data = AsyncMock(return_value={
+        "exists": True,
+        "status": "IN_PROGRESS",
+        "chatbot_status": "ACTIVE",
+        "name": "Cliente Raider",
+        "celular": "+573198888888",
+        "human_help_requested": False
+    })
+    mock_memory_service.get_chat_history = AsyncMock(return_value=[])
+    mock_memory_service.generate_and_update_summary = AsyncMock()
+    mock_memory_service.set_human_help_status = AsyncMock()
+
+    mock_storage = MagicMock()
+    mock_storage.download_media = AsyncMock(return_value=b"mock_audio_bytes_rader")
+
+    # Forzar la transcripción cruda hacia el token degradado 'rader'
+    mock_audio = MagicMock()
+    mock_audio.transcribe_audio = AsyncMock(return_value="Quiero cotizar una rader")
+
+    # Cerebro IA devuelve una respuesta mencionando la Raider
+    mock_cerebro = MagicMock()
+    mock_cerebro.pensar_respuesta = AsyncMock(
+        return_value="Perfecto. La TVS Raider 125 está disponible por $6.000.000 (incluye SOAT, Matrícula, y tramites). Ficha Tecnica: http://... ![](http://raider.png)"
+    )
+
+    mock_whatsapp = MagicMock()
+    mock_whatsapp.mark_as_read = AsyncMock()
+    mock_whatsapp.send_text_message = AsyncMock()
+
+    # Juez de aprobación
+    mock_judge = MagicMock()
+    mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+
+    with patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
+         patch("app.routers.whatsapp.storage_service", mock_storage), \
+         patch("app.routers.whatsapp.AudioService", return_value=mock_audio), \
+         patch("app.routers.whatsapp.CerebroIA", return_value=mock_cerebro), \
+         patch("app.routers.whatsapp.VisionService", return_value=MagicMock()), \
+         patch("app.services.whatsapp_service.whatsapp_service", mock_whatsapp), \
+         patch("app.routers.whatsapp.whatsapp_service", mock_whatsapp, create=True), \
+         patch("app.routers.whatsapp.catalog_service", real_catalog), \
+         patch("app.routers.whatsapp.judge_service", mock_judge), \
+         patch("app.routers.whatsapp.message_buffer") as mock_buffer, \
+         patch("app.routers.whatsapp._ensure_services", AsyncMock()):
+
+        mock_buffer.add_message = AsyncMock(return_value=True)
+        mock_buffer.debounce_seconds = 0
+        mock_buffer.is_task_active = MagicMock(return_value=True)
+
+        background_tasks = BackgroundTasks()
+        await _handle_message_background_impl(msg_data, background_tasks)
+
+    # Aserciones rígidas:
+    # 1. El mensaje guardado en memoria debe ser el normalizado 'raider' en vez del degradado 'rader'
+    # 2. set_human_help_status(True) no debe ser invocado
+    # 3. El judge no debe fallar (is_approved=True)
+
+    # Verificamos que la transcripción guardada y transmitida fue normalizada a 'raider'
+    mock_memory_service.save_message.assert_any_call("+573198888888", "user", "Quiero cotizar una raider")
+    
+    # Aseguramos que no se active la deserción humana
+    for call in mock_memory_service.set_human_help_status.call_args_list:
+        args = call[0]
+        if len(args) >= 2:
+            assert args[1] != True, "Falso positivo de deserción humana activo."

@@ -1272,6 +1272,12 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                 if transcription:
                     logger.info(f"🎤 Audio Transcribed: '{transcription}'")
                     
+                    # [BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124] Sanitización y alineación fonética fuzzy
+                    if catalog_service and hasattr(catalog_service, 'normalize_transcription'):
+                        aligned = catalog_service.normalize_transcription(transcription)
+                        logger.info(f"🔮 Transcription Phonetic Alignment: '{transcription}' -> '{aligned}'")
+                        transcription = aligned
+                    
                     # 1. Save actual transcription to history (blinding fix)
                     if memory_service_module.memory_service:
                         await ms.save_message(user_phone, "user", transcription)
