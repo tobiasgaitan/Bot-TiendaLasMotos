@@ -4,7 +4,7 @@ Handles image analysis using Gemini Vision (Flash).
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import json
 import asyncio
 import time
@@ -66,7 +66,7 @@ class VisionService:
             except Exception as e:
                 raise e
 
-    async def analyze_image(self, image_bytes: bytes, mime_type: str, phone: str, caption: str = "") -> str:
+    async def analyze_image(self, image_bytes: bytes, mime_type: str, phone: str, caption: str = "", catalog_items: Optional[List[Dict[str, Any]]] = None) -> str:
         """
         General analysis of an image sent by user.
         Routes to specific logic (OCR vs Bike ID vs General Sentiment) based on content.
@@ -75,10 +75,25 @@ class VisionService:
         @param mime_type MIME type of the uploaded media.
         @param phone Phone number for routing/logs.
         @param caption Optional user caption sent along with media.
+        @param catalog_items Optional list of active catalog items.
         @returns A string intended for either direct output or AI Brain injection.
         """
         if not hasattr(self, 'client'):
             return "Lo siento, no puedo ver la imagen en este momento. 🙈"
+
+        # Anti-Null Masking validation for catalog items
+        if catalog_items:
+            for item in catalog_items:
+                name = item.get("name")
+                img_url = item.get("image_url")
+                if name is None or name == "" or img_url is None or img_url == "":
+                    import traceback
+                    tb_str = "".join(traceback.format_stack())
+                    logger.warning(
+                        f"⚠️ [INTEGRITY VIOLATION] Catalog item missing critical visual keys. "
+                        f"ID: '{item.get('id', 'unknown')}', name: {name}, image_url: {img_url}.\n"
+                        f"Traceback:\n{tb_str}"
+                    )
 
         try:
             image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
@@ -126,7 +141,7 @@ class VisionService:
                 return await self._process_kyc_document(image_part, phone)
             
             elif result_json.get("type") == "moto":
-                return await self._process_moto(image_part, result_json.get("description", ""))
+                return await self._process_moto(image_part, result_json.get("description", ""), catalog_items)
             
             else:
                 return await self._process_general_image_sentiment(image_part)
@@ -156,7 +171,7 @@ class VisionService:
             raise ValueError("GenAI API returned an empty response or nulo payload in _process_kyc_document")
         return response.text.strip()
 
-    async def _process_moto(self, image_part: types.Part, brief_desc: str) -> str:
+    async def _process_moto(self, image_part: types.Part, brief_desc: str, catalog_items: Optional[List[Dict[str, Any]]] = None) -> str:
         """
         Identify motorcycle and provide structured output for CerebroIA.
         
@@ -166,19 +181,29 @@ class VisionService:
           This enables strict cross-selling rules (Competencia y Equivalencias) based on catalog availability,
           rather than having VisionService hallucinate responses.
         """
-        prompt = """
-        TASK: Identify the motorcycle in this image as accurately as possible.
+        catalog_info = ""
+        if catalog_items:
+            catalog_info = "\nAvailable motorcycles in our catalog:\n"
+            for item in catalog_items:
+                catalog_info += f"- Name: '{item.get('name', '')}', Category: '{item.get('category', '')}', Image URL: '{item.get('image_url', '')}', ID: '{item.get('id', '')}'\n"
+
+        prompt = f"""
+        TASK: Identify the motorcycle in this image as accurately as possible and match it to our catalog.
         
         CRITICAL RULES:
         - Recognize common Colombian models: AKT (NKD, CR4), Bajaj (Pulsar, Boxer), Victory (Bomber, MRX), TVS (Raider), Yamaha, Honda, Suzuki.
         - "NKD 125" is ALWAYS "AKT". NEVER say "Victory NKD".
         - Focus ONLY on identifying the brand, model, and category (e.g., Calle, Sport, Scooter).
+        - If catalog items are listed below, you MUST match the motorcycle to the closest corresponding model in our catalog.
+        - Choose the best equivalent category and model if there is no exact match.
+        
+        {catalog_info}
         
         OUTPUT FORMAT:
-        You MUST output EXACTLY this prefix followed by your description:
-        MOTO_DETECTADA: [Your description of brand, model, and category]
+        You MUST output EXACTLY this format:
+        MOTO_DETECTADA: [Name of matched model] | Match URL: [image_url of matched model] | Model ID: [ID of matched model]
         
-        No conversational text, no questions. ONLY the prefix and the details.
+        No conversational text, no questions. ONLY this format.
         """
         response = self.client.models.generate_content(
             model=self._model_id,

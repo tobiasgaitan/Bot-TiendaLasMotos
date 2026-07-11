@@ -656,7 +656,31 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
 
                     image_bytes = await storage_service.download_media(media_id)
                     if image_bytes:
-                        vision_response = await vision_service.analyze_image(image_bytes, mime_type, user_phone, caption=caption)
+                        await _ensure_services()
+                        catalog_items = catalog_service.get_all_items()
+                        
+                        logger.info(
+                            f"📸 Vision AI request for user {user_phone}. MIME: {mime_type}, media_id: {media_id}, catalog_items_count: {len(catalog_items)}"
+                        )
+                        
+                        try:
+                            vision_response = await vision_service.analyze_image(
+                                image_bytes, mime_type, user_phone, 
+                                caption=caption, catalog_items=catalog_items
+                            )
+                        except Exception as vision_err:
+                            logger.error(
+                                f"❌ [VISION_API_EXCEPTION] Vision service analyze_image failed: {vision_err}",
+                                extra={
+                                    "user_phone": user_phone,
+                                    "mime_type": mime_type,
+                                    "media_id": media_id,
+                                    "raw_meta_payload": str(msg_data)
+                                },
+                                exc_info=True
+                            )
+                            raise vision_err
+
                         logger.info(f"🧠 Raw Vision response: {vision_response}")
                         
                         if not vision_response:
@@ -796,11 +820,21 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
 
                             # 2. Default: Handle Moto Detection (Legacy / Main Vision Logic)
                             else:
-                                # Sanitizar el texto crudo de la respuesta de la visión quitando tokens heredados
-                                vision_description = vision_response
-                                for token in ["[MOTO_DETECTADA]", "MOTO_DETECTADA:", "MOTO_DETECTADA"]:
-                                    vision_description = vision_description.replace(token, "")
-                                vision_description = vision_description.strip(" []\n\r\t:")
+                                # Use the catalog similarity adapter to align the image/description with a canonical catalog item
+                                matched_item = catalog_service.match_catalog_item_by_image(vision_response)
+                                
+                                if matched_item and isinstance(matched_item, dict):
+                                    vision_description = matched_item["name"]
+                                    canonical_image_url = matched_item["image_url"]
+                                    logger.info(f"🎯 Multimodal similarity aligned to catalog item '{vision_description}' with URL '{canonical_image_url}'")
+                                else:
+                                    # Fallback to legacy string cleanup if no match found
+                                    vision_description = vision_response
+                                    for token in ["[MOTO_DETECTADA]", "MOTO_DETECTADA:", "MOTO_DETECTADA"]:
+                                        vision_description = vision_description.replace(token, "")
+                                    vision_description = vision_description.strip(" []\n\r\t:")
+                                    canonical_image_url = None
+                                    logger.warning(f"⚠️ Multimodal similarity could not align '{vision_response}' to any catalog item. Using raw: '{vision_description}'")
 
                                 logger.info(f"🏍️ Procesando imagen como consulta de catálogo de moto: '{vision_description}'")
                                 await _ensure_services()
@@ -810,6 +844,16 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                 if memory_service_module.memory_service:
                                     ms = memory_service_module.memory_service
                                     await ms.create_prospect_if_missing(user_phone)
+                                    
+                                    # [MANDATE]: Update prospect_summary with the aligned moto_interest in Firestore synchronously
+                                    if matched_item and isinstance(matched_item, dict):
+                                        logger.info(f"💾 Persisting aligned moto_interest '{vision_description}' to Firestore for {user_phone}")
+                                        fut = ms.update_prospect_summary(user_phone, "", {
+                                            "moto_interest": vision_description
+                                        })
+                                        if hasattr(fut, "__await__"):
+                                            await fut
+                                    
                                     # Memory Sync for context
                                     await ms.generate_and_update_summary(user_phone, f"User sent image of: {vision_description}", cerebro_ia)
                                     
@@ -819,6 +863,9 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                     if prospect_data and prospect_data.get('human_help_requested', False):
                                         logger.info(f"🛑 Human Help Requested active for {user_phone}. Silencing bot.")
                                         return
+                                    
+                                    if matched_item and isinstance(matched_item, dict) and prospect_data:
+                                        prospect_data["moto_interest"] = vision_description
 
                                     simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
                                     if prospect_data: prospect_data["phone"] = user_phone

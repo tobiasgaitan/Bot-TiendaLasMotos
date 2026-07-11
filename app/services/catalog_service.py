@@ -1021,6 +1021,84 @@ class CatalogService:
 
         return new_score
 
+    def match_catalog_item_by_image(self, vision_response: str) -> Optional[Dict[str, Any]]:
+        """
+        [BOT-FEATURE-MULTIMODAL-IMAGE-SIMILITUDE-158]
+        Adapts and matches the vision description returned by Vision AI (containing model info or description)
+        to the closest canonical item in the catalog.
+        Validates prioritarily by 'id', then by exact 'image_url', and finally fallback fuzzy via SequenceMatcher with threshold s >= 0.85.
+        """
+        if not vision_response:
+            return None
+
+        # Clean string to get clean parts
+        parts = [p.strip() for p in vision_response.split("|")]
+        
+        model_id = None
+        match_url = None
+        model_name = None
+        
+        for part in parts:
+            if part.lower().startswith("model id:") or part.lower().startswith("model_id:"):
+                model_id = part.split(":", 1)[1].strip()
+            elif part.lower().startswith("match url:") or part.lower().startswith("match_url:"):
+                match_url = part.split(":", 1)[1].strip()
+            elif part.lower().startswith("moto_detectada:") or part.lower().startswith("moto_detectada"):
+                model_name = part.split(":", 1)[1].strip()
+
+        # 1. Match prioritarily by ID
+        if model_id and hasattr(self, "_items_by_id") and model_id in self._items_by_id:
+            logger.info(f"🎯 Multimodal match by ID: {model_id}")
+            return self._items_by_id[model_id]
+
+        # 2. Match by exact 'image_url'
+        if match_url and hasattr(self, "_items"):
+            for item in self._items:
+                if item.get("image_url") == match_url:
+                    logger.info(f"🎯 Multimodal match by exact image_url: {item.get('name')}")
+                    return item
+
+        # 3. Fallback fuzzy using SequenceMatcher with threshold >= 0.85
+        from difflib import SequenceMatcher
+        
+        # Clean the candidate name
+        clean_candidate = model_name or vision_response
+        for token in ["[MOTO_DETECTADA]", "MOTO_DETECTADA:", "MOTO_DETECTADA"]:
+            clean_candidate = clean_candidate.replace(token, "")
+        if "|" in clean_candidate:
+            clean_candidate = clean_candidate.split("|")[0]
+        clean_candidate = clean_candidate.strip(" []\n\r\t:")
+        
+        if not clean_candidate:
+            return None
+
+        best_match = None
+        best_ratio = 0.0
+        
+        if hasattr(self, "_items"):
+            for item in self._items:
+                name = item.get("name", "")
+                if not name:
+                    continue
+                # Compare lowercase candidate with lowercase item name
+                ratio = SequenceMatcher(None, clean_candidate.lower(), name.lower()).ratio()
+                if ratio >= 0.85 and ratio > best_ratio:
+                    best_ratio = ratio
+                    best_match = item
+                    
+        if best_match:
+            logger.info(f"🎯 Multimodal match by fuzzy SequenceMatcher (ratio={best_ratio:.3f}): {best_match.get('name')}")
+            return best_match
+
+        # 4. Final fallback to search_items fuzzy token engine
+        logger.info(f"🔍 Multimodal fallback fuzzy search for: '{clean_candidate}'")
+        matches = self.search_items(clean_candidate)
+        if matches:
+            logger.info(f"🎯 Multimodal match by search_items fallback: {matches[0].get('name')}")
+            return matches[0]
+
+        return None
+
     def refresh(self) -> None:
         """Refresh catalog from Firestore."""
         logger.info("🔄 Refreshing catalog...")
