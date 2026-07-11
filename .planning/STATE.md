@@ -1,9 +1,10 @@
-Versión: v10.28.2 | Hito: Vision Model Upgrade (BOT-VISION-UPGRADE) | Coherence Score: 1.000
+Versión: v10.28.3 | Hito: Hotfix Markdown Image Parsing (BOT-BUGFIX-MARKDOWN-IMAGE-REGRESSION-122) | Coherence Score: 1.000
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 157 | Hotfix Markdown Image Parsing (Victory Advance R 125 query parameters) [BOT-BUGFIX-MARKDOWN-IMAGE-REGRESSION-122] | 2026-07-11 | 5d7dfa5 | 157-hotfix-markdown-image-parsing |
 | 156 | Actualización del modelo multimodal de VisionService a gemini-2.5-flash y aserciones anti-null [BOT-VISION-UPGRADE] | 2026-07-11 | 55aa05a | 156-bot-vision-upgrade |
 | 155 | Corrección enrutamiento imágenes de catálogo (desacople [MOTO_DETECTADA]) [BOT-VISION-PARSER] | 2026-07-11 | e4d0241 | 155-bot-vision-parser |
 | 154 | Sanitización y alineación fonética fuzzy de transcripción en bloque audio [BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124] | 2026-07-10 | d98a6d0 | 154-hotfix-audio-fuzzy-alignment |

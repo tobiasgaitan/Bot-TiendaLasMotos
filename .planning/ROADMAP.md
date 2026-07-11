@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.28.2)
+## Tasks Completadas (v10.28.3)
+- [x] Corregir la expresión regular de extracción de URLs de imágenes y purgar grupos vacíos para prevenir fallas al interceptar URLs complejas en WhatsApp (BOT-BUGFIX-MARKDOWN-IMAGE-REGRESSION-122).
 - [x] Actualización del modelo multimodal de VisionService a gemini-2.5-flash e implementación de tests unitarios robustos ante payloads nulos con Zero-Silent-Failures (BOT-VISION-UPGRADE).
 - [x] Corrección en el enrutamiento de imágenes de catálogo desacoplando la dependencia de '[MOTO_DETECTADA]' e inyección de logs estructurados forenses en caso de fallo (BOT-VISION-PARSER).
 - [x] Sanitización y alineación fonética fuzzy de transcripción en bloque audio para resolver variaciones tipográficas degradadas (BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124).
