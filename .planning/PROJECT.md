@@ -1,35 +1,27 @@
-# Proyecto: Caché Semántica de Catálogo (BOT-PERF-41)
+# Proyecto: Asesor de Auteco Las Motos
 
 ## Vision
-Implementar una capa de Caché Semántica desacoplada en `CatalogService` para optimizar drásticamente el consumo de tokens y reducir la latencia en las consultas repetitivas de inventario y tags de intención.
+Desarrollar e implementar un pipeline inteligente y robusto para el bot de WhatsApp de Auteco Las Motos, incluyendo comparación por similitud multimodal, caché semántica, y flujos de precalificación de créditos síncronos con blindaje legal de Habeas Data.
 
 ## Core Value
-Garantizar una respuesta inmediata y formateada sin invocar la inferencia del LLM (Gemini) cuando la similitud de cadenas (N-gramas/Levenshtein) de la consulta del usuario supere el 0.85 respecto a una consulta previamente indexada, protegiendo el Price Consistency Check (PCC Pro) al 100%.
+Garantizar la consistencia de precios (PCC Pro) y la precisión en la recomendación de vehículos reales del catálogo en Firestore, reduciendo alucinaciones y falsos positivos mediante alineación por similitud fonética, semántica y multimodal (imágenes).
 
 ## Target Users
-* **Usuarios de WhatsApp:** Experimentarán latencia casi nula en consultas frecuentes.
-* **Sistema/Negocio:** Reducción drástica de costos por token y latencia cero de red externa.
+* **Usuarios de WhatsApp:** Reciben respuestas con precios exactos, imágenes correctas y fichas técnicas correspondientes.
+* **Operadores de Negocio:** Mantienen control total sobre las motocicletas recomendadas y el cumplimiento legal de Habeas Data.
 
 ## Technical Context
-* **Backend:** Python 3.13 / FastAPI.
-* **Similitud Local:** Algoritmos nativos en Python puro (TF-IDF ligero, Levenshtein, N-gramas). PROHIBIDO llamar a Google GenAI para embeddings.
-* **Almacenamiento Local:** Diccionario en memoria RAM hidratado sincrónicamente durante el arranque (`ConfigLoader -> load_all() -> CatalogService.initialize()`). PROHIBIDO archivo JSON en disco.
-* **Preservación Visual:** La caché guarda y retorna directamente el bloque Markdown final con precio (`$`) y la imagen canónica (`![]`), no el JSON crudo.
+* **Backend:** Python 3.13 / FastAPI / Vertex AI / Google GenAI SDK.
+* **Persistencia:** Firestore (`prospectos`, `pagina/catalogo/items`).
+* **Multimodalidad:** Gemini 2.5 Flash para visión y análisis general.
 
 ## Requirements
 
 ### Active
-- [ ] R1: Crear un servicio de vectores (SemanticCacheService) para generar y almacenar embeddings y respuestas.
-- [ ] R2: Interceptar `search_items`, `search` y `search_catalog` en `CatalogService`.
-- [ ] R3: Calcular similitud de coseno > 0.85 para retornar hits de caché inmediatamente.
-- [ ] R4: Preservar el formateo de Price Consistency Check (Regex con $ y Markdown de imagen).
-
-## Key Decisions
-| Decision | Source | Rationale | Outcome |
-|----------|--------|-----------|---------|
-| Similitud Coseno > 0.85 | User | Threshold para considerar un hit sin alucinar | Decided |
-| Desacoplamiento | User | No alterar la lógica de búsqueda normal | Decided |
-| Preservar PCC | User | Mantener formato de Regex y $ para consistencia | Decided |
+- [ ] R7: Alinear imágenes entrantes en WhatsApp con `imagen_url` canónica en Firestore (Milestone 2).
+- [ ] R8: Implementar `match_catalog_item_by_image` en `CatalogService` con prioridad ID -> URL -> SequenceMatcher (Milestone 2).
+- [ ] R9: Validar integridad (Anti-Null Masking) de ítems del catálogo inyectados a Vision AI (Milestone 2).
+- [ ] R10: Sincronizar el interés del prospecto (`moto_interest`) sin evadir el flujo legal de Habeas Data (Milestone 2).
 
 ---
-*Last updated: 2026-05-16*
+*Last updated: 2026-07-11*
