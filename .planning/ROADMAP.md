@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.26.7)
+## Tasks Completadas (v10.28.0)
+- [x] Sanitización y alineación fonética fuzzy de transcripción en bloque audio para resolver variaciones tipográficas degradadas (BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124).
 - [x] Corregir regresión en el procesamiento de audios mediante la inyección de la última pregunta del bot en generate_and_update_summary (BOT-BUGFIX-AUDIO-REGRESSION-121).
 - [x] Implement bypass in AgenticOrchestrator for abstract FAQs to prevent false positives in PCC Pro validator (BOT-BRAIN-FAQ-ABSTRACT-ALIGN-145).
 - [x] Document session-based locking in the Master Spec architecture document (DOC-MASTER-SPEC-UPDATE-143).

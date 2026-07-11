@@ -1,9 +1,10 @@
-Versión: v10.27.0 | Hito: Audio Lineage Data Sync — human_help_requested Post-LINEAR-BLOCKING (BOT-ROUTER-AUDIO-LINEAGE-123) | Coherence Score: 1.000
+Versión: v10.28.0 | Hito: Audio Webhook Fuzzy Alignment (BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124) | Coherence Score: 1.000
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 154 | Sanitización y alineación fonética fuzzy de transcripción en bloque audio [BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124] | 2026-07-10 | d98a6d0 | 154-hotfix-audio-fuzzy-alignment |
 | 153 | Reubicar human_help_requested post-LINEAR-BLOCKING en bloque audio [BOT-ROUTER-AUDIO-LINEAGE-123] | 2026-07-10 | 5d4ca75 | 153-hotfix-audio-lineage-sync |
 | 152 | Fuzzy Identity Escalation en search_items — ratio>=0.85 activa boost +20k [BOT-PERF-IDENTITY-CALIBRATION-122] | 2026-07-10 | 807c15d | 152-hotfix-catalog-identity |
 | 151 | Corregir model_id en AudioService a gemini-2.5-flash y test de regresión | 2026-07-10 | 42b5f7a | 151-audio-model-alignment |
