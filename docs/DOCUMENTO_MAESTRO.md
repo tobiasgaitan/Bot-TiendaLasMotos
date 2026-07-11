@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.29.2)
-Versión: v10.29.2 (Audio last_bot_question Injection Fix)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.30.0)
+Versión: v10.30.0 (Multimodal Image Similitude Feature)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Corregir la regresión en el procesamiento de audios en whatsapp.py mediante la extracción de last_bot_question desde el historial e inyección en generate_and_update_summary, evitando payloads vacíos y colisiones en hilos. Cierre de ticket [BOT-BUGFIX-AUDIO-REGRESSION-121].
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 229/229 Tests PASSED)
+Último Hito: Diseñar e implementar el pipeline de comparación por similitud multimodal en CatalogService y VisionService, con persistencia síncrona en Firestore del campo moto_interest sin eludir Habeas Data, inyección de metadatos del catálogo en prompts y blindaje anti-null. Cierre de ticket [BOT-FEATURE-MULTIMODAL-IMAGE-SIMILITUDE-158].
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 244/244 Tests PASSED)
 
 
 1. Contexto y Persona (Juan Pablo)
@@ -113,3 +113,5 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 - [v10.29.2] Cierre de ticket BOT-BUGFIX-AUDIO-REGRESSION-121 (Audio last_bot_question Injection Fix). Corrección de la regresión en el procesamiento de audios en `app/routers/whatsapp.py` mediante la extracción de `last_bot_question` desde el historial de conversación e inyección en `generate_and_update_summary`, evitando payloads vacíos, roturas en la persistencia semántica y colisiones en hilos que derivan en respuestas HTTP 503. Coherence Score: 1.000 (229/229 Tests PASSED).
 
 - **Hito Resuelto [BOT-VISION-UPGRADE-156]**: Actualización de infraestructura multimodal core a Gemini 2.5 Flash y blindaje Anti-Null Masking. Score de Coherencia: 1.000 Certificado (239/239 Tests Passed).
+- [v10.30.0] Cierre de ticket BOT-FEATURE-MULTIMODAL-IMAGE-SIMILITUDE-158 (Similitud Multimodal de Imagen). Implementación de la capa adaptadora `match_catalog_item_by_image` en `CatalogService` (ID -> URL -> SequenceMatcher), actualización de `VisionService` para recibir el pool del catálogo con anti-null masking (warnings con traceback) y enrutador de WhatsApp integrado con persistencia síncrona en Firestore. Score de Coherencia: 1.000 (244/244 Tests PASSED).
+
