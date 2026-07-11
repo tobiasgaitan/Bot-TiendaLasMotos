@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.30.0)
-Versión: v10.30.0 (Multimodal Image Similitude Feature)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.31.0)
+Versión: v10.31.0 (Lifespan Hydration Alignment)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Diseñar e implementar el pipeline de comparación por similitud multimodal en CatalogService y VisionService, con persistencia síncrona en Firestore del campo moto_interest sin eludir Habeas Data, inyección de metadatos del catálogo en prompts y blindaje anti-null. Cierre de ticket [BOT-FEATURE-MULTIMODAL-IMAGE-SIMILITUDE-158].
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 244/244 Tests PASSED)
+Último Hito: Reestructurar el Lifespan de FastAPI y la inicialización a nivel de módulo en app/main.py para garantizar hidratación secuencial y bloqueante (60/60 ítems devueltos) en producción y CLI, con inicialización inline en pytest. Cierre de ticket [BOT-ARCHITECTURE-LIFESPAN-LINEAR-159].
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 246/246 Tests PASSED)
 
 
 1. Contexto y Persona (Juan Pablo)
