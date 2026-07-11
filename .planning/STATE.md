@@ -1,9 +1,10 @@
-Versión: v10.28.0 | Hito: Audio Webhook Fuzzy Alignment (BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124) | Coherence Score: 1.000
+Versión: v10.28.1 | Hito: Catálogo Image Routing Fix (BOT-VISION-PARSER) | Coherence Score: 1.000
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 155 | Corrección enrutamiento imágenes de catálogo (desacople [MOTO_DETECTADA]) [BOT-VISION-PARSER] | 2026-07-11 | e4d0241 | 155-bot-vision-parser |
 | 154 | Sanitización y alineación fonética fuzzy de transcripción en bloque audio [BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124] | 2026-07-10 | d98a6d0 | 154-hotfix-audio-fuzzy-alignment |
 | 153 | Reubicar human_help_requested post-LINEAR-BLOCKING en bloque audio [BOT-ROUTER-AUDIO-LINEAGE-123] | 2026-07-10 | 5d4ca75 | 153-hotfix-audio-lineage-sync |
 | 152 | Fuzzy Identity Escalation en search_items — ratio>=0.85 activa boost +20k [BOT-PERF-IDENTITY-CALIBRATION-122] | 2026-07-10 | 807c15d | 152-hotfix-catalog-identity |
