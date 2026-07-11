@@ -1452,21 +1452,22 @@ async def test_whatsapp_image_url_with_complex_query_params_regression():
         mock_chat.send_message = AsyncMock(return_value=mock_response)
         mock_client.aio.chats.create = MagicMock(return_value=mock_chat)
 
-        # Mock send_image_message on whatsapp_service to capture outgoing images and captions
-        captured_images = []
-        async def mock_send_image(to, url, caption="", reply_to_id=None, phone_number_id=None):
-            captured_images.append((url, caption))
-            return {"messages": [{"id": "wamid.mocked_image_123"}]}
+        # Configurar la simulación del cliente HTTP para interceptar la petición POST a Meta
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json = MagicMock(return_value={"messages": [{"id": "wamid.mocked_image_123"}]})
 
         with patch("app.routers.whatsapp.settings") as mock_settings, \
              patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
              patch("app.routers.whatsapp.judge_service") as mock_judge, \
-             patch("app.services.whatsapp_service.whatsapp_service.send_image_message", side_effect=mock_send_image), \
+             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_http_post, \
              patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
              patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
              patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
              patch("app.services.ai_brain.SDK_AVAILABLE", True):
 
+            # Configurar el retorno del mock post
+            mock_http_post.return_value = mock_response
             mock_settings.whatsapp_app_secret = None  # Bypass signature verification
             mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
 
@@ -1475,14 +1476,23 @@ async def test_whatsapp_image_url_with_complex_query_params_regression():
             await _handle_message_background(msg_data, background_tasks)
 
             # 5. Verificaciones
-            assert len(captured_images) == 1, "Debe haber enviado exactamente 1 imagen nativa."
-            sent_url, sent_caption = captured_images[0]
+            assert mock_http_post.call_count == 1, "Debe haber enviado exactamente 1 petición POST a Meta."
+            call_args = mock_http_post.call_args
+            assert call_args is not None, "La llamada a Meta API no se realizó."
+            meta_payload = call_args.kwargs.get("json")
+            assert meta_payload is not None, "El payload JSON enviado a Meta está vacío."
             
-            # Verificación del asertor rígido del PCC Pro:
-            # - Debe extraer la URL exacta incluyendo todos los query parameters
-            assert sent_url == complex_image_url, "La URL enviada no coincide con la URL compleja con query parameters."
+            # Aserción rígida sobre el objeto de payload saliente simulado para Meta:
+            assert meta_payload.get("type") == "image", "El tipo de mensaje debe mutar estrictamente a 'image'."
+            assert "image" in meta_payload, "El payload debe contener el objeto de imagen."
+            
+            image_data = meta_payload["image"]
+            assert image_data.get("link") == complex_image_url, "La URL de la imagen en el link debe ser la URL compleja."
+            
+            sent_caption = image_data.get("caption", "")
             # - El texto limpio del caption no debe contener ningún Markdown crudo o remanente del tag ![alt](url)
-            assert "![" not in sent_caption, "El caption retiene Markdown crudo de imagen."
+            assert "[" not in sent_caption, f"El caption retiene corchetes de apertura: '{sent_caption}'"
+            assert "]" not in sent_caption, f"El caption retiene corchetes de cierre: '{sent_caption}'"
             assert "https://firebasestorage.googleapis.com" not in sent_caption, "El caption retiene la URL de la imagen."
             
             # - El caption debe contener la información comercial y la ficha técnica

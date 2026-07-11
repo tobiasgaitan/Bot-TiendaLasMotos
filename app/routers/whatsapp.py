@@ -1511,15 +1511,18 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
 
                 # --- NATIVE IMAGE INTEGRATION ---
                 # Support both Markdown ![alt](url) and legacy [IMAGE: url]
-                # RESILIENCE FIX: Handle optional ! and spaces between ] and ( to catch degraded LLM formatting
-                image_pattern = r'(?:!?\[.*?\]\s*\((https?://[^\s\)]+)\)|\[IMAGE:\s*(https?://[^\s\]]+)\])'
-                all_matches = re.findall(image_pattern, response_text)
+                # RESILIENCE FIX: Use robust independent regex patterns to avoid tuple-of-empty-strings from findall
+                # and handle any control characters/newlines injected by the LLM inside brackets or spaces
+                markdown_pattern = r'!?\[[\s\S]*?\]\s*\((https?://[^\s\)]+)\)'
+                legacy_pattern = r'\[IMAGE:\s*(https?://[^\s\]]+)\]'
                 
-                # Extract clean URLs from both groups and purge empty ones via list comprehension
-                images_found = [url for m in all_matches for url in m if url]
+                markdown_matches = re.findall(markdown_pattern, response_text)
+                legacy_matches = re.findall(legacy_pattern, response_text)
+                images_found = markdown_matches + legacy_matches
                 
                 # Remove all image tags from the text to avoid showing raw markdown/tags to the user
-                cleaned_response_text = re.sub(image_pattern, '', response_text).strip()
+                cleaned_response_text = re.sub(markdown_pattern, '', response_text)
+                cleaned_response_text = re.sub(legacy_pattern, '', cleaned_response_text).strip()
                 
                 # If images found, send them using Strategy A (Caption) for better .webp compatibility
                 if images_found:
