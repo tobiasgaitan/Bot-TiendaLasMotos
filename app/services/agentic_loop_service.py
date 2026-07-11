@@ -76,7 +76,16 @@ class AgenticOrchestrator:
             # is_catalog_query=False y cortar el retry loop sincrónicamente.
             return {"success": True, "bypass_strict": True, "report": {}}
         else:
-            if not (has_price and has_image and has_ficha):
+            # [BOT-QA-HARDENING-126] Visual-Lock íntegro: si hay intención comercial activa (moto_interest),
+            # el marcador 'Sin descripción' es un fallback vacío que viola las reglas de PCC Pro.
+            # WHY: Si el LLM recibe "Ficha Tecnica: Sin descripción" con una moto de interés en CRM,
+            # puede alucinizar especificaciones técnicas para "completar" la ficha, causando Catalog-Lock violation.
+            # Con bypass (sin intención comercial), el fallback es aceptable para FAQ/generic queries.
+            has_sin_descripcion_fallback = (
+                has_moto_interest
+                and "Ficha Tecnica: Sin descripción" in bot_response
+            )
+            if not (has_price and has_image and has_ficha) or has_sin_descripcion_fallback:
                 report = {
                     "scenario_key": "CATALOG_VALIDATION_FAIL",
                     "input_stimulus": "Consulta de catálogo de motocicletas",
@@ -86,10 +95,16 @@ class AgenticOrchestrator:
                     "code_context": {
                         "target_file": "app/services/catalog_service.py",
                         "surrounding_code": "def search_items(): ...",
-                        "logs_trace": "PCC Pro Validation Triggered: Assertion Error"
+                        "logs_trace": (
+                            "PCC Pro Validation Triggered: Visual-Lock SIN_DESCRIPCION_FALLBACK "
+                            "[BOT-QA-HARDENING-126]"
+                            if has_sin_descripcion_fallback
+                            else "PCC Pro Validation Triggered: Assertion Error"
+                        )
                     }
                 }
                 return {"success": False, "report": report}
+
         
         return {"success": True, "report": {}}
 

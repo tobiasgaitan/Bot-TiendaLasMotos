@@ -606,9 +606,15 @@ async def test_habeas_bypass_interrupt_e2e():
 @pytest.mark.asyncio
 async def test_resilience_missing_summary_passes_filter():
     """
-    Test unitario afirmando que un documento sin 'summary'/'descripcion'
-    no es rechazado por el Null Masking en ai_brain.py y en su lugar pasa el filtro
-    con el valor por defecto 'Sin descripción'.
+    [BOT-QA-HARDENING-126] Test endurecido con dos sub-escenarios:
+    
+    Sub-escenario A (comportamiento original): Sin 'moto_interest' en prospect, un ítem sin summary
+    pasa el filtro con 'Sin descripción' — es aceptable para consultas genéricas sin intención comercial.
+    
+    Sub-escenario B (nuevo guardrail): Con 'moto_interest' activo en prospect, el checker agéntico
+    debe RECHAZAR respuestas con 'Ficha Tecnica: Sin descripción' como Visual-Lock incompleto.
+    WHY: Con intención comercial activa, el LLM puede alucinizar especificaciones para "completar"
+    la ficha, causando una violación de Catalog-Lock. El fallback vacío no es aceptable en este caso.
     """
     from app.services.ai_brain import CerebroIA
     cerebro = CerebroIA()
@@ -668,20 +674,82 @@ async def test_resilience_missing_summary_passes_filter():
             captured_tool_output = str(args[1])
         return response2
         
+    # ─── Sub-escenario A: SIN moto_interest — 'Sin descripción' es aceptable ────────────────────────
+    # Un prospect sin intención comercial explícita puede recibir el fallback 'Sin descripción'
+    # porque no hay riesgo de alucinación de ficha técnica (el bot no va a completar specs inventadas).
     with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
          patch('app.services.ai_brain.SDK_AVAILABLE', True):
          
-        prospect = {
+        prospect_sin_interes = {
             "nombre": "Pedro",
             "ciudad": "Cali",
             "forma_pago": "Crédito"
+            # Sin 'moto_interest' — sin intención comercial activa
         }
         
-        await cerebro.pensar_respuesta("Muéstrame la TVS Sport", prospect_data=prospect)
+        await cerebro.pensar_respuesta("Muéstrame la TVS Sport", prospect_data=prospect_sin_interes)
         
-        # Debe contener 'Sin descripción' en el tool result
+        # Debe contener 'Sin descripción' en el tool result (fallback aceptable sin intención comercial)
         assert captured_tool_output is not None
-        assert "Ficha Tecnica: Sin descripción" in captured_tool_output
+        assert "Ficha Tecnica: Sin descripción" in captured_tool_output, (
+            "Sin moto_interest activo, 'Sin descripción' debe ser el fallback aceptable "
+            "para ítems sin summary en el catálogo."
+        )
+
+    # ─── Sub-escenario B: CON moto_interest — 'Sin descripción' viola Visual-Lock íntegro ──────────
+    # Con intención comercial activa, run_checker DEBE rechazar 'Sin descripción' como Visual-Lock
+    # incompleto para prevenir alucinación de fichas técnicas por parte del LLM.
+    from app.services.agentic_loop_service import AgenticOrchestrator
+    orchestrator = AgenticOrchestrator()
+
+    # Respuesta simulada con 'Sin descripción' + intención comercial activa en prospect
+    response_with_sin_descripcion = (
+        "TVS Sport 100 es excelente: $6.200.000. "
+        "![TVS](https://img.url) "
+        "Ficha Tecnica: Sin descripción"
+    )
+    prospect_con_interes = {
+        "nombre": "Pedro",
+        "ciudad": "Cali",
+        "forma_pago": "Crédito",
+        "moto_interest": "TVS Sport 100"  # Intención comercial activa
+    }
+
+    # El checker agéntico debe rechazar la respuesta con 'Sin descripción' + moto_interest
+    validation = orchestrator.run_checker(
+        response_with_sin_descripcion,
+        is_catalog_query=True,
+        prospect_data=prospect_con_interes
+    )
+    assert validation["success"] is False, (
+        "[BOT-QA-HARDENING-126] Con moto_interest activo, run_checker debe rechazar "
+        "'Ficha Tecnica: Sin descripción' como Visual-Lock incompleto. "
+        "Este fallback vacío expone al bot a alucinación de fichas técnicas."
+    )
+    assert validation["report"]["broken_guardrail"] == "PRICE_CONSISTENCY_CHECK", (
+        "El guardrail roto debe ser PRICE_CONSISTENCY_CHECK (Visual-Lock violation)."
+    )
+    assert "SIN_DESCRIPCION_FALLBACK" in validation["report"]["code_context"]["logs_trace"], (
+        "El logs_trace debe identificar explícitamente 'SIN_DESCRIPCION_FALLBACK' "
+        "para diagnóstico forense."
+    )
+
+    # Verificar también que SIN moto_interest, el mismo texto pasa el checker (no hay riesgo)
+    prospect_sin_interes_checker = {
+        "nombre": "Pedro",
+        "ciudad": "Cali",
+        "forma_pago": "Crédito"
+        # Sin 'moto_interest'
+    }
+    validation_no_interest = orchestrator.run_checker(
+        response_with_sin_descripcion,
+        is_catalog_query=True,
+        prospect_data=prospect_sin_interes_checker
+    )
+    assert validation_no_interest["success"] is True, (
+        "Sin moto_interest activo, el mismo texto con 'Sin descripción' debe PASAR el checker "
+        "ya que no hay intención comercial que exponga al LLM a alucinación de ficha técnica."
+    )
 
 
 @pytest.mark.asyncio
