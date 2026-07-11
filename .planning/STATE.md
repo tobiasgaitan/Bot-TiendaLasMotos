@@ -1,9 +1,10 @@
-Versión: v10.28.3 | Hito: Hotfix Markdown Image Parsing (BOT-BUGFIX-MARKDOWN-IMAGE-REGRESSION-122) | Coherence Score: 1.000
+Versión: v10.28.4 | Hito: Hotfix Regex Groups Live Alignment (BOT-BUGFIX-REGEX-FINALL-ALIGNMENT-123) | Coherence Score: 1.000
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 158 | Hotfix Regex Groups Live Alignment [BOT-BUGFIX-REGEX-FINALL-ALIGNMENT-123] | 2026-07-11 | 0a1b072 | 158-hotfix-regex-groups-live-alignment |
 | 157 | Hotfix Markdown Image Parsing (Victory Advance R 125 query parameters) [BOT-BUGFIX-MARKDOWN-IMAGE-REGRESSION-122] | 2026-07-11 | 5d7dfa5 | 157-hotfix-markdown-image-parsing |
 | 156 | Actualización del modelo multimodal de VisionService a gemini-2.5-flash y aserciones anti-null [BOT-VISION-UPGRADE] | 2026-07-11 | 55aa05a | 156-bot-vision-upgrade |
 | 155 | Corrección enrutamiento imágenes de catálogo (desacople [MOTO_DETECTADA]) [BOT-VISION-PARSER] | 2026-07-11 | e4d0241 | 155-bot-vision-parser |
