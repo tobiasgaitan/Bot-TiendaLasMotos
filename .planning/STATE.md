@@ -1,9 +1,10 @@
-Versión: v10.28.1 | Hito: Catálogo Image Routing Fix (BOT-VISION-PARSER) | Coherence Score: 1.000
+Versión: v10.28.2 | Hito: Vision Model Upgrade (BOT-VISION-UPGRADE) | Coherence Score: 1.000
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 156 | Actualización del modelo multimodal de VisionService a gemini-2.5-flash y aserciones anti-null [BOT-VISION-UPGRADE] | 2026-07-11 | 55aa05a | 156-bot-vision-upgrade |
 | 155 | Corrección enrutamiento imágenes de catálogo (desacople [MOTO_DETECTADA]) [BOT-VISION-PARSER] | 2026-07-11 | e4d0241 | 155-bot-vision-parser |
 | 154 | Sanitización y alineación fonética fuzzy de transcripción en bloque audio [BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124] | 2026-07-10 | d98a6d0 | 154-hotfix-audio-fuzzy-alignment |
 | 153 | Reubicar human_help_requested post-LINEAR-BLOCKING en bloque audio [BOT-ROUTER-AUDIO-LINEAGE-123] | 2026-07-10 | 5d4ca75 | 153-hotfix-audio-lineage-sync |
