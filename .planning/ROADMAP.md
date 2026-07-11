@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
 ## Tasks Completadas (v10.28.5)
+- [x] Implementar Adaptador Local de Observabilidad Langfuse v4 bajo el Patrón Adaptador sin modificar site-packages ni provocar shadowing en namespaces (BOT-BUGFIX-LANGFUSE-DECORATOR-REGRESSION).
 - [x] Unificar el pipeline de egreso de mensajes de texto y de imágenes en whatsapp.py para evitar Mocking Blindness y omitir la persistencia duplicada (BOT-BUGFIX-UNIFIED-EGRESS-PIPELINE-125).
 - [x] Corregir la expresión regular de extracción de URLs de imágenes y purgar grupos vacíos para prevenir fallas al interceptar URLs complejas en WhatsApp (BOT-BUGFIX-MARKDOWN-IMAGE-REGRESSION-122).
 - [x] Actualización del modelo multimodal de VisionService a gemini-2.5-flash e implementación de tests unitarios robustos ante payloads nulos con Zero-Silent-Failures (BOT-VISION-UPGRADE).

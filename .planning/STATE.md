@@ -1,9 +1,10 @@
-Versión: v10.29.1 | Hito: QA Hardening — 3 Falsos Positivos Eliminados (BOT-QA-HARDENING-126) | Coherence Score: 1.000
+Versión: v10.29.2 | Hito: Adaptador de Observabilidad Local (BOT-BUGFIX-LANGFUSE-DECORATOR-REGRESSION) | Coherence Score: 1.000
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 161 | Implementar Adaptador Local de Observabilidad Langfuse v4 [BOT-BUGFIX-LANGFUSE-DECORATOR-REGRESSION] | 2026-07-11 | fe0092d | 161-langfuse-adapter |
 | 160 | QA Hardening — 3 Falsos Positivos Eliminados [BOT-QA-HARDENING-126] | 2026-07-11 | fceb71e | 160-qa-hardening-126 |
 | 159 | Hotfix Unified Egress Message Delivery [BOT-BUGFIX-UNIFIED-EGRESS-PIPELINE-125] | 2026-07-11 | 54d99e2 | 159-unified-egress-pipeline |
 | 158 | Hotfix Regex Groups Live Alignment [BOT-BUGFIX-REGEX-FINALL-ALIGNMENT-123] | 2026-07-11 | 0a1b072 | 158-hotfix-regex-groups-live-alignment |
