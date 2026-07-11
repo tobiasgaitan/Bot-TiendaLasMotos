@@ -34,16 +34,16 @@ class VisionService:
         
         if GENAI_AVAILABLE:
             try:
-                # Using Gemini 2.0 Flash (stable for vision)
+                # Using Gemini 2.5 Flash (upgraded for vision)
                 self.client = genai.Client(
                     vertexai=True,
                     project=self._db.project, # Re-using project ID from Firestore client
                     location="us-central1"    # Default location, can be moved to env
                 )
-                self._model_id = "gemini-2.0-flash"
+                self._model_id = "gemini-2.5-flash"
                 logger.info(f"👁️ VisionService initialized with {self._model_id} via google-genai")
             except Exception as e:
-                logger.error(f"❌ VisionService init error: {e}")
+                logger.exception(f"❌ VisionService init error: {e}")
 
     async def _call_gemini_with_retry_async(self, func, *args, **kwargs):
         """
@@ -109,7 +109,11 @@ class VisionService:
                 contents=[image_part, prompt]
             )
             # 2. Extract Contract or JSON
+            if not response or not getattr(response, "text", None):
+                raise ValueError("GenAI API returned an empty response or nulo payload")
             response_text = response.text.strip()
+            if not response_text:
+                raise ValueError("GenAI API returned an empty text payload")
             
             if "QUALITY_CHECK:" in response_text:
                 return response_text
@@ -128,8 +132,8 @@ class VisionService:
                 return await self._process_general_image_sentiment(image_part)
 
         except Exception as e:
-            logger.error(f"❌ Error analyzing image: {e}")
-            return "Tuve un problema procesando la imagen. Intenta enviarla de nuevo."
+            logger.exception(f"❌ Error analyzing image: {e}")
+            raise e
 
     async def _process_kyc_document(self, image_part: types.Part, phone: str) -> str:
         """
@@ -148,6 +152,8 @@ class VisionService:
             model=self._model_id,
             contents=[image_part, prompt]
         )
+        if not response or not getattr(response, "text", None) or not response.text.strip():
+            raise ValueError("GenAI API returned an empty response or nulo payload in _process_kyc_document")
         return response.text.strip()
 
     async def _process_moto(self, image_part: types.Part, brief_desc: str) -> str:
@@ -178,6 +184,8 @@ class VisionService:
             model=self._model_id,
             contents=[image_part, prompt]
         )
+        if not response or not getattr(response, "text", None) or not response.text.strip():
+            raise ValueError("GenAI API returned an empty response or nulo payload in _process_moto")
         return response.text.strip()
 
     async def _process_general_image_sentiment(self, image_part: types.Part) -> str:
@@ -201,6 +209,8 @@ class VisionService:
             model=self._model_id,
             contents=[image_part, prompt]
         )
+        if not response or not getattr(response, "text", None) or not response.text.strip():
+            raise ValueError("GenAI API returned an empty response or nulo payload in _process_general_image_sentiment")
         return response.text.strip()
 
     def _parse_json(self, text: str) -> Dict[str, Any]:
