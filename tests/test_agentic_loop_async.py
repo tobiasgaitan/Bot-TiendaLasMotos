@@ -1504,3 +1504,156 @@ async def test_whatsapp_image_url_with_complex_query_params_regression():
         whatsapp.message_buffer.debounce_seconds = orig_debounce
 
 
+@pytest.mark.asyncio
+async def test_incoming_image_webhook_egress_unification():
+    """
+    [BOT-BUGFIX-UNIFIED-EGRESS-PIPELINE-125]
+    Verifies that the WhatsApp router correctly parses and intercepts Markdown
+    images even when the incoming webhook is of type 'image' (triggering Vision AI).
+    Asserts that Meta's outbound message payload is mutated to type 'image' with correct link/caption parameters,
+    and is free of brackets.
+    """
+    import app.routers.whatsapp as whatsapp
+    from app.routers.whatsapp import _handle_message_background
+    from fastapi import BackgroundTasks
+    
+    # 1. Asegurar la inicialización del message_buffer y forzar debounce_seconds a 0.0
+    whatsapp._ensure_services_sync()
+    orig_debounce = whatsapp.message_buffer.debounce_seconds
+    whatsapp.message_buffer.debounce_seconds = 0.0
+    
+    user_phone = "+573192564290" # Use a distinct phone number
+    
+    try:
+        # Clear buffer to guarantee complete test isolation
+        await whatsapp.message_buffer.clear_buffer(user_phone)
+        if user_phone in whatsapp.message_buffer._processed_wamids:
+            whatsapp.message_buffer._processed_wamids[user_phone].clear()
+            
+        msg_data = {
+            "from": user_phone,
+            "id": "wamid.incoming_image_test_125",
+            "type": "image",
+            "image": {
+                "id": "media_id_125",
+                "mime_type": "image/jpeg",
+                "caption": "Mira esta moto"
+            },
+            "phone_number_id": "1021779847693778"
+        }
+        
+        # 2. Mock Prospect data con habeas_data firmado y moto de interés asignada
+        mock_prospect_data = {
+            "exists": True,
+            "celular": user_phone,
+            "chatbot_status": "ACTIVE",
+            "status": "IN_PROGRESS",
+            "source": "whatsapp_bot",
+            "habeas_data_accepted": True,
+            "nombre": "Juan TVS",
+            "ciudad": "Medellin",
+            "forma_pago": "credito",
+            "moto_interest": "TVS Sport 100"
+        }
+
+        # Setup mock memory service
+        mock_ms = AsyncMock()
+        mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+        mock_ms.create_prospect_if_missing = AsyncMock()
+        mock_ms.get_chat_history = AsyncMock(return_value=[])
+        mock_ms.save_message = AsyncMock()
+        mock_ms.generate_and_update_summary = AsyncMock()
+        mock_ms.update_last_interaction = AsyncMock()
+        mock_ms.transition_to_in_progress = AsyncMock()
+        mock_ms.set_human_help_status = AsyncMock()
+        mock_ms.update_prospect_summary = MagicMock() # Wait, some calls are sync? Use MagicMock for safe fallback or AsyncMock
+
+        # Firebase Storage URL with extensive query parameters representing TVS Sport 100
+        complex_image_url = (
+            "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/motos%2Ftvs_sport_100.webp"
+            "?alt=media&token=87654321-abcd-efgh-ijkl-0987654321ba"
+        )
+        
+        # Simulated response from Gemini adhering to our instruction
+        bot_response = (
+            "Perfecto. La TVS Sport 100 cuesta $6.200.000. Ficha Tecnica: Excelente. "
+            f"![TVS Sport 100]({complex_image_url})"
+        )
+
+        # Mock GenAI client to return this response
+        mock_client = MagicMock()
+        mock_chat = AsyncMock()
+        mock_response = MagicMock()
+        mock_candidate = MagicMock()
+        mock_part = MagicMock()
+        
+        mock_part.text = bot_response
+        mock_part.function_call = None
+        mock_candidate.content.parts = [mock_part]
+        mock_response.candidates = [mock_candidate]
+
+        mock_chat.send_message = AsyncMock(return_value=mock_response)
+        mock_client.aio.chats.create = MagicMock(return_value=mock_chat)
+
+        # Configurar la simulación del cliente HTTP para interceptar la petición POST a Meta
+        mock_http_response = MagicMock()
+        mock_http_response.status_code = 200
+        mock_http_response.json = MagicMock(return_value={"messages": [{"id": "wamid.mocked_image_125"}]})
+
+        # Mock VisionService to analyze image and return "TVS Sport 100"
+        mock_vision_service_inst = AsyncMock()
+        mock_vision_service_inst.analyze_image = AsyncMock(return_value="TVS Sport 100")
+
+        mock_db = MagicMock()
+        mock_db.project = "test-project-123"
+
+        with patch("app.routers.whatsapp.settings") as mock_settings, \
+             patch("app.routers.whatsapp.db", mock_db), \
+             patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
+             patch("app.routers.whatsapp.judge_service") as mock_judge, \
+             patch("app.routers.whatsapp.VisionService", return_value=mock_vision_service_inst), \
+             patch("app.routers.whatsapp.storage_service.download_media", AsyncMock(return_value=b"dummy_image_data")), \
+             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_http_post, \
+             patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+             patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+             patch("app.services.ai_brain.SDK_AVAILABLE", True):
+
+            # Configurar el retorno del mock post
+            mock_http_post.return_value = mock_http_response
+            mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+            mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+
+            # 4. Ejecutar el handler
+            background_tasks = BackgroundTasks()
+            await _handle_message_background(msg_data, background_tasks)
+
+            # 5. Verificaciones
+            assert mock_http_post.call_count == 1, "Debe haber enviado exactamente 1 petición POST a Meta."
+            call_args = mock_http_post.call_args
+            assert call_args is not None, "La llamada a Meta API no se realizó."
+            meta_payload = call_args.kwargs.get("json")
+            assert meta_payload is not None, "El payload JSON enviado a Meta está vacío."
+            
+            # Aserción rígida sobre el objeto de payload saliente simulado para Meta:
+            assert meta_payload.get("type") == "image", "El tipo de mensaje debe mutar estrictamente a 'image'."
+            assert "image" in meta_payload, "El payload debe contener el objeto de imagen."
+            
+            image_data = meta_payload["image"]
+            assert image_data.get("link") == complex_image_url, "La URL de la imagen en el link debe ser la URL compleja."
+            
+            sent_caption = image_data.get("caption", "")
+            # - El texto limpio del caption no debe contener ningún Markdown crudo o remanente del tag ![alt](url)
+            assert "[" not in sent_caption, f"El caption retiene corchetes de apertura: '{sent_caption}'"
+            assert "]" not in sent_caption, f"El caption retiene corchetes de cierre: '{sent_caption}'"
+            assert "https://firebasestorage.googleapis.com" not in sent_caption, "El caption retiene la URL de la imagen."
+            
+            # - El caption debe contener la información comercial y la ficha técnica
+            assert "TVS Sport 100" in sent_caption
+            assert "$6.200.000" in sent_caption
+            assert "Ficha Tecnica:" in sent_caption
+
+    finally:
+        whatsapp.message_buffer.debounce_seconds = orig_debounce
+
+

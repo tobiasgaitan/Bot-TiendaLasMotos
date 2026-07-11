@@ -839,9 +839,8 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                     if not final_response:
                                         final_response = "Lo siento, tuve un problema procesando esa información. ¿Podrías repetirme qué buscas?"
                                     
-                                    await _send_whatsapp_message(user_phone, final_response, phone_number_id=phone_number_id)
                                     await ms.save_message(user_phone, "user", simulated_user_msg)
-                                    await ms.save_message(user_phone, "model", final_response)
+                                    await _process_and_send_egress_message(user_phone, final_response, phone_number_id=phone_number_id)
                                     return
 
                         except Exception as inner_e:
@@ -1509,55 +1508,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                     else:
                         logger.info("⏩ [BYPASS] Skipping image injection: moto already confirmed.")
 
-                # --- NATIVE IMAGE INTEGRATION ---
-                # Support both Markdown ![alt](url) and legacy [IMAGE: url]
-                # RESILIENCE FIX: Use robust independent regex patterns to avoid tuple-of-empty-strings from findall
-                # and handle any control characters/newlines injected by the LLM inside brackets or spaces
-                markdown_pattern = r'!?\[[\s\S]*?\]\s*\((https?://[^\s\)]+)\)'
-                legacy_pattern = r'\[IMAGE:\s*(https?://[^\s\]]+)\]'
-                
-                markdown_matches = re.findall(markdown_pattern, response_text)
-                legacy_matches = re.findall(legacy_pattern, response_text)
-                images_found = markdown_matches + legacy_matches
-                
-                # Remove all image tags from the text to avoid showing raw markdown/tags to the user
-                cleaned_response_text = re.sub(markdown_pattern, '', response_text)
-                cleaned_response_text = re.sub(legacy_pattern, '', cleaned_response_text).strip()
-                
-                # If images found, send them using Strategy A (Caption) for better .webp compatibility
-                if images_found:
-                    image_url = images_found[0] # Take the first image
-                    
-                    # STRATEGY A (Caption): Single payload for better .webp compatibility
-                    # WhatsApp Caption Limit: 1024 characters
-                    MAX_CAPTION = 1024
-                    
-                    caption = cleaned_response_text
-                    overflow_text = ""
-                    
-                    if len(caption) > MAX_CAPTION:
-                        logger.warning(f"⚠️ Caption too long ({len(caption)} chars). Splitting...")
-                        # Find last space within limit to avoid cutting words
-                        split_idx = caption.rfind(' ', 0, MAX_CAPTION)
-                        if split_idx == -1: split_idx = MAX_CAPTION
-                        overflow_text = caption[split_idx:].strip()
-                        caption = caption[:split_idx].strip()
-                    
-                    logger.info(f"📸 Strategy A (Caption): url={image_url}")
-                    await _send_whatsapp_image(user_phone, image_url, caption=caption, phone_number_id=phone_number_id)
-                    
-                    if overflow_text:
-                        logger.info(f"📤 Sending overflow text ({len(overflow_text)} chars)")
-                        await _send_whatsapp_message(user_phone, overflow_text, phone_number_id=phone_number_id)
-                    
-                    # Store the cleaned text for history to avoid raw markdown clutter
-                    response_text = cleaned_response_text 
-                else:
-                    await _send_whatsapp_message(user_phone, response_text, phone_number_id=phone_number_id)
-                
-                # Save Bot Response to History (PERSISTENCE FIX)
-                if memory_service_module.memory_service:
-                    await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
+                await _process_and_send_egress_message(user_phone, response_text, phone_number_id=phone_number_id)
 
     except Exception as e:
         import traceback
@@ -1586,6 +1537,73 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
 # ============================================================================
 # LOCAL HELPERS (Defined here to avoid missing dependency errors)
 # ============================================================================
+
+async def _process_and_send_egress_message(user_phone: str, response_text: str, phone_number_id: Optional[str] = None):
+    """
+    [BOT-BUGFIX-UNIFIED-EGRESS-PIPELINE-125] Pipeline unificado de egreso de mensajes.
+    Detecta, extrae y limpia los Markdown de imágenes (alt/link o legacy IMAGE),
+    despacha según corresponda (imagen con Caption o mensaje simple), y
+    persiste el resultado en Firestore a través de memory_service.
+    """
+    try:
+        # --- NATIVE IMAGE INTEGRATION ---
+        # Support both Markdown ![alt](url) and legacy [IMAGE: url]
+        markdown_pattern = r'!?\[[\s\S]*?\]\s*\((https?://[^\s\)]+)\)'
+        legacy_pattern = r'\[IMAGE:\s*(https?://[^\s\]]+)\]'
+        
+        markdown_matches = re.findall(markdown_pattern, response_text)
+        legacy_matches = re.findall(legacy_pattern, response_text)
+        images_found = markdown_matches + legacy_matches
+        
+        # Remove all image tags from the text to avoid showing raw markdown/tags to the user
+        cleaned_response_text = re.sub(markdown_pattern, '', response_text)
+        cleaned_response_text = re.sub(legacy_pattern, '', cleaned_response_text).strip()
+        
+        # If images found, send them using Strategy A (Caption) for better .webp compatibility
+        if images_found:
+            image_url = images_found[0] # Take the first image
+            
+            # STRATEGY A (Caption): Single payload for better .webp compatibility
+            # WhatsApp Caption Limit: 1024 characters
+            MAX_CAPTION = 1024
+            
+            caption = cleaned_response_text
+            overflow_text = ""
+            
+            if len(caption) > MAX_CAPTION:
+                logger.warning(f"⚠️ Caption too long ({len(caption)} chars). Splitting...")
+                # Find last space within limit to avoid cutting words
+                split_idx = caption.rfind(' ', 0, MAX_CAPTION)
+                if split_idx == -1: split_idx = MAX_CAPTION
+                overflow_text = caption[split_idx:].strip()
+                caption = caption[:split_idx].strip()
+            
+            logger.info(f"📸 Strategy A (Caption): url={image_url}")
+            await _send_whatsapp_image(user_phone, image_url, caption=caption, phone_number_id=phone_number_id)
+            
+            if overflow_text:
+                logger.info(f"📤 Sending overflow text ({len(overflow_text)} chars)")
+                await _send_whatsapp_message(user_phone, overflow_text, phone_number_id=phone_number_id)
+            
+            # Store the cleaned text for history to avoid raw markdown clutter
+            response_text = cleaned_response_text 
+        else:
+            await _send_whatsapp_message(user_phone, response_text, phone_number_id=phone_number_id)
+        
+        # Save Bot Response to History (PERSISTENCE FIX)
+        if memory_service_module.memory_service:
+            await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
+            
+    except Exception as e:
+        logger.error(
+            f"❌ Fallo en _process_and_send_egress_message: {e}",
+            extra={
+                "user_phone": user_phone,
+                "response_text_raw": response_text
+            },
+            exc_info=True
+        )
+        raise
 
 def _is_valid_statuses(payload: Dict[str, Any]) -> bool:
     """
