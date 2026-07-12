@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.36.0)
+## Tasks Completadas (v10.37.0)
+- [x] Implementación de guardrail de idempotencia síncrona en la frontera del enrutador usando register_wamid de MessageBuffer para fulminar peticiones duplicadas antes de encolarlas (BOT-BACKEND-HOTFIX-WEBHOOK-IDEMPOTENCY-LOCK-171).
 - [x] Refactorización de los bucles de validación perimetral alfabética en CatalogService para permitir la coincidencia de sinónimos regionales y expansiones contra search_tokens (BOT-BACKEND-HOTFIX-PERIMETER-COLLOQUIAL-ALIGNMENT-170).
 - [x] Refactorización de la inicialización de CatalogService con inyección de dependencias de ConfigLoader y control fail-fast (BOT-BACKEND-HOTFIX-CATALOG-INITIALIZATION-SYNC-169).
 - [x] Filtro de stopwords conversacionales (saludos, fórmulas de cortesía y verbos comerciales) en el pre-procesamiento de tokens de control alfabético en CatalogService (BOT-BACKEND-HOTFIX-CONVERSATIONAL-STOPWORD-STRIPPING-168).
