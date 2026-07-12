@@ -49,16 +49,29 @@ class CatalogService:
         self._items_by_category: Dict[str, List[Dict[str, Any]]] = {}
         self._db: Optional[firestore.Client] = None
         self._category_aliases = {}
+        # WHY: ConfigLoader is stored as an injected dependency (not instantiated
+        # inside load_catalog) to prevent the race condition where ConfigLoader()
+        # is called without a `db` argument before the singleton is hydrated,
+        # silently producing category_aliases={} and breaking alias resolution.
+        self._config_loader = None
         self._cache_service = SemanticCacheService()
     
-    def initialize(self, db: firestore.Client) -> None:
+    def initialize(self, db: firestore.Client, config_loader=None) -> None:
         """
         Initialize the service with Firestore client and load catalog.
-        
+
         Args:
             db: Initialized Firestore client
+            config_loader: Pre-hydrated ConfigLoader instance (Singleton).
+                           Must be passed AFTER config_loader.load_all() has
+                           been called so that category_aliases are available.
+                           If None, load_catalog will attempt to use the
+                           existing singleton, but this is a degraded path.
         """
         self._db = db
+        # WHY: Store the pre-hydrated ConfigLoader so load_catalog() can resolve
+        # category_aliases without triggering a race condition via ConfigLoader().
+        self._config_loader = config_loader
         self.load_catalog()
     
     def load_catalog(self) -> None:
@@ -76,30 +89,77 @@ class CatalogService:
                 logger.warning("⚠️ Firestore client not initialized in CatalogService")
                 return
                 
-            # Initialize or retrieve dynamic config for aliases
-            # Mantenibilidad: Se inyectan dinámicamente desde Firestore para 
+            # Resolve category aliases using the injected ConfigLoader dependency.
+            # WHY: ConfigLoader is received pre-hydrated from initialize() to eliminate
+            # the race condition where ConfigLoader() was invoked without a `db` arg
+            # before the singleton was ready, silently producing category_aliases={}.
+            # Mantenibilidad: Se inyectan dinámicamente desde Firestore para
             # permitir actualizaciones sin redespliegues (QA Baseline).
-            try:
-                from app.core.config_loader import ConfigLoader
-                config_loader = ConfigLoader()
-                catalog_config = config_loader.get_catalog_config()
-                raw_aliases = catalog_config.get("category_aliases", {})
-                normalized_aliases = {}
-                if isinstance(raw_aliases, dict):
-                    for k, v in raw_aliases.items():
-                        if not k:
-                            continue
-                        k_norm = str(k).lower().strip()
-                        if isinstance(v, dict):
-                            normalized_aliases[k_norm] = [str(val).lower().strip() for val in v.values() if val and str(val).strip()]
-                        elif isinstance(v, list):
-                            normalized_aliases[k_norm] = [str(val).lower().strip() for val in v if val and str(val).strip()]
-                        elif isinstance(v, str):
-                            normalized_aliases[k_norm] = [v.lower().strip()] if v.strip() else []
-                temp_category_aliases = normalized_aliases
-            except Exception:
-                logger.warning("⚠️ ConfigLoader not ready. Using empty category aliases.")
-                temp_category_aliases = {}
+            config_loader_instance = self._config_loader
+            if config_loader_instance is None:
+                # Degraded path: attempt to retrieve an already-hydrated singleton.
+                # This should only happen in legacy call sites; prefer injecting via initialize().
+                try:
+                    from app.core.config_loader import ConfigLoader as _CL
+                    config_loader_instance = _CL._instance  # Access existing singleton without creating a new one
+                    logger.warning(
+                        "⚠️ [CATALOG-INIT] ConfigLoader was not injected via initialize(). "
+                        "Falling back to singleton access. Verify startup order in main.py."
+                    )
+                except Exception as cl_err:
+                    logger.error(f"❌ [CATALOG-INIT] Cannot access ConfigLoader singleton: {cl_err}")
+
+            temp_category_aliases = {}
+            if config_loader_instance is not None:
+                try:
+                    catalog_config = config_loader_instance.get_catalog_config()
+                    raw_aliases = catalog_config.get("category_aliases", {})
+                    normalized_aliases = {}
+                    if isinstance(raw_aliases, dict):
+                        for k, v in raw_aliases.items():
+                            if not k:
+                                continue
+                            k_norm = str(k).lower().strip()
+                            if isinstance(v, dict):
+                                normalized_aliases[k_norm] = [str(val).lower().strip() for val in v.values() if val and str(val).strip()]
+                            elif isinstance(v, list):
+                                normalized_aliases[k_norm] = [str(val).lower().strip() for val in v if val and str(val).strip()]
+                            elif isinstance(v, str):
+                                normalized_aliases[k_norm] = [v.lower().strip()] if v.strip() else []
+                    temp_category_aliases = normalized_aliases
+
+                    # FAIL-FAST GUARDRAIL: If a hydrated ConfigLoader produced empty aliases,
+                    # it signals a corrupted or missing Firestore document. Raise to prevent
+                    # deploying a zombie container with broken alias resolution.
+                    # WHY: Empty aliases after a successful ConfigLoader hydration indicate
+                    # the 'category_aliases' field is absent/empty in Firestore's catalog_config
+                    # document — which would silently invalidate all synonym-based queries (ticket 163).
+                    # PRECISION: The guard only fires when raw_aliases is an explicit empty dict ({}),
+                    # meaning Firestore responded successfully but the field is missing/empty.
+                    # If raw_aliases is not a dict (e.g. MagicMock in test), it's a type error,
+                    # not a Firestore data absence — handled separately below.
+                    if self._config_loader is not None and isinstance(raw_aliases, dict) and not temp_category_aliases:
+                        raise RuntimeError(
+                            "[CATALOG-INIT-FAILURE] ConfigLoader was injected and hydrated, but "
+                            "category_aliases resolved to an empty dict. The 'category_aliases' field "
+                            "in Firestore 'configuracion/catalog_config' is missing or empty. "
+                            "Aborting catalog initialization to prevent zombie container deployment."
+                        )
+
+                except RuntimeError:
+                    # Re-raise RuntimeError (fail-fast guardrail) without swallowing it
+                    raise
+                except Exception as alias_err:
+                    logger.error(
+                        f"❌ [CATALOG-INIT] Failed to resolve category_aliases from ConfigLoader: {alias_err}"
+                    )
+                    logger.exception(alias_err)
+                    temp_category_aliases = {}
+            else:
+                logger.warning(
+                    "⚠️ [CATALOG-INIT] No ConfigLoader available. category_aliases will be empty. "
+                    "Alias-based synonym queries (e.g. 'Pistera' -> 'Deportiva') will not function."
+                )
 
             # Query all items from sub-collection 'pagina/catalogo/items'
             items_ref = self._db.collection("pagina").document("catalogo").collection("items")
@@ -292,6 +352,11 @@ class CatalogService:
             # Hydrate cache
             self._hydrate_cache()
             
+        except RuntimeError:
+            # WHY: RuntimeError is our fail-fast guardrail (e.g. [CATALOG-INIT-FAILURE]).
+            # It MUST NOT be swallowed here — it must propagate to the caller (initialize()
+            # -> main.py) to prevent deployment of zombie containers with empty aliases.
+            raise
         except Exception as e:
             logger.exception(f"❌ Error loading catalog: {str(e)}")
 

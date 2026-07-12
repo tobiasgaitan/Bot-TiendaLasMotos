@@ -62,7 +62,10 @@ if not TEST_MODE:
             
         config_service.initialize(db)
         config_loader.load_all()
-        catalog_service.initialize(db)
+        # WHY: config_loader is passed as an injected dependency (post-hydration)
+        # to eliminate the race condition in CatalogService.load_catalog() where
+        # ConfigLoader() was called without `db`, silently producing empty aliases.
+        catalog_service.initialize(db, config_loader)
         finance_config_loader = FinanceConfigLoader(db)
         
         # Verify catalog size (Fail-Fast Rule)
@@ -149,7 +152,9 @@ async def lifespan(app: FastAPI):
                 config_loader_obj.load_all()
                 
                 logger.info("🏍️  Linear Startup: Initializing catalog service...")
-                catalog_service.initialize(db_obj)
+                # WHY: config_loader_obj is passed as an injected dependency (post-hydration)
+                # to eliminate the race condition in CatalogService.load_catalog().
+                catalog_service.initialize(db_obj, config_loader_obj)
                 
                 logger.info("💰 Linear Startup: Loading Financial Configuration...")
                 finance_config_loader_inst = FinanceConfigLoader(db_obj)
