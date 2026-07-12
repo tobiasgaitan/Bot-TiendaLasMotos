@@ -1,6 +1,8 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.33.0)
+## Tasks Completadas (v10.33.2)
+- [x] Mapeo flexible de alias en plural/diminutivo de categorías de catálogo con protección de colisiones en monosílabos (BOT-BACKEND-HOTFIX-PLURAL-ALIAS-ALIGNMENT-166).
+- [x] Recuperación y mapeo inicial de alias de categorías de catálogo en CatalogService (BOT-BACKEND-HOTFIX-CATALOG-ALIAS-RECOVERY-165).
 - [x] Alinear quirúrgicamente el módulo de observabilidad y trazas en whatsapp.py con las firmas nativas del SDK de Langfuse v4 (BOT-BRAIN-OBSERVABILITY-ALIGN-164).
 - [x] Calibración de Umbral de Catálogo y Aislamiento Numérico en CatalogService para evitar colisiones de marcas y cilindrajes (BOT-BACKEND-CATALOG-THRESHOLD-163).
 - [x] Reestructuración del Lifespan de FastAPI y la inicialización de servicios core a nivel de módulo en app/main.py para garantizar hidratación secuencial y bloqueante (60/60 ítems devueltos) en producción y CLI, con inicialización inline en pytest (BOT-ARCHITECTURE-LIFESPAN-LINEAR-159).
