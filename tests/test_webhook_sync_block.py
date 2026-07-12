@@ -175,7 +175,8 @@ async def test_webhook_cloud_tasks_enqueuing():
     mock_request.headers = {"X-Hub-Signature-256": "sha256=dummy"}
 
     # Mock Message Buffer duplicate detection
-    mock_message_buffer = MagicMock()
+    mock_message_buffer = AsyncMock()
+    mock_message_buffer.register_wamid = AsyncMock(return_value=True)
     mock_message_buffer._processed_wamids = {}
     
     with patch("app.routers.whatsapp.settings") as mock_settings, \

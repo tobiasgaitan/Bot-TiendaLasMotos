@@ -354,9 +354,11 @@ async def webhook_handler(
         from app.core.utils import PhoneNormalizer
         user_phone = PhoneNormalizer.normalize(raw_phone)
         msg_id_unique = msg_data.get("id") or f"{user_phone}_{int(datetime.now().timestamp())}"
-        if message_buffer and user_phone in message_buffer._processed_wamids and msg_id_unique in message_buffer._processed_wamids[user_phone]:
-            logger.warning(f"🔄 Duplicate WAMID ignored in handler: {msg_id_unique}")
-            return {"status": "ignored", "procesado": False}
+        if message_buffer:
+            is_new = await message_buffer.register_wamid(user_phone, msg_id_unique)
+            if not is_new:
+                logger.warning(f"🔄 Duplicate WAMID ignored in handler: {msg_id_unique}")
+                return {"status": "ignored", "procesado": False}
 
         if settings.cloud_tasks_queue_path and settings.task_processor_url:
             await _enqueue_cloud_task(payload)

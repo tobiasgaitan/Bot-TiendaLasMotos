@@ -41,6 +41,7 @@ class MessageBuffer:
         self._active_tasks: Dict[str, str] = {}
         self._locks: Dict[str, asyncio.Lock] = {}
         self._processed_wamids: Dict[str, set] = {}
+        self._added_wamids: Dict[str, set] = {}
         logger.info(f"📦 MessageBuffer initialized with {debounce_seconds}s debounce")
     
     def _get_lock(self, wa_id: str) -> asyncio.Lock:
@@ -76,18 +77,23 @@ class MessageBuffer:
         async with lock:
             if wa_id not in self._processed_wamids:
                 self._processed_wamids[wa_id] = set()
+            if wa_id not in self._added_wamids:
+                self._added_wamids[wa_id] = set()
 
-            if task_id in self._processed_wamids[wa_id]:
+            if task_id in self._added_wamids[wa_id]:
                 logger.warning(f"🔄 Duplicate webhook ignored for wamid/task_id: {task_id}")
                 return False
 
             self._processed_wamids[wa_id].add(task_id)
+            self._added_wamids[wa_id].add(task_id)
             
             # Pruning logic: keep only the last 100 wamids per user for memory safety
             if len(self._processed_wamids[wa_id]) > 100:
                 # set is not ordered, so this is just random pruning to keep size limited
                 # but 100 is plenty for meta retries which happen within seconds
                 self._processed_wamids[wa_id].pop()
+            if len(self._added_wamids[wa_id]) > 100:
+                self._added_wamids[wa_id].pop()
 
             # Initialize buffer if needed
             if wa_id not in self._buffers:
