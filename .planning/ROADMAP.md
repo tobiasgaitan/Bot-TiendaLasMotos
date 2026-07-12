@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.40.0)
+## Tasks Completadas (v10.42.0)
+- [x] Alinear de forma rígida todos los flags `skip_greeting` en las llamadas satélites de `whatsapp.py` e implementar aserciones rígidas de argumentos (`assert_called_with`) en los tests (BOT-BACKEND-HOTFIX-ROUTER-BRANCH-ALIGNMENT-175).
 - [x] Refactorización de las firmas de llamada a 'cerebro_ia.pensar_respuesta' en todas las ramas de procesamiento de 'app/routers/whatsapp.py' e implementación de '_evaluate_skip_greeting' para saludos dinámicos (BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-173).
 - [x] Implementación de guardrail de idempotencia síncrona en la frontera del enrutador usando register_wamid de MessageBuffer para fulminar peticiones duplicadas antes de encolarlas (BOT-BACKEND-HOTFIX-WEBHOOK-IDEMPOTENCY-LOCK-171).
 - [x] Refactorización de los bucles de validación perimetral alfabética en CatalogService para permitir la coincidencia de sinónimos regionales y expansiones contra search_tokens (BOT-BACKEND-HOTFIX-PERIMETER-COLLOQUIAL-ALIGNMENT-170).

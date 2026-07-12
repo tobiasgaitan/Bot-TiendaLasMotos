@@ -1,14 +1,15 @@
-Versión: v10.41.0 | Hito: Hotfix Router Inference Guard (BOT-BACKEND-HOTFIX-ROUTER-INFERENCE-GUARD-174) | Coherence Score: 1.000
+Versión: v10.42.0 | Hito: Hotfix Router Branch Alignment (BOT-BACKEND-HOTFIX-ROUTER-BRANCH-ALIGNMENT-175) | Coherence Score: 1.000
 
 ### Current Position
 **Phase:** Milestone 2 - Phase 1: Similitud Multimodal e Integración
 **Status:** In Progress
-**Last activity:** 2026-07-12 - Completed Quick Task 174
+**Last activity:** 2026-07-12 - Completed Quick Task 175
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 175 | Alinear flags de skip_greeting e inyectar aserciones rígidas assert_called_with en tests de webhook [BOT-BACKEND-HOTFIX-ROUTER-BRANCH-ALIGNMENT-175] | 2026-07-12 | 3ce6117 | 175-hotfix-router-branch-alignment |
 | 174 | Implementar guardrail de inicialización bloqueante antes de la inferencia [BOT-BACKEND-HOTFIX-ROUTER-INFERENCE-GUARD-174] | 2026-07-12 | b9b57a1 | 174-hotfix-router-inference-guard |
 | 173 | Refactorizar firmas de pensar_respuesta e implementar _evaluate_skip_greeting para saludos dinámicos [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-173] | 2026-07-12 | 155f68d | 173-hotfix-router-greeting-alignment |
 | 171 | Implementar guardrail de idempotencia síncrona en la frontera del enrutador [BOT-BACKEND-HOTFIX-WEBHOOK-IDEMPOTENCY-LOCK-171] | 2026-07-12 | bffafce | 171-hotfix-webhook-idempotency-lock |
