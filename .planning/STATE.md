@@ -9,7 +9,7 @@ Versión: v10.40.0 | Hito: Hotfix Router Greeting Alignment (BOT-BACKEND-BUGFIX-
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 173 | Refactorizar firmas de pensar_respuesta e implementar _evaluate_skip_greeting para saludos dinámicos [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-173] | 2026-07-12 | [commit] | 173-hotfix-router-greeting-alignment |
+| 173 | Refactorizar firmas de pensar_respuesta e implementar _evaluate_skip_greeting para saludos dinámicos [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-173] | 2026-07-12 | 155f68d | 173-hotfix-router-greeting-alignment |
 | 171 | Implementar guardrail de idempotencia síncrona en la frontera del enrutador [BOT-BACKEND-HOTFIX-WEBHOOK-IDEMPOTENCY-LOCK-171] | 2026-07-12 | bffafce | 171-hotfix-webhook-idempotency-lock |
 | 170 | Refactor bucles validación perimetral alfabética con match contra item_tokens [BOT-BACKEND-HOTFIX-PERIMETER-COLLOQUIAL-ALIGNMENT-170] | 2026-07-12 | 6d88b8c | 170-hotfix-perimeter-colloquial-alignment |
 | 169 | Refactor CatalogService.initialize con DI de ConfigLoader y guardrail RuntimeError fail-fast [BOT-BACKEND-HOTFIX-CATALOG-INITIALIZATION-SYNC-169] | 2026-07-12 | 41bbaa4 | 169-hotfix-catalog-initialization-sync |
