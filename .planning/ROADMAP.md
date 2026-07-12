@@ -1,6 +1,8 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.34.1)
+## Tasks Completadas (v10.36.0)
+- [x] Refactorización de los bucles de validación perimetral alfabética en CatalogService para permitir la coincidencia de sinónimos regionales y expansiones contra search_tokens (BOT-BACKEND-HOTFIX-PERIMETER-COLLOQUIAL-ALIGNMENT-170).
+- [x] Refactorización de la inicialización de CatalogService con inyección de dependencias de ConfigLoader y control fail-fast (BOT-BACKEND-HOTFIX-CATALOG-INITIALIZATION-SYNC-169).
 - [x] Filtro de stopwords conversacionales (saludos, fórmulas de cortesía y verbos comerciales) en el pre-procesamiento de tokens de control alfabético en CatalogService (BOT-BACKEND-HOTFIX-CONVERSATIONAL-STOPWORD-STRIPPING-168).
 - [x] Filtro de stopwords comerciales genéricas en el pre-procesamiento del perímetro alfabético en CatalogService (BOT-BACKEND-HOTFIX-GENERIC-STOPWORD-STRIPPING-167).
 - [x] Mapeo flexible de alias en plural/diminutivo de categorías de catálogo con protección de colisiones en monosílabos (BOT-BACKEND-HOTFIX-PLURAL-ALIAS-ALIGNMENT-166).
