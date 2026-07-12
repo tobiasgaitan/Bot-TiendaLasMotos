@@ -1797,5 +1797,106 @@ def test_catalog_category_alias_recovery():
     assert "moped" not in mapped_categories, "Monosyllable 'es' should not trigger category mapping to 'moped'"
 
 
+def test_catalog_generic_stopword_stripping():
+    """
+    [BOT-BACKEND-HOTFIX-GENERIC-STOPWORD-STRIPPING-167]
+    Autopsy test validating that generic commercial noise tokens ('motos', 'moto',
+    'motocicleta', 'motocicletas') are stripped from query_alphabetic_tokens BEFORE
+    the perimetral validation loop (has_alphabetic_match), so that compound queries
+    like 'Motos pisteras' or 'motocicleta pistera' correctly return segment items
+    instead of empty lists due to false-negative filtering.
 
+    Precondition: BOT-BACKEND-CATALOG-THRESHOLD-163 perimeter is active.
+    Root cause: 'motos' has no match in any item's searchBy or name_tokens,
+    so it forces has_alphabetic_match = False before intentional tokens can rescue the match.
+    Fix (ticket 167): _COMMERCIAL_STOPWORDS filter injected in catalog_service.py.
+    """
+    from app.services.catalog_service import CatalogService
+    from unittest.mock import MagicMock
+
+    service = CatalogService()
+
+    # Configure aliases: pistera → deportiva, scooter → moped
+    service._category_aliases = {
+        "deportiva": ["pistera"],
+        "moped": ["scooter"],
+    }
+
+    # Catalog items — realistic segment representatives
+    item_raider = {
+        "id": "tvs_raider",
+        "name": "TVS Raider 125",
+        "price": 6000000,
+        "category": "deportiva",
+        "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/tvs_raider.jpg",
+        "search_tags": ["sport", "pistera", "deportiva"],
+        "search_text": "tvs raider 125 deportiva sport pistera",
+        "search_tokens": ["tvs", "raider", "125", "deportiva", "sport", "pistera"],
+        "searchBy": ["deportiva", "pistera", "sport"],
+        "description": "Moto deportiva pistera con tecnología de punta.",
+        "link": "https://tiendalasmotos.com/tvs-raider",
+        "active": True,
+    }
+
+    item_ntorq = {
+        "id": "tvs_ntorq",
+        "name": "TVS Ntorq 125",
+        "price": 7000000,
+        "category": "moped",
+        "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/tvs_ntorq.jpg",
+        "search_tags": ["moped", "scooter", "automatica"],
+        "search_text": "tvs ntorq 125 moped scooter automatica",
+        "search_tokens": ["tvs", "ntorq", "125", "moped", "scooter", "automatica"],
+        "searchBy": ["moped", "scooter"],
+        "description": "Scooter automática urbana.",
+        "link": "https://tiendalasmotos.com/tvs-ntorq",
+        "active": True,
+    }
+
+    service._items = [item_raider, item_ntorq]
+    service._items_by_id = {i["id"]: i for i in service._items}
+    service._db = MagicMock()
+
+    # --- CASO 1: "Motos pisteras" ---
+    # 'motos' es ruido genérico; 'pisteras' resuelve a 'deportiva' vía alias mapping.
+    # El perímetro debe evaluar solo 'pisteras'/'deportiva', no 'motos'.
+    results_motos_pisteras = service.search_items("Motos pisteras")
+    assert results_motos_pisteras is not None, \
+        "search_items('Motos pisteras') retornó None — fallo crítico de pipeline"
+    assert len(results_motos_pisteras) > 0, \
+        "'Motos pisteras' retornó lista vacía. 'motos' está bloqueando el perímetro. Verifica filtro COMMERCIAL_STOPWORDS."
+    names_c1 = [r["name"] for r in results_motos_pisteras]
+    cats_c1 = [r.get("category") for r in results_motos_pisteras]
+    assert "TVS Raider 125" in names_c1, \
+        f"'Motos pisteras' debió retornar TVS Raider 125, obtuvo: {names_c1}"
+    assert "deportiva" in cats_c1, \
+        f"'Motos pisteras' debió retornar categoría 'deportiva', obtuvo: {cats_c1}"
+
+    # --- CASO 2: "Motos scooters" ---
+    # 'motos' es ruido genérico; 'scooters' resuelve a 'moped' vía alias mapping.
+    results_motos_scooters = service.search_items("Motos scooters")
+    assert results_motos_scooters is not None, \
+        "search_items('Motos scooters') retornó None — fallo crítico de pipeline"
+    assert len(results_motos_scooters) > 0, \
+        "'Motos scooters' retornó lista vacía. 'motos' está bloqueando el perímetro. Verifica filtro COMMERCIAL_STOPWORDS."
+    names_c2 = [r["name"] for r in results_motos_scooters]
+    cats_c2 = [r.get("category") for r in results_motos_scooters]
+    assert "TVS Ntorq 125" in names_c2, \
+        f"'Motos scooters' debió retornar TVS Ntorq 125, obtuvo: {names_c2}"
+    assert "moped" in cats_c2, \
+        f"'Motos scooters' debió retornar categoría 'moped', obtuvo: {cats_c2}"
+
+    # --- CASO 3: "motocicleta pistera" ---
+    # 'motocicleta' es variante del ruido genérico; 'pistera' resuelve a 'deportiva'.
+    results_moto_pistera = service.search_items("motocicleta pistera")
+    assert results_moto_pistera is not None, \
+        "search_items('motocicleta pistera') retornó None — fallo crítico de pipeline"
+    assert len(results_moto_pistera) > 0, \
+        "'motocicleta pistera' retornó lista vacía. 'motocicleta' está bloqueando el perímetro. Verifica filtro COMMERCIAL_STOPWORDS."
+    names_c3 = [r["name"] for r in results_moto_pistera]
+    cats_c3 = [r.get("category") for r in results_moto_pistera]
+    assert "TVS Raider 125" in names_c3, \
+        f"'motocicleta pistera' debió retornar TVS Raider 125, obtuvo: {names_c3}"
+    assert "deportiva" in cats_c3, \
+        f"'motocicleta pistera' debió retornar categoría 'deportiva', obtuvo: {cats_c3}"
 

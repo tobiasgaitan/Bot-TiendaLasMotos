@@ -629,6 +629,15 @@ class CatalogService:
         # Permite realizar el control perimetral estricto exigido por la directiva de negocio
         query_alphabetic_tokens = [t for t in query_tokens if len(t) >= 2 and not t.isdigit()]
 
+        # --- FILTRO DE STOPWORDS COMERCIALES GENÉRICAS (BOT-BACKEND-HOTFIX-GENERIC-STOPWORD-STRIPPING-167) ---
+        # Tokens residuales como "motos", "moto", "motocicleta" son ruido comercial genérico.
+        # Ningún ítem del catálogo los tiene en sus searchBy tags, por lo que actúan como
+        # filtro perimetral falso-negativo en consultas compuestas (ej. "Motos pisteras").
+        # Se eliminan EXCLUSIVAMENTE de query_alphabetic_tokens para que el perímetro evalúe
+        # solo la intención de estilo/modelo, sin relajar las restricciones de ngrams calibradas.
+        _COMMERCIAL_STOPWORDS = {"motos", "moto", "motocicleta", "motocicletas"}
+        query_alphabetic_tokens = [t for t in query_alphabetic_tokens if t not in _COMMERCIAL_STOPWORDS]
+
         clean_query = " ".join(query_tokens)
         scored_results = []
         
