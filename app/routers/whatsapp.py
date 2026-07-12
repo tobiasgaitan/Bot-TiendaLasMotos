@@ -70,6 +70,69 @@ async def _get_session_lock(phone_number: str) -> asyncio.Lock:
             _session_locks[phone_number] = asyncio.Lock()
         return _session_locks[phone_number]
 
+def _evaluate_skip_greeting(current_history: list, prospect_data: Optional[Dict[str, Any]], current_message_saved: bool = True) -> bool:
+    """
+    Evaluates whether to skip the greeting dynamically based on the chat history and last interaction time.
+    Ignores system and control messages like reset/commands.
+    """
+    is_metadata_only = prospect_data and prospect_data.get("exists", False) and "ai_summary" not in prospect_data
+    is_fully_deleted = not prospect_data or not prospect_data.get("exists", False)
+    newly_created = is_fully_deleted or is_metadata_only
+
+    legitimate_user_messages = []
+    for msg in (current_history or []):
+        if msg.get("role") == "user":
+            content = msg.get("content", "").strip()
+            content_lower = content.lower()
+            
+            # Ignore commands and system-generated/control messages
+            if (content_lower in ["reset", "/reset", "/update", "/refresh_catalog"] or 
+                content.startswith("/") or 
+                content.startswith("[System Note:") or 
+                "sesión ha sido reiniciada" in content_lower):
+                continue
+                
+            legitimate_user_messages.append(msg)
+
+    history_len_threshold = 1 if current_message_saved else 0
+
+    if len(legitimate_user_messages) <= history_len_threshold or newly_created:
+        logger.info(f"🆕 Fresh start detected (Newly created: {newly_created}, Legitimate history length: {len(legitimate_user_messages)}). Full greeting enabled.")
+        return False
+
+    try:
+        # Check the previous interaction (second to last if current message is saved, last if not)
+        prev_msg = legitimate_user_messages[-2] if current_message_saved else legitimate_user_messages[-1]
+        last_ts = prev_msg.get("timestamp")
+        
+        # Normalize timestamp to datetime
+        last_time = None
+        if hasattr(last_ts, 'timestamp'): # Firestore Timestamp
+            last_time = datetime.fromtimestamp(last_ts.timestamp(), tz=timezone.utc)
+        elif isinstance(last_ts, datetime):
+            last_time = last_ts
+        elif isinstance(last_ts, str): # String ISO format fallback
+            try:
+                last_time = datetime.fromisoformat(last_ts.replace('Z', '+00:00'))
+            except Exception as e:
+                logger.warning(f"⚠️ [HISTORY] Error parsing timestamp '{last_ts}': {e}")
+        
+        if last_time:
+            now = datetime.now(timezone.utc)
+            if last_time.tzinfo is None:
+                last_time = last_time.replace(tzinfo=timezone.utc)
+                
+            delta = now - last_time
+            diff_seconds = delta.total_seconds()
+            
+            if diff_seconds < 43200: # 12 hours
+                logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
+                return True
+    except Exception as e:
+        logger.exception(f"❌ Error evaluating skip_greeting: {e}")
+        
+    return False
+
 # ============================================================================
 # STATE & INITIALIZATION
 # ============================================================================
@@ -796,12 +859,13 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                     if prospect_data: prospect_data["phone"] = user_phone
                                     
                                     try:
+                                        skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=False)
                                         final_response = await cerebro_ia.pensar_respuesta(
                                             input_text,
                                             context="", 
                                             prospect_data=prospect_data,
                                             history=current_history,
-                                            skip_greeting=True
+                                            skip_greeting=skip_greeting
                                         )
                                     except HabeasDataBypassInterrupt as hdbi:
                                         logger.info("🛡️ [HABEAS-BYPASS-STICKER] Cortocircuito limpio capturado en el router de WhatsApp (Sticker). Aprobación inmediata.")
@@ -866,12 +930,13 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
 
                                     simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
                                     if prospect_data: prospect_data["phone"] = user_phone
+                                    skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=False)
                                     final_response = await cerebro_ia.pensar_respuesta(
                                         simulated_user_msg, 
                                         context="", 
                                         prospect_data=prospect_data,
                                         history=current_history,
-                                        skip_greeting=True
+                                        skip_greeting=skip_greeting
                                     )
                                     
                                     if not final_response:
@@ -1021,39 +1086,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                 current_history = await ms.get_chat_history(user_phone, limit=10)
                 
                 # GREETING BYPASS LOGIC (Time-Based)
-                # ULTIMATUM: If it's a new prospect or history is empty, skip_greeting MUST be False.
-                if len(current_history) <= 1 or newly_created:
-                    skip_greeting = False
-                    logger.info(f"🆕 Fresh start detected (Newly created: {newly_created}). Full greeting enabled.")
-                else:
-                    # Check the second to last message (the previous interaction)
-                    prev_msg = current_history[-2]
-                    last_ts = prev_msg.get("timestamp")
-                    
-                    # Normalize timestamp to datetime
-                    last_time = None
-                    if hasattr(last_ts, 'timestamp'): # Firestore Timestamp
-                        last_time = datetime.fromtimestamp(last_ts.timestamp(), tz=timezone.utc)
-                    elif isinstance(last_ts, datetime):
-                        last_time = last_ts
-                    elif isinstance(last_ts, str): # String ISO format fallback
-                        try:
-                            last_time = datetime.fromisoformat(last_ts.replace('Z', '+00:00'))
-                        except Exception as e:
-                            logger.warning(f"⚠️ [HISTORY] Error parsing timestamp '{last_ts}': {e}")
-                    
-                    if last_time:
-                        # Calculate duration since previous message
-                        now = datetime.now(timezone.utc)
-                        if last_time.tzinfo is None:
-                            last_time = last_time.replace(tzinfo=timezone.utc)
-                            
-                        delta = now - last_time
-                        diff_seconds = delta.total_seconds()
-                        
-                        if diff_seconds < 43200: # 12 hours
-                            skip_greeting = True
-                            logger.info(f"⏳ Recent conversation detected ({int(diff_seconds)}s ago). Skipping greeting.")
+                skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=True)
     
                 # 3. NOW update/create timestamps AFTER decision is made
                 await ms.create_prospect_if_missing(user_phone)
@@ -1443,12 +1476,13 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                             current_context += f"\n\n[SISTEMA - ERROR DE CALIDAD]: Tu respuesta anterior fue RECHAZADA por el Juez. Motivo: {rejection_reason}. Por favor, corrige este punto y genera una nueva respuesta válida."
 
                         try:
+                            skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=True)
                             response_text = await cerebro_ia.pensar_respuesta(
                                 transcription,
                                 context=current_context, 
                                 prospect_data=prospect_data,
                                 history=current_history,
-                                skip_greeting=True
+                                skip_greeting=skip_greeting
                             )
                         except HabeasDataBypassInterrupt as hdbi:
                             logger.info("🛡️ [HABEAS-BYPASS-AUDIO] Cortocircuito limpio capturado en el router de WhatsApp (Audio). Aprobación inmediata.")

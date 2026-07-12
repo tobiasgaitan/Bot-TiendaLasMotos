@@ -350,3 +350,180 @@ async def test_webhook_handler_status_delegation_to_background():
             "phone_number_id": "999999",
             "errors": []
         }
+
+@pytest.mark.asyncio
+async def test_dynamic_greeting_evaluation_across_all_branches():
+    """
+    [AUTOPSY REPORT]
+    Why the previous mock was lax:
+    Historically, integration tests mocked CerebroIA.pensar_respuesta with a generic AsyncMock
+    without asserting called parameters (e.g. skip_greeting). This allowed hardcoded True parameters
+    to compile and run without failing, masking the regression where Juan Pablo's greetings were bypassed.
+    
+    This test introduces strict 'assert_called_with' assertions to guarantee skip_greeting is
+    dynamically calculated according to session history across Sticker, Image, Audio and Text branches.
+    """
+    from app.routers.whatsapp import _handle_message_background_impl
+    from datetime import datetime, timezone, timedelta
+    
+    # Mock databases and background tasks
+    mock_bg_tasks = BackgroundTasks()
+    
+    # Set up basic mock objects
+    mock_memory_service = MagicMock()
+    mock_memory_service.create_prospect_if_missing = AsyncMock()
+    mock_memory_service.update_last_interaction = AsyncMock()
+    mock_memory_service.transition_to_in_progress = AsyncMock()
+    mock_memory_service.generate_and_update_summary = AsyncMock()
+    mock_memory_service.save_message = AsyncMock()
+    
+    mock_whatsapp = MagicMock()
+    mock_whatsapp.mark_as_read = AsyncMock()
+    mock_whatsapp.send_text_message = AsyncMock()
+    
+    mock_judge = MagicMock()
+    mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+    
+    mock_catalog = MagicMock()
+    mock_catalog.search = MagicMock(return_value=[])
+    mock_catalog.get_all_items = MagicMock(return_value=[])
+    
+    mock_vision = MagicMock()
+    mock_vision.analyze_image = AsyncMock(return_value="[System Note: Sticker is affirmative]")
+    
+    mock_audio = MagicMock()
+    mock_audio.transcribe_audio = AsyncMock(return_value="Quiero una Raider 125")
+    
+    mock_storage = MagicMock()
+    mock_storage.download_media = AsyncMock(return_value=b"dummybytes")
+    
+    # 1. TEST CASE A: Fresh Session (Empty history) -> skip_greeting must be False
+    mock_cerebro = MagicMock()
+    mock_cerebro.pensar_respuesta = AsyncMock(return_value="Hola, soy Juan Pablo, ¿en qué te puedo ayudar?")
+    
+    mock_memory_service.get_prospect_data = AsyncMock(return_value={"exists": False})
+    mock_memory_service.get_chat_history = AsyncMock(return_value=[])
+    mock_memory_service.get_or_create_prospect = AsyncMock(return_value={"exists": False})
+    
+    # Mock debounce logic to avoid blocking tests
+    mock_message_buffer = AsyncMock()
+    mock_message_buffer.add_message = AsyncMock(return_value=True)
+    mock_message_buffer.get_aggregated_message = AsyncMock(return_value=None)
+    mock_message_buffer.is_task_active = MagicMock(return_value=True)
+    mock_message_buffer.debounce_seconds = 0.01
+    
+    with patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
+         patch("app.routers.whatsapp.CerebroIA", return_value=mock_cerebro), \
+         patch("app.routers.whatsapp.judge_service", mock_judge), \
+         patch("app.services.whatsapp_service.whatsapp_service", mock_whatsapp), \
+         patch("app.routers.whatsapp.catalog_service", mock_catalog), \
+         patch("app.routers.whatsapp.VisionService", return_value=mock_vision), \
+         patch("app.routers.whatsapp.AudioService", return_value=mock_audio), \
+         patch("app.routers.whatsapp.storage_service", mock_storage), \
+         patch("app.routers.whatsapp.message_buffer", mock_message_buffer), \
+         patch("app.routers.whatsapp.db", MagicMock()):
+         
+        # Message Payload: STICKER
+        msg_payload_sticker = {
+            "from": "573192564288",
+            "id": "wamid.sticker_fresh",
+            "type": "sticker",
+            "phone_number_id": "999999",
+            "sticker": {"id": "sticker123", "mime_type": "image/webp"}
+        }
+        
+        await _handle_message_background_impl(msg_payload_sticker, mock_bg_tasks)
+        
+        # Verify that pensar_respuesta was called with skip_greeting=False
+        mock_cerebro.pensar_respuesta.assert_called_once()
+        _, kwargs = mock_cerebro.pensar_respuesta.call_args
+        assert kwargs["skip_greeting"] is False, "❌ Fresh session sticker must have skip_greeting=False"
+        
+        # Reset mock
+        mock_cerebro.pensar_respuesta.reset_mock()
+        
+        # 2. TEST CASE B: Fresh Session (Empty history) -> IMAGE
+        msg_payload_image = {
+            "from": "573192564288",
+            "id": "wamid.image_fresh",
+            "type": "image",
+            "phone_number_id": "999999",
+            "image": {"id": "image123", "mime_type": "image/jpeg"}
+        }
+        mock_vision.analyze_image = AsyncMock(return_value="Apache 160")
+        
+        await _handle_message_background_impl(msg_payload_image, mock_bg_tasks)
+        mock_cerebro.pensar_respuesta.assert_called_once()
+        _, kwargs = mock_cerebro.pensar_respuesta.call_args
+        assert kwargs["skip_greeting"] is False, "❌ Fresh session image must have skip_greeting=False"
+        
+        # Reset mock
+        mock_cerebro.pensar_respuesta.reset_mock()
+        
+        # 3. TEST CASE C: Fresh Session (Empty history) -> AUDIO
+        msg_payload_audio = {
+            "from": "573192564288",
+            "id": "wamid.audio_fresh",
+            "type": "audio",
+            "phone_number_id": "999999",
+            "audio": {"id": "audio123", "mime_type": "audio/ogg"}
+        }
+        
+        await _handle_message_background_impl(msg_payload_audio, mock_bg_tasks)
+        mock_cerebro.pensar_respuesta.assert_called_once()
+        _, kwargs = mock_cerebro.pensar_respuesta.call_args
+        assert kwargs["skip_greeting"] is False, "❌ Fresh session audio must have skip_greeting=False"
+        
+        # Reset mock
+        mock_cerebro.pensar_respuesta.reset_mock()
+        
+        # 4. TEST CASE D: Recent session (message 1h ago) -> skip_greeting must be True
+        recent_time = datetime.now(timezone.utc) - timedelta(hours=1)
+        mock_memory_service.get_prospect_data = AsyncMock(return_value={"exists": True, "ai_summary": "resumen"})
+        
+        # For current_message_saved=True (audio/text), history contains current message plus recent previous message
+        history_with_recent = [
+            {"role": "user", "content": "Hola", "timestamp": recent_time},
+            {"role": "user", "content": "Quiero una Raider 125", "timestamp": datetime.now(timezone.utc)}
+        ]
+        mock_memory_service.get_chat_history = AsyncMock(return_value=history_with_recent)
+        
+        await _handle_message_background_impl(msg_payload_audio, mock_bg_tasks)
+        mock_cerebro.pensar_respuesta.assert_called_once()
+        _, kwargs = mock_cerebro.pensar_respuesta.call_args
+        assert kwargs["skip_greeting"] is True, "❌ Recent conversation must have skip_greeting=True"
+        
+        # Reset mock
+        mock_cerebro.pensar_respuesta.reset_mock()
+        
+        # 5. TEST CASE E: Inactive session (message 13h ago) -> skip_greeting must be False
+        inactive_time = datetime.now(timezone.utc) - timedelta(hours=13)
+        history_with_inactive = [
+            {"role": "user", "content": "Hola", "timestamp": inactive_time},
+            {"role": "user", "content": "Quiero una Raider 125", "timestamp": datetime.now(timezone.utc)}
+        ]
+        mock_memory_service.get_chat_history = AsyncMock(return_value=history_with_inactive)
+        
+        await _handle_message_background_impl(msg_payload_audio, mock_bg_tasks)
+        mock_cerebro.pensar_respuesta.assert_called_once()
+        _, kwargs = mock_cerebro.pensar_respuesta.call_args
+        assert kwargs["skip_greeting"] is False, "❌ Inactive session must have skip_greeting=False"
+        
+        # Reset mock
+        mock_cerebro.pensar_respuesta.reset_mock()
+        
+        # 6. TEST CASE F: Aisolation of Control/System messages (e.g. /reset)
+        # If the history contains user message "Hola" (inactive) and user message "/reset" (recent),
+        # the recent "/reset" must be ignored, so the previous legitimate message is "Hola" (inactive),
+        # meaning skip_greeting must be False!
+        history_with_reset = [
+            {"role": "user", "content": "Hola", "timestamp": inactive_time},
+            {"role": "user", "content": "/reset", "timestamp": recent_time},
+            {"role": "user", "content": "Quiero una Raider 125", "timestamp": datetime.now(timezone.utc)}
+        ]
+        mock_memory_service.get_chat_history = AsyncMock(return_value=history_with_reset)
+        
+        await _handle_message_background_impl(msg_payload_audio, mock_bg_tasks)
+        mock_cerebro.pensar_respuesta.assert_called_once()
+        _, kwargs = mock_cerebro.pensar_respuesta.call_args
+        assert kwargs["skip_greeting"] is False, "❌ skip_greeting must be False because the recent /reset message is ignored"
