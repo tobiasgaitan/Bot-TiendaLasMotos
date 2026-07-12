@@ -119,3 +119,5 @@ Todas las protecciones de concurrencia, exclusión del CRM (_CRM_PROTECTED_FIELD
 
 
 - [v10.34.1] Cierre de Hotfix BOT-BACKEND-HOTFIX-PLURAL-ALIAS-ALIGNMENT-166. Implementación de algoritmo local de stemming en CatalogService para resolver alias de categorías en plural y diminutivo sin degradar el perímetro estricto de ngrams. Coherence Score verificado: 1.000 (247/247 Tests PASSED).
+
+- [v10.35.0] Cierre de Hotfix BOT-BACKEND-HOTFIX-GENERIC-STOPWORD-STRIPPING-167. Implementación de filtrado in-memory para Stopwords comerciales genéricas en el preprocesamiento de tokens de búsqueda, resolviendo el bloqueo perimetral ante frases unificadas y compuestas en caliente. Coherence Score verificado: 1.000 (248/248 Tests PASSED).
