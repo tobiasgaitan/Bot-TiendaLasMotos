@@ -1827,12 +1827,12 @@ def test_catalog_generic_stopword_stripping():
         "id": "tvs_raider",
         "name": "TVS Raider 125",
         "price": 6000000,
-        "category": "deportiva",
+        "category": "motos",
         "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/tvs_raider.jpg",
         "search_tags": ["sport", "pistera", "deportiva"],
         "search_text": "tvs raider 125 deportiva sport pistera",
         "search_tokens": ["tvs", "raider", "125", "deportiva", "sport", "pistera"],
-        "searchBy": ["deportiva", "pistera", "sport"],
+        "searchBy": [],
         "description": "Moto deportiva pistera con tecnología de punta.",
         "link": "https://tiendalasmotos.com/tvs-raider",
         "active": True,
@@ -1842,12 +1842,12 @@ def test_catalog_generic_stopword_stripping():
         "id": "tvs_ntorq",
         "name": "TVS Ntorq 125",
         "price": 7000000,
-        "category": "moped",
+        "category": "motos",
         "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/tvs_ntorq.jpg",
         "search_tags": ["moped", "scooter", "automatica"],
         "search_text": "tvs ntorq 125 moped scooter automatica",
         "search_tokens": ["tvs", "ntorq", "125", "moped", "scooter", "automatica"],
-        "searchBy": ["moped", "scooter"],
+        "searchBy": [],
         "description": "Scooter automática urbana.",
         "link": "https://tiendalasmotos.com/tvs-ntorq",
         "active": True,
@@ -1869,8 +1869,8 @@ def test_catalog_generic_stopword_stripping():
     cats_c1 = [r.get("category") for r in results_motos_pisteras]
     assert "TVS Raider 125" in names_c1, \
         f"'Motos pisteras' debió retornar TVS Raider 125, obtuvo: {names_c1}"
-    assert "deportiva" in cats_c1, \
-        f"'Motos pisteras' debió retornar categoría 'deportiva', obtuvo: {cats_c1}"
+    assert "motos" in cats_c1, \
+        f"'Motos pisteras' debió retornar categoría 'motos', obtuvo: {cats_c1}"
 
     # --- CASO 2: "Motos scooters" ---
     # 'motos' es ruido genérico; 'scooters' resuelve a 'moped' vía alias mapping.
@@ -1883,8 +1883,8 @@ def test_catalog_generic_stopword_stripping():
     cats_c2 = [r.get("category") for r in results_motos_scooters]
     assert "TVS Ntorq 125" in names_c2, \
         f"'Motos scooters' debió retornar TVS Ntorq 125, obtuvo: {names_c2}"
-    assert "moped" in cats_c2, \
-        f"'Motos scooters' debió retornar categoría 'moped', obtuvo: {cats_c2}"
+    assert "motos" in cats_c2, \
+        f"'Motos scooters' debió retornar categoría 'motos', obtuvo: {cats_c2}"
 
     # --- CASO 3: "motocicleta pistera" ---
     # 'motocicleta' es variante del ruido genérico; 'pistera' resuelve a 'deportiva'.
@@ -1897,8 +1897,8 @@ def test_catalog_generic_stopword_stripping():
     cats_c3 = [r.get("category") for r in results_moto_pistera]
     assert "TVS Raider 125" in names_c3, \
         f"'motocicleta pistera' debió retornar TVS Raider 125, obtuvo: {names_c3}"
-    assert "deportiva" in cats_c3, \
-        f"'motocicleta pistera' debió retornar categoría 'deportiva', obtuvo: {cats_c3}"
+    assert "motos" in cats_c3, \
+        f"'motocicleta pistera' debió retornar categoría 'motos', obtuvo: {cats_c3}"
 
     # --- CASO 4: "Buenas, tienen motos pisteras?" (BOT-BACKEND-HOTFIX-CONVERSATIONAL-STOPWORD-STRIPPING-168) ---
     # 'Buenas' y 'tienen' son ruidos conversacionales. 'motos' es ruido comercial.

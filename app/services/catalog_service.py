@@ -736,13 +736,14 @@ class CatalogService:
 
             # --- VALIDACIÓN PERIMETRAL ALFABÉTICA (BOT-BACKEND-CATALOG-THRESHOLD-163) ---
             # Si la consulta incluye tokens alfabéticos core, se exige que al menos uno coincida
-            # exacta, fonéticamente, o de forma fuzzy (ratio >= 0.8) con el nombre del ítem o sus searchBy/categoría tags.
+            # exacta, fonéticamente, o de forma fuzzy (ratio >= 0.8) con el nombre del ítem, sus searchBy/categoría tags,
+            # o los tokens de búsqueda (search_tokens) del ítem (BOT-BACKEND-HOTFIX-PERIMETER-COLLOQUIAL-ALIGNMENT-170).
             has_alphabetic_match = True
             if query_alphabetic_tokens:
                 has_alphabetic_match = False
                 for t in query_alphabetic_tokens:
                     t_phone = self._phonetic_normalize(t)
-                    if t in effective_tags or t in name_tokens:
+                    if t in effective_tags or t in name_tokens or t in item_tokens:
                         has_alphabetic_match = True
                         break
                     if any(self._phonetic_normalize(st) == t_phone for st in effective_tags):
@@ -751,11 +752,17 @@ class CatalogService:
                     if any(self._phonetic_normalize(nt) == t_phone for nt in name_tokens):
                         has_alphabetic_match = True
                         break
-                    # Fuzzy match con tokens de nombre o tags con ratio >= 0.8
+                    if any(self._phonetic_normalize(it) == t_phone for it in item_tokens):
+                        has_alphabetic_match = True
+                        break
+                    # Fuzzy match con tokens de nombre, tags o tokens de búsqueda con ratio >= 0.8
                     if any(difflib.SequenceMatcher(None, t, nt).ratio() >= 0.8 for nt in name_tokens):
                         has_alphabetic_match = True
                         break
                     if any(difflib.SequenceMatcher(None, t, st).ratio() >= 0.8 for st in effective_tags):
+                        has_alphabetic_match = True
+                        break
+                    if any(difflib.SequenceMatcher(None, t, it).ratio() >= 0.8 for it in item_tokens):
                         has_alphabetic_match = True
                         break
 
@@ -872,13 +879,16 @@ class CatalogService:
                 if item_category and item_category not in effective_tags:
                     effective_tags.append(item_category)
                 
+                # Definir item_tokens en fallback antes del bucle de validación perimetral alfabética
+                item_tokens = item.get("search_tokens", [])
+                
                 # --- VALIDACIÓN PERIMETRAL ALFABÉTICA EN FALLBACK ---
                 has_alphabetic_match = True
                 if query_alphabetic_tokens:
                     has_alphabetic_match = False
                     for t in query_alphabetic_tokens:
                         t_phone = self._phonetic_normalize(t)
-                        if t in effective_tags or t in name_tokens:
+                        if t in effective_tags or t in name_tokens or t in item_tokens:
                             has_alphabetic_match = True
                             break
                         if any(self._phonetic_normalize(st) == t_phone for st in effective_tags):
@@ -887,11 +897,17 @@ class CatalogService:
                         if any(self._phonetic_normalize(nt) == t_phone for nt in name_tokens):
                             has_alphabetic_match = True
                             break
-                        # Fuzzy match con tokens de nombre o tags con ratio >= 0.8
+                        if any(self._phonetic_normalize(it) == t_phone for it in item_tokens):
+                            has_alphabetic_match = True
+                            break
+                        # Fuzzy match con tokens de nombre, tags o tokens de búsqueda con ratio >= 0.8
                         if any(difflib.SequenceMatcher(None, t, nt).ratio() >= 0.8 for nt in name_tokens):
                             has_alphabetic_match = True
                             break
                         if any(difflib.SequenceMatcher(None, t, st).ratio() >= 0.8 for st in effective_tags):
+                            has_alphabetic_match = True
+                            break
+                        if any(difflib.SequenceMatcher(None, t, it).ratio() >= 0.8 for it in item_tokens):
                             has_alphabetic_match = True
                             break
                             
