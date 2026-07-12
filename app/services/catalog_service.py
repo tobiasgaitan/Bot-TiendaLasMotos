@@ -594,13 +594,28 @@ class CatalogService:
         
         # Mapeo explícito de alias de categoría a su categoría canónica (Fase de pre-procesamiento)
         try:
+            def _get_word_stem(w: str) -> str:
+                for suffix in ["itas", "itos", "ita", "ito", "as", "os", "es", "a", "o", "s"]:
+                    if w.endswith(suffix):
+                        return w[:-len(suffix)]
+                return w
+
             aliases = self.get_catalog_aliases()
             mapped_categories = []
             for t in query_tokens:
                 t_clean = t.lower().strip()
+                if not t_clean:
+                    continue
                 for canonical_cat, alias_list in aliases.items():
-                    if t_clean in [a.lower().strip() for a in alias_list]:
-                        mapped_categories.append(canonical_cat)
+                    for a in alias_list:
+                        a_clean = a.lower().strip()
+                        if not a_clean:
+                            continue
+                        stem_a = _get_word_stem(a_clean)
+                        stem_t = _get_word_stem(t_clean)
+                        if len(stem_a) >= 3 and len(stem_t) >= 3 and (stem_a in stem_t or stem_t in stem_a):
+                            mapped_categories.append(canonical_cat)
+                            break
             if mapped_categories:
                 query_tokens.extend(mapped_categories)
                 query_tokens = list(set(query_tokens))
