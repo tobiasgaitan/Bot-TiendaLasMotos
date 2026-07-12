@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.32.0)
+## Tasks Completadas (v10.33.0)
+- [x] Alinear quirúrgicamente el módulo de observabilidad y trazas en whatsapp.py con las firmas nativas del SDK de Langfuse v4 (BOT-BRAIN-OBSERVABILITY-ALIGN-164).
 - [x] Calibración de Umbral de Catálogo y Aislamiento Numérico en CatalogService para evitar colisiones de marcas y cilindrajes (BOT-BACKEND-CATALOG-THRESHOLD-163).
 - [x] Reestructuración del Lifespan de FastAPI y la inicialización de servicios core a nivel de módulo en app/main.py para garantizar hidratación secuencial y bloqueante (60/60 ítems devueltos) en producción y CLI, con inicialización inline en pytest (BOT-ARCHITECTURE-LIFESPAN-LINEAR-159).
 - [x] Implementar Adaptador Local de Observabilidad Langfuse v4 bajo el Patrón Adaptador sin modificar site-packages ni provocar shadowing en namespaces (BOT-BUGFIX-LANGFUSE-DECORATOR-REGRESSION).

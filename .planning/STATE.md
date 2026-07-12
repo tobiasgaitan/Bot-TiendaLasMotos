@@ -1,14 +1,15 @@
-Versión: v10.32.0 | Hito: Catalog Search Threshold Calibration (BOT-BACKEND-CATALOG-THRESHOLD-163) | Coherence Score: 1.000
+Versión: v10.33.0 | Hito: Langfuse Observability Alignment (BOT-BRAIN-OBSERVABILITY-ALIGN-164) | Coherence Score: 1.000
 
 ### Current Position
 **Phase:** Milestone 2 - Phase 1: Similitud Multimodal e Integración
 **Status:** In Progress
-**Last activity:** 2026-07-11 - Completed Quick Task 163
+**Last activity:** 2026-07-12 - Completed Quick Task 164
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 164 | Corrección de Firmas Langfuse v4 [BOT-BRAIN-OBSERVABILITY-ALIGN-164] | 2026-07-12 | e3e0ad3 | 164-correccion-firmas-langfuse-v4 |
 | 163 | Calibración de Umbral de Catálogo y Aislamiento Numérico [BOT-BACKEND-CATALOG-THRESHOLD-163] | 2026-07-11 | 0cd61d2 | 163-catalog-threshold-collision |
 | 162 | Reestructuración de Lifespan de FastAPI e inicialización de módulo [BOT-ARCHITECTURE-LIFESPAN-LINEAR-159] | 2026-07-11 | b433cf4 | 162-hotfix-lifespan-hydration |
 | 161 | Implementar Adaptador Local de Observabilidad Langfuse v4 [BOT-BUGFIX-LANGFUSE-DECORATOR-REGRESSION] | 2026-07-11 | fe0092d | 161-langfuse-adapter |
