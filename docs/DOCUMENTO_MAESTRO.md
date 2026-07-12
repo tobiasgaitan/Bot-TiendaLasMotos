@@ -1,8 +1,8 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.33.1)
-Versión: v10.33.1 (Catalog Category Alias Recovery)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.41.0)
+Versión: v10.41.0 (Router Inference Guard)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Modificación de la fase de pre-procesamiento de `CatalogService.search_items` para mapear los alias coloquiales de categorías a su categoría canónica de forma explícita y alineación de la validación perimetral alfabética usando `effective_tags`, evitando descartar búsquedas comerciales y manteniendo la protección perimetral para modelos específicos. Cierre de ticket [BOT-BACKEND-HOTFIX-CATALOG-ALIAS-RECOVERY].
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 247/247 Tests PASSED)
+Último Hito: Implementación de un guardrail de inicialización bloqueante en la frontera de inferencia (`_handle_message_background_impl` en `whatsapp.py`) que asegura que `prospect_data` esté plenamente hidratado desde Firestore a través de `get_or_create_prospect` antes del bloque de inferencia. Cierre de ticket [BOT-BACKEND-HOTFIX-ROUTER-INFERENCE-GUARD-174].
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 257/257 Tests PASSED)
 
 
 1. Contexto y Persona (Juan Pablo)
