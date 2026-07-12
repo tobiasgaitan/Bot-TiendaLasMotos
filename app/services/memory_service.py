@@ -271,6 +271,35 @@ class MemoryService:
             logger.exception(f"❌ get_prospect_data failed for {phone_number}: {e}")
             raise
 
+    async def get_or_create_prospect(self, phone_number: str) -> Dict[str, Any]:
+        """
+        Obtiene de forma síncrona/bloqueante los datos del prospecto.
+        Si no existe en Firestore, lo crea con sus campos canónicos por defecto
+        y retorna la estructura de datos correspondiente.
+        """
+        try:
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            doc_ref = await self._find_prospect_ref(clean_phone)
+            doc_snap = await self._firestore_io(doc_ref.get(), phone=clean_phone, label="get_or_create_prospect.get")
+            
+            if not doc_snap.exists:
+                logger.warning(f"⚠️ [GET_OR_CREATE] Prospecto {clean_phone} inexistente. Forzando inicialización base...")
+                await self.create_prospect_if_missing(clean_phone)
+                # Re-fetch posterior a la creación
+                doc_snap = await self._firestore_io(doc_ref.get(), phone=clean_phone, label="get_or_create_prospect.reget")
+                
+            data = doc_snap.to_dict() or {}
+            data["exists"] = True
+            if "celular" not in data:
+                data["celular"] = doc_ref.id
+            return data
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
+            logger.exception(f"🔌 [NETWORK_ERR] Fallo de red/timeout de Firestore en get_or_create_prospect para {phone_number}: {e}")
+            raise
+        except Exception as e:
+            logger.exception(f"❌ get_or_create_prospect failed for {phone_number}: {e}")
+            raise
+
     async def create_prospect_if_missing(self, phone_number: str) -> None:
         """
         Idempotent prospect initialization with zombie session purge.

@@ -539,5 +539,88 @@ class TestIdentityLegalGate(unittest.TestCase):
                 
             mock_send_wa.assert_called_with("+573192564288", "Tuve un problema viendo el archivo. ¿Me cuentas qué es? 😅", phone_number_id="1021779847693778")
 
+    @patch("app.routers.whatsapp.db")
+    @patch("app.routers.whatsapp.message_buffer")
+    @patch("app.routers.whatsapp.config_loader")
+    @patch("app.routers.whatsapp.catalog_service")
+    @patch("app.routers.whatsapp.config_service")
+    @patch("app.routers.whatsapp.judge_service")
+    @patch("app.routers.whatsapp.memory_service_module")
+    @patch("app.routers.whatsapp.CerebroIA")
+    @patch("app.routers.whatsapp.storage_service")
+    @patch("app.routers.whatsapp._send_whatsapp_message")
+    @patch("app.services.whatsapp_service.whatsapp_service")
+    def test_welcome_flow_post_reset_empty_firestore(
+        self, mock_wa_service, mock_send_wa, mock_storage, mock_cerebro_class, 
+        mock_mem_module, mock_judge, mock_config_service, mock_catalog, 
+        mock_config_loader, mock_message_buffer, mock_db
+    ):
+        """
+        GIVEN: Un estado post-reset (Firestore vacío, exists: False).
+        WHEN: El enrutador recibe un mensaje de texto.
+        THEN: Debe llamar bloqueantemente a get_or_create_prospect, 
+              forzar la inicialización base, y despachar la bienvenida completa con el nombre del asesor ("Juan Pablo").
+        """
+        import asyncio
+        from unittest.mock import MagicMock
+        from fastapi import BackgroundTasks
+        from app.routers.whatsapp import _handle_message_background
+
+        msg_data = {
+            "from": "+573192564288",
+            "id": "wamid.reset_welcome_test_123",
+            "type": "text",
+            "text": "Hola",
+            "phone_number_id": "1021779847693778"
+        }
+        background_tasks = BackgroundTasks()
+
+        mock_prospect_initial = {"exists": False}
+        mock_prospect_created = {
+            "exists": True,
+            "celular": "+573192564288",
+            "chatbot_status": "ACTIVE",
+            "status": "PENDING",
+            "source": "whatsapp_bot",
+            "habeas_data_accepted": False,
+            "habeas_data_accepted_sent": False,
+            "nombre": "",
+            "ciudad": "",
+            "moto_interest": "",
+            "current_agent": "expert"
+        }
+
+        mock_ms = AsyncMock()
+        mock_ms.get_or_create_prospect = AsyncMock(return_value=mock_prospect_created)
+        mock_ms.get_prospect_data = AsyncMock(side_effect=[mock_prospect_initial, mock_prospect_created, mock_prospect_created])
+        mock_ms.create_prospect_if_missing = AsyncMock()
+        mock_ms.get_chat_history = AsyncMock(return_value=[])
+        mock_ms.save_message = AsyncMock()
+        mock_ms.generate_and_update_summary = AsyncMock()
+        mock_ms.update_last_interaction = AsyncMock()
+        mock_ms.transition_to_in_progress = AsyncMock()
+        mock_mem_module.memory_service = mock_ms
+
+        mock_cerebro = AsyncMock()
+        mock_cerebro.pensar_respuesta = AsyncMock(return_value="Hola, soy Juan Pablo, asesor de Auteco Las Motos. ¿En qué moto estás interesado?")
+        mock_cerebro_class.return_value = mock_cerebro
+
+        mock_message_buffer.add_message = AsyncMock(return_value=True)
+        mock_message_buffer.is_task_active = MagicMock(return_value=True)
+        mock_message_buffer.get_aggregated_message = AsyncMock(return_value=None)
+        mock_message_buffer.clear_buffer = AsyncMock()
+
+        mock_wa_service.mark_as_read = AsyncMock(return_value=True)
+        mock_send_wa.return_value = True
+        mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+
+        asyncio.run(_handle_message_background(msg_data, background_tasks))
+
+        mock_ms.get_or_create_prospect.assert_called_once_with("+573192564288")
+        
+        mock_send_wa.assert_called_once()
+        sent_response = mock_send_wa.call_args[0][1]
+        self.assertIn("Juan Pablo", sent_response, "La bienvenida debe incluir el nombre del asesor 'Juan Pablo'")
+
 if __name__ == '__main__':
     unittest.main()

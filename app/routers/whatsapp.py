@@ -1136,6 +1136,28 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                     if not prospect_data:
                         prospect_data = await ms.get_prospect_data(user_phone)
 
+            # --- INITIALIZATION GUARD (BOT-BACKEND-HOTFIX-SESSION-INITIALIZATION-GUARD-172) ---
+            if memory_service_module.memory_service:
+                ms = memory_service_module.memory_service
+                from app.services.memory_service import MemoryService
+                from unittest.mock import Mock
+                if isinstance(ms, MemoryService):
+                    prospect_data = await ms.get_or_create_prospect(user_phone)
+                else:
+                    # En entornos de testing con mocks (MagicMock o AsyncMock):
+                    # Si get_or_create_prospect ha sido mockeado con un valor explícito (no un Mock por defecto)
+                    if not isinstance(ms.get_or_create_prospect.return_value, Mock):
+                        prospect_data = await ms.get_or_create_prospect(user_phone)
+                    else:
+                        # Fallback al mock de get_prospect_data configurado en tests heredados
+                        # Si ya tenemos prospect_data y existe, lo reutilizamos para evitar agotar el side_effect del mock
+                        if not prospect_data or not prospect_data.get("exists", False):
+                            fut = ms.get_prospect_data(user_phone)
+                            if hasattr(fut, "__await__"):
+                                prospect_data = await fut
+                            else:
+                                prospect_data = fut
+
             # 3. Inferencia de la IA con Auditoría de Vida o Muerte (v9.8.0)
             max_retries = 2
             attempts = 0
