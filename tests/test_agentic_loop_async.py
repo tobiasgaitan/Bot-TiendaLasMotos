@@ -1657,3 +1657,19 @@ async def test_incoming_image_webhook_egress_unification():
         whatsapp.message_buffer.debounce_seconds = orig_debounce
 
 
+def test_catalog_tokenizer_ngrams_characterization():
+    """
+    [BOT-PERF-TOKENIZER-NGRAMS-161]
+    Strict unit test to verify that '_tokenize' generates combined adjacent n-grams
+    when a text token is followed by a numeric token (e.g. ['sport', '100', 'sport100']).
+    It passes the raw query 'sport 100' and asserts that 'sport100' is explicitly returned.
+    """
+    from app.services.catalog_service import CatalogService
+    service = CatalogService()
+    tokens = service._tokenize("sport 100")
+    assert "sport100" in tokens, f"Expected combined ngram 'sport100' in tokens, got {tokens}"
+    assert "sport" in tokens
+    assert "100" in tokens
+
+
+

@@ -17,6 +17,20 @@ from app.services.semantic_cache_service import SemanticCacheService
 logger = logging.getLogger(__name__)
 
 
+class CategoryAliasesDescriptor:
+    """
+    Descriptor to bridge class-level and instance-level access to category aliases.
+    Ensures that get_catalog_aliases (classmethod) can access the aliases dynamically,
+    even if get_catalog_aliases is called on the class directly, while remaining
+    fully compatible with legacy code and unit tests setting self._category_aliases.
+    """
+    def __get__(self, instance, owner):
+        return owner._class_category_aliases
+
+    def __set__(self, instance, value):
+        CatalogService._class_category_aliases = value
+
+
 class CatalogService:
     """
     Service for managing motorcycle catalog from Firestore.
@@ -25,13 +39,16 @@ class CatalogService:
     and maps them to the internal English model.
     """
     
+    _class_category_aliases: Dict[str, Any] = {}
+    _category_aliases = CategoryAliasesDescriptor()
+    
     def __init__(self):
         """Initialize the catalog service with empty state."""
         self._items: List[Dict[str, Any]] = []
         self._items_by_id: Dict[str, Dict[str, Any]] = {}
         self._items_by_category: Dict[str, List[Dict[str, Any]]] = {}
         self._db: Optional[firestore.Client] = None
-        self._category_aliases: Dict[str, List[str]] = {}
+        self._category_aliases = {}
         self._cache_service = SemanticCacheService()
     
     def initialize(self, db: firestore.Client) -> None:
@@ -328,7 +345,17 @@ class CatalogService:
         # Tokenize and remove stop words
         tokens = text.split()
         stop_words = {"quiero", "una", "un", "moto", "motos", "busco", "la", "el", "de", "las", "los", "con", "en", "para", "y", "o", "tienen", "tienes", "tiene", "contas", "disponible", "venden", "precio", "valor", "cuanto", "cuesta", "vale"}
-        return [t for t in tokens if t not in stop_words]
+        filtered_tokens = [t for t in tokens if t not in stop_words]
+        
+        # Generate combined adjacent text + numeric tokens
+        combined_tokens = []
+        for i in range(len(filtered_tokens) - 1):
+            t1 = filtered_tokens[i]
+            t2 = filtered_tokens[i+1]
+            if t1.isalpha() and t2.isdigit():
+                combined_tokens.append(t1 + t2)
+                
+        return filtered_tokens + combined_tokens
 
     def _phonetic_normalize(self, token: str) -> str:
         """
@@ -498,13 +525,14 @@ class CatalogService:
         """Get list of all available categories."""
         return list(self._items_by_category.keys())
     
-    def get_catalog_aliases(self) -> Dict[str, List[str]]:
+    @classmethod
+    def get_catalog_aliases(cls) -> Dict[str, List[str]]:
         """
         Get catalog category aliases (synonyms) flattened into lists.
         Firma estricta Dict[str, List[str]]. Limpia nulos y espacios.
         """
         flattened: Dict[str, List[str]] = {}
-        for category, synonyms in self._category_aliases.items():
+        for category, synonyms in cls._class_category_aliases.items():
             if not category:
                 continue
             cat_key = str(category).lower().strip()
