@@ -387,6 +387,7 @@ async def test_dynamic_greeting_evaluation_across_all_branches():
     mock_catalog = MagicMock()
     mock_catalog.search = MagicMock(return_value=[])
     mock_catalog.get_all_items = MagicMock(return_value=[])
+    mock_catalog.normalize_transcription = MagicMock(side_effect=lambda x: x)
     
     mock_vision = MagicMock()
     mock_vision.analyze_image = AsyncMock(return_value="[System Note: Sticker is affirmative]")
@@ -434,10 +435,14 @@ async def test_dynamic_greeting_evaluation_across_all_branches():
         
         await _handle_message_background_impl(msg_payload_sticker, mock_bg_tasks)
         
-        # Verify that pensar_respuesta was called with skip_greeting=False
-        mock_cerebro.pensar_respuesta.assert_called_once()
-        _, kwargs = mock_cerebro.pensar_respuesta.call_args
-        assert kwargs["skip_greeting"] is False, "❌ Fresh session sticker must have skip_greeting=False"
+        # Verify that pensar_respuesta was called with skip_greeting=False and full arguments
+        mock_cerebro.pensar_respuesta.assert_called_with(
+            "[System Note: Sticker is affirmative]",
+            context="",
+            prospect_data={"exists": False, "phone": "+573192564288"},
+            history=[],
+            skip_greeting=False
+        )
         
         # Reset mock
         mock_cerebro.pensar_respuesta.reset_mock()
@@ -453,9 +458,13 @@ async def test_dynamic_greeting_evaluation_across_all_branches():
         mock_vision.analyze_image = AsyncMock(return_value="Apache 160")
         
         await _handle_message_background_impl(msg_payload_image, mock_bg_tasks)
-        mock_cerebro.pensar_respuesta.assert_called_once()
-        _, kwargs = mock_cerebro.pensar_respuesta.call_args
-        assert kwargs["skip_greeting"] is False, "❌ Fresh session image must have skip_greeting=False"
+        mock_cerebro.pensar_respuesta.assert_called_with(
+            "El usuario acaba de enviar una foto de esta moto: Apache 160. Usa el catálogo para ofrecerle nuestra mejor equivalente.",
+            context="",
+            prospect_data={"exists": False, "phone": "+573192564288"},
+            history=[],
+            skip_greeting=False
+        )
         
         # Reset mock
         mock_cerebro.pensar_respuesta.reset_mock()
@@ -470,9 +479,13 @@ async def test_dynamic_greeting_evaluation_across_all_branches():
         }
         
         await _handle_message_background_impl(msg_payload_audio, mock_bg_tasks)
-        mock_cerebro.pensar_respuesta.assert_called_once()
-        _, kwargs = mock_cerebro.pensar_respuesta.call_args
-        assert kwargs["skip_greeting"] is False, "❌ Fresh session audio must have skip_greeting=False"
+        mock_cerebro.pensar_respuesta.assert_called_with(
+            "Quiero una Raider 125",
+            context="",
+            prospect_data={"exists": False, "phone": "+573192564288"},
+            history=[],
+            skip_greeting=False
+        )
         
         # Reset mock
         mock_cerebro.pensar_respuesta.reset_mock()
@@ -489,9 +502,13 @@ async def test_dynamic_greeting_evaluation_across_all_branches():
         mock_memory_service.get_chat_history = AsyncMock(return_value=history_with_recent)
         
         await _handle_message_background_impl(msg_payload_audio, mock_bg_tasks)
-        mock_cerebro.pensar_respuesta.assert_called_once()
-        _, kwargs = mock_cerebro.pensar_respuesta.call_args
-        assert kwargs["skip_greeting"] is True, "❌ Recent conversation must have skip_greeting=True"
+        mock_cerebro.pensar_respuesta.assert_called_with(
+            "Quiero una Raider 125",
+            context="",
+            prospect_data={"exists": True, "ai_summary": "resumen"},
+            history=history_with_recent,
+            skip_greeting=True
+        )
         
         # Reset mock
         mock_cerebro.pensar_respuesta.reset_mock()
@@ -505,9 +522,13 @@ async def test_dynamic_greeting_evaluation_across_all_branches():
         mock_memory_service.get_chat_history = AsyncMock(return_value=history_with_inactive)
         
         await _handle_message_background_impl(msg_payload_audio, mock_bg_tasks)
-        mock_cerebro.pensar_respuesta.assert_called_once()
-        _, kwargs = mock_cerebro.pensar_respuesta.call_args
-        assert kwargs["skip_greeting"] is False, "❌ Inactive session must have skip_greeting=False"
+        mock_cerebro.pensar_respuesta.assert_called_with(
+            "Quiero una Raider 125",
+            context="",
+            prospect_data={"exists": True, "ai_summary": "resumen"},
+            history=history_with_inactive,
+            skip_greeting=False
+        )
         
         # Reset mock
         mock_cerebro.pensar_respuesta.reset_mock()
@@ -524,9 +545,52 @@ async def test_dynamic_greeting_evaluation_across_all_branches():
         mock_memory_service.get_chat_history = AsyncMock(return_value=history_with_reset)
         
         await _handle_message_background_impl(msg_payload_audio, mock_bg_tasks)
-        mock_cerebro.pensar_respuesta.assert_called_once()
-        _, kwargs = mock_cerebro.pensar_respuesta.call_args
-        assert kwargs["skip_greeting"] is False, "❌ skip_greeting must be False because the recent /reset message is ignored"
+        mock_cerebro.pensar_respuesta.assert_called_with(
+            "Quiero una Raider 125",
+            context="",
+            prospect_data={"exists": True, "ai_summary": "resumen"},
+            history=history_with_reset,
+            skip_greeting=False
+        )
+
+        # Reset mock
+        mock_cerebro.pensar_respuesta.reset_mock()
+
+        # 7. TEST CASE G: Recent session (message 1h ago) -> STICKER (skip_greeting must be True)
+        # For sticker (current_message_saved=False), history only needs the recent previous message to trigger True
+        history_with_recent_sticker = [
+            {"role": "user", "content": "Hola", "timestamp": recent_time}
+        ]
+        mock_memory_service.get_chat_history = AsyncMock(return_value=history_with_recent_sticker)
+        mock_vision.analyze_image = AsyncMock(return_value="[System Note: Sticker is affirmative]")
+        
+        await _handle_message_background_impl(msg_payload_sticker, mock_bg_tasks)
+        mock_cerebro.pensar_respuesta.assert_called_with(
+            "[System Note: Sticker is affirmative]",
+            context="",
+            prospect_data={"exists": True, "ai_summary": "resumen", "phone": "+573192564288"},
+            history=history_with_recent_sticker,
+            skip_greeting=True
+        )
+
+        # Reset mock
+        mock_cerebro.pensar_respuesta.reset_mock()
+
+        # 8. TEST CASE H: Recent session (message 1h ago) -> IMAGE (skip_greeting must be True)
+        history_with_recent_image = [
+            {"role": "user", "content": "Hola", "timestamp": recent_time}
+        ]
+        mock_memory_service.get_chat_history = AsyncMock(return_value=history_with_recent_image)
+        mock_vision.analyze_image = AsyncMock(return_value="Apache 160")
+        
+        await _handle_message_background_impl(msg_payload_image, mock_bg_tasks)
+        mock_cerebro.pensar_respuesta.assert_called_with(
+            "El usuario acaba de enviar una foto de esta moto: Apache 160. Usa el catálogo para ofrecerle nuestra mejor equivalente.",
+            context="",
+            prospect_data={"exists": True, "ai_summary": "resumen", "phone": "+573192564288"},
+            history=history_with_recent_image,
+            skip_greeting=True
+        )
 
 
 @pytest.mark.asyncio
