@@ -638,6 +638,17 @@ class CatalogService:
         _COMMERCIAL_STOPWORDS = {"motos", "moto", "motocicleta", "motocicletas"}
         query_alphabetic_tokens = [t for t in query_alphabetic_tokens if t not in _COMMERCIAL_STOPWORDS]
 
+        # --- FILTRO DE STOPWORDS CONVERSACIONALES (BOT-BACKEND-HOTFIX-CONVERSATIONAL-STOPWORD-STRIPPING-168) ---
+        # Fórmulas de cortesía, saludos y verbos comunes de interacción comercial son ruido lingüístico.
+        # Al no estar indexados en los ítems, provocan falsos negativos en el bucle perimetral alfabético del hito 163.
+        # Se eliminan de query_alphabetic_tokens para que el perímetro evalúe exclusivamente la intención central.
+        _CONVERSATIONAL_STOPWORDS = {
+            "buenas", "buenos", "dias", "tardes", "noches", "hola",
+            "tienen", "tiene", "manejan", "maneja", "venden", "vende",
+            "busco", "buscando", "quiero", "necesito"
+        }
+        query_alphabetic_tokens = [t for t in query_alphabetic_tokens if t not in _CONVERSATIONAL_STOPWORDS]
+
         clean_query = " ".join(query_tokens)
         scored_results = []
         

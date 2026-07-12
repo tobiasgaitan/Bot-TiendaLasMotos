@@ -1900,3 +1900,27 @@ def test_catalog_generic_stopword_stripping():
     assert "deportiva" in cats_c3, \
         f"'motocicleta pistera' debió retornar categoría 'deportiva', obtuvo: {cats_c3}"
 
+    # --- CASO 4: "Buenas, tienen motos pisteras?" (BOT-BACKEND-HOTFIX-CONVERSATIONAL-STOPWORD-STRIPPING-168) ---
+    # 'Buenas' y 'tienen' son ruidos conversacionales. 'motos' es ruido comercial.
+    # 'pisteras' resuelve a 'deportiva'. El perímetro debe omitir el ruido y validar 'deportiva'.
+    results_buenas_pisteras = service.search_items("Buenas, tienen motos pisteras?")
+    assert results_buenas_pisteras is not None, \
+        "search_items('Buenas, tienen motos pisteras?') retornó None"
+    assert len(results_buenas_pisteras) > 0, \
+        "'Buenas, tienen motos pisteras?' retornó lista vacía. Fórmulas conversacionales están bloqueando el perímetro."
+    names_c4 = [r["name"] for r in results_buenas_pisteras]
+    assert "TVS Raider 125" in names_c4, \
+        f"'Buenas, tienen motos pisteras?' debió retornar TVS Raider 125, obtuvo: {names_c4}"
+
+    # --- CASO 5: "Hola, manejan motos scooters?" (BOT-BACKEND-HOTFIX-CONVERSATIONAL-STOPWORD-STRIPPING-168) ---
+    # 'Hola' y 'manejan' son ruidos conversacionales. 'motos' es ruido comercial.
+    # 'scooters' resuelve a 'moped'.
+    results_hola_scooters = service.search_items("Hola, manejan motos scooters?")
+    assert results_hola_scooters is not None, \
+        "search_items('Hola, manejan motos scooters?') retornó None"
+    assert len(results_hola_scooters) > 0, \
+        "'Hola, manejan motos scooters?' retornó lista vacía. Fórmulas conversacionales están bloqueando el perímetro."
+    names_c5 = [r["name"] for r in results_hola_scooters]
+    assert "TVS Ntorq 125" in names_c5, \
+        f"'Hola, manejan motos scooters?' debió retornar TVS Ntorq 125, obtuvo: {names_c5}"
+
