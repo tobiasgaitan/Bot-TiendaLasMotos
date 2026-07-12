@@ -1169,7 +1169,11 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                     if not prospect_data:
                         prospect_data = await ms.get_prospect_data(user_phone)
 
-            # --- INITIALIZATION GUARD (BOT-BACKEND-HOTFIX-SESSION-INITIALIZATION-GUARD-172) ---
+            # 3. Inferencia de la IA con Auditoría de Vida o Muerte (v9.8.0)
+            max_retries = 2
+            attempts = 0
+
+            # --- INITIALIZATION GUARD (BOT-BACKEND-HOTFIX-ROUTER-INFERENCE-GUARD-174) ---
             if memory_service_module.memory_service:
                 ms = memory_service_module.memory_service
                 from app.services.memory_service import MemoryService
@@ -1191,9 +1195,6 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                             else:
                                 prospect_data = fut
 
-            # 3. Inferencia de la IA con Auditoría de Vida o Muerte (v9.8.0)
-            max_retries = 2
-            attempts = 0
             is_approved = False
             rejection_reason = ""
             last_criteria_id = "UNKNOWN"

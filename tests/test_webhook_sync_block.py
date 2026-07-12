@@ -527,3 +527,104 @@ async def test_dynamic_greeting_evaluation_across_all_branches():
         mock_cerebro.pensar_respuesta.assert_called_once()
         _, kwargs = mock_cerebro.pensar_respuesta.call_args
         assert kwargs["skip_greeting"] is False, "❌ skip_greeting must be False because the recent /reset message is ignored"
+
+
+@pytest.mark.asyncio
+async def test_inferred_state_reset_consistency():
+    """
+    Verifica que después de ejecutar un /reset, cuando el usuario envía una nueva consulta,
+    el guardrail de inicialización bloqueante (`get_or_create_prospect`) se ejecuta e hidrata
+    `prospect_data` con el estado inicial (Fase 1 / PENDING) antes de entrar al bloque de inferencia.
+    """
+    from app.routers.whatsapp import _handle_message_background_impl
+    
+    mock_bg_tasks = BackgroundTasks()
+    
+    # 1. Configurar Mocks de base
+    mock_memory_service = MagicMock()
+    mock_memory_service.delete_prospect_completely = AsyncMock(return_value=True)
+    mock_memory_service.create_prospect_if_missing = AsyncMock()
+    mock_memory_service.update_last_interaction = AsyncMock()
+    mock_memory_service.transition_to_in_progress = AsyncMock()
+    mock_memory_service.generate_and_update_summary = AsyncMock()
+    mock_memory_service.save_message = AsyncMock()
+    
+    # Después de reset, el prospecto no existe inicialmente al llamar a get_prospect_data
+    mock_memory_service.get_prospect_data = AsyncMock(return_value={"exists": False})
+    
+    # Pero el guardrail de get_or_create_prospect lo crea y retorna con estado PENDING y chatbot ACTIVE
+    hydrated_state = {
+        "exists": True, 
+        "status": "PENDING", 
+        "chatbot_status": "ACTIVE",
+        "name": "Cliente Nuevo",
+        "celular": "+573192564288"
+    }
+    mock_memory_service.get_or_create_prospect = AsyncMock(return_value=hydrated_state)
+    mock_memory_service.get_chat_history = AsyncMock(return_value=[])
+    
+    # Mock CerebroIA & JudgeService
+    mock_cerebro = MagicMock()
+    mock_cerebro.pensar_respuesta = AsyncMock(return_value="Hola, ¿en qué te puedo ayudar?")
+    
+    mock_judge = MagicMock()
+    mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+    
+    mock_whatsapp = MagicMock()
+    mock_whatsapp.mark_as_read = AsyncMock()
+    mock_whatsapp.send_text_message = AsyncMock()
+    
+    mock_catalog = MagicMock()
+    mock_catalog.search = MagicMock(return_value=[])
+    mock_catalog.get_all_items = MagicMock(return_value=[])
+    
+    mock_message_buffer = AsyncMock()
+    mock_message_buffer.add_message = AsyncMock(return_value=True)
+    mock_message_buffer.get_aggregated_message = MagicMock(return_value=None)
+    mock_message_buffer.is_task_active = MagicMock(return_value=True)
+    mock_message_buffer.clear_buffer = AsyncMock()
+    mock_message_buffer.debounce_seconds = 0.01
+
+    with patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
+         patch("app.routers.whatsapp.CerebroIA", return_value=mock_cerebro), \
+         patch("app.routers.whatsapp.judge_service", mock_judge), \
+         patch("app.services.whatsapp_service.whatsapp_service", mock_whatsapp), \
+         patch("app.routers.whatsapp.catalog_service", mock_catalog), \
+         patch("app.routers.whatsapp.message_buffer", mock_message_buffer), \
+         patch("app.routers.whatsapp.db", MagicMock()):
+         
+        # A. Disparar /reset
+        msg_payload_reset = {
+            "from": "573192564288",
+            "id": "wamid.reset_cmd",
+            "type": "text",
+            "phone_number_id": "999999",
+            "text": "/reset"
+        }
+        
+        await _handle_message_background_impl(msg_payload_reset, mock_bg_tasks)
+        
+        # Verificar eliminación completa
+        mock_memory_service.delete_prospect_completely.assert_called_once_with("+573192564288")
+        
+        # B. Inyectar inmediatamente una consulta de usuario
+        msg_payload_query = {
+            "from": "573192564288",
+            "id": "wamid.query_after_reset",
+            "type": "text",
+            "phone_number_id": "999999",
+            "text": "Quiero una Raider 125"
+        }
+        
+        await _handle_message_background_impl(msg_payload_query, mock_bg_tasks)
+        
+        # C. Verificar que prospect_data contenga el estado de Fase 1 (PENDING) antes de entrar a la inferencia
+        mock_cerebro.pensar_respuesta.assert_called_once()
+        _, kwargs = mock_cerebro.pensar_respuesta.call_args
+        
+        p_data = kwargs["prospect_data"]
+        assert p_data is not None, "❌ prospect_data es None antes del bloque de inferencia"
+        assert p_data.get("exists") is True, "❌ prospect_data no existe en la inyección"
+        assert p_data.get("status") == "PENDING", "❌ prospect_data no tiene estado PENDING (Fase 1 / bienvenida)"
+        assert p_data.get("chatbot_status") == "ACTIVE", "❌ chatbot_status no es ACTIVE"
+
