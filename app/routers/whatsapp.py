@@ -542,12 +542,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
         phone_number_id = msg_data.get("phone_number_id")
 
         # [BOT-TRACE-201] Propagar telemetría de Langfuse al trace raíz del webhook
-        try:
-            from langfuse.decorators import langfuse_context as lf_ctx
-        except Exception:
-            lf_ctx = langfuse_context
-
-        lf_ctx.update_current_trace(
+        langfuse_context.update_current_trace(
             user_id=user_phone,
             session_id=f"wa_{user_phone}",
             metadata={
@@ -1248,7 +1243,6 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                     
                     # Actualizar Langfuse antes de retornar
                     try:
-                        from langfuse.decorators import langfuse_context
                         langfuse_context.update_current_trace(
                             tags=["JUDGE_CRITICAL_FALLBACK"],
                             metadata={
@@ -1276,7 +1270,6 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
             # Observabilidad: Langfuse Tag y Metadata
             if not is_approved or attempts > 1:
                 try:
-                    from langfuse.decorators import langfuse_context
                     langfuse_context.update_current_trace(
                         tags=["JUDGE_CRITICAL_FALLBACK"] if not is_approved else ["JUDGE_RETRIED"],
                         metadata={
@@ -1476,7 +1469,6 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
 
                         # Actualizar Langfuse antes de retornar
                         try:
-                            from langfuse.decorators import langfuse_context
                             langfuse_context.update_current_trace(
                                 tags=["JUDGE_CRITICAL_FALLBACK"],
                                 metadata={
@@ -1486,7 +1478,8 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                     "msg_type": "audio"
                                 }
                             )
-                        except: pass
+                        except Exception as e:
+                            logger.warning(f"⚠️ [JUDGE_FALLBACK_AUDIO] Failed to update Langfuse trace: {e}")
                         
                         return 
                 else:
