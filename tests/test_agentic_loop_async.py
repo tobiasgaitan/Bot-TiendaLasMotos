@@ -1672,4 +1672,67 @@ def test_catalog_tokenizer_ngrams_characterization():
     assert "100" in tokens
 
 
+def test_catalog_category_alias_recovery():
+    """
+    [BOT-BACKEND-HOTFIX-CATALOG-ALIAS-RECOVERY]
+    Characterization test validating that category aliases (e.g. 'pisteras')
+    are resolved correctly to their canonical category ('deportiva') and successfully
+    pass the strict alphabetic/numeric perimeter check, returning the TVS Raider 125.
+    """
+    from app.services.catalog_service import CatalogService
+    from unittest.mock import MagicMock
+    
+    service = CatalogService()
+    
+    # Configure aliases in memory
+    service._category_aliases = {
+        "deportiva": ["pistera", "pisteras"],
+        "trabajo": ["carga", "trabajar"]
+    }
+    
+    # Set up catalog items
+    item_raider = {
+        "id": "tvs_raider",
+        "name": "TVS Raider 125",
+        "price": 6000000,
+        "category": "deportiva",
+        "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/tvs_raider.jpg",
+        "search_tags": ["sport", "tecnologia"],
+        "search_text": "tvs raider 125 deportiva sport tecnologia pistera pisteras",
+        "search_tokens": ["tvs", "raider", "125", "deportiva", "sport", "tecnologia", "pistera", "pisteras"],
+        "searchBy": ["sport", "tecnologia"],
+        "description": "Moto deportiva con tecnologia de punta.",
+        "link": "https://tiendalasmotos.com/tvs-raider",
+        "active": True
+    }
+    
+    item_sport = {
+        "id": "tvs_sport",
+        "name": "TVS Sport 100",
+        "price": 5000000,
+        "category": "trabajo",
+        "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/tvs_sport.jpg",
+        "search_tags": ["trabajo"],
+        "search_text": "tvs sport 100 trabajo carga trabajar",
+        "search_tokens": ["tvs", "sport", "100", "trabajo", "carga", "trabajar"],
+        "searchBy": ["trabajo"],
+        "description": "Moto de trabajo.",
+        "link": "https://tiendalasmotos.com/tvs-sport",
+        "active": True
+    }
+    
+    service._items = [item_raider, item_sport]
+    service._items_by_id = {i["id"]: i for i in service._items}
+    service._db = MagicMock()
+    
+    # Query with alias 'pisteras'
+    results = service.search_items("pisteras")
+    
+    # Rigid Assertions
+    assert len(results) > 0, "Query for alias 'pisteras' returned an empty result list"
+    assert results[0]["name"] == "TVS Raider 125", f"Expected 'TVS Raider 125' as top match, got {results[0]['name']}"
+    assert results[0]["category"] == "deportiva", f"Expected category 'deportiva', got {results[0]['category']}"
+
+
+
 

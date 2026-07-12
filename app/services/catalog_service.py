@@ -592,6 +592,21 @@ class CatalogService:
                 expanded_tokens.extend(colloquial_map[t])
         query_tokens = list(set(expanded_tokens))
         
+        # Mapeo explícito de alias de categoría a su categoría canónica (Fase de pre-procesamiento)
+        try:
+            aliases = self.get_catalog_aliases()
+            mapped_categories = []
+            for t in query_tokens:
+                t_clean = t.lower().strip()
+                for canonical_cat, alias_list in aliases.items():
+                    if t_clean in [a.lower().strip() for a in alias_list]:
+                        mapped_categories.append(canonical_cat)
+            if mapped_categories:
+                query_tokens.extend(mapped_categories)
+                query_tokens = list(set(query_tokens))
+        except Exception as e:
+            logger.exception(f"❌ Error al mapear alias de categorías en pre-procesamiento: {str(e)}")
+
         if not query_tokens:
             query_tokens = ["moto"]
 
@@ -612,20 +627,25 @@ class CatalogService:
             item_tokens = item.get("search_tokens", [])
             item_search_text = item.get("search_text", "")
             search_by_tags = item.get("searchBy", [])
+            item_category = item.get("category", "").lower().strip()
+            # Alinear tags efectivos del perímetro con la categoría del ítem
+            effective_tags = list(search_by_tags)
+            if item_category and item_category not in effective_tags:
+                effective_tags.append(item_category)
             name_tokens = self._tokenize(name)
 
             # --- VALIDACIÓN PERIMETRAL ALFABÉTICA (BOT-BACKEND-CATALOG-THRESHOLD-163) ---
             # Si la consulta incluye tokens alfabéticos core, se exige que al menos uno coincida
-            # exacta, fonéticamente, o de forma fuzzy (ratio >= 0.8) con el nombre del ítem o sus searchBy tags.
+            # exacta, fonéticamente, o de forma fuzzy (ratio >= 0.8) con el nombre del ítem o sus searchBy/categoría tags.
             has_alphabetic_match = True
             if query_alphabetic_tokens:
                 has_alphabetic_match = False
                 for t in query_alphabetic_tokens:
                     t_phone = self._phonetic_normalize(t)
-                    if t in search_by_tags or t in name_tokens:
+                    if t in effective_tags or t in name_tokens:
                         has_alphabetic_match = True
                         break
-                    if any(self._phonetic_normalize(st) == t_phone for st in search_by_tags):
+                    if any(self._phonetic_normalize(st) == t_phone for st in effective_tags):
                         has_alphabetic_match = True
                         break
                     if any(self._phonetic_normalize(nt) == t_phone for nt in name_tokens):
@@ -635,7 +655,7 @@ class CatalogService:
                     if any(difflib.SequenceMatcher(None, t, nt).ratio() >= 0.8 for nt in name_tokens):
                         has_alphabetic_match = True
                         break
-                    if any(difflib.SequenceMatcher(None, t, st).ratio() >= 0.8 for st in search_by_tags):
+                    if any(difflib.SequenceMatcher(None, t, st).ratio() >= 0.8 for st in effective_tags):
                         has_alphabetic_match = True
                         break
 
@@ -746,6 +766,11 @@ class CatalogService:
                 name = item.get("name", "").lower()
                 name_tokens = self._tokenize(name)
                 search_by_tags = item.get("searchBy", [])
+                item_category = item.get("category", "").lower().strip()
+                # Alinear tags efectivos del perímetro con la categoría del ítem en fallback
+                effective_tags = list(search_by_tags)
+                if item_category and item_category not in effective_tags:
+                    effective_tags.append(item_category)
                 
                 # --- VALIDACIÓN PERIMETRAL ALFABÉTICA EN FALLBACK ---
                 has_alphabetic_match = True
@@ -753,10 +778,10 @@ class CatalogService:
                     has_alphabetic_match = False
                     for t in query_alphabetic_tokens:
                         t_phone = self._phonetic_normalize(t)
-                        if t in search_by_tags or t in name_tokens:
+                        if t in effective_tags or t in name_tokens:
                             has_alphabetic_match = True
                             break
-                        if any(self._phonetic_normalize(st) == t_phone for st in search_by_tags):
+                        if any(self._phonetic_normalize(st) == t_phone for st in effective_tags):
                             has_alphabetic_match = True
                             break
                         if any(self._phonetic_normalize(nt) == t_phone for nt in name_tokens):
@@ -766,7 +791,7 @@ class CatalogService:
                         if any(difflib.SequenceMatcher(None, t, nt).ratio() >= 0.8 for nt in name_tokens):
                             has_alphabetic_match = True
                             break
-                        if any(difflib.SequenceMatcher(None, t, st).ratio() >= 0.8 for st in search_by_tags):
+                        if any(difflib.SequenceMatcher(None, t, st).ratio() >= 0.8 for st in effective_tags):
                             has_alphabetic_match = True
                             break
                             
