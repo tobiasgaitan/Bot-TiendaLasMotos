@@ -1,6 +1,8 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.33.2)
+## Tasks Completadas (v10.34.1)
+- [x] Filtro de stopwords conversacionales (saludos, fórmulas de cortesía y verbos comerciales) en el pre-procesamiento de tokens de control alfabético en CatalogService (BOT-BACKEND-HOTFIX-CONVERSATIONAL-STOPWORD-STRIPPING-168).
+- [x] Filtro de stopwords comerciales genéricas en el pre-procesamiento del perímetro alfabético en CatalogService (BOT-BACKEND-HOTFIX-GENERIC-STOPWORD-STRIPPING-167).
 - [x] Mapeo flexible de alias en plural/diminutivo de categorías de catálogo con protección de colisiones en monosílabos (BOT-BACKEND-HOTFIX-PLURAL-ALIAS-ALIGNMENT-166).
 - [x] Recuperación y mapeo inicial de alias de categorías de catálogo en CatalogService (BOT-BACKEND-HOTFIX-CATALOG-ALIAS-RECOVERY-165).
 - [x] Alinear quirúrgicamente el módulo de observabilidad y trazas en whatsapp.py con las firmas nativas del SDK de Langfuse v4 (BOT-BRAIN-OBSERVABILITY-ALIGN-164).
