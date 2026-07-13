@@ -394,7 +394,7 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
         nombre_moto = moto.get('name', 'Moto')
         
         try:
-            cc_raw = moto.get('displacement', 0)
+            cc_raw = moto.get('cc') or moto.get('displacement') or 0
             moto_cc = float(re.sub(r'[^\d.]', '', str(cc_raw))) if cc_raw else 0.0
         except: moto_cc = 0.0
             
