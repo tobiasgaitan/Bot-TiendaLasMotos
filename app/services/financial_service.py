@@ -44,7 +44,7 @@ class FinancialService:
         precio: float, 
         inicial: float, 
         plazo_meses: int, 
-        entidad: str = "Crediorbe",
+        entidad: str = "Brilla de Gases",
         moto_cc: float = 0.0,
         category: str = "motos"
     ) -> Dict[str, Any]:
@@ -67,10 +67,6 @@ class FinancialService:
                 if factor_val:
                     factor = float(factor_val)
             
-            # Fallback for Crediorbe 24m
-            if not factor and entidad.lower() == "crediorbe" and int(plazo_meses) == 24:
-                factor = 0.0523336
-                
             row_fng = row.get("fngRate") if row else None
             root_fng_rate = float(entity_config.get("fngRate", 20.66))
             fng_to_apply = float(row_fng) if row_fng is not None else root_fng_rate
@@ -82,44 +78,21 @@ class FinancialService:
             
             capital_inicial = round(monto_base + registro, 0)
             
-            if moto_cc <= 124 and entidad.lower() == "crediorbe" and (row_fng is None or float(row_fng) == 0):
-                fng_to_apply = 11.99661  
-                
             fng_rate = fng_to_apply
             fng_cost = round(capital_inicial * (fng_rate / 100), 0)
             
             mgmt_rate = float(entity_config.get("brillaManagementRate", 0))
-            if entidad.lower() == "crediorbe":
-                mgmt_rate = 0.0
             mgmt_cost = round((capital_inicial + fng_cost) * (mgmt_rate / 100), 0)
             
             P_final = round(capital_inicial + fng_cost + mgmt_cost, 0)
             
             cov_rate = float(entity_config.get("coverageRate", 4))
-            if entidad.lower() == "crediorbe":
-                base_aval = capital_inicial if moto_cc <= 124 else P_final
-            else:
-                base_aval = P_final
-                
+            base_aval = P_final
             cov_cost = round(base_aval * (cov_rate / 100), 0)
             cuota_aval_mensual = round(cov_cost / 12, 0) if cov_cost > 0 else 0
             
-            # FIX PARITY (Neo NX)
-            if entidad.lower() == "crediorbe" and (100 <= moto_cc <= 115) and precio == 6700000:
-                P_final = 7503773.0
-                cuota_aval_mensual = 23948.0 
-                
-            # FIX PARITY (Apache 160)
-            # Target: $589.787 (24m, 1.5M init, 11.1M price)
-            if entidad.lower() == "crediorbe" and (155 <= moto_cc <= 165) and precio == 11100000:
-                P_final = 10616904.0
-                cuota_aval_mensual = 34166.0
-            
             # --- PHASE 3: CALCULATION ---
-            seguro_vida = float(entity_config.get("life_insurance_monthly", 15000))
-            if entidad.lower() == "crediorbe":
-                seguro_vida = 0.0 
-                
+            seguro_vida = float(entity_config.get("life_insurance_monthly", 15000))                
             if factor > 0:
                 cuota_mensual = round((round(P_final, 0) * factor) + seguro_vida + cuota_aval_mensual, 0)
                 uso_matriz = True
@@ -153,7 +126,7 @@ class FinancialService:
             try:
                 monto_base = max(precio - inicial, 0.0)
                 seguro_vida = self._get_insurance_monthly(entidad, monto_base)
-                rate = 2.22 / 100  # Tasa NMV default Crediorbe
+                rate = 1.95 / 100  # Tasa NMV default Crédito Brilla
                 f = (rate * (1 + rate) ** plazo_meses) / ((1 + rate) ** plazo_meses - 1)
                 cuota = round((monto_base * f) + seguro_vida, 0)
                 return {
@@ -340,7 +313,7 @@ Por ejemplo: "Doy 1 millón" o "Tengo 500mil".
             logger.exception(f"[BOT-ARQ-E2E-095] Fallo al obtener financial_config en _generate_generic_response: {e}")
             financial_config = {}
         tasa_banco = financial_config.get("tasa_nmv_banco", 1.87)
-        tasa_fintech = financial_config.get("tasa_nmv_fintech", 2.22)
+        tasa_brilla = 1.95  # Crédito Brilla rate
         
         # [BOT-ARQ-E2E-095] Blindaje de partners: fallback seguro si Firestore vacío.
         link_brilla = "#"
@@ -361,8 +334,7 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
 
 💳 **Nuestras Tasas**:
 - Banco de Bogotá: {tasa_banco}% mensual (perfil bancario)
-- CrediOrbe: {tasa_fintech}% mensual (perfil flexible)
-- Crédito Brilla: 1.95% mensual (con servicio de gas) [Más info]({link_brilla})
+- Crédito Brilla: {tasa_brilla}% mensual (con servicio de gas) [Más info]({link_brilla})
 
 📱 **Ejemplo**: "Quiero la NKD 125 y tengo 1 millón de inicial"
         """.strip()
@@ -433,8 +405,7 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
         if loan_amount <= 0: return f"¡Genial! Con esa inicial cubres el valor total de la {nombre_moto}."
             
         entidad_default = "Brilla de Gases"
-        financial_config = self._config_service.get_financial_config()
-        tasa_mensual = financial_config.get("tasa_nmv_fintech", 2.22)
+        tasa_mensual = 1.95
         
         plan_24 = self.calculate_payment(precio_moto, inicial, 24, entidad=entidad_default, moto_cc=moto_cc, category=category)
         plan_36 = self.calculate_payment(precio_moto, inicial, 36, entidad=entidad_default, moto_cc=moto_cc, category=category)
