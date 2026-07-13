@@ -225,7 +225,9 @@ async def test_habeas_data_gate_before_credit_score():
             precio=9969000.0,
             inicial=996900.0,
             plazo_meses=24,
-            entidad="Brilla de Gases"
+            entidad="Brilla de Gases",
+            moto_cc=0.0,
+            category="Urban"
         )
 
         # 3. Asegurar que la respuesta final de la herramienta se desvió al flujo de legalización solicitando consentimiento
@@ -592,7 +594,9 @@ async def test_habeas_bypass_interrupt_e2e():
             precio=9969000.0,
             inicial=996900.0,
             plazo_meses=24,
-            entidad="Brilla de Gases"
+            entidad="Brilla de Gases",
+            moto_cc=0.0,
+            category="Urban"
         )
 
         # ASSERT 9: Gemini was only called ONCE (the function call turn),

@@ -1544,6 +1544,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         if moto_name and self.motor_financiero:
                                             # We attempt a quick lookup to get the price
                                             m_price = 0
+                                            moto_cc = 0.0
+                                            category = "motos"
                                             if self._catalog_service:
                                                 m_results = self._catalog_service.search_items(moto_name)
                                                 if m_results: 
@@ -1552,6 +1554,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                         first_match.get('raw_price'),
                                                         first_match.get('price')
                                                     )
+                                                    moto_cc = float(first_match.get("cc", 0.0) or 0.0)
+                                                    category = first_match.get("category", "motos") or "motos"
                                             
                                             if m_price <= 0:
                                                 import traceback
@@ -1566,7 +1570,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                 precio=m_price,
                                                 inicial=0,
                                                 plazo_meses=24,
-                                                entidad="Crediorbe"
+                                                entidad="Crediorbe",
+                                                moto_cc=moto_cc,
+                                                category=category
                                             )
                                             cuota_val = sim.get('cuota_mensual', 0)
                                             if cuota_val > 0:
@@ -1595,6 +1601,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         if moto_name and self.motor_financiero:
                                             # We attempt a quick lookup to get the price
                                             m_price = 0
+                                            moto_cc = 0.0
+                                            category = "motos"
                                             if self._catalog_service:
                                                 m_results = self._catalog_service.search_items(moto_name)
                                                 if m_results: 
@@ -1603,6 +1611,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                         first_match.get('raw_price'),
                                                         first_match.get('price')
                                                     )
+                                                    moto_cc = float(first_match.get("cc", 0.0) or 0.0)
+                                                    category = first_match.get("category", "motos") or "motos"
                                             
                                             if m_price <= 0:
                                                 import traceback
@@ -1617,7 +1627,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                 precio=m_price,
                                                 inicial=0,
                                                 plazo_meses=24,
-                                                entidad=entity
+                                                entidad=entity,
+                                                moto_cc=moto_cc,
+                                                category=category
                                             )
                                             cuota_val = sim.get('cuota_mensual', 0)
                                             if cuota_val > 0:
@@ -1641,6 +1653,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     )
                                     logger.info(f"[BOT-FINANCE-BYPASS] Ejecutando simulación ciega preventiva ante ausencia de Habeas Data para {user_name}")
                                     m_price = 0.0
+                                    moto_cc = 0.0
+                                    category = "motos"
                                     moto_name = (prospect_data or {}).get("moto_interest", "")
                                     if moto_name and self._catalog_service:
                                         m_results = self._catalog_service.search_items(moto_name)
@@ -1650,6 +1664,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                 first_match.get('raw_price'),
                                                 first_match.get('price')
                                             )
+                                            moto_cc = float(first_match.get("cc", 0.0) or 0.0)
+                                            category = first_match.get("category", "motos") or "motos"
 
                                     if m_price <= 0:
                                         logger.warning(f"⚠️ [Catalog Lock] No se pudo encontrar el precio real para la moto '{moto_name}'. Evitando simulación inventada.")
@@ -1661,7 +1677,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             precio=m_price,
                                             inicial=inicial_val,
                                             plazo_meses=24,
-                                            entidad="Brilla de Gases"
+                                            entidad="Brilla de Gases",
+                                            moto_cc=moto_cc,
+                                            category=category
                                         )
                                         cuota_val = sim.get('cuota_mensual', 0.0)
                                         credit_res = (
@@ -1698,12 +1716,16 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 logger.info(f"[BOT-FINANCE-BYPASS] Ejecutando simulación ciega preventiva ante ausencia de Habeas Data para {user_name}")
                                 
                                 m_price = 0.0
+                                moto_cc = 0.0
+                                category = "motos"
                                 moto_name = (prospect_data or {}).get("moto_interest", "")
                                 if moto_name and self._catalog_service:
                                     m_results = self._catalog_service.search_items(moto_name)
                                     if m_results:
                                         first_match = m_results[0]
                                         m_price = self._parse_raw_price(first_match.get('raw_price'), first_match.get('price'))
+                                        moto_cc = float(first_match.get("cc", 0.0) or 0.0)
+                                        category = first_match.get("category", "motos") or "motos"
 
                                 if m_price <= 0:
                                     logger.warning(f"⚠️ [Catalog Lock] No se pudo encontrar el precio real para la moto '{moto_name}'. Evitando simulación inventada.")
@@ -1711,7 +1733,14 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                                 if self.motor_financiero:
                                     inicial_val = m_price * 0.10
-                                    sim = self._calculate_payment_helper(precio=m_price, inicial=inicial_val, plazo_meses=24, entidad="Brilla de Gases")
+                                    sim = self._calculate_payment_helper(
+                                        precio=m_price,
+                                        inicial=inicial_val,
+                                        plazo_meses=24,
+                                        entidad="Brilla de Gases",
+                                        moto_cc=moto_cc,
+                                        category=category
+                                    )
                                     cuota_val = sim.get('cuota_mensual', 0.0)
                                     credit_res = (
                                         f"Si te interesa a crédito con la inicial de ${inicial_val:,.0f}, "

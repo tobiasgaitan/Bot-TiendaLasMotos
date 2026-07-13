@@ -130,7 +130,9 @@ async def test_crediorbe_interception_blocks_link_and_injects_contingency():
         precio=6200000.0,
         inicial=0,
         plazo_meses=24,
-        entidad="Crediorbe"
+        entidad="Crediorbe",
+        moto_cc=0.0,
+        category="Urban"
     )
     
     # Verifiquemos que la respuesta de evaluate_profile tuvo su link_url bloqueada
