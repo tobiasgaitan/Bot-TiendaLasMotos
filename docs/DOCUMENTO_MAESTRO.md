@@ -1,7 +1,8 @@
 ### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.42.0)
 Versión: v10.42.0 (Router Inference Guard)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Purga completa de la lógica dura legada de CrediOrbe en el módulo core financiero, dinamización del 100% de la cascada de costos en Firestore y corrección del fallback topológico del cilindraje ("cc") para asegurar paridad absoluta en la simulación del Ceronte Tricargo 300 bajo el ticket [BOT-BACKEND-FINANCIAL-PURGE-175].
+Último Hito: Implementación de la deduplicación FIFO estructurada en MessageBuffer y bypass condicional de sobrecostos de trámites en ai_brain.py, logrando paridad absoluta en Neo NX ($408.487) y Raider ($466.353) bajo ticket [BOT-BACKEND-BUFFER-IDEMPOTENCY-CLEANUP-179].
+- Hito anterior: Purga completa de la lógica dura legada de CrediOrbe en el módulo core financiero, dinamización del 100% de la cascada de costos en Firestore y corrección del fallback topológico del cilindraje ("cc") para asegurar paridad absoluta en la simulación del Ceronte Tricargo 300 bajo el ticket [BOT-BACKEND-FINANCIAL-PURGE-175].
 - Hito anterior: Implementación de un guardrail de inicialización bloqueante en la frontera de inferencia (`_handle_message_background_impl` en `whatsapp.py`) que asegura que `prospect_data` esté plenamente hidratado desde Firestore a través de `get_or_create_prospect` antes del bloque de inferencia. Cierre de ticket [BOT-BACKEND-HOTFIX-ROUTER-INFERENCE-GUARD-174].
 **Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 257/257 Tests PASSED)
 

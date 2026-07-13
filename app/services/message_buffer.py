@@ -40,8 +40,8 @@ class MessageBuffer:
         self._buffers: Dict[str, List[str]] = {}
         self._active_tasks: Dict[str, str] = {}
         self._locks: Dict[str, asyncio.Lock] = {}
-        self._processed_wamids: Dict[str, set] = {}
-        self._added_wamids: Dict[str, set] = {}
+        self._processed_wamids: Dict[str, Dict[str, float]] = {}
+        self._added_wamids: Dict[str, Dict[str, float]] = {}
         logger.info(f"📦 MessageBuffer initialized with {debounce_seconds}s debounce")
     
     def _get_lock(self, wa_id: str) -> asyncio.Lock:
@@ -76,24 +76,26 @@ class MessageBuffer:
         lock = self._get_lock(wa_id)
         async with lock:
             if wa_id not in self._processed_wamids:
-                self._processed_wamids[wa_id] = set()
+                self._processed_wamids[wa_id] = {}
             if wa_id not in self._added_wamids:
-                self._added_wamids[wa_id] = set()
+                self._added_wamids[wa_id] = {}
 
             if task_id in self._added_wamids[wa_id]:
                 logger.warning(f"🔄 Duplicate webhook ignored for wamid/task_id: {task_id}")
                 return False
 
-            self._processed_wamids[wa_id].add(task_id)
-            self._added_wamids[wa_id].add(task_id)
+            now = time.time()
+            self._processed_wamids[wa_id][task_id] = now
+            self._added_wamids[wa_id][task_id] = now
             
             # Pruning logic: keep only the last 100 wamids per user for memory safety
+            # Dict preserves insertion order; we prune by sorting by timestamp (FIFO)
             if len(self._processed_wamids[wa_id]) > 100:
-                # set is not ordered, so this is just random pruning to keep size limited
-                # but 100 is plenty for meta retries which happen within seconds
-                self._processed_wamids[wa_id].pop()
+                oldest_key = min(self._processed_wamids[wa_id], key=self._processed_wamids[wa_id].get)
+                self._processed_wamids[wa_id].pop(oldest_key)
             if len(self._added_wamids[wa_id]) > 100:
-                self._added_wamids[wa_id].pop()
+                oldest_key = min(self._added_wamids[wa_id], key=self._added_wamids[wa_id].get)
+                self._added_wamids[wa_id].pop(oldest_key)
 
             # Initialize buffer if needed
             if wa_id not in self._buffers:
@@ -137,14 +139,15 @@ class MessageBuffer:
         lock = self._get_lock(wa_id)
         async with lock:
             if wa_id not in self._processed_wamids:
-                self._processed_wamids[wa_id] = set()
+                self._processed_wamids[wa_id] = {}
 
             if task_id in self._processed_wamids[wa_id]:
                 return False
 
-            self._processed_wamids[wa_id].add(task_id)
+            self._processed_wamids[wa_id][task_id] = time.time()
             if len(self._processed_wamids[wa_id]) > 100:
-                self._processed_wamids[wa_id].pop()
+                oldest_key = min(self._processed_wamids[wa_id], key=self._processed_wamids[wa_id].get)
+                self._processed_wamids[wa_id].pop(oldest_key)
             
             return True
     

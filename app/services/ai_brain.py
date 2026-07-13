@@ -167,6 +167,16 @@ class CerebroIA:
         falling back to the canonical financial_service instance if the injected motor
         doesn't expose calculate_payment (e.g. when it's ScoringService).
         """
+        # [REDUNDANT TRAMITES PURGE]
+        # Since the catalog search returns raw_price/price which already includes the 
+        # registration/SOAT/trámites cost, we subtract the catalog registration cost 
+        # to get the base commercial price of the motorcycle.
+        moto_cc = float(kwargs.get("moto_cc", 0.0) or 0.0)
+        category = kwargs.get("category", "motos") or "motos"
+        from app.services.config_service import config_service
+        reg_cost = config_service.get_registration_cost(cc=moto_cc, category=category)
+        base_price = max(precio - reg_cost, 0.0)
+
         service = self.motor_financiero
         if not service or not hasattr(service, "calculate_payment"):
             from app.services.financial_service import financial_service
@@ -177,7 +187,7 @@ class CerebroIA:
         # Extract and pass other kwargs safely (e.g. moto_cc, category)
         other_args = {k: v for k, v in kwargs.items() if k not in ("entidad", "entity")}
         return service.calculate_payment(
-            precio=precio,
+            precio=base_price,
             inicial=inicial,
             plazo_meses=plazo_meses,
             entidad=ent,
