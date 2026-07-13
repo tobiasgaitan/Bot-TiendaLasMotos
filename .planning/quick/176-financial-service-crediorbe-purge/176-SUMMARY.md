@@ -20,6 +20,8 @@
 - Audited the affected sub-graph using `get_neighbors` on `financial_service.py` to trace dependencies.
 - Ran pytest on the full test suite via `.venv/bin/pytest`. All 257 tests passed successfully.
 - Executed `npx agent-cli eval` to evaluate overall coherence and verify the score is `1.000` (100% pass status).
+- Performed end-to-end runtime verification of a credit simulation for the `Ceronte Tricargo 300` (272 cc, price $24.499.000) with a 2 million downpayment, confirming exact parities with 0% error ($1.395.537 / month for 24 months, using Brilla de Gases factors and rates).
+- Fixed the displacement extraction fallback in `financial_service.py` to support `moto.get('cc')` to ensure displacement is not lost during simulation response calculations.
 
 ---
 *Completed: 2026-07-13*
