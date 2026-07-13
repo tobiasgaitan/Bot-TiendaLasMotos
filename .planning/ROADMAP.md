@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.43.0)
+## Tasks Completadas (v10.44.0)
+- [x] Refactorizar de forma quirúrgica el módulo `app/services/ai_brain.py` para dinamizar las variables de asignación financiera, removiendo Crediorbe de la simulación preventiva y sustituyendo por Brilla de Gases, alineando asimismo las aserciones de tests unitarios (BOT-BACKEND-ORCHESTRATOR-ALIGNMENT-177).
 - [x] Refactorizar `app/services/financial_service.py` para remover condicionales rígidos de crediorbe, cambiar la entidad por omisión a Brilla de Gases, y ajustar la simulación genérica y fallback defensivo (BOT-BACKEND-FINANCIAL-PURGE-175).
 - [x] Alinear de forma rígida todos los flags `skip_greeting` en las llamadas satélites de `whatsapp.py` e implementar aserciones rígidas de argumentos (`assert_called_with`) en los tests (BOT-BACKEND-HOTFIX-ROUTER-BRANCH-ALIGNMENT-175).
 - [x] Refactorización de las firmas de llamada a 'cerebro_ia.pensar_respuesta' en todas las ramas de procesamiento de 'app/routers/whatsapp.py' e implementación de '_evaluate_skip_greeting' para saludos dinámicos (BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-173).
