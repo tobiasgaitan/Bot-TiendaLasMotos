@@ -1661,7 +1661,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             precio=m_price,
                                             inicial=inicial_val,
                                             plazo_meses=24,
-                                            entidad="Crediorbe"
+                                            entidad="Brilla de Gases"
                                         )
                                         cuota_val = sim.get('cuota_mensual', 0.0)
                                         credit_res = (
@@ -1711,7 +1711,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                                 if self.motor_financiero:
                                     inicial_val = m_price * 0.10
-                                    sim = self._calculate_payment_helper(precio=m_price, inicial=inicial_val, plazo_meses=24, entidad="Crediorbe")
+                                    sim = self._calculate_payment_helper(precio=m_price, inicial=inicial_val, plazo_meses=24, entidad="Brilla de Gases")
                                     cuota_val = sim.get('cuota_mensual', 0.0)
                                     credit_res = (
                                         f"Si te interesa a crédito con la inicial de ${inicial_val:,.0f}, "
