@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.45.1)
+## Tasks Completadas (v10.45.2)
+- [x] Equalización de la matriz de Firestore de Brilla de Gases (anular la adición lineal de 'seguro_vida' flat de 15,000 COP) cuando uso_matriz es True, delegando el cobro amortizado al coeficiente compuesto, y alineando las aserciones de tests correspondientes (BOT-BACKEND-FINANCIAL-MATRIX-EQUALIZATION-182).
 - [x] Omitir el cobro lineal flat de 'cuota_aval_mensual' en Phase 3 del motor financiero cuando se utiliza el factor de la matriz de Firestore (uso_matriz == True), resolviendo el doble cobro e inflación de cuotas en WhatsApp, y alineando las aserciones correspondientes en la suite de tests (BOT-BACKEND-FINANCIAL-FACTOR-ALIGNMENT-181).
 - [x] Estructuración del motor financiero y alineamiento de aserciones rígidas en `test_pcc_ficha_tecnica.py` e `integration` tests, erradicando Crediorbe de la simulación ciega preventiva, arrojando excepciones explícitas ante fallos de gRPC o NoneType, y curando la polución de estado global en tests (BOT-BACKEND-FINANCIAL-TYPE-STRICT-ALIGNMENT-180).
 - [x] Refactorizar de forma quirúrgica el módulo `app/services/ai_brain.py` para dinamizar las variables de asignación financiera, removiendo Crediorbe de la simulación preventiva y sustituyendo por Brilla de Gases, alineando asimismo las aserciones de tests unitarios (BOT-BACKEND-ORCHESTRATOR-ALIGNMENT-177).
