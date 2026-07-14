@@ -422,12 +422,27 @@ async def test_meta_payload_leak_prevention_and_bypass():
         "summary": "Excelente moto"
     }]
     
-    # We need to mock motor_financiero as well to return a simulated payment
-    mock_financial = MagicMock()
-    mock_financial.calculate_payment.return_value = {
-        "cuota_mensual": 350000.0
+    # Use physical financial_service with canonical configurations
+    from app.services.financial_service import financial_service
+    brilla_config = {
+        'fngRate': 0.0,
+        'coverageRate': 4.0,
+        'lifeInsuranceValue': 15000.0,
+        'brillaManagementRate': 5.0,
+        'interestRate': 1.91,
+        'rows': [
+            {'registrationCreditGeneral': 760000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 99, 'id': '0-99', 'minCC': 0},
+            {'registrationCreditGeneral': 840000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 124, 'id': '100-124', 'minCC': 100},
+            {'registrationCreditGeneral': 920000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 200, 'category': 'URBANA Y/O TRABAJO', 'id': '125-200', 'minCC': 125},
+            {'registrationCreditGeneral': 1120000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 9999, 'id': 'gt-200', 'minCC': 201}
+        ]
     }
-    
+    mock_config_service = MagicMock()
+    mock_config_service.get_financial_entity_config.return_value = brilla_config
+    mock_config_service.get_financial_matrix.return_value = brilla_config['rows']
+    mock_config_service.get_financial_config.return_value = brilla_config
+    mock_config_service.get_registration_cost.return_value = 760000.0
+
     # Mock GenAI client
     mock_client = MagicMock()
     mock_chat = AsyncMock()
@@ -463,13 +478,18 @@ async def test_meta_payload_leak_prevention_and_bypass():
         captured_messages.append(text)
         return {"messages": [{"id": "wamid.mocked_123"}]}
 
+    from app.services.config_service import config_service
     with patch("app.routers.whatsapp.settings") as mock_settings, \
          patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
          patch("app.routers.whatsapp.judge_service") as mock_judge, \
          patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
          patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
          patch("app.routers.whatsapp.catalog_service", mock_catalog), \
-         patch("app.routers.whatsapp.motor_financiero", mock_financial), \
+         patch("app.routers.whatsapp.motor_financiero", financial_service), \
+         patch.object(config_service, "get_financial_entity_config", return_value=brilla_config), \
+         patch.object(config_service, "get_financial_matrix", return_value=brilla_config['rows']), \
+         patch.object(config_service, "get_financial_config", return_value=brilla_config), \
+         patch.object(config_service, "get_registration_cost", return_value=760000.0), \
          patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
          patch("app.services.ai_brain.SDK_AVAILABLE", True):
          
@@ -496,7 +516,7 @@ async def test_meta_payload_leak_prevention_and_bypass():
         # The text must contain the blind simulation credit estimation with 10% downpayment pattern and request for consent
         expected_blind_copy = (
             "Si te interesa a crédito con la inicial de $650,000, "
-            "las cuotas a 24 meses serían aproximadamente de $350,000 "
+            "las cuotas a 24 meses serían aproximadamente de $356,934 "
             "(incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*"
         )
         assert expected_blind_copy in sent_text, \
