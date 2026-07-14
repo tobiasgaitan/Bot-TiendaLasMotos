@@ -94,7 +94,11 @@ class FinancialService:
             # --- PHASE 3: CALCULATION ---
             seguro_vida = float(entity_config.get("life_insurance_monthly", 15000))                
             if factor > 0:
-                cuota_mensual = round((round(P_final, 0) * factor) + seguro_vida, 0)
+                if entidad in ["Brilla de Gases", "Brilla"]:
+                    cuota_mensual = round(round(P_final, 0) * factor, 0)
+                    seguro_vida = 0.0
+                else:
+                    cuota_mensual = round((round(P_final, 0) * factor) + seguro_vida, 0)
                 uso_matriz = True
             else:
                 rate = float(row.get("interestRate") if row else entity_config.get("interest_rate", 2.5))
