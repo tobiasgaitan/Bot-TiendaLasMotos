@@ -788,9 +788,7 @@ async def test_cerebro_ia_scoring_service_direct_alignment():
         "life_insurance_mode": "fixed",
         "life_insurance_monthly": 15000,
     }
-    
     from app.services.financial_service import financial_service
-    financial_service._config_service = mock_config_service
 
     fc = MockFunctionCall(
         name="calculate_credit_score", 
@@ -831,7 +829,7 @@ async def test_cerebro_ia_scoring_service_direct_alignment():
         return response2
 
     with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
-         patch('app.services.financial_service.config_service', mock_config_service), \
+         patch.object(financial_service, '_config_service', mock_config_service), \
          patch('app.services.ai_brain.SDK_AVAILABLE', True):
 
         history_msg = {"role": "user", "content": "Ver políticas en tiendalasmotos.com/politica-de-privacidad"}
