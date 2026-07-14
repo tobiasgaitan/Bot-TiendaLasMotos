@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.44.0)
+## Tasks Completadas (v10.45.0)
+- [x] Estructuración del motor financiero y alineamiento de aserciones rígidas en `test_pcc_ficha_tecnica.py` e `integration` tests, erradicando Crediorbe de la simulación ciega preventiva, arrojando excepciones explícitas ante fallos de gRPC o NoneType, y curando la polución de estado global en tests (BOT-BACKEND-FINANCIAL-TYPE-STRICT-ALIGNMENT-180).
 - [x] Refactorizar de forma quirúrgica el módulo `app/services/ai_brain.py` para dinamizar las variables de asignación financiera, removiendo Crediorbe de la simulación preventiva y sustituyendo por Brilla de Gases, alineando asimismo las aserciones de tests unitarios (BOT-BACKEND-ORCHESTRATOR-ALIGNMENT-177).
 - [x] Refactorizar `app/services/financial_service.py` para remover condicionales rígidos de crediorbe, cambiar la entidad por omisión a Brilla de Gases, y ajustar la simulación genérica y fallback defensivo (BOT-BACKEND-FINANCIAL-PURGE-175).
 - [x] Alinear de forma rígida todos los flags `skip_greeting` en las llamadas satélites de `whatsapp.py` e implementar aserciones rígidas de argumentos (`assert_called_with`) en los tests (BOT-BACKEND-HOTFIX-ROUTER-BRANCH-ALIGNMENT-175).
@@ -43,4 +44,4 @@
 - [ ] Validar no regresión y eval general
 
 ---
-*Last updated: 2026-07-11*
+*Last updated: 2026-07-14*
