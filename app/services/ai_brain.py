@@ -161,7 +161,7 @@ class CerebroIA:
             self.client = None
             logger.warning("⚠️  CerebroIA running in fallback mode (no AI)")
 
-    def _calculate_payment_helper(self, precio: float, inicial: float, plazo_meses: int, entidad: str = "Crediorbe", **kwargs) -> Dict[str, Any]:
+    def _calculate_payment_helper(self, precio: float, inicial: float, plazo_meses: int, entidad: str = "Brilla de Gases", **kwargs) -> Dict[str, Any]:
         """
         Helper to delegate payment calculation to the financial motor,
         falling back to the canonical financial_service instance if the injected motor
@@ -183,7 +183,7 @@ class CerebroIA:
             service = financial_service
             
         # Handle 'entity' vs 'entidad' parameter naming
-        ent = entidad or kwargs.get("entity", "Crediorbe")
+        ent = entidad or kwargs.get("entity", "Brilla de Gases")
         # Extract and pass other kwargs safely (e.g. moto_cc, category)
         other_args = {k: v for k, v in kwargs.items() if k not in ("entidad", "entity")}
         return service.calculate_payment(
@@ -1602,7 +1602,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     else:
                                         # [COGNITIVE BRAKES v1.2 — BOT-LOGIC-1.2]
                                         # Consolidating output. PROHIBIDO emitir placeholders ($X.XXX).
-                                        entity = res.get('entity', 'Crediorbe')
+                                        entity = res.get('entity', 'Brilla de Gases')
                                         
                                         # Resolve simulation if moto is in context
                                         moto_name = (prospect_data or {}).get("moto_interest", "")

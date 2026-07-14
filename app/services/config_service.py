@@ -140,6 +140,9 @@ class ConfigService:
             
         except Exception as e:
             logger.error(f"❌ Error getting financial matrix for {entity_id}: {str(e)}")
+            err_msg = str(e).lower()
+            if "nonetype" in err_msg or "collection" in err_msg or "grpc" in err_msg or isinstance(e, AttributeError):
+                raise
             return []
 
     def get_financial_entity_config(self, entity_id: str) -> Dict[str, Any]:
@@ -160,6 +163,9 @@ class ConfigService:
             
         except Exception as e:
             logger.error(f"❌ Error getting entity config for {entity_id}: {str(e)}")
+            err_msg = str(e).lower()
+            if "nonetype" in err_msg or "collection" in err_msg or "grpc" in err_msg or isinstance(e, AttributeError):
+                raise
             return {}
     
     def get_financial_config(self) -> Dict[str, Any]:

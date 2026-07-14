@@ -121,6 +121,19 @@ class FinancialService:
                 f"entidad={entidad}, plazo={plazo_meses}, precio={precio}, inicial={inicial} | "
                 f"Error: {e}"
             )
+            
+            # gRPC or NoneType collection failure check
+            err_msg = str(e).lower()
+            if (
+                "nonetype" in err_msg
+                or "collection" in err_msg
+                or "grpc" in err_msg
+                or isinstance(e, AttributeError)
+            ):
+                raise RuntimeError(
+                    f"CRITICAL: Financial gRPC or collection NoneType failure. Cannot mask error: {e}"
+                ) from e
+
             # Fallback defensivo: Amortización Básica con tasa default.
             # Garantiza retorno coherente (cuota_mensual > 0) en ausencia de config de Firestore.
             try:
