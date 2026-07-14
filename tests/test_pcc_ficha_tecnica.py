@@ -170,12 +170,26 @@ async def test_habeas_data_gate_before_credit_score():
     ]
     cerebro._catalog_service = mock_catalog
 
-    # Mock del motor financiero. Si se llega a invocar evaluate_profile, el test debe fallar,
-    # garantizando el bloqueo absoluto de perfilamiento antes de tocar el simulador.
-    mock_financial = MagicMock()
-    mock_financial.evaluate_profile = MagicMock(side_effect=AssertionError("ERROR: El motor financiero fue tocado sin consentimiento de Habeas Data."))
-    mock_financial.calculate_payment = MagicMock(return_value={"cuota_mensual": 250000.0})
-    cerebro.motor_financiero = mock_financial
+    # Setup physical financial_service with canonical configuration
+    from app.services.financial_service import financial_service
+    from app.services.config_service import config_service
+    cerebro.motor_financiero = financial_service
+
+    brilla_config = {
+        'fngRate': 0.0,
+        'coverageRate': 4.0,
+        'lifeInsuranceValue': 15000.0,
+        'brillaManagementRate': 5.0,
+        'interestRate': 1.91,
+        'rows': [
+            {'registrationCreditGeneral': 760000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 99, 'id': '0-99', 'minCC': 0},
+            {'registrationCreditGeneral': 840000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 124, 'id': '100-124', 'minCC': 100},
+            {'registrationCreditGeneral': 920000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 200, 'category': 'URBANA Y/O TRABAJO', 'id': '125-200', 'minCC': 125},
+            {'registrationCreditGeneral': 1120000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 9999, 'id': 'gt-200', 'minCC': 201}
+        ]
+    }
+    mock_evaluate_profile = MagicMock(side_effect=AssertionError("ERROR: El motor financiero fue tocado sin consentimiento de Habeas Data."))
+    spy_calculate = MagicMock(wraps=financial_service.calculate_payment)
 
     # Simular que el LLM intenta invocar calculate_credit_score
     fc = MockFunctionCall(name="calculate_credit_score", args={})
@@ -207,7 +221,13 @@ async def test_habeas_data_gate_before_credit_score():
 
     with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call_no_consent), \
          patch('app.services.ai_brain.SDK_AVAILABLE', True), \
-         patch('app.services.ai_brain.logger.warning') as mock_log_warn:
+         patch('app.services.ai_brain.logger.warning') as mock_log_warn, \
+         patch.object(financial_service, 'evaluate_profile', new=mock_evaluate_profile), \
+         patch.object(financial_service, 'calculate_payment', new=spy_calculate), \
+         patch.object(config_service, 'get_financial_entity_config', return_value=brilla_config), \
+         patch.object(config_service, 'get_financial_matrix', return_value=brilla_config['rows']), \
+         patch.object(config_service, 'get_financial_config', return_value=brilla_config), \
+         patch.object(config_service, 'get_registration_cost', return_value=840000.0):
 
         from app.core.exceptions import HabeasDataBypassInterrupt
         with pytest.raises(HabeasDataBypassInterrupt) as exc_info:
@@ -220,9 +240,9 @@ async def test_habeas_data_gate_before_credit_score():
         assert any("SECURITY ALERT [Habeas Data Gate]: Financial profiling without consent." in arg for arg in warn_args)
 
         # 2. Asegurar que no se tocó el perfilamiento, pero sí el simulador para la cuota ciega
-        mock_financial.evaluate_profile.assert_not_called()
-        mock_financial.calculate_payment.assert_called_once_with(
-            precio=9969000.0,
+        mock_evaluate_profile.assert_not_called()
+        spy_calculate.assert_called_once_with(
+            precio=9129000.0,
             inicial=996900.0,
             plazo_meses=24,
             entidad="Brilla de Gases",
@@ -235,7 +255,7 @@ async def test_habeas_data_gate_before_credit_score():
         
         # Inmutabilidad del Formato PCC Pro (Validación Visual):
         # Debe certificar mediante Regex secuencial la presencia exacta del signo pesos ($) pegado al valor numérico formateado.
-        assert re.search(r"\$250,000", response) is not None, "El formato de cuota formateada no cumple con la regla de negocio ($250,000)."
+        assert re.search(r"\$534,745", response) is not None, "El formato de cuota formateada no cumple con la regla de negocio ($534,745)."
         
         # Debe omitir marcas de agua de proveedores financieros.
         assert "Crediorbe" not in response, "La marca de agua 'Crediorbe' no debe figurar en la respuesta de contingencia ciego."
@@ -248,7 +268,7 @@ async def test_habeas_data_gate_before_credit_score():
 
         # Aserciones rígidas de contenido de BOT-BRAIN-RETURN-082
         assert "$" in response, "El resultado debe contener el signo pesos ($)."
-        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $250,000 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, "El resultado debe contener la cadena esperada."
+        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $534,745 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, "El resultado debe contener la cadena esperada."
     # Si habeas_data_accepted es True, la validación pasa, y sí se procesa el catálogo y simulador.
     # [BOT-QA-HARDENING-126] Además, actualizar el mock_catalog para simular URL compleja de Meta/Firebase Storage
     # con query params (token, alt, size) — el transformador dinámico debe preservar la URL intacta.
@@ -257,17 +277,15 @@ async def test_habeas_data_gate_before_credit_score():
         "?alt=media&token=abc123-xyz456&size=800&watermark=tlm"
     )
 
-    mock_financial.evaluate_profile.reset_mock()
-    mock_financial.evaluate_profile.side_effect = None
-    mock_financial.evaluate_profile.return_value = {
+    mock_evaluate_profile_consent = MagicMock()
+    mock_evaluate_profile_consent.return_value = {
         "score": 750,
         "strategy": "Aprobado",
         "entity": "Crediorbe",
         "link_url": "https://crediorbe.link"
     }
-    mock_financial.calculate_payment.reset_mock()
-    mock_financial.calculate_payment.side_effect = None
-    mock_financial.calculate_payment.return_value = {
+    mock_calculate_payment_consent = MagicMock()
+    mock_calculate_payment_consent.return_value = {
         "cuota_mensual": 250000
     }
 
@@ -342,13 +360,15 @@ async def test_habeas_data_gate_before_credit_score():
         return gemini_response_text
 
     with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call_two_turns), \
-         patch('app.services.ai_brain.SDK_AVAILABLE', True):
+         patch('app.services.ai_brain.SDK_AVAILABLE', True), \
+         patch.object(financial_service, 'evaluate_profile', new=mock_evaluate_profile_consent), \
+         patch.object(financial_service, 'calculate_payment', new=mock_calculate_payment_consent):
 
         response_consent = await cerebro.pensar_respuesta("Quiero mi crédito", prospect_data=prospect_with_consent)
 
         # 1. Asegurar que el simulador SÍ fue invocado cuando se tiene el consentimiento
-        mock_financial.evaluate_profile.assert_called_once()
-        mock_financial.calculate_payment.assert_called_once()
+        mock_evaluate_profile_consent.assert_called_once()
+        mock_calculate_payment_consent.assert_called_once()
 
         # 2. [MANDATORIO] Verificar la presencia explícita de 'Ficha Tecnica:' y prohibir string vacío
         assert "Ficha Tecnica:" in response_consent
@@ -511,13 +531,26 @@ async def test_habeas_bypass_interrupt_e2e():
     ]
     cerebro._catalog_service = mock_catalog
 
-    # Mock motor financiero — evaluate_profile MUST NOT be called (no consent)
-    mock_financial = MagicMock()
-    mock_financial.evaluate_profile = MagicMock(
-        side_effect=AssertionError("ERROR: El motor financiero fue tocado sin consentimiento de Habeas Data.")
-    )
-    mock_financial.calculate_payment = MagicMock(return_value={"cuota_mensual": 250000.0})
-    cerebro.motor_financiero = mock_financial
+    # Setup physical financial_service with canonical configuration
+    from app.services.financial_service import financial_service
+    from app.services.config_service import config_service
+    cerebro.motor_financiero = financial_service
+
+    brilla_config = {
+        'fngRate': 0.0,
+        'coverageRate': 4.0,
+        'lifeInsuranceValue': 15000.0,
+        'brillaManagementRate': 5.0,
+        'interestRate': 1.91,
+        'rows': [
+            {'registrationCreditGeneral': 760000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 99, 'id': '0-99', 'minCC': 0},
+            {'registrationCreditGeneral': 840000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 124, 'id': '100-124', 'minCC': 100},
+            {'registrationCreditGeneral': 920000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 200, 'category': 'URBANA Y/O TRABAJO', 'id': '125-200', 'minCC': 125},
+            {'registrationCreditGeneral': 1120000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 9999, 'id': 'gt-200', 'minCC': 201}
+        ]
+    }
+    mock_evaluate_profile_e2e = MagicMock(side_effect=AssertionError("ERROR: El motor financiero fue tocado sin consentimiento de Habeas Data."))
+    spy_calculate_e2e = MagicMock(wraps=financial_service.calculate_payment)
 
     # Simulate Gemini returning a function call to calculate_credit_score
     fc = MockFunctionCall(name="calculate_credit_score", args={})
@@ -548,7 +581,13 @@ async def test_habeas_bypass_interrupt_e2e():
 
     with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_gemini_call), \
          patch('app.services.ai_brain.SDK_AVAILABLE', True), \
-         patch('app.services.ai_brain.logger') as mock_logger:
+         patch('app.services.ai_brain.logger') as mock_logger, \
+         patch.object(financial_service, 'evaluate_profile', new=mock_evaluate_profile_e2e), \
+         patch.object(financial_service, 'calculate_payment', new=spy_calculate_e2e), \
+         patch.object(config_service, 'get_financial_entity_config', return_value=brilla_config), \
+         patch.object(config_service, 'get_financial_matrix', return_value=brilla_config['rows']), \
+         patch.object(config_service, 'get_financial_config', return_value=brilla_config), \
+         patch.object(config_service, 'get_registration_cost', return_value=840000.0):
 
         # ACT: Call pensar_respuesta directly — must raise HabeasDataBypassInterrupt
         with pytest.raises(HabeasDataBypassInterrupt) as exc_info:
@@ -566,7 +605,7 @@ async def test_habeas_bypass_interrupt_e2e():
         assert "$" in response, f"El resultado debe contener el signo pesos ($). Respuesta: {response[:200]}"
 
         # ASSERT 3: Contains the expected cuota structure
-        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $250,000 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, (
+        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $534,745 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, (
             f"El resultado debe contener the expected copywriting. Respuesta: {response[:200]}"
         )
 
@@ -587,11 +626,11 @@ async def test_habeas_bypass_interrupt_e2e():
         assert bypass_logged, "El log '[HABEAS-BYPASS] Cortocircuito limpio ejecutado' debe haberse emitido."
 
         # ASSERT 7: evaluate_profile must NOT have been called
-        mock_financial.evaluate_profile.assert_not_called()
+        mock_evaluate_profile_e2e.assert_not_called()
 
         # ASSERT 8: calculate_payment MUST have been called (blind simulation)
-        mock_financial.calculate_payment.assert_called_once_with(
-            precio=9969000.0,
+        spy_calculate_e2e.assert_called_once_with(
+            precio=9129000.0,
             inicial=996900.0,
             plazo_meses=24,
             entidad="Brilla de Gases",
