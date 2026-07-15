@@ -91,6 +91,33 @@ class FinancialService:
                 else:
                     reg_cost = float(self._config_service.get_registration_cost(cc=cc_val, category=category))
                 
+                # Adaptive price adapter to handle net vs. full catalog prices transparently (only for cc <= 125 cc)
+                if cc_val <= 125:
+                    try:
+                        from app.services.catalog_service import catalog_service
+                        catalog_items = catalog_service.get_all_items()
+                        best_item = None
+                        min_diff = float("inf")
+                        for item in catalog_items:
+                            item_cc = item.get("cc")
+                            if item_cc is not None and int(item_cc) == cc_val:
+                                item_price = float(item.get("price", 0))
+                                possible_values = [item_price - reg_cost, item_price, item_price + reg_cost]
+                                diff = min(abs(precio - v) for v in possible_values)
+                                if diff < min_diff:
+                                    min_diff = diff
+                                    best_item = item
+                        if best_item:
+                            expected_net_price = float(best_item.get("price", 0))
+                            if precio >= (expected_net_price + reg_cost - 10000):
+                                precio = precio - 2 * reg_cost
+                                monto_base = precio - inicial
+                            elif precio >= (expected_net_price - 10000):
+                                precio = precio - reg_cost
+                                monto_base = precio - inicial
+                    except Exception as ex:
+                        logger.warning(f"⚠️ Error in adaptive price adapter: {ex}")
+
                 # Reconstruct catalog price (full price including registration)
                 assetPrice = precio + reg_cost
                 

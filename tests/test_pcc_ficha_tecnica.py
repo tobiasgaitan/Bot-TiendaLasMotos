@@ -1260,8 +1260,8 @@ async def test_brilla_gases_real_firestore_cuotas():
     )
     assert res_tvs.get("cuota_mensual") == 369501.0, f"TVS Sport 100 ELS cuota mismatch: expected 369501, got {res_tvs.get('cuota_mensual')}"
 
-    # KYMCO Agility Fusion (inicial = 1,017,900 COP, 24m)
-    res_kymco = cerebro._calculate_payment_helper(
+    # KYMCO Agility Fusion (inicial = 1,017,900 COP, 24m) - net price
+    res_kymco_net = cerebro._calculate_payment_helper(
         precio=9399000.0,
         inicial=1017900.0,
         plazo_meses=24,
@@ -1269,6 +1269,17 @@ async def test_brilla_gases_real_firestore_cuotas():
         moto_cc=124.6,
         category="motos"
     )
-    assert res_kymco.get("cuota_mensual") == 550469.0, f"KYMCO Agility Fusion cuota mismatch: expected 550469, got {res_kymco.get('cuota_mensual')}"
+    assert res_kymco_net.get("cuota_mensual") == 550469.0, f"KYMCO Agility Fusion net cuota mismatch: expected 550469, got {res_kymco_net.get('cuota_mensual')}"
+
+    # KYMCO Agility Fusion (inicial = 1,017,900 COP, 24m) - catalog full price
+    res_kymco_full = cerebro._calculate_payment_helper(
+        precio=10179000.0,
+        inicial=1017900.0,
+        plazo_meses=24,
+        entidad="Brilla de Gases",
+        moto_cc=124.6,
+        category="motos"
+    )
+    assert res_kymco_full.get("cuota_mensual") == 550469.0, f"KYMCO Agility Fusion full cuota mismatch: expected 550469, got {res_kymco_full.get('cuota_mensual')}"
 
 
