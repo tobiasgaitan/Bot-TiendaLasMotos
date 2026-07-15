@@ -91,32 +91,50 @@ class FinancialService:
                 else:
                     reg_cost = float(self._config_service.get_registration_cost(cc=cc_val, category=category))
                 
-                # Adaptive price adapter to handle net vs. full catalog prices transparently (only for cc <= 125 cc)
-                if cc_val <= 125:
-                    try:
-                        from app.services.catalog_service import catalog_service
-                        catalog_items = catalog_service.get_all_items()
-                        best_item = None
-                        min_diff = float("inf")
-                        for item in catalog_items:
-                            item_cc = item.get("cc")
-                            if item_cc is not None and int(item_cc) == cc_val:
-                                item_price = float(item.get("price", 0))
-                                possible_values = [item_price - reg_cost, item_price, item_price + reg_cost]
-                                diff = min(abs(precio - v) for v in possible_values)
-                                if diff < min_diff:
-                                    min_diff = diff
-                                    best_item = item
-                        if best_item:
+                # Adaptive price adapter to handle net vs. full catalog prices transparently
+                try:
+                    from app.services.catalog_service import catalog_service
+                    catalog_items = catalog_service.get_all_items()
+                    best_item = None
+                    min_diff = float("inf")
+                    
+                    candidate_items = []
+                    if cc_val > 0:
+                        candidate_items = [item for item in catalog_items if item.get("cc") is not None and int(item.get("cc")) == cc_val]
+                    
+                    if not candidate_items:
+                        candidate_items = catalog_items
+
+                    for item in candidate_items:
+                        item_cc = item.get("cc")
+                        if item_cc is not None:
+                            item_cc_val = int(item_cc)
+                            if item_cc_val <= 125:
+                                item_reg_cost = 780000.0
+                            else:
+                                item_reg_cost = float(self._config_service.get_registration_cost(cc=item_cc_val, category=category))
+                            
+                            item_price = float(item.get("price", 0))
+                            possible_values = [item_price - item_reg_cost, item_price, item_price + item_reg_cost]
+                            diff = min(abs(precio - v) for v in possible_values)
+                            if diff < min_diff:
+                                min_diff = diff
+                                best_item = item
+
+                    if best_item:
+                        best_item_cc = int(best_item.get("cc", 0))
+                        if best_item_cc <= 125:
+                            item_reg_cost = 780000.0
                             expected_net_price = float(best_item.get("price", 0))
-                            if precio >= (expected_net_price + reg_cost - 10000):
-                                precio = precio - 2 * reg_cost
+                            
+                            if precio >= (expected_net_price + item_reg_cost - 10000):
+                                precio = precio - 2 * item_reg_cost
                                 monto_base = precio - inicial
                             elif precio >= (expected_net_price - 10000):
-                                precio = precio - reg_cost
+                                precio = precio - item_reg_cost
                                 monto_base = precio - inicial
-                    except Exception as ex:
-                        logger.warning(f"⚠️ Error in adaptive price adapter: {ex}")
+                except Exception as ex:
+                    logger.warning(f"⚠️ Error in adaptive price adapter: {ex}")
 
                 # Reconstruct catalog price (full price including registration)
                 assetPrice = precio + reg_cost

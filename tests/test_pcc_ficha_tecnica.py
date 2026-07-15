@@ -1283,3 +1283,84 @@ async def test_brilla_gases_real_firestore_cuotas():
     assert res_kymco_full.get("cuota_mensual") == 550469.0, f"KYMCO Agility Fusion full cuota mismatch: expected 550469, got {res_kymco_full.get('cuota_mensual')}"
 
 
+@pytest.mark.asyncio
+async def test_agility_fusion_exact_parity():
+    """
+    [BOT-BACKEND-FINANCIAL-CASCADING-EXACT-PARITY-184]
+    Rigid unit test asserting that passing catalog price ($10.179.000) or net price ($9.399.000)
+    for KYMCO Agility Fusion yields strictly $550.469 COP cuota_mensual.
+    """
+    from app.services.financial_service import financial_service
+    from app.services.ai_brain import CerebroIA
+    from app.core.config_loader import ConfigLoader
+    from app.core.security import get_firebase_credentials_object
+    from google.cloud import firestore
+    from app.core.config import settings
+
+    # Initialize physical configuration
+    import os
+    old_cred = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if old_cred == "/tmp/fake-key.json":
+        os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+    try:
+        credentials = get_firebase_credentials_object()
+    finally:
+        if old_cred is not None:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = old_cred
+
+    from app.services.catalog_service import catalog_service
+
+    db = firestore.Client(
+        project=settings.gcp_project_id,
+        credentials=credentials
+    )
+    config_loader = ConfigLoader(db)
+    financial_service._config_service.initialize(db)
+    config_loader.load_all()
+    catalog_service.initialize(db, config_loader)
+
+    # Scenario 1: Direct calculate_payment calls (simulating judge_service where moto_cc=0.0)
+    res_direct_net = financial_service.calculate_payment(
+        precio=9399000.0,
+        inicial=1017900.0,
+        plazo_meses=24,
+        entidad="Brilla de Gases",
+        moto_cc=0.0,
+        category="motos"
+    )
+    assert res_direct_net.get("cuota_mensual") == 550469.0, f"Direct net cuota mismatch: expected 550469, got {res_direct_net.get('cuota_mensual')}"
+
+    res_direct_full = financial_service.calculate_payment(
+        precio=10179000.0,
+        inicial=1017900.0,
+        plazo_meses=24,
+        entidad="Brilla de Gases",
+        moto_cc=0.0,
+        category="motos"
+    )
+    assert res_direct_full.get("cuota_mensual") == 550469.0, f"Direct full cuota mismatch: expected 550469, got {res_direct_full.get('cuota_mensual')}"
+
+    # Scenario 2: Helper calls (passing moto_cc=124.6)
+    cerebro = CerebroIA()
+    res_helper_net = cerebro._calculate_payment_helper(
+        precio=9399000.0,
+        inicial=1017900.0,
+        plazo_meses=24,
+        entidad="Brilla de Gases",
+        moto_cc=124.6,
+        category="motos"
+    )
+    assert res_helper_net.get("cuota_mensual") == 550469.0, f"Helper net cuota mismatch: expected 550469, got {res_helper_net.get('cuota_mensual')}"
+
+    res_helper_full = cerebro._calculate_payment_helper(
+        precio=10179000.0,
+        inicial=1017900.0,
+        plazo_meses=24,
+        entidad="Brilla de Gases",
+        moto_cc=124.6,
+        category="motos"
+    )
+    assert res_helper_full.get("cuota_mensual") == 550469.0, f"Helper full cuota mismatch: expected 550469, got {res_helper_full.get('cuota_mensual')}"
+
+
+
