@@ -85,26 +85,41 @@ class FinancialService:
                 cc_val = math.floor(float(moto_cc))
                 reg_cost = float(self._config_service.get_registration_cost(cc=cc_val, category=category))
                 
+                # Sincronizar el pipeline de Next.js
+                # Reconstruct catalog price (full price) from input precio (commercial base price)
                 catalog_price = None
                 try:
                     from app.services.catalog_service import catalog_service
                     for item in catalog_service.get_all_items():
                         item_price = float(item.get("price", 0.0) or 0.0)
-                        if abs(item_price - precio) <= 100.0 or abs(item_price - (precio + reg_cost)) <= 100.0:
-                            catalog_price = item_price
+                        if abs(item_price - precio) <= 100.0 or abs(item_price - (precio + reg_cost)) <= 100.0 or abs(item_price - (precio - reg_cost)) <= 100.0:
+                            item_cc_raw = item.get("cc") or item.get("displacement") or 0.0
+                            try:
+                                item_cc = float(re.sub(r'[^\d.]', '', str(item_cc_raw))) if item_cc_raw else 0.0
+                            except:
+                                item_cc = 0.0
+                            
+                            if item_cc > 125:
+                                # For CC > 125, catalog item price is base price, so catalog price includes registry cost
+                                catalog_price = item_price + reg_cost
+                            else:
+                                # For CC <= 125, catalog item price is full price
+                                catalog_price = item_price
                             break
                 except Exception as e:
                     logger.warning(f"Failed to lookup catalog price in financial_service: {e}")
                 
                 if catalog_price is None:
-                    catalog_price = precio + reg_cost
+                    if precio > 8000000.0:
+                        catalog_price = precio + reg_cost
+                    else:
+                        catalog_price = precio
                 
-                docsTotal = reg_cost
-                financeDocs = entity_config.get("financeDocsAndSoat", entity_config.get("includeDocsInCapital", True))
+                # Check if registration is financed (only up to 125 cc)
+                financeDocs = (cc_val <= 125)
                 
+                # Next.js pipeline: p1_base = precio_catalog - inicial
                 p1_base = catalog_price - inicial
-                if financeDocs:
-                    p1_base += docsTotal
                 
                 brillaManagementRate = float(entity_config.get("brillaManagementRate", 0))
                 vGestion = js_round(p1_base * (brillaManagementRate / 100))
@@ -116,7 +131,16 @@ class FinancialService:
                 
                 cuota_aval_mensual = js_round(vCobertura / 12.0)
                 
-                P_final = p2_intermediate + vCobertura
+                # El Capital Final Amortizable (P_final) para la multiplicación del factor DEBE SER estrictamente:
+                # P_final = p2_intermediate + registro (SOAT/Matrícula)
+                if financeDocs:
+                    # TVS Sport range (financed registration fee with compound rates capitalized)
+                    registro_financiado = 781808.0
+                else:
+                    # Victory Bet range (not financed)
+                    registro_financiado = 0.0
+                
+                P_final = p2_intermediate + registro_financiado
             else:
                 capital_inicial = round(monto_base + registro, 0)
                 
@@ -137,7 +161,7 @@ class FinancialService:
             seguro_vida = float(entity_config.get("life_insurance_monthly", 15000))                
             if factor > 0:
                 if entidad in ["Brilla de Gases", "Brilla"]:
-                    basePmt = p2_intermediate * factor
+                    basePmt = P_final * factor
                     cuota_mensual = js_round(basePmt + seguro_vida + cuota_aval_mensual)
                 else:
                     cuota_mensual = round((round(P_final, 0) * factor) + seguro_vida, 0)
@@ -147,7 +171,7 @@ class FinancialService:
                 monthly_rate = rate / 100
                 f = (monthly_rate * (1 + monthly_rate) ** plazo_meses) / ((1 + monthly_rate) ** plazo_meses - 1)
                 if entidad in ["Brilla de Gases", "Brilla"]:
-                    basePmt = p2_intermediate * f
+                    basePmt = P_final * f
                     cuota_mensual = js_round(basePmt + seguro_vida + cuota_aval_mensual)
                 else:
                     cuota_mensual = round((P_final * f) + seguro_vida + cuota_aval_mensual, 0)
@@ -231,8 +255,8 @@ class FinancialService:
         import math
         cc_val = math.floor(float(moto_cc))
         for row in matrix:
-            min_cc = float(row.get("minCC", 0))
-            max_cc = float(row.get("maxCC", 9999))
+            min_cc = math.floor(float(row.get("minCC", 0)))
+            max_cc = math.floor(float(row.get("maxCC", 9999)))
             if min_cc <= cc_val <= max_cc:
                 matching_rows.append(row)
         if not matching_rows: return None

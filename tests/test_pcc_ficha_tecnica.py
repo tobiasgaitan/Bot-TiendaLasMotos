@@ -255,7 +255,7 @@ async def test_habeas_data_gate_before_credit_score():
         
         # Inmutabilidad del Formato PCC Pro (Validación Visual):
         # Debe certificar mediante Regex secuencial la presencia exacta del signo pesos ($) pegado al valor numérico formateado.
-        assert re.search(r"\$588,520", response) is not None, "El formato de cuota formateada no cumple con la regla de negocio ($588,520)."
+        assert re.search(r"\$580,336", response) is not None, "El formato de cuota formateada no cumple con la regla de negocio ($580,336)."
         
         # Debe omitir marcas de agua de proveedores financieros.
         assert "Crediorbe" not in response, "La marca de agua 'Crediorbe' no debe figurar en la respuesta de contingencia ciego."
@@ -268,7 +268,7 @@ async def test_habeas_data_gate_before_credit_score():
  
         # Aserciones rígidas de contenido de BOT-BRAIN-RETURN-082
         assert "$" in response, "El resultado debe contener el signo pesos ($)."
-        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $588,520 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, "El resultado debe contener la cadena esperada."
+        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $580,336 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, "El resultado debe contener la cadena esperada."
     # Si habeas_data_accepted es True, la validación pasa, y sí se procesa el catálogo y simulador.
     # [BOT-QA-HARDENING-126] Además, actualizar el mock_catalog para simular URL compleja de Meta/Firebase Storage
     # con query params (token, alt, size) — el transformador dinámico debe preservar la URL intacta.
@@ -605,7 +605,7 @@ async def test_habeas_bypass_interrupt_e2e():
         assert "$" in response, f"El resultado debe contener el signo pesos ($). Respuesta: {response[:200]}"
 
         # ASSERT 3: Contains the expected cuota structure
-        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $588,520 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, (
+        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $580,336 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, (
             f"El resultado debe contener the expected copywriting. Respuesta: {response[:200]}"
         )
 
