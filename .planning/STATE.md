@@ -9,7 +9,7 @@ Versión: v10.45.5 | Hito: Brilla Gases Cascading Parity (BOT-BACKEND-FINANCIAL-
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 184 | Brilla Gases Cascading Parity (Exact math simulation aligned with Next.js/typescript canonical logic, zero placeholders) [BOT-BACKEND-FINANCIAL-CASCADING-EXACT-PARITY-184] | 2026-07-15 | be9ede0 | 184-financial-cascading-exact-parity |
+| 184 | Brilla Gases Cascading Parity (Exact math simulation aligned with Next.js/typescript canonical logic, zero placeholders) [BOT-BACKEND-FINANCIAL-CASCADING-EXACT-PARITY-184] | 2026-07-15 | 22537a0 | 184-financial-cascading-exact-parity |
 | 182 | Equalización de matriz financiera de gases (anular adición seguro de vida flat para Brilla de Gases) [BOT-BACKEND-FINANCIAL-MATRIX-EQUALIZATION-182] | 2026-07-14 | 24ea831 | 182-financial-matrix-equalization |
 | 181 | Omisión de doble cobro de aval matricial y alineamiento de aserciones en test_pcc_ficha_tecnica y test_agentic_loop_async [BOT-BACKEND-FINANCIAL-FACTOR-ALIGNMENT-181] | 2026-07-14 | 0d8dae6 | 181-financial-factor-alignment |
 | 180 | Estructuración del motor financiero y alineamiento de aserciones en test_pcc_ficha_tecnica [BOT-BACKEND-FINANCIAL-TYPE-STRICT-ALIGNMENT-180] | 2026-07-14 | 2811433 | 180-financial-type-strict-alignment |

@@ -1,27 +1,22 @@
-# Summary of Task 184: Financial Cascading Exact Parity
+# Quick Task 184: Financial Cascading Exact Parity — Summary
 
 **Executed:** 2026-07-15
 **Status:** Complete
 
 ## What Was Done
-1. **Refactored `financial_service.py` calculation pipeline:**
-   - Implemented an adaptive price adapter inside `calculate_payment` when `cc_val <= 125`.
-   - The adapter checks the incoming price against the matching catalog item's price (net price).
-   - If `precio` is greater than or equal to `expected_net_price + reg_cost - 10000`, it is recognized as the integrated catalog price (full price), and `reg_cost` is subtracted twice from `precio` to yield the correct base commercial price (so that `assetPrice = precio + reg_cost` and `docsTotal = reg_cost` do not duplicate the fee).
-   - If `precio` is greater than or equal to `expected_net_price - 10000`, it is recognized as the commercial net price, and `reg_cost` is subtracted once to yield the base commercial price.
-   - Updated `monto_base = precio - inicial` accordingly.
-2. **Updated test suite:**
-   - Updated `tests/test_pcc_ficha_tecnica.py` by refining the integration test `test_brilla_gases_real_firestore_cuotas` to assert that both the net commercial price ($9.399.000) and the full catalog price ($10.179.000) return exactly the same monthly installment of **$550.469 COP** for the KYMCO Agility Fusion reference.
+- Refactored the adaptive price adapter in `app/services/financial_service.py` to match the target catalog item based on price differences across the entire catalog when `cc_val` is `0`. This addresses scenarios where `calculate_payment` is called without passing a cylinder capacity (such as from `judge_service.py`), preventing the duplication of the registration cost.
+- Developed the rigid unit test `test_agility_fusion_exact_parity` in `tests/test_pcc_ficha_tecnica.py` to assert that calling the payment helper or `calculate_payment` directly with both `$10.179.000` (full catalog price) and `$9.399.000` (net price) yields strictly `$550.469 COP`.
+- Fully purged remaining Crediorbe references and ensured no silent failures occur.
 
 ## Files Modified
 | File | Action | Description |
 |------|--------|-------------|
-| [financial_service.py](file:///Users/tobiasgaitangallego/Bot-TiendaLasMotos/app/services/financial_service.py) | Modified | Implement adaptive price adapter for Brilla de Gases |
-| [test_pcc_ficha_tecnica.py](file:///Users/tobiasgaitangallego/Bot-TiendaLasMotos/tests/test_pcc_ficha_tecnica.py) | Modified | Assert exact parity of cuota ($550.469) for both net and full price |
+| [app/services/financial_service.py](file:///Users/tobiasgaitangallego/Bot-TiendaLasMotos/app/services/financial_service.py) | Modified | Refactored the adaptive price adapter to handle cases with `cc_val == 0.0` or missing. |
+| [tests/test_pcc_ficha_tecnica.py](file:///Users/tobiasgaitangallego/Bot-TiendaLasMotos/tests/test_pcc_ficha_tecnica.py) | Modified | Added the rigid unit test `test_agility_fusion_exact_parity`. |
 
 ## Verification
-- Ran the full test suite with `.venv/bin/pytest`. All 258 non-skipped tests passed successfully.
-- Executed `npx agent-cli eval` and achieved a coherence score of 1.000.
+- Ran `.venv/bin/pytest tests/test_pcc_ficha_tecnica.py -k test_agility_fusion_exact_parity` -> PASSED.
+- Ran `.venv/bin/pytest` -> All 259 tests passed.
 
 ---
 *Completed: 2026-07-15*
