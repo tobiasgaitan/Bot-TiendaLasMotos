@@ -18,6 +18,7 @@ def mock_env_vars():
     }):
         yield
 
+
 @pytest.fixture
 def mock_prospect_data():
     """Fixture de datos de prospecto para pruebas de anclaje CRM."""

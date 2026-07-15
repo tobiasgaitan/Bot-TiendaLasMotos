@@ -110,8 +110,10 @@ async def test_crediorbe_interception_blocks_link_and_injects_contingency():
                     captured_function_response = part
         return response2
 
+    from app.services.config_service import config_service
     with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
-         patch('app.services.ai_brain.SDK_AVAILABLE', True):
+         patch('app.services.ai_brain.SDK_AVAILABLE', True), \
+         patch.object(config_service, 'get_registration_cost', return_value=0.0):
          
         prospect = {
             "nombre": "Carlos",
@@ -266,6 +268,7 @@ def test_financial_service_default_entity_is_brilla():
     Verifica que en financial_service.py la simulación por defecto no exponga Brilla de Gases (anonimización).
     """
     fs = FinancialService()
+    fs.calculate_payment = MagicMock(return_value={"cuota_mensual": 250000.0})
     moto_dict = {
         "name": "Moto Test",
         "price": 8000000.0,

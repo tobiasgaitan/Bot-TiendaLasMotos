@@ -180,7 +180,7 @@ class ConfigService:
         """
         return self._partners_config or {}
 
-    def get_registration_cost(self, cc: Optional[int] = None, category: Optional[str] = None) -> int:
+    def get_registration_cost(self, cc: Optional[Union[int, float]] = None, category: Optional[str] = None) -> int:
         """
         Retrieve registration and SOAT cost from financial configuration.
         
@@ -218,13 +218,15 @@ class ConfigService:
             
             # 2. Match by Cylinder Capacity (CC)
             if cc is not None:
+                import math
+                cc_val = math.floor(float(cc))
                 for row in rows:
                     min_cc = int(row.get("minCC", 0))
                     max_cc = int(row.get("maxCC", 99999))
                     
-                    if min_cc <= cc <= max_cc:
+                    if min_cc <= cc_val <= max_cc:
                         cost = int(row.get("registrationCredit", 0))
-                        logger.debug(f"✅ Match by CC Range: {min_cc}-{max_cc} ({cc}cc) -> ${cost}")
+                        logger.debug(f"✅ Match by CC Range: {min_cc}-{max_cc} ({cc_val}cc) -> ${cost}")
                         return cost
             
             # 3. Fallback: Log Error (Violation to No-Assumption Policy)

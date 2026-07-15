@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.ai_brain import CerebroIA
 from app.services.catalog_service import catalog_service
+from app.services.config_service import config_service
 
 class MockFunctionCall:
     def __init__(self, name, args):
@@ -86,31 +87,31 @@ async def test_fallback_price_parsing():
         return response2
         
     with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
-         patch('app.services.ai_brain.SDK_AVAILABLE', True):
-         
-        prospect = {
-            "nombre": "Pedro",
-            "moto_interest": "TVS Sport 100",
-            "ciudad": "Cali",
-            "forma_pago": "Crédito",
-            "habeas_data_accepted": True
-        }
-        res = await cerebro.pensar_respuesta("Quiero saber mi crédito", prospect_data=prospect)
-        
-        # Verify that search_items was called
-        mock_catalog.search_items.assert_called_with("TVS Sport 100")
-        
-        # Verify that calculate_payment was called with correct parsed price (6200000.0)
-        mock_financial.calculate_payment.assert_called_once_with(
-            precio=6200000.0,
-            inicial=0,
-            plazo_meses=24,
-            entidad="Crediorbe",
-            moto_cc=0.0,
-            category="Urban"
-        )
-        
-        assert res == "Felicidades, tienes crédito pre-aprobado."
+         patch('app.services.ai_brain.SDK_AVAILABLE', True), \
+         patch.object(config_service, 'get_registration_cost', return_value=0.0):
+    
+            prospect = {
+                "nombre": "Pedro",
+                "moto_interest": "TVS Sport 100",
+                "ciudad": "Cali",
+                "forma_pago": "Crédito",
+                "habeas_data_accepted": True
+            }
+            res = await cerebro.pensar_respuesta("Quiero saber mi crédito", prospect_data=prospect)
+    
+            # Verify that search_items was called
+            mock_catalog.search_items.assert_called_with("TVS Sport 100")
+    
+            # Verify that calculate_payment was called with correct parsed price (6200000.0)
+            mock_financial.calculate_payment.assert_called_once_with(
+                precio=6200000.0,
+                inicial=0,
+                plazo_meses=24,
+                entidad="Crediorbe",
+                moto_cc=0.0,
+                category="Urban"
+            )      
+            assert res == "Felicidades, tienes crédito pre-aprobado."
 
 @pytest.mark.asyncio
 async def test_missing_both_prices_raises_error():

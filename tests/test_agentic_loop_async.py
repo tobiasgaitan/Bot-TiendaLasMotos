@@ -516,7 +516,7 @@ async def test_meta_payload_leak_prevention_and_bypass():
         # The text must contain the blind simulation credit estimation with 10% downpayment pattern and request for consent
         expected_blind_copy = (
             "Si te interesa a crédito con la inicial de $650,000, "
-            "las cuotas a 24 meses serían aproximadamente de $352,285 "
+            "las cuotas a 24 meses serían aproximadamente de $401,356 "
             "(incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*"
         )
         assert expected_blind_copy in sent_text, \

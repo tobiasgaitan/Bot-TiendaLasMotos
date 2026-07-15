@@ -24,4 +24,4 @@ Garantizar la consistencia de precios (PCC Pro) y la precisión en la recomendac
 - [ ] R10: Sincronizar el interés del prospecto (`moto_interest`) sin evadir el flujo legal de Habeas Data (Milestone 2).
 
 ---
-*Last updated: 2026-07-11*
+*Last updated: 2026-07-15*

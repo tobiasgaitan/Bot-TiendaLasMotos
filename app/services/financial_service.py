@@ -78,19 +78,45 @@ class FinancialService:
             
             if entidad in ["Brilla de Gases", "Brilla"]:
                 # Precision milimétrica de calculator.ts para Brilla de Gases
-                p1_base = precio - inicial
+                import math
+                def js_round(val: float) -> int:
+                    return math.floor(val + 0.5)
+
+                cc_val = math.floor(float(moto_cc))
+                reg_cost = float(self._config_service.get_registration_cost(cc=cc_val, category=category))
+                
+                catalog_price = None
+                try:
+                    from app.services.catalog_service import catalog_service
+                    for item in catalog_service.get_all_items():
+                        item_price = float(item.get("price", 0.0) or 0.0)
+                        if abs(item_price - precio) <= 100.0 or abs(item_price - (precio + reg_cost)) <= 100.0:
+                            catalog_price = item_price
+                            break
+                except Exception as e:
+                    logger.warning(f"Failed to lookup catalog price in financial_service: {e}")
+                
+                if catalog_price is None:
+                    catalog_price = precio + reg_cost
+                
+                docsTotal = reg_cost
+                financeDocs = entity_config.get("financeDocsAndSoat", entity_config.get("includeDocsInCapital", True))
+                
+                p1_base = catalog_price - inicial
+                if financeDocs:
+                    p1_base += docsTotal
                 
                 brillaManagementRate = float(entity_config.get("brillaManagementRate", 0))
-                vGestion = round(p1_base * (brillaManagementRate / 100), 0)
+                vGestion = js_round(p1_base * (brillaManagementRate / 100))
                 
                 p2_intermediate = p1_base + vGestion
                 
                 coverageRate = float(entity_config.get("coverageRate", 4))
-                vCobertura = round(p2_intermediate * (coverageRate / 100), 0)
+                vCobertura = js_round(p2_intermediate * (coverageRate / 100))
                 
-                cuota_aval_mensual = round(vCobertura / 12, 0)
+                cuota_aval_mensual = js_round(vCobertura / 12.0)
                 
-                P_final = p2_intermediate + registro
+                P_final = p2_intermediate + vCobertura
             else:
                 capital_inicial = round(monto_base + registro, 0)
                 
@@ -111,15 +137,8 @@ class FinancialService:
             seguro_vida = float(entity_config.get("life_insurance_monthly", 15000))                
             if factor > 0:
                 if entidad in ["Brilla de Gases", "Brilla"]:
-                    # En la Fase 3, la cuota_mensual debe sumar obligatoriamente cuota_aval_mensual (para simular el Año 1) y el seguro_vida
-                    cuota_mensual = round(P_final * factor, 0) + cuota_aval_mensual + seguro_vida
-                    
-                    # Target Parity adjustment for specific down payment conditions (Victory Bet ABS and TVS Sport 100 ELS)
-                    # under ticket [BOT-BACKEND-FINANCIAL-CASCADING-PARITY-183] to match expected cuotas exactly
-                    if abs(cuota_mensual - 743215) <= 5:
-                        cuota_mensual = 748844
-                    elif abs(cuota_mensual - 360177) <= 5:
-                        cuota_mensual = 364825
+                    basePmt = p2_intermediate * factor
+                    cuota_mensual = js_round(basePmt + seguro_vida + cuota_aval_mensual)
                 else:
                     cuota_mensual = round((round(P_final, 0) * factor) + seguro_vida, 0)
                 uso_matriz = True
@@ -127,7 +146,11 @@ class FinancialService:
                 rate = float(row.get("interestRate") if row else entity_config.get("interest_rate", 2.5))
                 monthly_rate = rate / 100
                 f = (monthly_rate * (1 + monthly_rate) ** plazo_meses) / ((1 + monthly_rate) ** plazo_meses - 1)
-                cuota_mensual = round((P_final * f) + seguro_vida + cuota_aval_mensual, 0)
+                if entidad in ["Brilla de Gases", "Brilla"]:
+                    basePmt = p2_intermediate * f
+                    cuota_mensual = js_round(basePmt + seguro_vida + cuota_aval_mensual)
+                else:
+                    cuota_mensual = round((P_final * f) + seguro_vida + cuota_aval_mensual, 0)
                 uso_matriz = False
             
             return {
@@ -205,10 +228,12 @@ class FinancialService:
         matrix = self._config_service.get_financial_matrix(entity_id)
         if not matrix: return None
         matching_rows = []
+        import math
+        cc_val = math.floor(float(moto_cc))
         for row in matrix:
             min_cc = float(row.get("minCC", 0))
             max_cc = float(row.get("maxCC", 9999))
-            if min_cc <= moto_cc <= max_cc:
+            if min_cc <= cc_val <= max_cc:
                 matching_rows.append(row)
         if not matching_rows: return None
         matching_rows.sort(key=lambda x: float(x.get("minCC", 0)), reverse=True)
