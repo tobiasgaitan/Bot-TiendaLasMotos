@@ -1,23 +1,23 @@
-# Summary of Task 184: Financial Cascading Exact Parity (Rev 2)
+# Summary of Task 184: Financial Cascading Exact Parity
 
 **Executed:** 2026-07-15
 **Status:** Complete
 
 ## What Was Done
-1. **Refactored `get_registration_cost` in `config_service.py`:**
-   - Override registration cost for cylinder capacities <= 125 cc to be strictly $780.000 COP, guaranteeing that desactualizado values in Firestore are ignored during base price and documents calculation.
-2. **Refactored `financial_service.py` calculations and WhatsApp simulation:**
-   - In `_generate_full_simulation_response`, subtracted registration cost from the catalog price prior to calling `calculate_payment` to eliminate the double-addition of fees in WhatsApp simulations.
-   - In `calculate_payment`, updated the Brilla Gases/Brilla final monthly quote calculation to round to 0 decimal places using standard Python `round(..., 0)`.
-3. **Updated test suite:**
-   - In `tests/test_pcc_ficha_tecnica.py`, updated `test_brilla_gases_real_firestore_cuotas` assertion for TVS Sport 100 ELS to expect the mathematically correct cuota of `$369.501 COP` under the strict `$780.000 COP` rule.
+1. **Refactored `financial_service.py` calculation pipeline:**
+   - Implemented an adaptive price adapter inside `calculate_payment` when `cc_val <= 125`.
+   - The adapter checks the incoming price against the matching catalog item's price (net price).
+   - If `precio` is greater than or equal to `expected_net_price + reg_cost - 10000`, it is recognized as the integrated catalog price (full price), and `reg_cost` is subtracted twice from `precio` to yield the correct base commercial price (so that `assetPrice = precio + reg_cost` and `docsTotal = reg_cost` do not duplicate the fee).
+   - If `precio` is greater than or equal to `expected_net_price - 10000`, it is recognized as the commercial net price, and `reg_cost` is subtracted once to yield the base commercial price.
+   - Updated `monto_base = precio - inicial` accordingly.
+2. **Updated test suite:**
+   - Updated `tests/test_pcc_ficha_tecnica.py` by refining the integration test `test_brilla_gases_real_firestore_cuotas` to assert that both the net commercial price ($9.399.000) and the full catalog price ($10.179.000) return exactly the same monthly installment of **$550.469 COP** for the KYMCO Agility Fusion reference.
 
 ## Files Modified
 | File | Action | Description |
 |------|--------|-------------|
-| [config_service.py](file:///Users/tobiasgaitangallego/Bot-TiendaLasMotos/app/services/config_service.py) | Modified | Override registration cost for cc <= 125 |
-| [financial_service.py](file:///Users/tobiasgaitangallego/Bot-TiendaLasMotos/app/services/financial_service.py) | Modified | Round final quote correctly and subtract registration cost in simulation |
-| [test_pcc_ficha_tecnica.py](file:///Users/tobiasgaitangallego/Bot-TiendaLasMotos/tests/test_pcc_ficha_tecnica.py) | Modified | Update TVS Sport ELS integration assertion |
+| [financial_service.py](file:///Users/tobiasgaitangallego/Bot-TiendaLasMotos/app/services/financial_service.py) | Modified | Implement adaptive price adapter for Brilla de Gases |
+| [test_pcc_ficha_tecnica.py](file:///Users/tobiasgaitangallego/Bot-TiendaLasMotos/tests/test_pcc_ficha_tecnica.py) | Modified | Assert exact parity of cuota ($550.469) for both net and full price |
 
 ## Verification
 - Ran the full test suite with `.venv/bin/pytest`. All 258 non-skipped tests passed successfully.
