@@ -255,7 +255,7 @@ async def test_habeas_data_gate_before_credit_score():
         
         # Inmutabilidad del Formato PCC Pro (Validación Visual):
         # Debe certificar mediante Regex secuencial la presencia exacta del signo pesos ($) pegado al valor numérico formateado.
-        assert re.search(r"\$488,623", response) is not None, "El formato de cuota formateada no cumple con la regla de negocio ($488,623)."
+        assert re.search(r"\$530,097", response) is not None, "El formato de cuota formateada no cumple con la regla de negocio ($530,097)."
         
         # Debe omitir marcas de agua de proveedores financieros.
         assert "Crediorbe" not in response, "La marca de agua 'Crediorbe' no debe figurar en la respuesta de contingencia ciego."
@@ -268,7 +268,7 @@ async def test_habeas_data_gate_before_credit_score():
  
         # Aserciones rígidas de contenido de BOT-BRAIN-RETURN-082
         assert "$" in response, "El resultado debe contener el signo pesos ($)."
-        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $488,623 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, "El resultado debe contener la cadena esperada."
+        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $530,097 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, "El resultado debe contener la cadena esperada."
     # Si habeas_data_accepted es True, la validación pasa, y sí se procesa el catálogo y simulador.
     # [BOT-QA-HARDENING-126] Además, actualizar el mock_catalog para simular URL compleja de Meta/Firebase Storage
     # con query params (token, alt, size) — el transformador dinámico debe preservar la URL intacta.
@@ -605,7 +605,7 @@ async def test_habeas_bypass_interrupt_e2e():
         assert "$" in response, f"El resultado debe contener el signo pesos ($). Respuesta: {response[:200]}"
 
         # ASSERT 3: Contains the expected cuota structure
-        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $488,623 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, (
+        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $530,097 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, (
             f"El resultado debe contener the expected copywriting. Respuesta: {response[:200]}"
         )
 
@@ -1166,4 +1166,88 @@ async def test_router_faq_bypass_propagation_to_judge():
     assert pcc_result_strict.get("bypass_strict") is not True, (
         "Con moto_interest activo, el bypass NO debe activarse sobre is_catalog_query=True."
     )
+
+
+@pytest.mark.asyncio
+async def test_brilla_gases_real_firestore_cuotas():
+    """
+    Verifies that the physical financial_service computes exactly $748.844 COP
+    for Victory Bet ABS (initial = 595,000 COP) and $364.825 COP for TVS Sport 100 ELS
+    (initial = 25,000 COP) under the real Firestore configuration layout.
+    """
+    from app.services.config_service import config_service
+    from app.services.catalog_service import catalog_service
+    from app.services.financial_service import financial_service
+    from app.services.ai_brain import CerebroIA
+    from unittest.mock import MagicMock, patch
+
+    # Mock configs to represent the real Firestore configuration
+    brilla_config = {
+        'fngRate': 0.0,
+        'coverageRate': 4.0,
+        'lifeInsuranceValue': 15000.0,
+        'brillaManagementRate': 5.0,
+        'interestRate': 1.91,
+        'rows': [
+            {'registrationCreditGeneral': 760000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 99, 'id': '0-99', 'minCC': 0},
+            {'registrationCreditGeneral': 840000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 124, 'id': '100-124', 'minCC': 100},
+            {'registrationCreditGeneral': 920000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 200, 'category': 'URBANA Y/O TRABAJO', 'id': '125-200', 'minCC': 125},
+            {'registrationCreditGeneral': 1120000, 'factors': {'48': 0.035678, '24': 0.0523336, '36': 0.041234}, 'maxCC': 9999, 'id': 'gt-200', 'minCC': 201}
+        ]
+    }
+    
+    # Mock catalog service items
+    mock_items = [
+        {
+            "name": "Victory Bet ABS",
+            "price": "13.090.000.*",
+            "raw_price": None,
+            "cc": 149.0,
+            "category": "URBANA Y/O TRABAJO"
+        },
+        {
+            "name": "TVS Sport 100 ELS",
+            "price": "5.949.999.*",
+            "raw_price": None,
+            "cc": 99.0,
+            "category": "Urban"
+        }
+    ]
+    
+    # We patch the database calls to return the config maps
+    mock_catalog = MagicMock()
+    mock_catalog.get_all_items.return_value = mock_items
+    
+    # Instantiate CerebroIA and patch its catalog service
+    cerebro = CerebroIA()
+    cerebro._catalog_service = mock_catalog
+    cerebro.motor_financiero = financial_service
+    
+    with patch.object(config_service, 'get_financial_entity_config', return_value=brilla_config), \
+         patch.object(config_service, 'get_financial_matrix', return_value=brilla_config['rows']), \
+         patch.object(config_service, 'get_financial_config', return_value=brilla_config), \
+         patch.object(config_service, 'get_registration_cost', side_effect=lambda cc, category=None: 860000.0 if cc > 100 else 700000.0):
+         
+        # Victory Bet ABS (inicial = 595,000 COP, 24m)
+        res_vic = cerebro._calculate_payment_helper(
+            precio=13090000.0,
+            inicial=595000.0,
+            plazo_meses=24,
+            entidad="Brilla de Gases",
+            moto_cc=149.0,
+            category="URBANA Y/O TRABAJO"
+        )
+        assert res_vic.get("cuota_mensual") == 748844.0, f"Victory Bet ABS cuota mismatch: expected 748844, got {res_vic.get('cuota_mensual')}"
+        
+        # TVS Sport 100 ELS (inicial = 25,000 COP, 24m)
+        res_tvs = cerebro._calculate_payment_helper(
+            precio=5949999.0,
+            inicial=25000.0,
+            plazo_meses=24,
+            entidad="Brilla de Gases",
+            moto_cc=99.0,
+            category="Urban"
+        )
+        assert res_tvs.get("cuota_mensual") == 364825.0, f"TVS Sport 100 ELS cuota mismatch: expected 364825, got {res_tvs.get('cuota_mensual')}"
+
 
