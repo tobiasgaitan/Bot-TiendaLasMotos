@@ -1,6 +1,6 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.45.4)
+## Tasks Completadas (v10.45.5)
 - [x] Reescribir por completo el flujo de Brilla de Gases en app/services/financial_service.py eliminando parches estáticos y alineando secuencialmente el cálculo paso a paso en Python con TypeScript (precio de catálogo base amortizable, matrícula docsTotal y cuota_aval_mensual) [BOT-BACKEND-FINANCIAL-CASCADING-EXACT-PARITY-184].
 - [x] Equalización de la matriz de Firestore de Brilla de Gases (anular la adición lineal de 'seguro_vida' flat de 15,000 COP) cuando uso_matriz es True, delegando el cobro amortizado al coeficiente compuesto, y alineando las aserciones de tests correspondientes (BOT-BACKEND-FINANCIAL-MATRIX-EQUALIZATION-182).
 - [x] Omitir el cobro lineal flat de 'cuota_aval_mensual' en Phase 3 del motor financiero cuando se utiliza el factor de la matriz de Firestore (uso_matriz == True), resolviendo el doble cobro e inflación de cuotas en WhatsApp, y alineando las aserciones correspondientes en la suite de tests (BOT-BACKEND-FINANCIAL-FACTOR-ALIGNMENT-181).

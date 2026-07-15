@@ -1,24 +1,37 @@
 # Summary of Task 184: Financial Cascading Exact Parity
 
-## What was done
-1. **CC Range Matching Alignment:**
-   - Updated `_get_matrix_row` in `app/services/financial_service.py` to match the exact Next.js/TypeScript lookup behavior, resolving the TVS Sport displacement issue.
-   - Updated `get_registration_cost` in `app/services/config_service.py` to match the same lookup logic.
-2. **Re-Architected Brilla Gases Math Sequence:**
-   - Rewrote `calculate_payment` in `app/services/financial_service.py` to run the cascading calculation sequence line-by-line matching `calculator.ts`:
-     1. Resolve canonical catalog price base (`assetPrice = precio + reg_cost`).
-     2. `p1_base = assetPrice - inicial + docsTotal`.
-     3. `vGestion = round(p1_base * (brillaManagementRate / 100))`.
-     4. `p2_intermediate = p1_base + vGestion`.
-     5. `vCobertura = round(p2_intermediate * (coverageRate / 100))`.
-     6. `cuota_aval_mensual = round(vCobertura / 12)`.
-     7. `P_final = p2_intermediate + vCobertura`.
-     8. Matrix base amortization payment `basePmt = p2_intermediate * factor`.
-     9. Monthly quote `cuota_mensual = round(basePmt + seguro_vida + cuota_aval_mensual)`.
-   - Removed all static down-payment matching and placeholder code blocks (Vibe Coding clean-up).
-3. **Integration Test and Real Firestore Verification:**
-   - Updated `test_brilla_gases_real_firestore_cuotas` in `tests/test_pcc_ficha_tecnica.py` to dynamically fetch credentials from Secret Manager (with clean import namespace/cache resets to prevent test mock leakage/segmentation faults) and assert exactly `$748.844 COP` for Victory Bet ABS (inicial = 1,395,000 COP) and `$364.825 COP` for TVS Sport 100 ELS (inicial = 665,000 COP) with zero tolerance.
-   - Fixed side effects in `tests/test_perf_45.py` and `tests/test_brilla_conmutacion.py` by mocking the financial configuration parameters properly.
-4. **Verification & Coherence:**
-   - Verified that all 260 unit and integration tests passed cleanly.
-   - Ran `npx agent-cli eval` achieving a coherence score of `1.000` (above the `0.9` deploy threshold).
+**Executed:** 2026-07-15
+**Status:** Complete
+
+## What Was Done
+1. **Refactored Brilla de Gases calculations in `financial_service.py`:**
+   - Implemented the strict registration cost rule: if cylinder capacity (moto_cc) <= 125 cc, registration cost is strictly $780.000 COP, otherwise matched from matrix/params.
+   - Simplified catalog price reconstruction to dynamically add `reg_cost` to the commercial base `precio` (`assetPrice = precio + reg_cost`), removing the slow O(N) catalog lookup loop.
+   - Refactored calculation sequence to align with Next.js logic:
+     - `p1_base = assetPrice - inicial + docsTotal` (where `docsTotal = reg_cost` if `moto_cc <= 125` else `0.0`)
+     - `vGestion = js_round(p1_base * (brillaManagementRate / 100))`
+     - `p2_intermediate = p1_base + vGestion`
+     - `vCobertura = js_round(p2_intermediate * (coverageRate / 100))`
+     - `cuota_aval_mensual = js_round(vCobertura / 12.0)`
+     - `P_final = p2_intermediate`
+     - `cuota_mensual = js_round((P_final * factor) + seguro_vida + cuota_aval_mensual)`
+2. **Added `cilindraje` field fallback:**
+   - Updated `_generate_full_simulation_response` in `financial_service.py` to inspect the `cilindraje` catalog field, preventing falling back to 0.0 cc for Kymco Agility.
+3. **Updated test suite:**
+   - Updated `test_brilla_gases_real_firestore_cuotas` in `tests/test_pcc_ficha_tecnica.py` to assert exactly `$550.469 COP` for KYMCO Agility Fusion (inicial = 1.017.900 COP, 24m) and `$374.177 COP` for TVS Sport 100 ELS (inicial = 665,000 COP, 24m).
+   - Updated bypass/short-circuit test assertions to expect `$581,506 COP` (due to the strict `$780.000 COP` registration cost being applied instead of `$840.000 COP` for 0 cc).
+   - Updated expected blind copy cuota in `tests/test_agentic_loop_async.py` to `$403,694 COP`.
+
+## Files Modified
+| File | Action | Description |
+|------|--------|-------------|
+| [financial_service.py](file:///Users/tobiasgaitangallego/Bot-TiendaLasMotos/app/services/financial_service.py) | Modified | Refactored calculations and added `cilindraje` lookup |
+| [test_pcc_ficha_tecnica.py](file:///Users/tobiasgaitangallego/Bot-TiendaLasMotos/tests/test_pcc_ficha_tecnica.py) | Modified | Updated assertions and added KYMCO Agility Fusion Firestore integration test |
+| [test_agentic_loop_async.py](file:///Users/tobiasgaitangallego/Bot-TiendaLasMotos/tests/test_agentic_loop_async.py) | Modified | Updated blind simulation expected copy assertion |
+
+## Verification
+- Checked that all 258 non-skipped tests passed successfully.
+- `npx agent-cli eval` was run locally and achieved a coherence score of 1.000.
+
+---
+*Completed: 2026-07-15*
