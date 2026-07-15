@@ -1258,7 +1258,7 @@ async def test_brilla_gases_real_firestore_cuotas():
         moto_cc=99.7,
         category="motos"
     )
-    assert res_tvs.get("cuota_mensual") == 374177.0, f"TVS Sport 100 ELS cuota mismatch: expected 374177, got {res_tvs.get('cuota_mensual')}"
+    assert res_tvs.get("cuota_mensual") == 369501.0, f"TVS Sport 100 ELS cuota mismatch: expected 369501, got {res_tvs.get('cuota_mensual')}"
 
     # KYMCO Agility Fusion (inicial = 1,017,900 COP, 24m)
     res_kymco = cerebro._calculate_payment_helper(

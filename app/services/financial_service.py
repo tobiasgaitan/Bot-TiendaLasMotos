@@ -132,8 +132,7 @@ class FinancialService:
             seguro_vida = float(entity_config.get("life_insurance_monthly", 15000))                
             if factor > 0:
                 if entidad in ["Brilla de Gases", "Brilla"]:
-                    basePmt = P_final * factor
-                    cuota_mensual = js_round(basePmt + seguro_vida + cuota_aval_mensual)
+                    cuota_mensual = round((P_final * factor) + seguro_vida + cuota_aval_mensual, 0)
                 else:
                     cuota_mensual = round((round(P_final, 0) * factor) + seguro_vida, 0)
                 uso_matriz = True
@@ -143,7 +142,7 @@ class FinancialService:
                 f = (monthly_rate * (1 + monthly_rate) ** plazo_meses) / ((1 + monthly_rate) ** plazo_meses - 1)
                 if entidad in ["Brilla de Gases", "Brilla"]:
                     basePmt = P_final * f
-                    cuota_mensual = js_round(basePmt + seguro_vida + cuota_aval_mensual)
+                    cuota_mensual = round(basePmt + seguro_vida + cuota_aval_mensual, 0)
                 else:
                     cuota_mensual = round((P_final * f) + seguro_vida + cuota_aval_mensual, 0)
                 uso_matriz = False
@@ -467,9 +466,12 @@ Para ofrecerte la mejor opción de financiación, necesito algunos datos:
         entidad_default = "Brilla de Gases"
         tasa_mensual = 1.95
         
-        plan_24 = self.calculate_payment(precio_moto, inicial, 24, entidad=entidad_default, moto_cc=moto_cc, category=category)
-        plan_36 = self.calculate_payment(precio_moto, inicial, 36, entidad=entidad_default, moto_cc=moto_cc, category=category)
-        plan_48 = self.calculate_payment(precio_moto, inicial, 48, entidad=entidad_default, moto_cc=moto_cc, category=category)
+        reg_cost = float(self._config_service.get_registration_cost(cc=moto_cc, category=category))
+        base_price = max(precio_moto - reg_cost, 0.0)
+        
+        plan_24 = self.calculate_payment(base_price, inicial, 24, entidad=entidad_default, moto_cc=moto_cc, category=category)
+        plan_36 = self.calculate_payment(base_price, inicial, 36, entidad=entidad_default, moto_cc=moto_cc, category=category)
+        plan_48 = self.calculate_payment(base_price, inicial, 48, entidad=entidad_default, moto_cc=moto_cc, category=category)
         
         return f"""
 🏍️ **Simulación para {nombre_moto}**

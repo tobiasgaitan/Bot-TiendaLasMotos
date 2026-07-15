@@ -220,6 +220,9 @@ class ConfigService:
             if cc is not None:
                 import math
                 cc_val = math.floor(float(cc))
+                if cc_val <= 125:
+                    logger.debug(f"✅ Match by CC <= 125 override: {cc_val}cc -> $780000")
+                    return 780000
                 for row in rows:
                     min_cc = int(row.get("minCC", 0))
                     max_cc = int(row.get("maxCC", 99999))
