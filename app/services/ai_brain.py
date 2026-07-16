@@ -968,7 +968,7 @@ REGLAS ESTRICTAS DE USO:
             except ImportError:
                 pass
 
-        if not is_mock_search and self._catalog_service and texto and hasattr(self._catalog_service, "_items") and self._catalog_service._items:
+        if not is_mock_search and self._catalog_service and texto and hasattr(self._catalog_service, "_items") and isinstance(self._catalog_service._items, list) and self._catalog_service._items:
             try:
                 # Fast local pre-filter to avoid calling search_items on non-catalog queries (e.g. general questions or drift aliases)
                 clean_text = str(texto).lower()
