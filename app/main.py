@@ -152,24 +152,8 @@ async def lifespan(app: FastAPI):
                 app.state.finance_config_loader = finance_config_loader_obj
                 
                 catalog_items_count = len(catalog_service.get_all_items())
-                
-                min_items_val = settings.min_catalog_items
-                if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
-                    min_items = 0
-                else:
-                    try:
-                        min_items = int(min_items_val)
-                    except (TypeError, ValueError):
-                        min_items = 60
-                        
-                if os.getenv("TEST_MODE") == "true":
-                    logger.warning(f"🧪 TEST_MODE: Catalog has {catalog_items_count} items (Settings min expected: {min_items}). Bypassing size check.")
-                    app.state.catalog_ready = True
-                elif catalog_items_count < min_items:
-                    logger.error(f"❌ [STARTUP-GUARD] Catalog size validation failed: {catalog_items_count} < {min_items}")
-                else:
-                    app.state.catalog_ready = True
-                    logger.info("✅ [STARTUP-SUCCESS] Catálogo hidratado sin timeouts.")
+                app.state.catalog_ready = True
+                logger.info(f"✅ [STARTUP-SUCCESS] Catálogo hidratado sin timeouts. Loaded items: {catalog_items_count}")
             except asyncio.TimeoutError as te:
                 logger.exception(f"❌ [STARTUP-TIMEOUT] Database synchronization exceeded timeout of {settings.db_timeout} seconds (BOT-INFRA-33).")
             except Exception as exc:
@@ -299,18 +283,10 @@ async def _run_deferred_initialization(app: FastAPI) -> None:
         app.state.db_async = db_async_obj
         app.state.finance_config_loader = finance_config_obj
 
-        # Verify catalog size (Fail-Fast Rule)
+        # [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192]
+        # WHY: Hard size check (>= 60) is moved EXCLUSIVELY to app/routers/whatsapp.py
+        # to avoid blocking the /health endpoint or preventing container startup.
         catalog_items_count = len(catalog_service.get_all_items())
-        min_items = int(settings.min_catalog_items)
-
-        if catalog_items_count < min_items or catalog_items_count == 0:
-            logger.error(
-                f"❌ [STARTUP-GUARD] Catalog size validation failed: "
-                f"Loaded items = {catalog_items_count}, expected at least {min_items}. "
-                f"catalog_ready remains False. Webhook will reject with 503."
-            )
-            return
-
         app.state.catalog_ready = True
         logger.info(
             f"✅ [DEFERRED-INIT-SUCCESS] Background initialization completed. "
