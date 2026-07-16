@@ -960,12 +960,13 @@ REGLAS ESTRICTAS DE USO:
         
         # --- HOT SEARCH GREETING BYPASS (BOT-BACKEND-BUGFIX-CATALOG-PERIMETER-187) ---
         is_mock_search = False
-        try:
-            from unittest.mock import Mock
-            if isinstance(self._catalog_service.search_items, Mock):
-                is_mock_search = True
-        except ImportError:
-            pass
+        if self._catalog_service:
+            try:
+                from unittest.mock import Mock
+                if isinstance(self._catalog_service.search_items, Mock):
+                    is_mock_search = True
+            except ImportError:
+                pass
 
         if not is_mock_search and self._catalog_service and texto and hasattr(self._catalog_service, "_items") and self._catalog_service._items:
             try:
