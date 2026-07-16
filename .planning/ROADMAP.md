@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.45.12)
+## Tasks Completadas (v10.45.13)
+- [x] Refactorizar de forma aislada y atómica el endpoint '/health' dentro de 'app/main.py' para obligar a que devuelva un código HTTP 200 OK con el JSON {'status': 'starting', 'detail': 'Catalog initialization in progress'} de manera INMEDIATA y síncrona si no está listo, y agregar el test 'test_health_endpoint_never_returns_503_during_hydration' [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192].
 - [x] Desacoplar la validación de tamaño mínimo del catálogo del inicio del contenedor y del endpoint de salud `/health` en `app/main.py` (permitiendo HTTP 200 y `"status": "starting"` inmediato) y confinar el bloqueo rígido de tamaño del catálogo (len >= 60) exclusivamente dentro de los middlewares de WhatsApp en `app/routers/whatsapp.py` [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192].
 - [x] Refactorizar `skip_greeting` en `ai_brain.py` para impedir bypass del saludo en el primer contacto/reset de la sesión (`has_no_legitimate_history = True`), e implementar la validación del guardrail de inicialización de catálogo robustecido en `webhook_handler` y `task_processor` de `whatsapp.py` validando que la caché de Firestore contenga al menos `settings.min_catalog_items` (60 ítems) en producción, con bypass controlado para pruebas unitarias (`is_test_mode`) [BOT-BRAIN-BUGFIX-FIRST-CONTACT-ALIGNMENT-191].
 - [x] Inyectar un retardo asíncrono no bloqueante estricto de 2 segundos (await asyncio.sleep(2)) al inicio absoluto de '_run_deferred_initialization' en app/main.py y actualizar el caso de prueba 'test_deferred_init_port_available_before_hydration' para verificar la responsividad inmediata del puerto 8080 en '/health' [BOT-BACKEND-BUGFIX-LIFESPAN-DELAY-190].
