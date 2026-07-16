@@ -988,6 +988,10 @@ REGLAS ESTRICTAS DE USO:
             if len(legitimate_messages) > 0:
                 has_no_legitimate_history = False
 
+        if has_no_legitimate_history:
+            skip_greeting = False
+            logger.info("🆕 [FIRST CONTACT ALIGNMENT] Forcing skip_greeting = False because history is empty or reset.")
+
         if not is_mock_search and self._catalog_service and texto and hasattr(self._catalog_service, "_items") and isinstance(self._catalog_service._items, list) and self._catalog_service._items:
             try:
                 # Fast local pre-filter to avoid calling search_items on non-catalog queries (e.g. general questions or drift aliases)
@@ -1593,6 +1597,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     skip_greeting = True
                                     search_results += "\n\n[SYSTEM: BYPASS GREETING: Un elemento del catálogo ha sido recuperado en caliente. Tienes ESTRICTAMENTE PROHIBIDO saludar, dar la bienvenida, decir 'Hola' o presentarte. Empieza tu respuesta directamente con la información de la motocicleta.]"
                                 else:
+                                    skip_greeting = False
                                     logger.info(f"🆕 [FIRST CONTACT SHIELD] Tool search_catalog returned results but history is empty/reset. Keeping skip_greeting = False for mandatory warmth.")
                                 if prospect_data is not None and matches and not prospect_data.get("moto_interest"):
                                     prospect_data["moto_interest"] = matches[0]["name"]

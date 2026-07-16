@@ -421,10 +421,9 @@ async def webhook_handler(
             except (TypeError, ValueError):
                 min_items = 60
             
-        if is_test_mode and catalog_ready:
-            min_items = 0
-            
-        if min_items > 0:
+        should_bypass = is_test_mode and min_items == 0
+        
+        if not should_bypass:
             if not catalog_ready or catalog_items_count < min_items:
                 logger.error(
                     f"❌ [STARTUP-GUARD] Webhook rejected: catalog is not fully loaded "
@@ -528,10 +527,9 @@ async def task_processor(
             except (TypeError, ValueError):
                 min_items = 60
             
-        if is_test_mode and catalog_ready:
-            min_items = 0
-            
-        if min_items > 0:
+        should_bypass = is_test_mode and min_items == 0
+        
+        if not should_bypass:
             if not catalog_ready or catalog_items_count < min_items:
                 logger.error(
                     f"❌ [STARTUP-GUARD] Task processor rejected: catalog is not fully loaded "

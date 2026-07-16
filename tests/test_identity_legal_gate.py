@@ -715,5 +715,50 @@ class TestIdentityLegalGate(unittest.TestCase):
         sent_response = mock_send_wa.call_args[0][1]
         self.assertIn("Juan Pablo", sent_response, "La respuesta debe presentarse como Juan Pablo")
 
+    @patch("app.services.ai_brain.SDK_AVAILABLE", False)
+    def test_first_interaction_always_greets_brain(self):
+        """
+        GIVEN: Historial vacío y un token de catálogo ('Ninja 500').
+        WHEN: CerebroIA recibe pensar_respuesta con skip_greeting=True.
+        THEN: Debe forzar skip_greeting a False y usar el prompt con saludo obligatorio.
+        """
+        from app.services.ai_brain import CerebroIA
+        cerebro = CerebroIA()
+        cerebro.client = MagicMock()
+        cerebro._model_id = "gemini-2.0-flash"
+        
+        # Mock catalog service con Ninja 500
+        mock_catalog = MagicMock()
+        mock_catalog._items = [{"name": "Ninja 500", "price": "$38.000.000"}]
+        mock_catalog._tokenize = lambda x: ["ninja", "500"]
+        mock_catalog._phonetic_normalize = lambda x: x
+        mock_catalog.search_items = MagicMock(return_value=[{"name": "Ninja 500", "price": "$38.000.000"}])
+        cerebro._catalog_service = mock_catalog
+        
+        # Mock de creación de chat y respuesta
+        mock_chat = AsyncMock()
+        mock_response = MagicMock()
+        mock_part = MagicMock()
+        mock_part.text = "Hola, soy Juan Pablo, asesor de Auteco Las Motos. ¡Claro que manejamos la Ninja 500!"
+        mock_part.function_call = None
+        mock_response.candidates = [MagicMock(content=MagicMock(parts=[mock_part]))]
+        mock_chat.send_message = AsyncMock(return_value=mock_response)
+        
+        cerebro.client.aio.chats.create = MagicMock(return_value=mock_chat)
+        
+        # Invocar pensar_respuesta con historial vacío e input con coincidencia en catálogo
+        import asyncio
+        res = asyncio.run(cerebro.pensar_respuesta("tienen la Ninja 500?", history=[], skip_greeting=True))
+        
+        # Aserciones rígidas de contenido e identidad
+        self.assertIn("Juan Pablo", res, "La respuesta debe incluir el nombre del asesor.")
+        self.assertIn("Auteco Las Motos", res, "La respuesta debe incluir la presentación de la tienda.")
+        
+        # Verificar que send_message haya sido llamado con el prompt con MANDATORY WARMTH
+        mock_chat.send_message.assert_called_once()
+        prompt_arg = mock_chat.send_message.call_args[0][0]
+        self.assertIn("MANDATORY WARMTH", prompt_arg, "El prompt consolidado debe exigir el saludo.")
+        self.assertNotIn("STRICT RULE: DO NOT under any circumstance start your response", prompt_arg, "El prompt no debe suprimir el saludo.")
+
 if __name__ == '__main__':
     unittest.main()
