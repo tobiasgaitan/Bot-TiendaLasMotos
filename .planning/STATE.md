@@ -1,14 +1,15 @@
-Versión: v10.45.8 | Hito: Short Token Phonetic Matching and Whitelisted Numeric Tokens (BOT-BACKEND-BUGFIX-CATALOG-PERIMETER-187) | Coherence Score: 1.000
+Versión: v10.45.9 | Hito: Deferred Init — Container Crash Port Binding Fix (BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188) | Coherence Score: 1.000
 
 ### Current Position
 **Phase:** Milestone 2 - Phase 1: Similitud Multimodal e Integración
 **Status:** In Progress
-**Last activity:** 2026-07-16 - Completed Quick Task 187 (Short Token Phonetic Matching and Whitelisted Numeric Tokens)
+**Last activity:** 2026-07-16 - Completed Quick Task 188 (Deferred Init — Container Crash Port Binding Fix)
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 188 | Deferred Init — Container Crash Port Binding Fix (Move blocking module-level Firestore/SecretManager init to asyncio.create_task background, health endpoint degraded-state) [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188] | 2026-07-16 | 00e72af | 188-container-crash-deferred-init |
 | 187 | Short Token Phonetic Matching and Whitelisted Numeric Tokens (Phonetic matching for short query tokens <= 5 chars, whitelist model numeric tokens, force greeting bypass on hot catalog match) [BOT-BACKEND-BUGFIX-CATALOG-PERIMETER-187] | 2026-07-16 | ef3939a | 187-catalog-perimeter |
 | 186 | Router Greeting Alignment Category Model Transition (Prevent reference error on skip_greeting transition from category to specific model) [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-186] | 2026-07-16 | bf592e8 | 186-router-greeting-alignment-category-model |
 | 185 | Router Greeting Alignment (Runtime Prompt Assembly for greeting/intro suppression when skip_greeting is True) [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-185] | 2026-07-16 | 0ce9f6c | 185-router-greeting-alignment |
