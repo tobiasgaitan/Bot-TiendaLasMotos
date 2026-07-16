@@ -622,5 +622,98 @@ class TestIdentityLegalGate(unittest.TestCase):
         sent_response = mock_send_wa.call_args[0][1]
         self.assertIn("Juan Pablo", sent_response, "La bienvenida debe incluir el nombre del asesor 'Juan Pablo'")
 
+    @patch("app.routers.whatsapp.db")
+    @patch("app.routers.whatsapp.message_buffer")
+    @patch("app.routers.whatsapp.config_loader")
+    @patch("app.routers.whatsapp.catalog_service")
+    @patch("app.routers.whatsapp.config_service")
+    @patch("app.routers.whatsapp.judge_service")
+    @patch("app.routers.whatsapp.memory_service_module")
+    @patch("app.routers.whatsapp.CerebroIA")
+    @patch("app.routers.whatsapp.storage_service")
+    @patch("app.routers.whatsapp._send_whatsapp_message")
+    @patch("app.services.whatsapp_service.whatsapp_service")
+    def test_first_interaction_always_greets(
+        self, mock_wa_service, mock_send_wa, mock_storage, mock_cerebro_class, 
+        mock_mem_module, mock_judge, mock_config_service, mock_catalog, 
+        mock_config_loader, mock_message_buffer, mock_db
+    ):
+        """
+        GIVEN: Un historial vacío (primer contacto).
+        AND: Una entrada directa de modelo del catálogo ('Ninja 500').
+        WHEN: WhatsApp router recibe la solicitud.
+        THEN: Debe invocar pensar_respuesta con skip_greeting=False, y la respuesta debe contener la presentación de Juan Pablo.
+        """
+        import asyncio
+        from fastapi import BackgroundTasks
+        from app.routers.whatsapp import _handle_message_background
+        
+        msg_data = {
+            "from": "+573192564288",
+            "id": "wamid.first_interaction_always_greets_123",
+            "type": "text",
+            "text": "Hola, tienen la Ninja 500?",
+            "phone_number_id": "1021779847693778"
+        }
+        background_tasks = BackgroundTasks()
+
+        # Configurar prospecto con exists: False (primer contacto)
+        mock_prospect_initial = {"exists": False}
+        mock_prospect_created = {
+            "exists": True,
+            "celular": "+573192564288",
+            "chatbot_status": "ACTIVE",
+            "status": "PENDING",
+            "source": "whatsapp_bot",
+            "habeas_data_accepted": False,
+            "habeas_data_accepted_sent": False,
+            "nombre": "",
+            "ciudad": "",
+            "moto_interest": "",
+            "current_agent": "expert"
+        }
+
+        mock_ms = AsyncMock()
+        mock_ms.get_or_create_prospect = AsyncMock(return_value=mock_prospect_created)
+        mock_ms.get_prospect_data = AsyncMock(side_effect=[mock_prospect_initial, mock_prospect_created, mock_prospect_created])
+        mock_ms.create_prospect_if_missing = AsyncMock()
+        mock_ms.get_chat_history = AsyncMock(return_value=[])
+        mock_ms.save_message = AsyncMock()
+        mock_ms.generate_and_update_summary = AsyncMock()
+        mock_ms.update_last_interaction = AsyncMock()
+        mock_ms.transition_to_in_progress = AsyncMock()
+        mock_mem_module.memory_service = mock_ms
+
+        mock_cerebro = AsyncMock()
+        mock_cerebro.pensar_respuesta = AsyncMock(return_value="Hola, soy Juan Pablo, asesor de Auteco Las Motos. ¡Claro que manejamos la Ninja 500! ¿Te gustaría financiarla?")
+        mock_cerebro_class.return_value = mock_cerebro
+
+        mock_message_buffer.add_message = AsyncMock(return_value=True)
+        mock_message_buffer.is_task_active = MagicMock(return_value=True)
+        mock_message_buffer.get_aggregated_message = AsyncMock(return_value=None)
+        mock_message_buffer.clear_buffer = AsyncMock()
+        
+        mock_wa_service.mark_as_read = AsyncMock(return_value=True)
+        mock_send_wa.return_value = True
+        mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+
+        # Mock items in catalog to ensure pre-filter has items
+        mock_catalog._items = [{"name": "Ninja 500", "price": "$38.000.000"}]
+        mock_catalog._tokenize = MagicMock(return_value=["ninja", "500"])
+        mock_catalog._phonetic_normalize = MagicMock(side_effect=lambda x: x)
+        mock_catalog.search_items = MagicMock(return_value=[{"name": "Ninja 500", "price": "$38.000.000"}])
+
+        asyncio.run(_handle_message_background(msg_data, background_tasks))
+
+        # Verificar que pensar_respuesta haya sido invocado con skip_greeting=False
+        mock_cerebro.pensar_respuesta.assert_called_once()
+        kwargs = mock_cerebro.pensar_respuesta.call_args[1]
+        self.assertEqual(kwargs.get("skip_greeting"), False, "skip_greeting debe ser False en el primer contacto")
+
+        # Verificar que el mensaje enviado contenga la presentación de Juan Pablo
+        mock_send_wa.assert_called_once()
+        sent_response = mock_send_wa.call_args[0][1]
+        self.assertIn("Juan Pablo", sent_response, "La respuesta debe presentarse como Juan Pablo")
+
 if __name__ == '__main__':
     unittest.main()
