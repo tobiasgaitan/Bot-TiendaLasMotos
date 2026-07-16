@@ -373,7 +373,7 @@ class CerebroIA:
         logger.info("🧠 Loaded system instruction from code constant (Fallback)")
         return JUAN_PABLO_SYSTEM_INSTRUCTION
 
-    def _assemble_skip_greeting_prompt(self, instruction: str) -> str:
+    def _assemble_skip_greeting_prompt(self, instruction: str, prospect_data: Optional[Dict[str, Any]] = None, texto: str = "") -> str:
         """
         Runtime Prompt Assembly helper to suppress/rewrite greeting rules when skip_greeting is True.
         """
@@ -404,6 +404,49 @@ class CerebroIA:
                 "dar la bienvenida o hacer presentaciones personales (ej. decir 'Soy Juan Pablo'). "
                 "Inicia tu respuesta directamente con la presentación de la motocicleta."
             )
+
+            # --- CORRECCIÓN COLISIÓN TRANSICIÓN CATEGORÍA A MODELO ---
+            # Evitamos inyectar la instrucción de error de referencia si el usuario menciona
+            # explícitamente una moto del catálogo en su mensaje, previniendo falsos negativos.
+            moto_interest = prospect_data.get("moto_interest") if prospect_data else None
+            if not moto_interest or not str(moto_interest).strip():
+                has_explicit_model = False
+                if self._catalog_service and texto:
+                    t_norm = texto.lower().strip()
+                    # Reutilizar el pool cached pre-hidratado llamando directamente a get_all_items()
+                    items = self._catalog_service.get_all_items()
+                    for item in items:
+                        ref_val = str(item.get("ref", "")).lower().strip()
+                        name_val = str(item.get("name", "")).lower().strip()
+                        if (ref_val and ref_val in t_norm) or (name_val and name_val in t_norm):
+                            has_explicit_model = True
+                            break
+                        
+                        # Check search_tags / searchBy
+                        search_tags = item.get("search_tags", []) or item.get("searchBy", [])
+                        if isinstance(search_tags, list):
+                            for tag in search_tags:
+                                tag_norm = str(tag).lower().strip()
+                                if tag_norm and tag_norm in t_norm:
+                                    if len(tag_norm) > 3: # Evitar falsos positivos con palabras de ruido ultra cortas
+                                        has_explicit_model = True
+                                        break
+                            if has_explicit_model:
+                                break
+                
+                if not has_explicit_model:
+                    # Inyectar instrucción de error de referencia
+                    assembled += (
+                        "\n\n[SISTEMA: ERROR DE REFERENCIA. El usuario no ha indicado un interés en una moto válida "
+                        "y no existe un 'moto_interest' registrado. Indica amablemente que no conocemos ese modelo o referencia.]"
+                    )
+                else:
+                    # Búsqueda prioritaria permitida sin inyectar error
+                    assembled += (
+                        "\n\n[SISTEMA: BÚSQUEDA PRIORITARIA. El usuario ha mencionado explícitamente el modelo en su mensaje. "
+                        "Tienes permitido usar 'search_catalog' para ese modelo de manera prioritaria. Presenta la motocicleta con Imagen y Precio.]"
+                    )
+            
             return assembled
         except Exception as e:
             logger.exception(f"❌ Error during _assemble_skip_greeting_prompt: {e}")
@@ -1025,7 +1068,7 @@ REGLAS ESTRICTAS DE USO:
 
                 base_instruction = self._get_current_instruction()
                 if skip_greeting:
-                    base_instruction = self._assemble_skip_greeting_prompt(base_instruction)
+                    base_instruction = self._assemble_skip_greeting_prompt(base_instruction, prospect_data, texto)
 
 
                 full_prompt = f"""

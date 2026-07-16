@@ -2045,3 +2045,92 @@ def test_assemble_skip_greeting_prompt_rewrites_paso1():
     # Assert other greetings rules are suppressed/annotated
     assert "REGLA SUPRIMIDA POR skip_greeting" in modified or "PROHIBIDO saludar" in modified
 
+
+@pytest.mark.asyncio
+async def test_category_to_specific_model_transition_no_fallback():
+    """
+    Caracterización: El historial comienza con una consulta de categoría ('motos pisteras')
+    seguida de una consulta de modelo específico ('sport 100').
+    Valida que se retorne la información, precio e imagen de la Sport 100 sin saludar
+    y sin disparar el fallback de referencia no encontrada en el prompt assembly.
+    """
+    from datetime import datetime, timezone
+    cerebro = CerebroIA()
+    
+    # Mockear catalog_service para retornar items válidos en get_all_items()
+    mock_catalog = MagicMock()
+    mock_catalog.get_all_items.return_value = [
+        {
+            "ref": "sport 100",
+            "name": "TVS Sport 100",
+            "searchBy": ["sport", "sport 100", "trabajo"]
+        }
+    ]
+    cerebro._catalog_service = mock_catalog
+    
+    # We will trace calls to _generate_with_retry_async
+    calls_made = []
+    
+    async def mock_generate(texto, context, prospect_data, history, skip_greeting, forced_instruction=None, forced_temperature=None):
+        calls_made.append({
+            "texto": texto,
+            "skip_greeting": skip_greeting,
+            "history": history.copy() if history else []
+        })
+        
+        # Para el test, vamos a simular el prompt assembly de forma interna para asertar que no
+        # contiene la instrucción de error de referencia:
+        instruction = cerebro._get_current_instruction()
+        assembled = cerebro._assemble_skip_greeting_prompt(instruction, prospect_data, texto)
+        
+        # El prompt ensamblado NO debe contener la instrucción de error de referencia:
+        assert "ERROR DE REFERENCIA" not in assembled, "El prompt inyectó el error de referencia en la transición categoría -> modelo!"
+        assert "BÚSQUEDA PRIORITARIA" in assembled, "El prompt debió inyectar la instrucción de búsqueda prioritaria!"
+        
+        # Retornamos la respuesta simulada exitosa
+        return "Aquí tienes la TVS Sport 100. Cuesta $6.200.000. ![TVS Sport](http://img) Ficha Tecnica: 100cc"
+
+    # Setup prospect sin moto_interest
+    prospect_data = {
+        "exists": True,
+        "nombre": "Tobias",
+        "ciudad": "Santa Marta",
+        "forma_pago": "Crédito - 0 inicial",
+        "habeas_data_accepted": True,
+        "moto_interest": "", # Sin modelo guardado previamente
+        "ai_summary": "Interesado en motos"
+    }
+    
+    # Historial inicial con consulta de categoría "motos pisteras"
+    history = [
+        {"role": "user", "content": "Buenas, tienen motos pisteras?", "timestamp": datetime.now(timezone.utc)},
+        {"role": "model", "content": "¡Hola! Claro que sí, manejamos excelentes opciones deportivas como la TVS Raider 125.", "timestamp": datetime.now(timezone.utc)}
+    ]
+    
+    from app.routers.whatsapp import _evaluate_skip_greeting
+    skip_greeting_evaluated = _evaluate_skip_greeting(history, prospect_data, current_message_saved=False)
+    assert skip_greeting_evaluated is True
+    
+    with patch.object(cerebro, "_generate_with_retry_async", side_effect=mock_generate), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False):
+        
+        # El usuario consulta el modelo específico 'sport 100'
+        response = await cerebro.pensar_respuesta(
+            texto="sport 100",
+            context="",
+            prospect_data=prospect_data,
+            history=history,
+            skip_greeting=skip_greeting_evaluated
+        )
+        
+        # Validaciones de la respuesta
+        assert response is not None
+        assert "6.200.000" in response
+        assert "![" in response
+        assert "TVS Sport 100" in response
+        
+        # Comprobar que skip_greeting fue True
+        assert len(calls_made) == 1
+        assert calls_made[0]["skip_greeting"] is True
+
+
