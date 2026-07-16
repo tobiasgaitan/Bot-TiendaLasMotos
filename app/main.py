@@ -220,18 +220,19 @@ async def _run_deferred_initialization(app: FastAPI) -> None:
     WHY this is safe:
     - The webhook handler in whatsapp.py (L362-388) checks app.state.catalog_ready
       and rejects requests with HTTP 503 until this task completes.
-    - The /health endpoint returns status "starting" while this runs.
-    - All Firestore/Secret Manager calls that previously blocked the import
-      are now isolated here.
-    
-    Sequence (preserves the exact initialization order from the former module-level block):
-    1. Firebase credentials (Secret Manager network call)
-    2. Firestore sync + async clients (gRPC handshake)
-    3. ConfigLoader singleton + load_all() (3x Firestore reads)
-    4. CatalogService.initialize() with DI of ConfigLoader (Firestore stream + cache)
-    5. FinanceConfigLoader (Firestore read)
-    6. Catalog size validation (fail-fast guardrail)
-    """
+      - The /health endpoint returns status "starting" while this runs.
+      - All Firestore/Secret Manager calls that previously blocked the import
+        are now isolated here.
+      
+      Sequence (preserves the exact initialization order from the former module-level block):
+      1. Firebase credentials (Secret Manager network call)
+      2. Firestore sync + async clients (gRPC handshake)
+      3. ConfigLoader singleton + load_all() (3x Firestore reads)
+      4. CatalogService.initialize() with DI of ConfigLoader (Firestore stream + cache)
+      5. FinanceConfigLoader (Firestore read)
+      6. Catalog size validation (fail-fast guardrail)
+      """
+    await asyncio.sleep(2)
     try:
         logger.info("⚡ [DEFERRED-INIT] Starting background initialization...")
 
