@@ -959,7 +959,7 @@ REGLAS ESTRICTAS DE USO:
         phase = self._determine_funnel_phase(prospect_data, history)
         
         # --- HOT SEARCH GREETING BYPASS (BOT-BACKEND-BUGFIX-CATALOG-PERIMETER-187) ---
-        if not skip_greeting and self._catalog_service and texto:
+        if self._catalog_service and texto:
             try:
                 matches = self._catalog_service.search_items(texto)
                 if matches:
