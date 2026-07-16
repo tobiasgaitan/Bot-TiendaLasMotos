@@ -2134,3 +2134,186 @@ async def test_category_to_specific_model_transition_no_fallback():
         assert calls_made[0]["skip_greeting"] is True
 
 
+@pytest.mark.asyncio
+async def test_perimeter_short_tokens_and_greeting_bypass():
+    """
+    Test case targeting the ticket BOT-BACKEND-BUGFIX-CATALOG-PERIMETER-187.
+    Emulates search for 'benom 14', 'stark kids', and 'ninja 500', verifying they return correct items
+    and force synchronous greeting suppression. Also verifies greeting suppression remains active
+    after a category transition or a previous failed reference search.
+    """
+    from app.services.catalog_service import CatalogService
+    service = CatalogService()
+    
+    # Define catalog mock items
+    item_venom = {
+        "id": "venom_14",
+        "name": "Victory Venom 14",
+        "price": 8500000,
+        "category": "deportiva",
+        "image_url": "http://img/venom.jpg",
+        "search_tags": ["venom", "14", "deportiva"],
+        "search_tokens": ["victory", "venom", "14", "venom14", "deportiva"],
+        "searchBy": ["venom", "14", "deportiva"],
+        "description": "Victory Venom 14.",
+        "active": True
+    }
+    
+    item_stark = {
+        "id": "stark_kids",
+        "name": "Victory Stark Kids",
+        "price": 4000000,
+        "category": "infantil",
+        "image_url": "http://img/stark.jpg",
+        "search_tags": ["stark", "kids", "infantil"],
+        "search_tokens": ["victory", "stark", "kids", "infantil"],
+        "searchBy": ["stark", "kids", "infantil"],
+        "description": "Victory Stark Kids.",
+        "active": True
+    }
+    
+    item_ninja = {
+        "id": "ninja_500",
+        "name": "Kawasaki Ninja 500",
+        "price": 32000000,
+        "category": "deportiva",
+        "image_url": "http://img/ninja.jpg",
+        "search_tags": ["ninja", "500", "deportiva"],
+        "search_tokens": ["kawasaki", "ninja", "500", "ninja500", "deportiva"],
+        "searchBy": ["ninja", "500", "deportiva"],
+        "description": "Kawasaki Ninja 500.",
+        "active": True
+    }
+    
+    service._items = [item_venom, item_stark, item_ninja]
+    service._items_by_id = {i["id"]: i for i in service._items}
+    service._items_by_category = {"deportiva": [item_venom, item_ninja], "infantil": [item_stark]}
+    service._category_aliases = {}
+    
+    # 1. Test Catalog Matching
+    # Venom fuzzy match with phonetic normalization on short token 'benom'
+    results_venom = service.search_items("benom 14")
+    assert len(results_venom) > 0, "Should match Victory Venom 14"
+    assert results_venom[0]["name"] == "Victory Venom 14"
+    
+    # Stark kids match
+    results_stark = service.search_items("stark kids")
+    assert len(results_stark) > 0, "Should match Victory Stark Kids"
+    assert results_stark[0]["name"] == "Victory Stark Kids"
+    
+    # Ninja 500 match (checks that token '500' is whitelisted and not excluded)
+    results_ninja = service.search_items("ninja 500")
+    assert len(results_ninja) > 0, "Should match Kawasaki Ninja 500"
+    assert results_ninja[0]["name"] == "Kawasaki Ninja 500"
+    
+    # 2. Test Brain Greeting Bypass & State Transition
+    with patch('app.services.ai_brain.SDK_AVAILABLE', False):
+        cerebro = CerebroIA()
+        cerebro.client = MagicMock()
+        cerebro._model_id = "gemini-2.0-flash"
+        cerebro.privacy_policy_url = "https://tiendalasmotos.com/politica-de-privacidad"
+        cerebro._catalog_service = service
+        
+        calls_made = []
+        async def mock_call_gemini(func, *args, **kwargs):
+            prompt_str = args[0]
+            calls_made.append(prompt_str)
+            mock_resp = MagicMock()
+            mock_candidate = MagicMock()
+            mock_part = MagicMock()
+            mock_part.text = "Aquí tienes la Victory Venom 14. Cuesta $8.500.000. ![img](http://img) Ficha Tecnica: 14"
+            mock_part.function_call = None
+            mock_candidate.content.parts = [mock_part]
+            mock_resp.candidates = [mock_candidate]
+            mock_resp.usage_metadata = MagicMock(total_token_count=100, prompt_token_count=50, candidates_token_count=50)
+            return mock_resp
+
+        with patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call_gemini), \
+             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False):
+            
+            # Test case: Fresh conversation searching 'benom 14' (skip_greeting starts as False)
+            prospect_data = {
+                "exists": True,
+                "nombre": "Tobias",
+                "ciudad": "Santa Marta",
+                "forma_pago": "Crédito - 0 inicial",
+                "habeas_data_accepted": True,
+                "moto_interest": "",
+                "ai_summary": "Interesado en motos"
+            }
+            
+            response = await cerebro.pensar_respuesta(
+                texto="benom 14",
+                context="",
+                prospect_data=prospect_data,
+                history=[],
+                skip_greeting=False
+            )
+            
+            # Check that thinking_respuesta dynamically forced skip_greeting to True,
+            # which we can verify by checking that the prompt contains skip_greeting instructions
+            assert len(calls_made) == 1
+            assert "INSTRUCCIÓN INQUEBRANTABLE: skip_greeting es True" in calls_made[0]
+            assert prospect_data["moto_interest"] == "Victory Venom 14"
+            
+            # 3. Test Greeting Suppression remains active in transition
+            # Let's simulate a history where the first query failed or was a category query,
+            # and then the user specifies the model 'ninja 500'.
+            history = [
+                {"role": "user", "content": "Quiero una moto barata"},
+                {"role": "model", "content": "No conozco esa referencia. Por favor especifica."}
+            ]
+            
+            # Transition query
+            prospect_data_transition = {
+                "exists": True,
+                "nombre": "Tobias",
+                "ciudad": "Santa Marta",
+                "forma_pago": "Crédito - 0 inicial",
+                "habeas_data_accepted": True,
+                "moto_interest": "",
+                "ai_summary": "Interesado en motos"
+            }
+            
+            calls_made.clear()
+            # Evaluating skip_greeting using Whatsapp Router evaluator
+            from app.routers.whatsapp import _evaluate_skip_greeting
+            from datetime import datetime, timezone
+            
+            # Add timestamps to history to simulate recent message (<12 hours)
+            history_with_time = [
+                {"role": "user", "content": "Quiero una moto barata", "timestamp": datetime.now(timezone.utc)},
+                {"role": "model", "content": "No conozco esa referencia. Por favor especifica.", "timestamp": datetime.now(timezone.utc)}
+            ]
+            
+            skip_eval = _evaluate_skip_greeting(history_with_time, prospect_data_transition, current_message_saved=False)
+            assert skip_eval is True, "Greeting suppression should be active since session is ongoing"
+            
+            async def mock_call_gemini_ninja(func, *args, **kwargs):
+                prompt_str = args[0]
+                calls_made.append(prompt_str)
+                mock_resp = MagicMock()
+                mock_candidate = MagicMock()
+                mock_part = MagicMock()
+                mock_part.text = "Aquí tienes la Kawasaki Ninja 500. Cuesta $32.000.000. ![img](http://img) Ficha Tecnica: 500"
+                mock_part.function_call = None
+                mock_candidate.content.parts = [mock_part]
+                mock_resp.candidates = [mock_candidate]
+                mock_resp.usage_metadata = MagicMock(total_token_count=100, prompt_token_count=50, candidates_token_count=50)
+                return mock_resp
+
+            with patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call_gemini_ninja):
+                response_trans = await cerebro.pensar_respuesta(
+                    texto="ninja 500",
+                    context="",
+                    prospect_data=prospect_data_transition,
+                    history=history_with_time,
+                    skip_greeting=skip_eval
+                )
+            
+            assert len(calls_made) == 1
+            assert "INSTRUCCIÓN INQUEBRANTABLE: skip_greeting es True" in calls_made[0]
+            assert prospect_data_transition["moto_interest"] == "Kawasaki Ninja 500"
+
+
+
