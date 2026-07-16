@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.45.7)
+## Tasks Completadas (v10.45.8)
+- [x] Refactorizar la validación perimetral alfabética en CatalogService para aplicar normalización fonética antes de SequenceMatcher en tokens cortos (<= 5 caracteres), agregar whitelist de tokens numéricos (500, 125, 150, 160, 200, 100), y forzar síncronamente el skip_greeting y actualizar moto_interest en ai_brain.py ante coincidencia en caliente del catálogo [BOT-BACKEND-BUGFIX-CATALOG-PERIMETER-187].
 - [x] Refactorizar el método `_assemble_skip_greeting_prompt` en `app/services/ai_brain.py` para evitar que la ausencia de `moto_interest` en `prospect_data` genere un error de referencia (falso negativo) cuando el usuario transiciona de una consulta de categoría a un modelo específico, permitiendo la búsqueda prioritaria en el catálogo [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-186].
 - [x] Modificar el motor de prompts en app/services/ai_brain.py para unificar de forma determinista el comportamiento de saludos. Si skip_greeting es True, se suprime/reescribe cualquier instrucción conflictiva del PASO 1 o reglas de presentación de forma dinámica en tiempo de ejecución (Runtime Prompt Assembly), inyectando una regla inquebrantable de iniciar la respuesta directamente con la presentación de la motocicleta [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-185].
 - [x] Reescribir por completo el flujo de Brilla de Gases en app/services/financial_service.py eliminando parches estáticos y alineando secuencialmente el cálculo paso a paso en Python con TypeScript (precio de catálogo base amortizable, matrícula docsTotal y cuota_aval_mensual) [BOT-BACKEND-FINANCIAL-CASCADING-EXACT-PARITY-184].

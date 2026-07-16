@@ -1,14 +1,15 @@
-Versión: v10.45.7 | Hito: Router Greeting Alignment Category Model Transition (BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-186) | Coherence Score: 1.000
+Versión: v10.45.8 | Hito: Short Token Phonetic Matching and Whitelisted Numeric Tokens (BOT-BACKEND-BUGFIX-CATALOG-PERIMETER-187) | Coherence Score: 1.000
 
 ### Current Position
 **Phase:** Milestone 2 - Phase 1: Similitud Multimodal e Integración
 **Status:** In Progress
-**Last activity:** 2026-07-16 - Completed Quick Task 186 (Router Greeting Alignment Category to Model Transition)
+**Last activity:** 2026-07-16 - Completed Quick Task 187 (Short Token Phonetic Matching and Whitelisted Numeric Tokens)
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 187 | Short Token Phonetic Matching and Whitelisted Numeric Tokens (Phonetic matching for short query tokens <= 5 chars, whitelist model numeric tokens, force greeting bypass on hot catalog match) [BOT-BACKEND-BUGFIX-CATALOG-PERIMETER-187] | 2026-07-16 | ef3939a | 187-catalog-perimeter |
 | 186 | Router Greeting Alignment Category Model Transition (Prevent reference error on skip_greeting transition from category to specific model) [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-186] | 2026-07-16 | bf592e8 | 186-router-greeting-alignment-category-model |
 | 185 | Router Greeting Alignment (Runtime Prompt Assembly for greeting/intro suppression when skip_greeting is True) [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-185] | 2026-07-16 | 0ce9f6c | 185-router-greeting-alignment |
 | 184 | Brilla Gases Cascading Parity (Exact math simulation aligned with Next.js/typescript canonical logic, zero placeholders) [BOT-BACKEND-FINANCIAL-CASCADING-EXACT-PARITY-184] | 2026-07-15 | 22537a0 | 184-financial-cascading-exact-parity |
