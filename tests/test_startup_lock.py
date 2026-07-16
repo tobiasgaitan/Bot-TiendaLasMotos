@@ -71,10 +71,13 @@ async def test_task_processor_rejects_with_503_if_catalog_not_fully_loaded():
 @pytest.mark.asyncio
 async def test_startup_lifespan_timeout_keeps_catalog_ready_false():
     """
-    Test that the lifespan startup keeps catalog_ready as False if the database sync
-    exceeds settings.db_timeout.
+    [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
+    Test that the lifespan startup keeps catalog_ready as False if the background
+    initialization exceeds the timeout.
+    
+    WHY: The deferred init pattern runs _run_deferred_initialization as an
+    asyncio.create_task(). We mock it to simulate a timeout scenario.
     """
-    # Force settings.db_timeout to be short for the test (e.g. 0.05s)
     with patch("app.main.settings") as mock_settings, \
          patch("app.main.get_firebase_credentials_object") as mock_creds, \
          patch("app.main.firestore") as mock_firestore, \
@@ -106,7 +109,8 @@ async def test_startup_lifespan_timeout_keeps_catalog_ready_false():
 @pytest.mark.asyncio
 async def test_startup_lifespan_catalog_size_check_fails_in_production():
     """
-    Test that the lifespan startup sets catalog_ready to False if the catalog has
+    [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
+    Test that the background initialization sets catalog_ready to False if the catalog has
     fewer items than min_catalog_items when NOT in TEST_MODE.
     """
     with patch("app.main.settings") as mock_settings, \
@@ -131,7 +135,8 @@ async def test_startup_lifespan_catalog_size_check_fails_in_production():
 @pytest.mark.asyncio
 async def test_startup_lifespan_successful_initialization_sets_catalog_ready_true():
     """
-    Test that a successful initialization sets catalog_ready to True.
+    [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
+    Test that a successful background initialization sets catalog_ready to True.
     """
     with patch("app.main.settings") as mock_settings, \
          patch("app.main.get_firebase_credentials_object") as mock_creds, \
@@ -150,3 +155,52 @@ async def test_startup_lifespan_successful_initialization_sets_catalog_ready_tru
             async with lifespan(app):
                 await app.state.startup_task
                 assert app.state.catalog_ready is True
+
+
+@pytest.mark.asyncio
+async def test_deferred_init_port_available_before_hydration():
+    """
+    [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
+    Test that the lifespan handler yields IMMEDIATELY (allowing Uvicorn to bind port 8080)
+    without waiting for the background initialization to complete.
+    
+    WHY: This is the core regression test for the container crash. The old code blocked
+    during module import. The new code must yield the lifespan context immediately.
+    """
+    import time
+    import app.main as main_module
+    
+    with patch("app.main.settings") as mock_settings, \
+         patch("app.main.get_firebase_credentials_object") as mock_creds, \
+         patch("app.main.firestore") as mock_firestore, \
+         patch("app.main.ConfigLoader") as mock_config_loader, \
+         patch("app.main.config_service") as mock_config_service, \
+         patch("app.main.FinanceConfigLoader") as mock_finance_config_loader, \
+         patch("app.main.storage_service") as mock_storage_service, \
+         patch.object(main_module, "TEST_MODE", False):
+         
+        mock_settings.db_timeout = 5
+        mock_settings.gcp_project_id = "test-project"
+        mock_settings.min_catalog_items = 0
+        mock_creds.return_value = MagicMock()
+        
+        # Simulate slow initialization (2 seconds)
+        def slow_init(*args, **kwargs):
+            import time
+            time.sleep(2)
+        mock_config_service.initialize.side_effect = slow_init
+        
+        start_time = time.monotonic()
+        async with lifespan(app):
+            elapsed = time.monotonic() - start_time
+            # The lifespan must yield in less than 0.5s (no blocking I/O)
+            # The old code would block for 2+ seconds here.
+            assert elapsed < 0.5, (
+                f"Lifespan took {elapsed:.2f}s to yield — port 8080 would be blocked. "
+                f"Expected < 0.5s for immediate yield."
+            )
+            # catalog_ready must still be False (background task hasn't finished)
+            assert app.state.catalog_ready is False
+            
+            # Clean up: wait for background task to complete
+            await app.state.startup_task

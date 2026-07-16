@@ -1,6 +1,12 @@
 """
 Tienda Las Motos - FastAPI Application
 Main application entry point with startup/shutdown lifecycle management.
+
+[BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
+WHY: All heavy network initialization (Firestore gRPC, Secret Manager, catalog hydration)
+is deferred to a background task launched from the lifespan handler. This guarantees
+Uvicorn opens the socket on port 8080 IMMEDIATELY, satisfying the TCP startup probe
+of Cloud Run before any network I/O completes.
 """
 
 import logging
@@ -22,7 +28,6 @@ from app.services.config_loader import ConfigLoader as FinanceConfigLoader
 from app.services.catalog_service import catalog_service
 from app.services.storage_service import storage_service
 from app.services.memory_service import init_memory_service
-from app.routers import whatsapp, admin
 
 # Configure logging
 logging.basicConfig(
@@ -32,87 +37,40 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# Module-level variables to hold pre-initialized core services
-credentials = None
-db = None
-db_async = None
-config_loader = None
-finance_config_loader = None
-
 TEST_MODE = os.getenv("TEST_MODE") == "true" or "pytest" in sys.modules
 
-if not TEST_MODE:
-    try:
-        logger.info("⚡ Running module-level initialization for CLI/Production...")
-        credentials = get_firebase_credentials_object()
-        db = firestore.Client(
-            project=settings.gcp_project_id,
-            credentials=credentials
-        )
-        db_async = firestore.AsyncClient(
-            project=settings.gcp_project_id,
-            credentials=credentials
-        )
-        config_loader = ConfigLoader(db)
-        storage_service.initialize(credentials)
-        try:
-            init_memory_service(db_async)
-        except Exception as mem_error:
-            logger.error(f"❌ Failed to initialize Memory Service: {str(mem_error)}", exc_info=True)
-            
-        config_service.initialize(db)
-        config_loader.load_all()
-        # WHY: config_loader is passed as an injected dependency (post-hydration)
-        # to eliminate the race condition in CatalogService.load_catalog() where
-        # ConfigLoader() was called without `db`, silently producing empty aliases.
-        catalog_service.initialize(db, config_loader)
-        finance_config_loader = FinanceConfigLoader(db)
-        
-        # Verify catalog size (Fail-Fast Rule)
-        catalog_items_count = len(catalog_service.get_all_items())
-        min_items = int(settings.min_catalog_items)
-        if catalog_items_count < min_items or catalog_items_count == 0:
-            raise RuntimeError(
-                f"❌ [STARTUP-GUARD] Catalog size validation failed at module level: "
-                f"Loaded items = {catalog_items_count}, expected at least {min_items}. "
-                f"Parity check failed. Aborting import."
-            )
-            
-        logger.info(f"✅ Module-level initialization completed. {catalog_items_count} items loaded.")
-    except Exception as e:
-        logger.error(f"❌ Critical error during module-level initialization: {str(e)}", exc_info=True)
-        raise
+# [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
+# WHY: Module-level initialization of Firestore/Secret Manager was executing
+# network calls during Python's import system (before Uvicorn could bind the port).
+# ALL heavy initialization is now deferred to the lifespan background task below.
+# No network calls occur at import time.
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Application lifespan manager.
-    Handles startup and shutdown events.
+    
+    [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
+    WHY: Heavy initialization (Firestore, catalog hydration, config loading) runs
+    in a background task launched via asyncio.create_task(). The lifespan yields
+    immediately, allowing Uvicorn to bind port 8080 and satisfy the Cloud Run
+    TCP startup probe. The webhook handler's catalog_ready guard (whatsapp.py L362-388)
+    rejects requests with HTTP 503 until hydration completes.
     """
     # Startup
     logger.info("🚀 Starting Auteco Las Motos Backend...")
     app.state.catalog_ready = False
-    
-    global credentials, db, db_async, config_loader, finance_config_loader
-    
-    if not TEST_MODE and db is not None:
-        logger.info("🔗 Reusing module-level initialized core services...")
-        app.state.config_loader = config_loader
-        app.state.db = db
-        app.state.db_async = db_async
-        app.state.finance_config_loader = finance_config_loader
-        
-        catalog_items_count = len(catalog_service.get_all_items())
-        min_items = int(settings.min_catalog_items)
-        if catalog_items_count >= min_items and catalog_items_count > 0:
-            app.state.catalog_ready = True
-            logger.info("✅ [STARTUP-SUCCESS] Catálogo hidratado sin timeouts (reused module-level).")
-        else:
-            logger.error(f"❌ [STARTUP-GUARD] Catalog size validation failed on reuse: {catalog_items_count} < {min_items}")
+
+    if not TEST_MODE:
+        # WHY: Launch heavy init in background so Uvicorn can open port 8080 immediately.
+        # The startup_task is stored in app.state for test awaiting (test_startup_lock.py).
+        app.state.startup_task = asyncio.create_task(
+            _run_deferred_initialization(app)
+        )
     else:
-        # We are in TEST_MODE or module-level initialization was skipped/failed
-        logger.info("🧪 Running inline lifespan initialization (TEST_MODE or Fallback)...")
+        # TEST_MODE: Run inline initialization with mocks
+        logger.info("🧪 Running inline lifespan initialization (TEST_MODE)...")
         try:
             # 1. Get Firebase credentials
             credentials_obj = get_firebase_credentials_object()
@@ -212,10 +170,10 @@ async def lifespan(app: FastAPI):
             else:
                 raise
 
-    # Assign a dummy completed task to app.state.startup_task to support existing test assertions
-    async def dummy_completed_task():
-        pass
-    app.state.startup_task = asyncio.create_task(dummy_completed_task())
+        # Assign a dummy completed task to app.state.startup_task to support existing test assertions
+        async def dummy_completed_task():
+            pass
+        app.state.startup_task = asyncio.create_task(dummy_completed_task())
     
     yield
     
@@ -226,6 +184,119 @@ async def lifespan(app: FastAPI):
         await memory_service.shutdown()
     else:
         logger.warning("⚠️ MemoryService not initialized, skipping shutdown flush.")
+
+
+async def _run_deferred_initialization(app: FastAPI) -> None:
+    """
+    [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
+    Background task that performs all heavy network initialization AFTER Uvicorn
+    has bound port 8080. This function runs in a background asyncio task launched
+    from the lifespan handler.
+    
+    WHY this is safe:
+    - The webhook handler in whatsapp.py (L362-388) checks app.state.catalog_ready
+      and rejects requests with HTTP 503 until this task completes.
+    - The /health endpoint returns status "starting" while this runs.
+    - All Firestore/Secret Manager calls that previously blocked the import
+      are now isolated here.
+    
+    Sequence (preserves the exact initialization order from the former module-level block):
+    1. Firebase credentials (Secret Manager network call)
+    2. Firestore sync + async clients (gRPC handshake)
+    3. ConfigLoader singleton + load_all() (3x Firestore reads)
+    4. CatalogService.initialize() with DI of ConfigLoader (Firestore stream + cache)
+    5. FinanceConfigLoader (Firestore read)
+    6. Catalog size validation (fail-fast guardrail)
+    """
+    try:
+        logger.info("⚡ [DEFERRED-INIT] Starting background initialization...")
+
+        # Run all blocking network I/O in a thread to avoid blocking the event loop
+        def _sync_initialization():
+            """Synchronous initialization block — runs in asyncio.to_thread()."""
+            logger.info("🔑 [DEFERRED-INIT] Obtaining Firebase credentials...")
+            creds = get_firebase_credentials_object()
+
+            logger.info("🔗 [DEFERRED-INIT] Creating Firestore clients...")
+            db_sync = firestore.Client(
+                project=settings.gcp_project_id,
+                credentials=creds
+            )
+            db_async_client = firestore.AsyncClient(
+                project=settings.gcp_project_id,
+                credentials=creds
+            )
+
+            logger.info("☁️  [DEFERRED-INIT] Initializing Storage Service...")
+            storage_service.initialize(creds)
+
+            logger.info("⚡ [DEFERRED-INIT] Initializing Config Service...")
+            config_service.initialize(db_sync)
+
+            logger.info("📋 [DEFERRED-INIT] Loading dynamic configurations (load_all)...")
+            config_loader_inst = ConfigLoader(db_sync)
+            config_loader_inst.load_all()
+
+            logger.info("🏍️  [DEFERRED-INIT] Initializing Catalog Service with DI...")
+            # WHY: config_loader is passed as an injected dependency (post-hydration)
+            # to eliminate the race condition in CatalogService.load_catalog() where
+            # ConfigLoader() was called without `db`, silently producing empty aliases.
+            catalog_service.initialize(db_sync, config_loader_inst)
+
+            logger.info("💰 [DEFERRED-INIT] Loading Financial Configuration...")
+            finance_config = FinanceConfigLoader(db_sync)
+
+            return creds, db_sync, db_async_client, config_loader_inst, finance_config
+
+        # Execute all blocking I/O in a thread with timeout
+        try:
+            creds, db_obj, db_async_obj, config_loader_obj, finance_config_obj = await asyncio.wait_for(
+                asyncio.to_thread(_sync_initialization),
+                timeout=float(settings.db_timeout)
+            )
+        except asyncio.TimeoutError:
+            logger.exception(
+                f"❌ [DEFERRED-INIT-TIMEOUT] Background initialization exceeded "
+                f"timeout of {settings.db_timeout}s. Catalog will remain unavailable. "
+                f"The webhook handler will continue rejecting with HTTP 503."
+            )
+            return
+
+        # Memory service initialization (async-native, runs on event loop)
+        try:
+            init_memory_service(db_async_obj)
+        except Exception as mem_error:
+            logger.error(f"❌ [DEFERRED-INIT] Failed to initialize Memory Service: {str(mem_error)}", exc_info=True)
+
+        # Store references in app.state for downstream access
+        app.state.config_loader = config_loader_obj
+        app.state.db = db_obj
+        app.state.db_async = db_async_obj
+        app.state.finance_config_loader = finance_config_obj
+
+        # Verify catalog size (Fail-Fast Rule)
+        catalog_items_count = len(catalog_service.get_all_items())
+        min_items = int(settings.min_catalog_items)
+
+        if catalog_items_count < min_items or catalog_items_count == 0:
+            logger.error(
+                f"❌ [STARTUP-GUARD] Catalog size validation failed: "
+                f"Loaded items = {catalog_items_count}, expected at least {min_items}. "
+                f"catalog_ready remains False. Webhook will reject with 503."
+            )
+            return
+
+        app.state.catalog_ready = True
+        logger.info(
+            f"✅ [DEFERRED-INIT-SUCCESS] Background initialization completed. "
+            f"{catalog_items_count} catalog items loaded. catalog_ready=True."
+        )
+
+    except Exception as e:
+        logger.exception(
+            f"❌ [DEFERRED-INIT-CRITICAL] Unhandled exception during background "
+            f"initialization: {e}. catalog_ready remains False."
+        )
 
 
 # Create FastAPI application
@@ -258,7 +329,8 @@ app.add_middleware(
 # ============================================================================
 # ROUTER INCLUSION
 # ============================================================================
-# Include routers
+# Include routers — deferred imports within routers handle their own deps
+from app.routers import whatsapp, admin
 app.include_router(whatsapp.router)
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
@@ -268,9 +340,14 @@ async def health_check():
     """
     Health check endpoint for Cloud Run.
     
-    Returns:
-        Status information about the application including V6.0 config status
+    [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
+    WHY: Always returns HTTP 200 to satisfy the TCP startup probe.
+    Reports "starting" while catalog hydration is in progress,
+    and "healthy" once catalog_ready is True.
     """
+    catalog_ready = getattr(app.state, "catalog_ready", False)
+    status = "healthy" if catalog_ready else "starting"
+
     # Access config_loader from app state safely without raising AttributeError
     config_loader = getattr(app.state, "config_loader", None)
     
@@ -285,7 +362,10 @@ async def health_check():
         except Exception as e:
             logger.exception("❌ Error retrieving v6_config from config_loader in health check: %s", e)
     else:
-        logger.warning("⚠️ app.state.config_loader is not initialized yet in health_check")
+        if not catalog_ready:
+            logger.info("ℹ️ app.state.config_loader not yet initialized (background init in progress)")
+        else:
+            logger.warning("⚠️ app.state.config_loader is not initialized yet in health_check")
 
     catalog_items_count = 0
     try:
@@ -300,10 +380,11 @@ async def health_check():
         logger.exception("❌ Error retrieving storage bucket name in health check: %s", e)
 
     return {
-        "status": "healthy",
+        "status": status,
         "service": "Auteco Las Motos Backend",
         "version": "6.0.0",
         "catalog_items": catalog_items_count,
+        "catalog_ready": catalog_ready,
         "storage_bucket": storage_bucket_name,
         "v6_config": v6_config
     }
