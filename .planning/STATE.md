@@ -1,14 +1,15 @@
-Versión: v10.45.5 | Hito: Brilla Gases Cascading Parity (BOT-BACKEND-FINANCIAL-CASCADING-EXACT-PARITY-184) | Coherence Score: 1.000
+Versión: v10.45.6 | Hito: Router Greeting Alignment (BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-185) | Coherence Score: 1.000
 
 ### Current Position
 **Phase:** Milestone 2 - Phase 1: Similitud Multimodal e Integración
 **Status:** In Progress
-**Last activity:** 2026-07-15 - Completed Quick Task 184 (Financial Cascading Exact Parity)
+**Last activity:** 2026-07-16 - Completed Quick Task 185 (Router Greeting Alignment)
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 185 | Router Greeting Alignment (Runtime Prompt Assembly for greeting/intro suppression when skip_greeting is True) [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-185] | 2026-07-16 | 0ce9f6c | 185-router-greeting-alignment |
 | 184 | Brilla Gases Cascading Parity (Exact math simulation aligned with Next.js/typescript canonical logic, zero placeholders) [BOT-BACKEND-FINANCIAL-CASCADING-EXACT-PARITY-184] | 2026-07-15 | 22537a0 | 184-financial-cascading-exact-parity |
 | 182 | Equalización de matriz financiera de gases (anular adición seguro de vida flat para Brilla de Gases) [BOT-BACKEND-FINANCIAL-MATRIX-EQUALIZATION-182] | 2026-07-14 | 24ea831 | 182-financial-matrix-equalization |
 | 181 | Omisión de doble cobro de aval matricial y alineamiento de aserciones en test_pcc_ficha_tecnica y test_agentic_loop_async [BOT-BACKEND-FINANCIAL-FACTOR-ALIGNMENT-181] | 2026-07-14 | 0d8dae6 | 181-financial-factor-alignment |
