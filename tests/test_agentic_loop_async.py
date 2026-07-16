@@ -1942,3 +1942,106 @@ def test_catalog_generic_stopword_stripping():
     assert "TVS Ntorq 125" in names_c5, \
         f"'Hola, manejan motos scooters?' debió retornar TVS Ntorq 125, obtuvo: {names_c5}"
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-185
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_consecutive_catalog_search_suppresses_greeting():
+    """
+    Test consecutive catalog searches simulating Firestore saved conversational state.
+    Asserts that the second response has skip_greeting=True and does not contain greetings like 'Hola' or 'Juan Pablo'.
+    """
+    from datetime import datetime, timezone
+    cerebro = CerebroIA()
+    
+    # We will trace the calls to _generate_with_retry_async
+    calls_made = []
+    
+    async def mock_generate(texto, context, prospect_data, history, skip_greeting, forced_instruction=None, forced_temperature=None):
+        calls_made.append({
+            "texto": texto,
+            "skip_greeting": skip_greeting,
+            "history": history.copy() if history else []
+        })
+        # Simulate LLM response based on skip_greeting:
+        if skip_greeting:
+            # Must NOT contain greetings!
+            return "Aquí tienes la TVS Sport 100. Cuesta $6.200.000. ![TVS Sport](http://img) Ficha Tecnica: 100cc"
+        else:
+            return "¡Hola! Soy Juan Pablo. La TVS Dazz 110 cuesta $5.800.000. ![TVS Dazz](http://img) Ficha Tecnica: 110cc"
+
+    # Setup database/prospect mock context
+    prospect_data = {
+        "exists": True,
+        "nombre": "Tobias",
+        "ciudad": "Santa Marta",
+        "forma_pago": "Crédito - 0 inicial",
+        "habeas_data_accepted": True,
+        "moto_interest": "TVS Dazz 110",
+        "ai_summary": "Interesado en motos"
+    }
+    
+    with patch.object(cerebro, "_generate_with_retry_async", side_effect=mock_generate), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False):
+        
+        # 1. First search call: 'TVS Dazz 110'
+        # First call has skip_greeting = False
+        response1 = await cerebro.pensar_respuesta(
+            texto="TVS Dazz 110",
+            context="",
+            prospect_data=prospect_data,
+            history=[],
+            skip_greeting=False
+        )
+        
+        # Simulate adding first interaction to history (as Firestore would save it)
+        history = [
+            {"role": "user", "content": "TVS Dazz 110", "timestamp": datetime.now(timezone.utc)},
+            {"role": "model", "content": response1, "timestamp": datetime.now(timezone.utc)}
+        ]
+        
+        # Update prospect interest
+        prospect_data["moto_interest"] = "TVS Sport 100"
+        
+        # Router evaluates skip_greeting on the updated history.
+        from app.routers.whatsapp import _evaluate_skip_greeting
+        skip_greeting_evaluated = _evaluate_skip_greeting(history, prospect_data, current_message_saved=False)
+        assert skip_greeting_evaluated is True
+        
+        # 2. Second search call: 'TVS Sport 100' with skip_greeting = True
+        response2 = await cerebro.pensar_respuesta(
+            texto="TVS Sport 100",
+            context="",
+            prospect_data=prospect_data,
+            history=history,
+            skip_greeting=skip_greeting_evaluated
+        )
+        
+        # Assertions
+        assert len(calls_made) == 2
+        assert calls_made[0]["skip_greeting"] is False
+        assert calls_made[1]["skip_greeting"] is True
+        
+        # Assert second response does not contain greetings
+        response2_lower = response2.lower()
+        assert "hola" not in response2_lower
+        assert "juan pablo" not in response2_lower
+        assert "buenos" not in response2_lower
+        assert "bienven" not in response2_lower
+
+
+def test_assemble_skip_greeting_prompt_rewrites_paso1():
+    cerebro = CerebroIA()
+    from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
+    
+    modified = cerebro._assemble_skip_greeting_prompt(JUAN_PABLO_SYSTEM_INSTRUCTION)
+    
+    # Assert PASO 1 got rewritten
+    assert "- PASO 1 (Enganche de Valor): Tienes PROHIBIDO saludar" in modified
+    # Assert it has the unbreakable rule at the end
+    assert "INSTRUCCIÓN INQUEBRANTABLE: skip_greeting es True" in modified
+    # Assert other greetings rules are suppressed/annotated
+    assert "REGLA SUPRIMIDA POR skip_greeting" in modified or "PROHIBIDO saludar" in modified
+

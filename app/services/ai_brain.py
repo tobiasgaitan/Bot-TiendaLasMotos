@@ -372,6 +372,42 @@ class CerebroIA:
         from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
         logger.info("🧠 Loaded system instruction from code constant (Fallback)")
         return JUAN_PABLO_SYSTEM_INSTRUCTION
+
+    def _assemble_skip_greeting_prompt(self, instruction: str) -> str:
+        """
+        Runtime Prompt Assembly helper to suppress/rewrite greeting rules when skip_greeting is True.
+        """
+        try:
+            lines = instruction.splitlines()
+            new_lines = []
+            for line in lines:
+                line_lower = line.lower()
+                # If the line defines PASO 1 (Enganche) or similar, rewrite it to forbid greetings
+                if ("paso 1" in line_lower or "paso1" in line_lower or "enganche" in line_lower):
+                    new_lines.append("- PASO 1 (Enganche de Valor): Tienes PROHIBIDO saludar, decir 'Hola', dar la bienvenida o presentarte como Juan Pablo. Inicia tu respuesta directamente presentando la motocicleta (información, Imagen y Precio).")
+                # If the line orders greetings, welcoming, or presenting yourself, suppress or modify it
+                elif "saludo" in line_lower or "saludar" in line_lower or "bienvenida" in line_lower or "presentarse" in line_lower or "preséntate" in line_lower:
+                    if "eres" in line_lower and "juan pablo" in line_lower:
+                        # Maintain identity but forbid greeting/presenting
+                        new_lines.append(line + " (NOTA: Tienes PROHIBIDO saludar o presentarte en este mensaje, inicia directamente con la motocicleta).")
+                    else:
+                        # Suppress conflictive greeting rule
+                        new_lines.append(f"# [REGLA SUPRIMIDA POR skip_greeting: {line}]")
+                else:
+                    new_lines.append(line)
+            
+            assembled = "\n".join(new_lines)
+            # Append absolute unbreakable instruction
+            assembled += (
+                "\n\n⚠️ INSTRUCCIÓN INQUEBRANTABLE: skip_greeting es True. "
+                "Tienes estrictamente PROHIBIDO saludar (ej. decir 'Hola', 'Buenos días', 'Buenas tardes'), "
+                "dar la bienvenida o hacer presentaciones personales (ej. decir 'Soy Juan Pablo'). "
+                "Inicia tu respuesta directamente con la presentación de la motocicleta."
+            )
+            return assembled
+        except Exception as e:
+            logger.exception(f"❌ Error during _assemble_skip_greeting_prompt: {e}")
+            raise e
     
     def _extract_visual_blocks(self, text: str) -> List[str]:
         """Extrae líneas con precios ($), cuotas o imágenes Markdown (v1.3.2)."""
@@ -988,6 +1024,8 @@ REGLAS ESTRICTAS DE USO:
                     logger.exception(f"🚨 [SYNONYM INJECTION] Error crítico recuperando alias del catálogo: {_syn_err}")
 
                 base_instruction = self._get_current_instruction()
+                if skip_greeting:
+                    base_instruction = self._assemble_skip_greeting_prompt(base_instruction)
 
 
                 full_prompt = f"""
