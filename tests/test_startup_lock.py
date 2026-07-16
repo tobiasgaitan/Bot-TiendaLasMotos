@@ -161,11 +161,10 @@ async def test_startup_lifespan_successful_initialization_sets_catalog_ready_tru
 async def test_deferred_init_port_available_before_hydration():
     """
     [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
+    [BOT-BACKEND-BUGFIX-LIFESPAN-DELAY-190]
     Test that the lifespan handler yields IMMEDIATELY (allowing Uvicorn to bind port 8080)
-    without waiting for the background initialization to complete.
-    
-    WHY: This is the core regression test for the container crash. The old code blocked
-    during module import. The new code must yield the lifespan context immediately.
+    and that the application of FastAPI is completely responsive on /health returning 'starting'
+    immediately while the heavy initialization sleeps in the background.
     """
     import time
     import app.main as main_module
@@ -177,33 +176,45 @@ async def test_deferred_init_port_available_before_hydration():
          patch("app.main.config_service") as mock_config_service, \
          patch("app.main.FinanceConfigLoader") as mock_finance_config_loader, \
          patch("app.main.storage_service") as mock_storage_service, \
+         patch.object(catalog_service, "get_all_items", return_value=[MagicMock()] * 60), \
          patch.object(main_module, "TEST_MODE", False):
          
         mock_settings.db_timeout = 5
         mock_settings.gcp_project_id = "test-project"
-        mock_settings.min_catalog_items = 0
+        mock_settings.min_catalog_items = 60
         mock_creds.return_value = MagicMock()
         
-        # Simulate slow initialization (2 seconds)
+        # Keep slow_init to simulate network hydration time
         def slow_init(*args, **kwargs):
             import time
-            time.sleep(2)
+            time.sleep(0.5)
         mock_config_service.initialize.side_effect = slow_init
         
         start_time = time.monotonic()
-        async with lifespan(app):
+        with TestClient(app) as client:
             elapsed = time.monotonic() - start_time
-            # The lifespan must yield in less than 0.5s (no blocking I/O)
-            # The old code would block for 2+ seconds here.
+            # The lifespan must yield and allow Uvicorn/TestClient to bind in less than 0.5s
             assert elapsed < 0.5, (
                 f"Lifespan took {elapsed:.2f}s to yield — port 8080 would be blocked. "
                 f"Expected < 0.5s for immediate yield."
             )
-            # catalog_ready must still be False (background task hasn't finished)
-            assert app.state.catalog_ready is False
             
-            # Clean up: wait for background task to complete
-            await app.state.startup_task
+            # Verify the application is fully responsive immediately
+            response = client.get("/health")
+            assert response.status_code == 200
+            assert response.json()["status"] == "starting"
+            assert response.json()["catalog_ready"] is False
+            
+            # Clean up/Wait for the background task to complete by polling catalog_ready
+            start_wait = time.monotonic()
+            while not app.state.catalog_ready and time.monotonic() - start_wait < 5:
+                await asyncio.sleep(0.1)
+                
+            # After background task completes, it should be healthy
+            response = client.get("/health")
+            assert response.status_code == 200
+            assert response.json()["status"] == "healthy"
+            assert response.json()["catalog_ready"] is True
 
 
 def test_main_module_import_time():
