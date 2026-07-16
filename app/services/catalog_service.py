@@ -421,7 +421,7 @@ class CatalogService:
                 combined_tokens.append(t1 + t2)
                 
         # Whitelist purely numeric tokens of interest to avoid random conversation digits interfering
-        numeric_whitelist = {"500", "125", "150", "160", "200"}
+        numeric_whitelist = {"500", "125", "150", "160", "200", "100"}
         result_tokens = []
         for t in filtered_tokens:
             if t.isdigit():
@@ -700,9 +700,9 @@ class CatalogService:
         if not query_tokens:
             query_tokens = ["moto"]
 
-        # Extracción de tokens alfabéticos core (longitud >= 2 y no puramente numéricos, excepto si están en el whitelist de líneas activas)
-        numeric_whitelist = {"500", "125", "150", "160", "200"}
-        query_alphabetic_tokens = [t for t in query_tokens if len(t) >= 2 and (not t.isdigit() or t in numeric_whitelist)]
+        # Extracción de tokens alfabéticos core (longitud >= 2 y no puramente numéricos)
+        # Permite realizar el control perimetral estricto exigido por la directiva de negocio
+        query_alphabetic_tokens = [t for t in query_tokens if len(t) >= 2 and not t.isdigit()]
 
         # --- FILTRO DE STOPWORDS COMERCIALES GENÉRICAS (BOT-BACKEND-HOTFIX-GENERIC-STOPWORD-STRIPPING-167) ---
         # Tokens residuales como "motos", "moto", "motocicleta" son ruido comercial genérico.
