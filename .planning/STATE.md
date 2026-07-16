@@ -1,14 +1,15 @@
-Versión: v10.45.11 | Hito: First Contact Alignment (BOT-BRAIN-BUGFIX-FIRST-CONTACT-ALIGNMENT-191) | Coherence Score: 1.000
+Versión: v10.45.12 | Hito: Health Port Binding & Catalog Decoupling (BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192) | Coherence Score: 1.000
 
 ### Current Position
 **Phase:** Milestone 2 - Phase 1: Similitud Multimodal e Integración
 **Status:** In Progress
-**Last activity:** 2026-07-16 - Completed Quick Task 191 (First Contact Alignment & Catalog Guardrail)
+**Last activity:** 2026-07-16 - Completed Quick Task 192 (Health Port Binding & Catalog Decoupling)
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 192 | Health Port Binding & Catalog Decoupling (Isolate health check and decouple minimum size guardrail from main.py startup to prevent container binding crashes) [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192] | 2026-07-16 | cef34a8 | 192-health-port-binding |
 | 191 | First Contact Alignment & Catalog Guardrail (Prevent bypass of greeting on first contact/reset, robusten catalog check with dynamic bypass for tests) [BOT-BRAIN-BUGFIX-FIRST-CONTACT-ALIGNMENT-191] | 2026-07-16 | 0fb656e | 191-first-contact-alignment |
 | 190 | Lifespan Delay — Port Binding Race Fix (Inject 2s async sleep at start of deferred initialization, verify immediately responsive /health status) [BOT-BACKEND-BUGFIX-LIFESPAN-DELAY-190] | 2026-07-16 | 7c6da7f | 190-lifespan-delay |
 | 189 | Deferred Imports — Cold-Start Cloud Run Fix (Move module-level imports of heavy external SDKs to lazy proxies, allowing instant port binding < 1s) [BOT-BACKEND-BUGFIX-DEFERRED-IMPORTS-189] | 2026-07-16 | 5c982ab | 189-deferred-imports |
