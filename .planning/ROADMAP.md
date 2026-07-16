@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.45.9)
+## Tasks Completadas (v10.45.10)
+- [x] Inyectar un retardo asíncrono no bloqueante estricto de 2 segundos (await asyncio.sleep(2)) al inicio absoluto de '_run_deferred_initialization' en app/main.py y actualizar el caso de prueba 'test_deferred_init_port_available_before_hydration' para verificar la responsividad inmediata del puerto 8080 en '/health' [BOT-BACKEND-BUGFIX-LIFESPAN-DELAY-190].
 - [x] Eliminar el bloque de inicialización síncrona a nivel de módulo en app/main.py que bloqueaba Uvicorn antes de abrir el puerto 8080 en Cloud Run. Mover toda la inicialización pesada (Firestore, Secret Manager, ConfigLoader, CatalogService) a un asyncio.create_task() background lanzado desde el lifespan handler. Health endpoint con status degradado "starting"/"healthy" [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188].
 - [x] Refactorizar la validación perimetral alfabética en CatalogService para aplicar normalización fonética antes de SequenceMatcher en tokens cortos (<= 5 caracteres), agregar whitelist de tokens numéricos (500, 125, 150, 160, 200, 100), y forzar síncronamente el skip_greeting y actualizar moto_interest en ai_brain.py ante coincidencia en caliente del catálogo [BOT-BACKEND-BUGFIX-CATALOG-PERIMETER-187].
 - [x] Refactorizar el método `_assemble_skip_greeting_prompt` en `app/services/ai_brain.py` para evitar que la ausencia de `moto_interest` en `prospect_data` genere un error de referencia (falso negativo) cuando el usuario transiciona de una consulta de categoría a un modelo específico, permitiendo la búsqueda prioritaria en el catálogo [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-186].
