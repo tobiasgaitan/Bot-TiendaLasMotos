@@ -420,7 +420,17 @@ class CatalogService:
             if t1.isalpha() and t2.isdigit():
                 combined_tokens.append(t1 + t2)
                 
-        return filtered_tokens + combined_tokens
+        # Whitelist purely numeric tokens of interest to avoid random conversation digits interfering
+        numeric_whitelist = {"500", "125", "150", "160", "200"}
+        result_tokens = []
+        for t in filtered_tokens:
+            if t.isdigit():
+                if t in numeric_whitelist:
+                    result_tokens.append(t)
+            else:
+                result_tokens.append(t)
+                
+        return result_tokens + combined_tokens
 
     def _phonetic_normalize(self, token: str) -> str:
         """
@@ -481,7 +491,7 @@ class CatalogService:
             target_tokens.update(self._tokenize(item.get("name", "")))
             
         # Incluir marcas comunes y categorías
-        brands = {"tvs", "victory", "bajaj", "hero", "yamaha", "honda", "suzuki", "akt", "apache", "boxer", "raider", "neo", "sport"}
+        brands = {"tvs", "victory", "bajaj", "hero", "yamaha", "honda", "suzuki", "akt", "apache", "boxer", "raider", "neo", "sport", "ninja"}
         target_tokens.update(brands)
         
         # Stop words que no debemos reemplazar bajo ninguna circunstancia
@@ -690,9 +700,9 @@ class CatalogService:
         if not query_tokens:
             query_tokens = ["moto"]
 
-        # Extracción de tokens alfabéticos core (longitud >= 2 y no puramente numéricos)
-        # Permite realizar el control perimetral estricto exigido por la directiva de negocio
-        query_alphabetic_tokens = [t for t in query_tokens if len(t) >= 2 and not t.isdigit()]
+        # Extracción de tokens alfabéticos core (longitud >= 2 y no puramente numéricos, excepto si están en el whitelist de líneas activas)
+        numeric_whitelist = {"500", "125", "150", "160", "200"}
+        query_alphabetic_tokens = [t for t in query_tokens if len(t) >= 2 and (not t.isdigit() or t in numeric_whitelist)]
 
         # --- FILTRO DE STOPWORDS COMERCIALES GENÉRICAS (BOT-BACKEND-HOTFIX-GENERIC-STOPWORD-STRIPPING-167) ---
         # Tokens residuales como "motos", "moto", "motocicleta" son ruido comercial genérico.
@@ -756,15 +766,28 @@ class CatalogService:
                         has_alphabetic_match = True
                         break
                     # Fuzzy match con tokens de nombre, tags o tokens de búsqueda con ratio >= 0.8
-                    if any(difflib.SequenceMatcher(None, t, nt).ratio() >= 0.8 for nt in name_tokens):
-                        has_alphabetic_match = True
-                        break
-                    if any(difflib.SequenceMatcher(None, t, st).ratio() >= 0.8 for st in effective_tags):
-                        has_alphabetic_match = True
-                        break
-                    if any(difflib.SequenceMatcher(None, t, it).ratio() >= 0.8 for it in item_tokens):
-                        has_alphabetic_match = True
-                        break
+                    # Si el token es corto (<= 5 caracteres), aplicamos normalización fonética antes de calcular el ratio
+                    if len(t) <= 5:
+                        t_norm = self._phonetic_normalize(t)
+                        if any(difflib.SequenceMatcher(None, t_norm, self._phonetic_normalize(nt)).ratio() >= 0.8 for nt in name_tokens):
+                            has_alphabetic_match = True
+                            break
+                        if any(difflib.SequenceMatcher(None, t_norm, self._phonetic_normalize(st)).ratio() >= 0.8 for st in effective_tags):
+                            has_alphabetic_match = True
+                            break
+                        if any(difflib.SequenceMatcher(None, t_norm, self._phonetic_normalize(it)).ratio() >= 0.8 for it in item_tokens):
+                            has_alphabetic_match = True
+                            break
+                    else:
+                        if any(difflib.SequenceMatcher(None, t, nt).ratio() >= 0.8 for nt in name_tokens):
+                            has_alphabetic_match = True
+                            break
+                        if any(difflib.SequenceMatcher(None, t, st).ratio() >= 0.8 for st in effective_tags):
+                            has_alphabetic_match = True
+                            break
+                        if any(difflib.SequenceMatcher(None, t, it).ratio() >= 0.8 for it in item_tokens):
+                            has_alphabetic_match = True
+                            break
 
             # Si no hay match alfabético cuando la consulta lo exige, se fuerza el score a 0 y se omite
             if not has_alphabetic_match:
@@ -773,7 +796,7 @@ class CatalogService:
             # Detect matches in different areas for the adaptor
             # --- IDENTITY DETECTION (v9.8.1) ---
             # Brand exclusion list to focus on model identity
-            brands = {"tvs", "victory", "bajaj", "hero", "yamaha", "honda", "suzuki", "akt", "apache"}
+            brands = {"tvs", "victory", "bajaj", "hero", "yamaha", "honda", "suzuki", "akt", "apache", "ninja"}
             # Core tokens: Not a brand, length >= 2, and not purely digits
             core_name_tokens = [t for t in name_tokens if t not in brands and len(t) >= 2 and not t.isdigit()]
             
@@ -901,15 +924,28 @@ class CatalogService:
                             has_alphabetic_match = True
                             break
                         # Fuzzy match con tokens de nombre, tags o tokens de búsqueda con ratio >= 0.8
-                        if any(difflib.SequenceMatcher(None, t, nt).ratio() >= 0.8 for nt in name_tokens):
-                            has_alphabetic_match = True
-                            break
-                        if any(difflib.SequenceMatcher(None, t, st).ratio() >= 0.8 for st in effective_tags):
-                            has_alphabetic_match = True
-                            break
-                        if any(difflib.SequenceMatcher(None, t, it).ratio() >= 0.8 for it in item_tokens):
-                            has_alphabetic_match = True
-                            break
+                        # Si el token es corto (<= 5 caracteres), aplicamos normalización fonética antes de calcular el ratio
+                        if len(t) <= 5:
+                            t_norm = self._phonetic_normalize(t)
+                            if any(difflib.SequenceMatcher(None, t_norm, self._phonetic_normalize(nt)).ratio() >= 0.8 for nt in name_tokens):
+                                has_alphabetic_match = True
+                                break
+                            if any(difflib.SequenceMatcher(None, t_norm, self._phonetic_normalize(st)).ratio() >= 0.8 for st in effective_tags):
+                                has_alphabetic_match = True
+                                break
+                            if any(difflib.SequenceMatcher(None, t_norm, self._phonetic_normalize(it)).ratio() >= 0.8 for it in item_tokens):
+                                has_alphabetic_match = True
+                                break
+                        else:
+                            if any(difflib.SequenceMatcher(None, t, nt).ratio() >= 0.8 for nt in name_tokens):
+                                has_alphabetic_match = True
+                                break
+                            if any(difflib.SequenceMatcher(None, t, st).ratio() >= 0.8 for st in effective_tags):
+                                has_alphabetic_match = True
+                                break
+                            if any(difflib.SequenceMatcher(None, t, it).ratio() >= 0.8 for it in item_tokens):
+                                has_alphabetic_match = True
+                                break
                             
                 if not has_alphabetic_match:
                     continue
