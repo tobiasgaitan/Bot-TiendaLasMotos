@@ -1,11 +1,10 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.45.8)
-Versión: v10.45.8 (Router Greeting Alignment)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.45.10)
+Versión: v10.45.10 (Lifespan Delay — Port Binding Race Fix)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Modificar quirúrgicamente el motor de prompts en `app/services/ai_brain.py` para implementar **Runtime Prompt Assembly** de saludos. Si `skip_greeting` es True, se suprime/reescribe cualquier instrucción conflictiva del PASO 1 (Enganche) o de presentación personal, y se inyecta una regla inquebrantable para comenzar directamente presentando la motocicleta, sin saludos. Cierre de ticket [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-185].
-- Hito anterior: Implementación del adaptador adaptativo de precios para Brilla de Gases, logrando la paridad de centavos para KYMCO Agility Fusion ($550.469) tanto con precio comercial como de catálogo, y purga total de la deuda técnica de Crediorbe en financial_service.py. Cierre de ticket [BOT-BACKEND-FINANCIAL-CASCADING-EXACT-PARITY-184].
-- Hito anterior: Implementación de la deduplicación FIFO estructurada en MessageBuffer y bypass condicional de sobrecostos de trámites en ai_brain.py, logrando paridad absoluta en Neo NX ($408.487) y Raider ($466.353) bajo ticket [BOT-BACKEND-BUFFER-IDEMPOTENCY-CLEANUP-179].
-- Hito anterior: Purga completa de la lógica dura legada de CrediOrbe en el módulo core financiero, dinamización del 100% de la cascada de costos en Firestore y corrección del fallback topológico del cilindraje ("cc") para asegurar paridad absoluta en la simulación del Ceronte Tricargo 300 bajo el ticket [BOT-BACKEND-FINANCIAL-PURGE-175].
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 261/261 Tests PASSED)
+Último Hito: Introducir de forma quirúrgica un retardo asíncrono no bloqueante estricto de 2 segundos (`await asyncio.sleep(2)`) al INICIO absoluto de la función `_run_deferred_initialization` en `app/main.py`. Esto garantiza de manera determinista que el hook de lifespan de FastAPI complete su yield inmediatamente, permitiendo que Uvicorn tome el control total del hilo principal, abra y enlace de forma síncrona el puerto 8080 ante la sonda de GCP, antes de que el background task despierte e inicialice las conexiones de red de Firestore. Cierre de ticket [BOT-BACKEND-BUGFIX-LIFESPAN-DELAY-190].
+- Hito anterior: Move module-level imports of heavy external SDKs to lazy proxies, allowing instant port binding < 1s. Cierre de ticket [BOT-BACKEND-BUGFIX-DEFERRED-IMPORTS-189].
+- Hito anterior: Eliminar el bloque de inicialización síncrona a nivel de módulo en app/main.py que bloqueaba Uvicorn antes de abrir el puerto 8080 en Cloud Run. Mover toda la inicialización pesada (Firestore, Secret Manager, ConfigLoader, CatalogService) a un asyncio.create_task() background lanzado desde el lifespan handler. Health endpoint con status degradado "starting"/"healthy". Cierre de ticket [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188].
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 266/266 Tests PASSED)
 
 
 1. Contexto y Persona (Juan Pablo)
