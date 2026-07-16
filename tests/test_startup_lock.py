@@ -110,8 +110,9 @@ async def test_startup_lifespan_timeout_keeps_catalog_ready_false():
 async def test_startup_lifespan_catalog_size_check_fails_in_production():
     """
     [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
-    Test that the background initialization sets catalog_ready to False if the catalog has
-    fewer items than min_catalog_items when NOT in TEST_MODE.
+    [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192]
+    Test that the background initialization sets catalog_ready to True even if the catalog has
+    fewer items than min_catalog_items when NOT in TEST_MODE, because size validation is decoupled.
     """
     with patch("app.main.settings") as mock_settings, \
          patch("app.main.get_firebase_credentials_object") as mock_creds, \
@@ -129,7 +130,7 @@ async def test_startup_lifespan_catalog_size_check_fails_in_production():
         with patch.dict(os.environ, {"TEST_MODE": "false"}):
             async with lifespan(app):
                 await app.state.startup_task
-                assert app.state.catalog_ready is False
+                assert app.state.catalog_ready is True
 
 
 @pytest.mark.asyncio
@@ -211,6 +212,62 @@ async def test_deferred_init_port_available_before_hydration():
                 await asyncio.sleep(0.1)
                 
             # After background task completes, it should be healthy
+            response = client.get("/health")
+            assert response.status_code == 200
+            assert response.json()["status"] == "healthy"
+            assert response.json()["catalog_ready"] is True
+
+
+@pytest.mark.asyncio
+async def test_health_returns_starting_immediately_when_catalog_empty_before_hydration():
+    """
+    [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192]
+    Test that GET /health returns HTTP 200 OK and "status": "starting"
+    immediately when the catalog has 0 items before background hydration is complete.
+    """
+    import time
+    import app.main as main_module
+    
+    with patch("app.main.settings") as mock_settings, \
+         patch("app.main.get_firebase_credentials_object") as mock_creds, \
+         patch("app.main.firestore") as mock_firestore, \
+         patch("app.main.ConfigLoader") as mock_config_loader, \
+         patch("app.main.config_service") as mock_config_service, \
+         patch("app.main.FinanceConfigLoader") as mock_finance_config_loader, \
+         patch("app.main.storage_service") as mock_storage_service, \
+         patch.object(catalog_service, "get_all_items", return_value=[]), \
+         patch.object(main_module, "TEST_MODE", False):
+         
+        mock_settings.db_timeout = 5
+        mock_settings.gcp_project_id = "test-project"
+        mock_settings.min_catalog_items = 60
+        mock_creds.return_value = MagicMock()
+        
+        # Keep slow_init to simulate network hydration time
+        def slow_init(*args, **kwargs):
+            import time
+            time.sleep(0.5)
+        mock_config_service.initialize.side_effect = slow_init
+        
+        start_time = time.monotonic()
+        with TestClient(app) as client:
+            elapsed = time.monotonic() - start_time
+            # Ensure lifespan yields immediately
+            assert elapsed < 0.5
+            
+            # Verify the application is fully responsive immediately on /health
+            # returning HTTP 200 and "status": "starting" even when catalog has 0 items.
+            response = client.get("/health")
+            assert response.status_code == 200
+            assert response.json()["status"] == "starting"
+            assert response.json()["catalog_ready"] is False
+            
+            # Clean up/Wait for the background task to complete by polling catalog_ready
+            start_wait = time.monotonic()
+            while not app.state.catalog_ready and time.monotonic() - start_wait < 5:
+                await asyncio.sleep(0.1)
+                
+            # After background task completes, it should be healthy (even with 0 items since size check is decoupled)
             response = client.get("/health")
             assert response.status_code == 200
             assert response.json()["status"] == "healthy"
