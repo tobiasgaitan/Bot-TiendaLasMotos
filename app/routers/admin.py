@@ -11,9 +11,33 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Header, Body
 from pydantic import BaseModel, ConfigDict
-from google.cloud import firestore
 
 from app.core.config import settings
+
+# --- LAZY PROXY FOR TEST MOCKING ---
+class LazyProxy:
+    def __init__(self, import_path: str, name: str):
+        self._import_path = import_path
+        self._name = name
+        self._instance = None
+
+    def _get_instance(self):
+        if self._instance is None:
+            import importlib
+            module = importlib.import_module(self._import_path)
+            self._instance = getattr(module, self._name)
+        return self._instance
+
+    def __getattr__(self, name):
+        return getattr(self._get_instance(), name)
+
+    def __call__(self, *args, **kwargs):
+        return self._get_instance()(*args, **kwargs)
+
+    def __bool__(self):
+        return bool(self._get_instance())
+
+firestore = LazyProxy("google.cloud", "firestore")
 
 logger = logging.getLogger(__name__)
 

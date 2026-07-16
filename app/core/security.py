@@ -8,8 +8,6 @@ import json
 import logging
 from typing import Dict, Any
 
-from google.cloud import secretmanager
-from google.oauth2 import service_account
 
 from app.core.config import settings
 
@@ -36,6 +34,7 @@ def get_firebase_credentials() -> Dict[str, Any]:
     """
     try:
         # Initialize Secret Manager client
+        from google.cloud import secretmanager
         client = secretmanager.SecretManagerServiceClient()
         
         # Build the secret version path (using 'latest' version)
@@ -59,13 +58,14 @@ def get_firebase_credentials() -> Dict[str, Any]:
         raise
 
 
-def get_firebase_credentials_object() -> service_account.Credentials:
+def get_firebase_credentials_object() -> Any:
     """
     Get Firebase credentials as a Google Auth Credentials object.
     
     Returns:
         service_account.Credentials object for use with GCP clients
     """
+    from google.oauth2 import service_account
     credentials_dict = get_firebase_credentials()
     
     credentials = service_account.Credentials.from_service_account_info(

@@ -17,32 +17,76 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request, Query, HTTPException, BackgroundTasks
 from fastapi.responses import PlainTextResponse
-from google.cloud import firestore
-from google.api_core import exceptions as gcp_exceptions
 
 from app.core.config import settings
-from app.core.config_loader import ConfigLoader
-from app.core.security import get_firebase_credentials_object
 from app.core.exceptions import HabeasDataBypassInterrupt
-
-from app.services.judge_service import judge_service
-from app.services.agentic_loop_service import AgenticOrchestrator as _AgenticOrchestrator
-_router_orchestrator = _AgenticOrchestrator()
-from app.services.financial_service import financial_service
-from app.services.ai_brain import CerebroIA
-from app.services.vision_service import VisionService
-from app.services.audio_service import AudioService
-from app.services.catalog_service import catalog_service
-from app.services.storage_service import storage_service # Singleton
-from app.services.message_buffer import MessageBuffer # Local instantiation
-
-# --- MEMORY SERVICE (MODULE IMPORT FOR SINGLETON ACCESS) ---
-import app.services.memory_service as memory_service_module
-from app.services.config_service import config_service # [SSOT] Unified Config
-# Note: Access via memory_service_module.memory_service to get the updated instance
 
 # --- LANGFUSE OBSERVABILITY ---
 from app.utils.observability import observe, langfuse_context
+
+# --- LAZY PROXIES FOR HEAVY IMPORTS ---
+class LazyProxy:
+    def __init__(self, import_path: str, name: str):
+        self._import_path = import_path
+        self._name = name
+        self._instance = None
+
+    def _get_instance(self):
+        if self._instance is None:
+            import importlib
+            module = importlib.import_module(self._import_path)
+            self._instance = getattr(module, self._name)
+        return self._instance
+
+    def __getattr__(self, name):
+        return getattr(self._get_instance(), name)
+
+    def __call__(self, *args, **kwargs):
+        return self._get_instance()(*args, **kwargs)
+
+    def __len__(self):
+        return len(self._get_instance())
+
+    def __bool__(self):
+        return bool(self._get_instance())
+
+class LazyModuleProxy:
+    def __init__(self, import_path: str):
+        self._import_path = import_path
+        self._module = None
+
+    def _get_module(self):
+        if self._module is None:
+            import importlib
+            self._module = importlib.import_module(self._import_path)
+        return self._module
+
+    def __getattr__(self, name):
+        return getattr(self._get_module(), name)
+
+catalog_service = LazyProxy("app.services.catalog_service", "catalog_service")
+storage_service = LazyProxy("app.services.storage_service", "storage_service")
+config_service = LazyProxy("app.services.config_service", "config_service")
+financial_service = LazyProxy("app.services.financial_service", "financial_service")
+judge_service = LazyProxy("app.services.judge_service", "judge_service")
+memory_service_module = LazyModuleProxy("app.services.memory_service")
+gcp_exceptions = LazyModuleProxy("google.api_core.exceptions")
+
+# Class Lazy Proxies
+CerebroIA = LazyProxy("app.services.ai_brain", "CerebroIA")
+VisionService = LazyProxy("app.services.vision_service", "VisionService")
+AudioService = LazyProxy("app.services.audio_service", "AudioService")
+MessageBuffer = LazyProxy("app.services.message_buffer", "MessageBuffer")
+
+# Lazy load router orchestrator
+_router_orchestrator = None
+
+def _get_router_orchestrator():
+    global _router_orchestrator
+    if _router_orchestrator is None:
+        from app.services.agentic_loop_service import AgenticOrchestrator
+        _router_orchestrator = AgenticOrchestrator()
+    return _router_orchestrator
 
 # Unused class kept for backward compatibility with tests/test_trace_propagation.py
 class _LangfuseContextShim:
@@ -1245,7 +1289,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                     # run_checker determina semánticamente si la respuesta es FAQ pura
                     # para propagar el flag is_faq_bypass al Juez y evitar falsos positivos
                     # en C1_VISUAL_LOCK ("soporte"→"Sport") y C9_CITY_MISSING ("requisitos"→crédito).
-                    _pcc_result = _router_orchestrator.run_checker(
+                    _pcc_result = _get_router_orchestrator().run_checker(
                         response_text or "",
                         is_catalog_query=any(kw in message_body.lower() for kw in ["ficha", "tecnica", "especificaciones"]),
                         prospect_data=prospect_data,

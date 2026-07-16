@@ -204,3 +204,22 @@ async def test_deferred_init_port_available_before_hydration():
             
             # Clean up: wait for background task to complete
             await app.state.startup_task
+
+
+def test_main_module_import_time():
+    """
+    Test that app.main imports in less than 1.0 second.
+    """
+    import sys
+    import time
+    
+    # If app.main is already imported, remove it from sys.modules to force a full re-import
+    if "app.main" in sys.modules:
+        del sys.modules["app.main"]
+        
+    t0 = time.time()
+    import app.main
+    elapsed = time.time() - t0
+    
+    print(f"\nImport time: {elapsed:.4f}s")
+    assert elapsed < 1.0, f"app.main import took too long: {elapsed:.4f}s"

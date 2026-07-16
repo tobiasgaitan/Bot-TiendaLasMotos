@@ -18,16 +18,40 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
-from google.cloud import firestore
 
 from app.core.config import settings
-from app.core.config_loader import ConfigLoader
-from app.core.security import get_firebase_credentials_object
-from app.services.config_service import config_service
-from app.services.config_loader import ConfigLoader as FinanceConfigLoader
-from app.services.catalog_service import catalog_service
-from app.services.storage_service import storage_service
-from app.services.memory_service import init_memory_service
+
+# --- LAZY PROXIES FOR TEST MOCKING COMPATIBILITY ---
+class LazyProxy:
+    def __init__(self, import_path: str, name: str):
+        self._import_path = import_path
+        self._name = name
+        self._instance = None
+
+    def _get_instance(self):
+        if self._instance is None:
+            import importlib
+            module = importlib.import_module(self._import_path)
+            self._instance = getattr(module, self._name)
+        return self._instance
+
+    def __getattr__(self, name):
+        return getattr(self._get_instance(), name)
+
+    def __call__(self, *args, **kwargs):
+        return self._get_instance()(*args, **kwargs)
+
+    def __bool__(self):
+        return bool(self._get_instance())
+
+firestore = LazyProxy("google.cloud", "firestore")
+get_firebase_credentials_object = LazyProxy("app.core.security", "get_firebase_credentials_object")
+ConfigLoader = LazyProxy("app.core.config_loader", "ConfigLoader")
+config_service = LazyProxy("app.services.config_service", "config_service")
+FinanceConfigLoader = LazyProxy("app.services.config_loader", "ConfigLoader")
+storage_service = LazyProxy("app.services.storage_service", "storage_service")
+catalog_service = LazyProxy("app.services.catalog_service", "catalog_service")
+init_memory_service = LazyProxy("app.services.memory_service", "init_memory_service")
 
 # Configure logging
 logging.basicConfig(
@@ -369,12 +393,14 @@ async def health_check():
 
     catalog_items_count = 0
     try:
+        from app.services.catalog_service import catalog_service
         catalog_items_count = len(catalog_service.get_all_items())
     except Exception as e:
         logger.exception("❌ Error retrieving catalog items in health check: %s", e)
 
     storage_bucket_name = None
     try:
+        from app.services.storage_service import storage_service
         storage_bucket_name = storage_service.get_bucket_name()
     except Exception as e:
         logger.exception("❌ Error retrieving storage bucket name in health check: %s", e)
