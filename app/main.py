@@ -337,17 +337,26 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 
 @app.get("/health")
-async def health_check():
+def health_check():
     """
     Health check endpoint for Cloud Run.
     
     [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
+    [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192]
     WHY: Always returns HTTP 200 to satisfy the TCP startup probe.
-    Reports "starting" while catalog hydration is in progress,
-    and "healthy" once catalog_ready is True.
+    If the catalog is not yet fully hydrated, it returns 'starting' with a progress detail
+    immediately and synchronously, avoiding any external service or storage calls.
+    Once ready, it reports 'healthy' with the version and status info.
     """
     catalog_ready = getattr(app.state, "catalog_ready", False)
-    status = "healthy" if catalog_ready else "starting"
+    if not catalog_ready:
+        return {
+            "status": "starting",
+            "detail": "Catalog initialization in progress",
+            "catalog_ready": False,
+            "service": "Auteco Las Motos Backend",
+            "v6_config": None
+        }
 
     # Access config_loader from app state safely without raising AttributeError
     config_loader = getattr(app.state, "config_loader", None)
@@ -363,10 +372,7 @@ async def health_check():
         except Exception as e:
             logger.exception("❌ Error retrieving v6_config from config_loader in health check: %s", e)
     else:
-        if not catalog_ready:
-            logger.info("ℹ️ app.state.config_loader not yet initialized (background init in progress)")
-        else:
-            logger.warning("⚠️ app.state.config_loader is not initialized yet in health_check")
+        logger.info("ℹ️ app.state.config_loader not yet initialized (background init in progress)")
 
     catalog_items_count = 0
     try:
@@ -383,7 +389,7 @@ async def health_check():
         logger.exception("❌ Error retrieving storage bucket name in health check: %s", e)
 
     return {
-        "status": status,
+        "status": "healthy",
         "service": "Auteco Las Motos Backend",
         "version": "6.0.0",
         "catalog_items": catalog_items_count,

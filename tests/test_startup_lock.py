@@ -291,3 +291,32 @@ def test_main_module_import_time():
     
     print(f"\nImport time: {elapsed:.4f}s")
     assert elapsed < 1.0, f"app.main import took too long: {elapsed:.4f}s"
+
+
+def test_health_endpoint_never_returns_503_during_hydration():
+    """
+    [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192]
+    Test that the health endpoint never returns HTTP 503 during hydration
+    even if the in-memory state is dehydrated (0 items).
+    """
+    had_catalog_ready = hasattr(app.state, "catalog_ready")
+    original_catalog_ready = getattr(app.state, "catalog_ready", None)
+    
+    # Force catalog_ready to False (simulating early hydration state)
+    app.state.catalog_ready = False
+    
+    try:
+        with patch.object(catalog_service, "get_all_items", return_value=[]):
+            client = TestClient(app)
+            response = client.get("/health")
+            
+            assert response.status_code == 200
+            json_data = response.json()
+            assert json_data["status"] == "starting"
+            assert json_data["detail"] == "Catalog initialization in progress"
+            assert json_data["catalog_ready"] is False
+    finally:
+        if had_catalog_ready:
+            app.state.catalog_ready = original_catalog_ready
+        else:
+            delattr(app.state, "catalog_ready")
