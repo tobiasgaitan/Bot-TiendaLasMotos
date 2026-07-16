@@ -1,11 +1,11 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.42.0)
-Versión: v10.42.0 (Router Inference Guard)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.45.6)
+Versión: v10.45.6 (Router Greeting Alignment)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Implementación del adaptador adaptativo de precios para Brilla de Gases, logrando la paridad de centavos para KYMCO Agility Fusion ($550.469) tanto con precio comercial como de catálogo, y purga total de la deuda técnica de Crediorbe en financial_service.py. Cierre de ticket [BOT-BACKEND-FINANCIAL-CASCADING-EXACT-PARITY-184].
+Último Hito: Modificar quirúrgicamente el motor de prompts en `app/services/ai_brain.py` para implementar **Runtime Prompt Assembly** de saludos. Si `skip_greeting` es True, se suprime/reescribe cualquier instrucción conflictiva del PASO 1 (Enganche) o de presentación personal, y se inyecta una regla inquebrantable para comenzar directamente presentando la motocicleta, sin saludos. Cierre de ticket [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-185].
+- Hito anterior: Implementación del adaptador adaptativo de precios para Brilla de Gases, logrando la paridad de centavos para KYMCO Agility Fusion ($550.469) tanto con precio comercial como de catálogo, y purga total de la deuda técnica de Crediorbe en financial_service.py. Cierre de ticket [BOT-BACKEND-FINANCIAL-CASCADING-EXACT-PARITY-184].
 - Hito anterior: Implementación de la deduplicación FIFO estructurada en MessageBuffer y bypass condicional de sobrecostos de trámites en ai_brain.py, logrando paridad absoluta en Neo NX ($408.487) y Raider ($466.353) bajo ticket [BOT-BACKEND-BUFFER-IDEMPOTENCY-CLEANUP-179].
 - Hito anterior: Purga completa de la lógica dura legada de CrediOrbe en el módulo core financiero, dinamización del 100% de la cascada de costos en Firestore y corrección del fallback topológico del cilindraje ("cc") para asegurar paridad absoluta en la simulación del Ceronte Tricargo 300 bajo el ticket [BOT-BACKEND-FINANCIAL-PURGE-175].
-- Hito anterior: Implementación de un guardrail de inicialización bloqueante en la frontera de inferencia (`_handle_message_background_impl` en `whatsapp.py`) que asegura que `prospect_data` esté plenamente hidratado desde Firestore a través de `get_or_create_prospect` antes del bloque de inferencia. Cierre de ticket [BOT-BACKEND-HOTFIX-ROUTER-INFERENCE-GUARD-174].
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 257/257 Tests PASSED)
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 261/261 Tests PASSED)
 
 
 1. Contexto y Persona (Juan Pablo)
