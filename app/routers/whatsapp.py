@@ -410,26 +410,25 @@ async def webhook_handler(
             if val is True:
                 catalog_ready = True
             
-        if not catalog_ready:
-            catalog_items_count = len(catalog_service.get_all_items())
-            min_items_val = settings.min_catalog_items
-            if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
+        catalog_items_count = len(catalog_service.get_all_items())
+        min_items_val = settings.min_catalog_items
+        if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
+            min_items = 0
+        else:
+            try:
+                min_items = int(min_items_val)
+            except (TypeError, ValueError):
                 min_items = 0
-            else:
-                try:
-                    min_items = int(min_items_val)
-                except (TypeError, ValueError):
-                    min_items = 0
-                
-            if catalog_items_count < min_items:
-                logger.error(
-                    f"❌ [STARTUP-GUARD] Webhook rejected: catalog is not fully loaded "
-                    f"({catalog_items_count}/{min_items} items, catalog_ready={catalog_ready})."
-                )
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"Service Unavailable: Catalog not fully loaded ({catalog_items_count}/{min_items} items)."
-                )
+            
+        if not catalog_ready or catalog_items_count < min_items:
+            logger.error(
+                f"❌ [STARTUP-GUARD] Webhook rejected: catalog is not fully loaded "
+                f"({catalog_items_count}/{min_items} items, catalog_ready={catalog_ready})."
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=f"Service Unavailable: Catalog not fully loaded ({catalog_items_count}/{min_items} items)."
+            )
 
         # --- RAMA 1: Acuses de recibo Meta (sent/delivered/read/failed) ---
         # [ARCH-BULK-META-010] WHY: Meta envía webhooks 'statuses' para confirmar el
@@ -515,26 +514,25 @@ async def task_processor(
             if val is True:
                 catalog_ready = True
             
-        if not catalog_ready:
-            catalog_items_count = len(catalog_service.get_all_items())
-            min_items_val = settings.min_catalog_items
-            if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
+        catalog_items_count = len(catalog_service.get_all_items())
+        min_items_val = settings.min_catalog_items
+        if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
+            min_items = 0
+        else:
+            try:
+                min_items = int(min_items_val)
+            except (TypeError, ValueError):
                 min_items = 0
-            else:
-                try:
-                    min_items = int(min_items_val)
-                except (TypeError, ValueError):
-                    min_items = 0
-                
-            if catalog_items_count < min_items:
-                logger.error(
-                    f"❌ [STARTUP-GUARD] Task processor rejected: catalog is not fully loaded "
-                    f"({catalog_items_count}/{min_items} items, catalog_ready={catalog_ready})."
-                )
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"Service Unavailable: Catalog not fully loaded ({catalog_items_count}/{min_items} items)."
-                )
+            
+        if not catalog_ready or catalog_items_count < min_items:
+            logger.error(
+                f"❌ [STARTUP-GUARD] Task processor rejected: catalog is not fully loaded "
+                f"({catalog_items_count}/{min_items} items, catalog_ready={catalog_ready})."
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=f"Service Unavailable: Catalog not fully loaded ({catalog_items_count}/{min_items} items)."
+            )
 
         if _is_valid_statuses(payload):
             statuses_list = _extract_statuses_list(payload)
