@@ -1,5 +1,5 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.45.6)
-Versión: v10.45.6 (Router Greeting Alignment)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.45.8)
+Versión: v10.45.8 (Router Greeting Alignment)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
 Último Hito: Modificar quirúrgicamente el motor de prompts en `app/services/ai_brain.py` para implementar **Runtime Prompt Assembly** de saludos. Si `skip_greeting` es True, se suprime/reescribe cualquier instrucción conflictiva del PASO 1 (Enganche) o de presentación personal, y se inyecta una regla inquebrantable para comenzar directamente presentando la motocicleta, sin saludos. Cierre de ticket [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-185].
 - Hito anterior: Implementación del adaptador adaptativo de precios para Brilla de Gases, logrando la paridad de centavos para KYMCO Agility Fusion ($550.469) tanto con precio comercial como de catálogo, y purga total de la deuda técnica de Crediorbe en financial_service.py. Cierre de ticket [BOT-BACKEND-FINANCIAL-CASCADING-EXACT-PARITY-184].
