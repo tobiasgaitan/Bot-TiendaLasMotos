@@ -1,11 +1,12 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.45.11)
-Versión: v10.45.11 (First Contact Alignment & Catalog Guardrail Fix)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.45.13)
+Versión: v10.45.13 (Health Port Binding Hotfix)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
-Último Hito: Refactorización quirúrgica de `skip_greeting` en `ai_brain.py` para impedir que la variable sea forzada a `True` si el historial está vacío o la sesión se inició tras un `/reset`. Robustecimiento del guardrail de inicialización del catálogo en `whatsapp.py` validando que la cantidad de ítems cargados sea igual o superior a `settings.min_catalog_items` (60 ítems) con un bypass para entornos de prueba (`is_test_mode`). Cierre de ticket [BOT-BRAIN-BUGFIX-FIRST-CONTACT-ALIGNMENT-191].
+Último Hito: Refactorización aislada y atómica del endpoint '/health' dentro de 'app/main.py' para obligar a que devuelva un código HTTP 200 OK con el JSON {'status': 'starting', 'detail': 'Catalog initialization in progress'} de manera INMEDIATA y síncrona si no está listo, previniendo excepciones de red externa o I/O secundarias durante el arranque de Cloud Run, y agregando test de hidratación unitario [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192].
+- Hito anterior: Refactorización quirúrgica de `skip_greeting` en `ai_brain.py` para impedir que la variable sea forzada a `True` si el historial está vacío o la sesión se inició tras un `/reset`. Robustecimiento del guardrail de inicialización del catálogo en `whatsapp.py` validando que la cantidad de ítems cargados sea igual o superior a `settings.min_catalog_items` (60 ítems) con un bypass para entornos de prueba (`is_test_mode`). Cierre de ticket [BOT-BRAIN-BUGFIX-FIRST-CONTACT-ALIGNMENT-191].
 - Hito anterior: Introducir de forma quirúrgica un retardo asíncrono no bloqueante estricto de 2 segundos (`await asyncio.sleep(2)`) al INICIO absoluto de la función `_run_deferred_initialization` en `app/main.py`. Esto garantiza de manera determinista que el hook de lifespan de FastAPI complete su yield inmediatamente, permitiendo que Uvicorn tome el control total del hilo principal, abra y enlace de forma síncrona el puerto 8080 ante la sonda de GCP, antes de que el background task despierte e inicialice las conexiones de red de Firestore. Cierre de ticket [BOT-BACKEND-BUGFIX-LIFESPAN-DELAY-190].
 - Hito anterior: Move module-level imports of heavy external SDKs to lazy proxies, allowing instant port binding < 1s. Cierre de ticket [BOT-BACKEND-BUGFIX-DEFERRED-IMPORTS-189].
 - Hito anterior: Eliminar el bloque de inicialización síncrona a nivel de módulo en app/main.py que bloqueaba Uvicorn antes de abrir el puerto 8080 en Cloud Run. Mover toda la inicialización pesada (Firestore, Secret Manager, ConfigLoader, CatalogService) a un asyncio.create_task() background lanzado desde el lifespan handler. Health endpoint con status degradado "starting"/"healthy". Cierre de ticket [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188].
-**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 266/266 Tests PASSED)
+**Coherence Score:** 1.000 (Certificado por GSD Framework vía npx agent-cli eval - 269/269 Tests PASSED)
 
 
 1. Contexto y Persona (Juan Pablo)
