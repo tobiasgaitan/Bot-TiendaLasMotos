@@ -968,6 +968,23 @@ REGLAS ESTRICTAS DE USO:
             except ImportError:
                 pass
 
+        # Evaluate if there is legitimate user history to determine if it is the first contact
+        has_no_legitimate_history = True
+        if history:
+            legitimate_messages = []
+            for msg in history:
+                if msg.get("role") == "user":
+                    content = msg.get("content", "").strip()
+                    content_lower = content.lower()
+                    if (content_lower in ["reset", "/reset", "/update", "/refresh_catalog"] or 
+                        content.startswith("/") or 
+                        content.startswith("[System Note:") or 
+                        "sesión ha sido reiniciada" in content_lower):
+                        continue
+                    legitimate_messages.append(msg)
+            if len(legitimate_messages) > 0:
+                has_no_legitimate_history = False
+
         if not is_mock_search and self._catalog_service and texto and hasattr(self._catalog_service, "_items") and isinstance(self._catalog_service._items, list) and self._catalog_service._items:
             try:
                 # Fast local pre-filter to avoid calling search_items on non-catalog queries (e.g. general questions or drift aliases)
@@ -1006,8 +1023,11 @@ REGLAS ESTRICTAS DE USO:
                 if has_potential_match:
                     matches = self._catalog_service.search_items(texto)
                     if matches:
-                        skip_greeting = True
-                        logger.info(f"🔥 [WARM START GREETING BYPASS] Catalog matches found in caliente for '{texto}'. Forcing skip_greeting = True.")
+                        if not has_no_legitimate_history:
+                            skip_greeting = True
+                            logger.info(f"🔥 [WARM START GREETING BYPASS] Catalog matches found in caliente for '{texto}'. Forcing skip_greeting = True.")
+                        else:
+                            logger.info(f"🆕 [FIRST CONTACT SHIELD] Catalog matches found for '{texto}' but history is empty/reset. Retaining skip_greeting = False for mandatory warmth.")
                         if prospect_data is not None:
                             if not prospect_data.get("moto_interest"):
                                 prospect_data["moto_interest"] = matches[0]["name"]
@@ -1566,11 +1586,14 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             if catalog_returned_results:
                                 search_results = f"[SISTEMA: Estos son los resultados para {user_name}. Recomiéndale la mejor opción de forma cálida basándote en su perfil, no solo listes datos.]\n\n" + search_results
                                 # Force skip_greeting and update moto_interest in caliente if not already done
-                                skip_greeting = True
+                                if not has_no_legitimate_history:
+                                    skip_greeting = True
+                                    search_results += "\n\n[SYSTEM: BYPASS GREETING: Un elemento del catálogo ha sido recuperado en caliente. Tienes ESTRICTAMENTE PROHIBIDO saludar, dar la bienvenida, decir 'Hola' o presentarte. Empieza tu respuesta directamente con la información de la motocicleta.]"
+                                else:
+                                    logger.info(f"🆕 [FIRST CONTACT SHIELD] Tool search_catalog returned results but history is empty/reset. Keeping skip_greeting = False for mandatory warmth.")
                                 if prospect_data is not None and matches and not prospect_data.get("moto_interest"):
                                     prospect_data["moto_interest"] = matches[0]["name"]
                                     logger.info(f"💾 Updated prospect_data['moto_interest'] to '{matches[0]['name']}' in tool execution.")
-                                search_results += "\n\n[SYSTEM: BYPASS GREETING: Un elemento del catálogo ha sido recuperado en caliente. Tienes ESTRICTAMENTE PROHIBIDO saludar, dar la bienvenida, decir 'Hola' o presentarte. Empieza tu respuesta directamente con la información de la motocicleta.]"
                             
                             search_results += f"\n\n{funnel_instruction}"
                             response_parts.append(types.Part.from_function_response(
