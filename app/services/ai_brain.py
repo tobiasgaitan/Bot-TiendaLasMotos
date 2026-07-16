@@ -970,7 +970,10 @@ REGLAS ESTRICTAS DE USO:
 
         # Evaluate if there is legitimate user history to determine if it is the first contact
         has_no_legitimate_history = True
-        if history:
+        has_ai_summary = bool(prospect_data and prospect_data.get("ai_summary"))
+        if has_ai_summary:
+            has_no_legitimate_history = False
+        elif history:
             legitimate_messages = []
             for msg in history:
                 if msg.get("role") == "user":
