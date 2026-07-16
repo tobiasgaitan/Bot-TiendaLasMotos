@@ -958,6 +958,20 @@ REGLAS ESTRICTAS DE USO:
         # 1. Deterministic state evaluation
         phase = self._determine_funnel_phase(prospect_data, history)
         
+        # --- HOT SEARCH GREETING BYPASS (BOT-BACKEND-BUGFIX-CATALOG-PERIMETER-187) ---
+        if not skip_greeting and self._catalog_service and texto:
+            try:
+                matches = self._catalog_service.search_items(texto)
+                if matches:
+                    skip_greeting = True
+                    logger.info(f"🔥 [WARM START GREETING BYPASS] Catalog matches found in caliente for '{texto}'. Forcing skip_greeting = True.")
+                    if prospect_data is not None:
+                        if not prospect_data.get("moto_interest"):
+                            prospect_data["moto_interest"] = matches[0]["name"]
+                            logger.info(f"💾 Updated prospect_data['moto_interest'] to '{matches[0]['name']}' in caliente.")
+            except Exception as e:
+                logger.error(f"⚠️ Error in warm start greeting bypass: {e}")
+        
         # --- NEW ADAPTER LAYER: CRM ANCHOR CONTEXT (REF-004) ---
         # Moving the anchor logic from the router to the brain.
         # This keeps the 'texto' (raw user input) clean for the tool interceptor.
@@ -1508,6 +1522,12 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             # Personalización de resultados (v8.3)
                             if catalog_returned_results:
                                 search_results = f"[SISTEMA: Estos son los resultados para {user_name}. Recomiéndale la mejor opción de forma cálida basándote en su perfil, no solo listes datos.]\n\n" + search_results
+                                # Force skip_greeting and update moto_interest in caliente if not already done
+                                skip_greeting = True
+                                if prospect_data is not None and matches and not prospect_data.get("moto_interest"):
+                                    prospect_data["moto_interest"] = matches[0]["name"]
+                                    logger.info(f"💾 Updated prospect_data['moto_interest'] to '{matches[0]['name']}' in tool execution.")
+                                search_results += "\n\n[SYSTEM: BYPASS GREETING: Un elemento del catálogo ha sido recuperado en caliente. Tienes ESTRICTAMENTE PROHIBIDO saludar, dar la bienvenida, decir 'Hola' o presentarte. Empieza tu respuesta directamente con la información de la motocicleta.]"
                             
                             search_results += f"\n\n{funnel_instruction}"
                             response_parts.append(types.Part.from_function_response(
