@@ -2231,7 +2231,7 @@ async def test_perimeter_short_tokens_and_greeting_bypass():
         with patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call_gemini), \
              patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False):
             
-            # Test case: Fresh conversation searching 'benom 14' (skip_greeting starts as False)
+            # Test case: Ongoing conversation searching 'benom 14' (skip_greeting starts as True)
             prospect_data = {
                 "exists": True,
                 "nombre": "Tobias",
@@ -2242,16 +2242,20 @@ async def test_perimeter_short_tokens_and_greeting_bypass():
                 "ai_summary": "Interesado en motos"
             }
             
+            history = [
+                {"role": "user", "content": "Hola"},
+                {"role": "model", "content": "Hola, soy Juan Pablo, asesor de Auteco Las Motos. ¿En qué moto estás interesado?"}
+            ]
+            
             response = await cerebro.pensar_respuesta(
                 texto="benom 14",
                 context="",
                 prospect_data=prospect_data,
-                history=[],
-                skip_greeting=False
+                history=history,
+                skip_greeting=True
             )
             
-            # Check that thinking_respuesta dynamically forced skip_greeting to True,
-            # which we can verify by checking that the prompt contains skip_greeting instructions
+            # Check that the prompt contains skip_greeting instructions
             assert len(calls_made) == 1
             assert "INSTRUCCIÓN INQUEBRANTABLE: skip_greeting es True" in calls_made[0]
             assert prospect_data["moto_interest"] == "Victory Venom 14"

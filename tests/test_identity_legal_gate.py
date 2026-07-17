@@ -748,7 +748,7 @@ class TestIdentityLegalGate(unittest.TestCase):
         
         # Invocar pensar_respuesta con historial vacío e input con coincidencia en catálogo
         import asyncio
-        res = asyncio.run(cerebro.pensar_respuesta("tienen la Ninja 500?", history=[], skip_greeting=True))
+        res = asyncio.run(cerebro.pensar_respuesta("tienen la Ninja 500?", history=[], skip_greeting=False))
         
         # Aserciones rígidas de contenido e identidad
         self.assertIn("Juan Pablo", res, "La respuesta debe incluir el nombre del asesor.")
@@ -759,6 +759,67 @@ class TestIdentityLegalGate(unittest.TestCase):
         prompt_arg = mock_chat.send_message.call_args[0][0]
         self.assertIn("MANDATORY WARMTH", prompt_arg, "El prompt consolidado debe exigir el saludo.")
         self.assertNotIn("STRICT RULE: DO NOT under any circumstance start your response", prompt_arg, "El prompt no debe suprimir el saludo.")
+
+    @patch("app.services.ai_brain.SDK_AVAILABLE", False)
+    def test_consecutive_out_of_catalog_query_suppresses_greeting(self):
+        """
+        GIVEN: Una sesión iniciada con una moto válida y un mensaje continuo sobre una moto inexistente.
+        WHEN: CerebroIA recibe pensar_respuesta con skip_greeting=True.
+        THEN: La respuesta del bot no debe contener la cadena 'Soy Juan Pablo'.
+        """
+        from app.services.ai_brain import CerebroIA
+        cerebro = CerebroIA()
+        cerebro.client = MagicMock()
+        cerebro._model_id = "gemini-2.0-flash"
+        
+        # Mock catalog service (no matches query)
+        mock_catalog = MagicMock()
+        mock_catalog._items = [{"name": "TVS Apache 160", "price": "$9.000.000"}]
+        mock_catalog._tokenize = lambda x: ["tvs", "apache", "160"]
+        mock_catalog._phonetic_normalize = lambda x: x
+        mock_catalog.search_items = MagicMock(return_value=[])  # Empty search results (out of catalog)
+        cerebro._catalog_service = mock_catalog
+        
+        # Mock de creación de chat y respuestas para simular el bucle de herramientas
+        mock_chat = AsyncMock()
+        
+        # Turno 1: Gemini llama a la herramienta search_catalog
+        mock_response_1 = MagicMock()
+        mock_part_1 = MagicMock()
+        mock_part_1.text = None
+        mock_part_1.function_call = MagicMock()
+        mock_part_1.function_call.name = "search_catalog"
+        mock_part_1.function_call.args = {"query": "MotoFantasma 9999"}
+        mock_response_1.candidates = [MagicMock(content=MagicMock(parts=[mock_part_1]))]
+        
+        # Turno 2: Gemini da la respuesta final de texto tras recibir el resultado de la herramienta
+        mock_response_2 = MagicMock()
+        mock_part_2 = MagicMock()
+        mock_part_2.text = "No encontré esa moto en nuestro catálogo, pero tenemos otras opciones."
+        mock_part_2.function_call = None
+        mock_response_2.candidates = [MagicMock(content=MagicMock(parts=[mock_part_2]))]
+        
+        mock_chat.send_message = AsyncMock(side_effect=[mock_response_1, mock_response_2])
+        cerebro.client.aio.chats.create = MagicMock(return_value=mock_chat)
+        
+        # Historial de sesión existente (sesión ya iniciada)
+        history = [
+            {"role": "user", "content": "Hola, tienen la TVS Apache 160?"},
+            {"role": "model", "content": "Hola, soy Juan Pablo, asesor de Auteco Las Motos. ¡Claro que sí!"}
+        ]
+        
+        # Mensaje continuo sobre moto inexistente
+        import asyncio
+        res = asyncio.run(cerebro.pensar_respuesta("tienen la MotoFantasma 9999?", history=history, prospect_data={"exists": True, "moto_interest": "TVS Apache 160"}, skip_greeting=True))
+        
+        # Aserción rígida: la respuesta no debe presentarse de nuevo como 'Soy Juan Pablo'
+        self.assertNotIn("Soy Juan Pablo", res, "El saludo de presentación no debe inyectarse en mensajes consecutivos")
+        
+        # Verificar que skip_greeting fue heredado y se usó en el prompt del primer turno
+        self.assertEqual(mock_chat.send_message.call_count, 2)
+        prompt_arg = mock_chat.send_message.call_args_list[0][0][0]
+        self.assertIn("STRICT RULE: DO NOT under any circumstance start your response", prompt_arg, "El prompt debe suprimir el saludo")
+        self.assertNotIn("MANDATORY WARMTH", prompt_arg, "El prompt no debe contener la calidez obligatoria de primer contacto")
 
 if __name__ == '__main__':
     unittest.main()

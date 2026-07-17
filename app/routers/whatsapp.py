@@ -121,9 +121,8 @@ def _evaluate_skip_greeting(current_history: list, prospect_data: Optional[Dict[
     Evaluates whether to skip the greeting dynamically based on the chat history and last interaction time.
     Ignores system and control messages like reset/commands.
     """
-    is_metadata_only = prospect_data and prospect_data.get("exists", False) and "ai_summary" not in prospect_data
-    is_fully_deleted = not prospect_data or not prospect_data.get("exists", False)
-    newly_created = is_fully_deleted or is_metadata_only
+    exists = bool(prospect_data and prospect_data.get("exists", False))
+    newly_created = not exists
 
     legitimate_user_messages = []
     for msg in (current_history or []):
@@ -140,15 +139,19 @@ def _evaluate_skip_greeting(current_history: list, prospect_data: Optional[Dict[
                 
             legitimate_user_messages.append(msg)
 
-    history_len_threshold = 1 if current_message_saved else 0
+    # Exclude current message of the turn if it is already saved in the history array
+    if current_message_saved and legitimate_user_messages:
+        past_user_messages = legitimate_user_messages[:-1]
+    else:
+        past_user_messages = legitimate_user_messages
 
-    if len(legitimate_user_messages) <= history_len_threshold or newly_created:
-        logger.info(f"🆕 Fresh start detected (Newly created: {newly_created}, Legitimate history length: {len(legitimate_user_messages)}). Full greeting enabled.")
+    if not past_user_messages or newly_created:
+        logger.info(f"🆕 Fresh start detected (Exists: {exists}, Legitimate past history length: {len(past_user_messages)}). Full greeting enabled.")
         return False
 
     try:
-        # Check the previous interaction (second to last if current message is saved, last if not)
-        prev_msg = legitimate_user_messages[-2] if current_message_saved else legitimate_user_messages[-1]
+        # Check the previous interaction
+        prev_msg = past_user_messages[-1]
         last_ts = prev_msg.get("timestamp")
         
         # Normalize timestamp to datetime

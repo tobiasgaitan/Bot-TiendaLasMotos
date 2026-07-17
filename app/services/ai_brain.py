@@ -970,10 +970,7 @@ REGLAS ESTRICTAS DE USO:
 
         # Evaluate if there is legitimate user history to determine if it is the first contact
         has_no_legitimate_history = True
-        has_ai_summary = bool(prospect_data and prospect_data.get("ai_summary"))
-        if has_ai_summary:
-            has_no_legitimate_history = False
-        elif history:
+        if history:
             legitimate_messages = []
             for msg in history:
                 if msg.get("role") == "user":
@@ -989,8 +986,7 @@ REGLAS ESTRICTAS DE USO:
                 has_no_legitimate_history = False
 
         if has_no_legitimate_history:
-            skip_greeting = False
-            logger.info("🆕 [FIRST CONTACT ALIGNMENT] Forcing skip_greeting = False because history is empty or reset.")
+            logger.info("🆕 [FIRST CONTACT ALIGNMENT] skip_greeting unmodified. History is empty or reset.")
 
         if not is_mock_search and self._catalog_service and texto and hasattr(self._catalog_service, "_items") and isinstance(self._catalog_service._items, list) and self._catalog_service._items:
             try:
@@ -1031,10 +1027,9 @@ REGLAS ESTRICTAS DE USO:
                     matches = self._catalog_service.search_items(texto)
                     if matches:
                         if not has_no_legitimate_history:
-                            skip_greeting = True
-                            logger.info(f"🔥 [WARM START GREETING BYPASS] Catalog matches found in caliente for '{texto}'. Forcing skip_greeting = True.")
+                            logger.info(f"🔥 [WARM START GREETING BYPASS] Catalog matches found in caliente for '{texto}'. skip_greeting inherited as {skip_greeting}.")
                         else:
-                            logger.info(f"🆕 [FIRST CONTACT SHIELD] Catalog matches found for '{texto}' but history is empty/reset. Retaining skip_greeting = False for mandatory warmth.")
+                            logger.info(f"🆕 [FIRST CONTACT SHIELD] Catalog matches found for '{texto}' but history is empty/reset. skip_greeting inherited as {skip_greeting}.")
                         if prospect_data is not None:
                             if not prospect_data.get("moto_interest"):
                                 prospect_data["moto_interest"] = matches[0]["name"]
@@ -1594,11 +1589,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 search_results = f"[SISTEMA: Estos son los resultados para {user_name}. Recomiéndale la mejor opción de forma cálida basándote en su perfil, no solo listes datos.]\n\n" + search_results
                                 # Force skip_greeting and update moto_interest in caliente if not already done
                                 if not has_no_legitimate_history:
-                                    skip_greeting = True
                                     search_results += "\n\n[SYSTEM: BYPASS GREETING: Un elemento del catálogo ha sido recuperado en caliente. Tienes ESTRICTAMENTE PROHIBIDO saludar, dar la bienvenida, decir 'Hola' o presentarte. Empieza tu respuesta directamente con la información de la motocicleta.]"
                                 else:
-                                    skip_greeting = False
-                                    logger.info(f"🆕 [FIRST CONTACT SHIELD] Tool search_catalog returned results but history is empty/reset. Keeping skip_greeting = False for mandatory warmth.")
+                                    logger.info(f"🆕 [FIRST CONTACT SHIELD] Tool search_catalog returned results but history is empty/reset. Keeping skip_greeting inherited as {skip_greeting} for mandatory warmth.")
                                 if prospect_data is not None and matches and not prospect_data.get("moto_interest"):
                                     prospect_data["moto_interest"] = matches[0]["name"]
                                     logger.info(f"💾 Updated prospect_data['moto_interest'] to '{matches[0]['name']}' in tool execution.")
