@@ -10,11 +10,24 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 @pytest.fixture(autouse=True)
 def mock_env_vars():
-    """Mocks de variables de entorno para evitar fallos de configuración."""
+    """Mocks de variables de entorno para evitar fallos de configuración.
+    
+    WHY (BOT-INFRA-RECOVERY-PARAM-197): El fixture original no inyectaba las 4 credenciales
+    críticas validadas por Settings()._validate_config(). Esto creaba un falso positivo: los
+    tests pasaban en CI/CD porque la suite importaba 'settings' como singleton ya inicializado
+    desde el .env local, nunca verificando el RuntimeError de arranque con vars ausentes.
+    """
     with patch.dict(os.environ, {
         "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/fake-key.json",
         "TEST_MODE": "true",
-        "MIN_CATALOG_ITEMS": "0"
+        "MIN_CATALOG_ITEMS": "0",
+        # Credenciales críticas — requeridas por Settings()._validate_config()
+        # Valores de prueba seguros, nunca tokens reales de producción.
+        "WHATSAPP_TOKEN": "TEST_WHATSAPP_TOKEN_PLACEHOLDER_197",
+        "PHONE_NUMBER_ID": "1234567890",
+        "ADMIN_API_KEY": "test_admin_key_not_a_real_secret_197",
+        "WEBHOOK_VERIFY_TOKEN": "test_verify_token_197",
+        "WHATSAPP_APP_SECRET": "test_app_secret_197",
     }):
         yield
 
