@@ -36,12 +36,25 @@ class Settings:
         
         # Admin API Key from Secret Manager
         self.admin_api_key: str = os.getenv("ADMIN_API_KEY")
+        if self.admin_api_key:
+            self.admin_api_key = self.admin_api_key.strip()
         
         # WhatsApp Configuration - CRITICAL for message sending
         self.whatsapp_token: str = os.getenv("WHATSAPP_TOKEN")
+        if self.whatsapp_token:
+            self.whatsapp_token = self.whatsapp_token.strip()
+            
         self.phone_number_id: str = os.getenv("PHONE_NUMBER_ID")
+        if self.phone_number_id:
+            self.phone_number_id = self.phone_number_id.strip()
+            
         self.webhook_verify_token: str = os.getenv("WEBHOOK_VERIFY_TOKEN")
+        if self.webhook_verify_token:
+            self.webhook_verify_token = self.webhook_verify_token.strip()
+            
         self.whatsapp_app_secret: str = os.getenv("WHATSAPP_APP_SECRET", "***REMOVED***")
+        if self.whatsapp_app_secret:
+            self.whatsapp_app_secret = self.whatsapp_app_secret.strip()
         
         # Cloud Tasks Configuration (BOT-ARCH-CLOUDTASKS-098)
         # Fallback to local synchronous background tasks if not set (for local dev)
