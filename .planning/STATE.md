@@ -1,58 +1,6 @@
-Versión: v10.45.16 | Hito: INFRA Recovery Config Pool Consolidation (BOT-INFRA-RECOVERY-PARAM-197) | Coherence Score: 1.000
+Versión: v10.45.17 | Hito: INFRA & Multimodal Parity Sync | Coherence Score: 1.000
 
 ### Current Position
-**Phase:** Milestone 2 - Phase 1: Similitud Multimodal e Integración
-**Status:** In Progress
-**Last activity:** 2026-07-17 - Completed Quick Task 197 (INFRA Recovery Config Pool Consolidation)
-
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 197 | INFRA Recovery Config Pool Consolidation (Sync complete secrets pool PHONE_NUMBER_ID/WHATSAPP_TOKEN/WEBHOOK_VERIFY_TOKEN/ADMIN_API_KEY/WHATSAPP_APP_SECRET/LANGFUSE in deploy.yml & deploy-beta.yml; close conftest.py blind spot by injecting 4 critical creds; add test_config_startup.py with 5 anti-false-positive tests) [BOT-INFRA-RECOVERY-PARAM-197] | 2026-07-17 | b444282 | 197-infra-recovery-param-197 |
-| 196 | Router Greeting Threshold Hotfix (Fix evaluates_skip_greeting newly_created evaluation and align has_no_legitimate_history in ai_brain.py to prevent greeting loops while preserving 12-hour window) [BOT-ROUTER-BUGFIX-GREETING-THRESHOLD-196] | 2026-07-17 | 70f1239 | 196-router-greeting-threshold |
-| 194 | Token Strip Hotfix (Apply aggressive .strip() on critical credentials like WHATSAPP_TOKEN and WHATSAPP_APP_SECRET to prevent Cloud Run startup failures caused by terminal whitespaces or newlines) [BOT-INFRA-BUGFIX-TOKEN-STRIP-194] | 2026-07-16 | fe59ad8 | 194-token-strip-hotfix |
-| 193 | Health Port Binding Hotfix (Refactor /health to be synchronous and immediately return status 'starting' if not ready, preventing external dependency exceptions from failing TCP probe) [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192] | 2026-07-16 | 30a019e | 193-health-port-binding-hotfix |
-| 192 | Health Port Binding & Catalog Decoupling (Isolate health check and decouple minimum size guardrail from main.py startup to prevent container binding crashes) [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192] | 2026-07-16 | cef34a8 | 192-health-port-binding |
-| 191 | First Contact Alignment & Catalog Guardrail (Prevent bypass of greeting on first contact/reset, robusten catalog check with dynamic bypass for tests) [BOT-BRAIN-BUGFIX-FIRST-CONTACT-ALIGNMENT-191] | 2026-07-16 | 0fb656e | 191-first-contact-alignment |
-| 190 | Lifespan Delay — Port Binding Race Fix (Inject 2s async sleep at start of deferred initialization, verify immediately responsive /health status) [BOT-BACKEND-BUGFIX-LIFESPAN-DELAY-190] | 2026-07-16 | 7c6da7f | 190-lifespan-delay |
-| 189 | Deferred Imports — Cold-Start Cloud Run Fix (Move module-level imports of heavy external SDKs to lazy proxies, allowing instant port binding < 1s) [BOT-BACKEND-BUGFIX-DEFERRED-IMPORTS-189] | 2026-07-16 | 5c982ab | 189-deferred-imports |
-| 188 | Deferred Init — Container Crash Port Binding Fix (Move blocking module-level Firestore/SecretManager init to asyncio.create_task background, health endpoint degraded-state) [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188] | 2026-07-16 | 00e72af | 188-container-crash-deferred-init |
-| 187 | Short Token Phonetic Matching and Whitelisted Numeric Tokens (Phonetic matching for short query tokens <= 5 chars, whitelist model numeric tokens, force greeting bypass on hot catalog match) [BOT-BACKEND-BUGFIX-CATALOG-PERIMETER-187] | 2026-07-16 | ef3939a | 187-catalog-perimeter |
-| 186 | Router Greeting Alignment Category Model Transition (Prevent reference error on skip_greeting transition from category to specific model) [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-186] | 2026-07-16 | bf592e8 | 186-router-greeting-alignment-category-model |
-| 185 | Router Greeting Alignment (Runtime Prompt Assembly for greeting/intro suppression when skip_greeting is True) [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-185] | 2026-07-16 | 0ce9f6c | 185-router-greeting-alignment |
-| 184 | Brilla Gases Cascading Parity (Exact math simulation aligned with Next.js/typescript canonical logic, zero placeholders) [BOT-BACKEND-FINANCIAL-CASCADING-EXACT-PARITY-184] | 2026-07-15 | 22537a0 | 184-financial-cascading-exact-parity |
-| 182 | Equalización de matriz financiera de gases (anular adición seguro de vida flat para Brilla de Gases) [BOT-BACKEND-FINANCIAL-MATRIX-EQUALIZATION-182] | 2026-07-14 | 24ea831 | 182-financial-matrix-equalization |
-| 181 | Omisión de doble cobro de aval matricial y alineamiento de aserciones en test_pcc_ficha_tecnica y test_agentic_loop_async [BOT-BACKEND-FINANCIAL-FACTOR-ALIGNMENT-181] | 2026-07-14 | 0d8dae6 | 181-financial-factor-alignment |
-| 180 | Estructuración del motor financiero y alineamiento de aserciones en test_pcc_ficha_tecnica [BOT-BACKEND-FINANCIAL-TYPE-STRICT-ALIGNMENT-180] | 2026-07-14 | 2811433 | 180-financial-type-strict-alignment |
-| 178 | Alineamiento de hardware del orquestador [BOT-BACKEND-ORCHESTRATOR-HARDWARE-ALIGNMENT-178] | 2026-07-13 | a8d9737 | 178-orchestrator-hardware-alignment |
-| 177 | Alineamiento financiero del orquestador [BOT-BACKEND-ORCHESTRATOR-ALIGNMENT-177] | 2026-07-13 | 0051cdc | 177-orchestrator-alignment |
-| 176 | Purga de Crediorbe y parametrización de Brilla de Gases [BOT-BACKEND-FINANCIAL-PURGE-175] | 2026-07-13 | 5411825 | 176-financial-service-crediorbe-purge |
-| 175 | Alinear flags de skip_greeting e inyectar aserciones rígidas assert_called_with en tests de webhook [BOT-BACKEND-HOTFIX-ROUTER-BRANCH-ALIGNMENT-175] | 2026-07-12 | 3ce6117 | 175-hotfix-router-branch-alignment |
-| 174 | Implementar guardrail de inicialización bloqueante antes de la inferencia [BOT-BACKEND-HOTFIX-ROUTER-INFERENCE-GUARD-174] | 2026-07-12 | b9b57a1 | 174-hotfix-router-inference-guard |
-| 173 | Refactorizar firmas de pensar_respuesta e implementar _evaluate_skip_greeting para saludos dinámicos [BOT-BACKEND-BUGFIX-ROUTER-GREETING-ALIGNMENT-173] | 2026-07-12 | 155f68d | 173-hotfix-router-greeting-alignment |
-| 171 | Implementar guardrail de idempotencia síncrona en la frontera del enrutador [BOT-BACKEND-HOTFIX-WEBHOOK-IDEMPOTENCY-LOCK-171] | 2026-07-12 | bffafce | 171-hotfix-webhook-idempotency-lock |
-| 170 | Refactor bucles validación perimetral alfabética con match contra item_tokens [BOT-BACKEND-HOTFIX-PERIMETER-COLLOQUIAL-ALIGNMENT-170] | 2026-07-12 | 6d88b8c | 170-hotfix-perimeter-colloquial-alignment |
-| 169 | Refactor CatalogService.initialize con DI de ConfigLoader y guardrail RuntimeError fail-fast [BOT-BACKEND-HOTFIX-CATALOG-INITIALIZATION-SYNC-169] | 2026-07-12 | 41bbaa4 | 169-hotfix-catalog-initialization-sync |
-| 168 | Filtro Stopwords Conversacionales [BOT-BACKEND-HOTFIX-CONVERSATIONAL-STOPWORD-STRIPPING-168] | 2026-07-12 | 40d4e5f | 168-hotfix-conversational-stopword-stripping |
-| 167 | Filtro Stopwords Comerciales Genéricas [BOT-BACKEND-HOTFIX-GENERIC-STOPWORD-STRIPPING-167] | 2026-07-12 | a4b5eb9 | 167-hotfix-generic-stopword-stripping |
-| 166 | Alineamiento de Alias en Plural/Diminutivo [BOT-BACKEND-HOTFIX-PLURAL-ALIAS-ALIGNMENT-166] | 2026-07-12 | 40905da | 166-plural-category-alias-alignment |
-| 165 | Recuperación de Alias de Categorías de Catálogo [BOT-BACKEND-HOTFIX-CATALOG-ALIAS-RECOVERY] | 2026-07-12 | b89dde7 | 165-hotfix-catalog-category-alias |
-| 164 | Corrección de Firmas Langfuse v4 [BOT-BRAIN-OBSERVABILITY-ALIGN-164] | 2026-07-12 | e3e0ad3 | 164-correccion-firmas-langfuse-v4 |
-| 163 | Calibración de Umbral de Catálogo y Aislamiento Numérico [BOT-BACKEND-CATALOG-THRESHOLD-163] | 2026-07-11 | 0cd61d2 | 163-catalog-threshold-collision |
-| 162 | Reestructuración de Lifespan de FastAPI e inicialización de módulo [BOT-ARCHITECTURE-LIFESPAN-LINEAR-159] | 2026-07-11 | b433cf4 | 162-hotfix-lifespan-hydration |
-| 161 | Implementar Adaptador Local de Observabilidad Langfuse v4 [BOT-BUGFIX-LANGFUSE-DECORATOR-REGRESSION] | 2026-07-11 | fe0092d | 161-langfuse-adapter |
-| 160 | QA Hardening — 3 Falsos Positivos Eliminados [BOT-QA-HARDENING-126] | 2026-07-11 | fceb71e | 160-qa-hardening-126 |
-| 159 | Hotfix Unified Egress Message Delivery [BOT-BUGFIX-UNIFIED-EGRESS-PIPELINE-125] | 2026-07-11 | 54d99e2 | 159-unified-egress-pipeline |
-| 158 | Hotfix Regex Groups Live Alignment [BOT-BUGFIX-REGEX-FINALL-ALIGNMENT-123] | 2026-07-11 | 0a1b072 | 158-hotfix-regex-groups-live-alignment |
-| 157 | Hotfix Markdown Image Parsing (Victory Advance R 125 query parameters) [BOT-BUGFIX-MARKDOWN-IMAGE-REGRESSION-122] | 2026-07-11 | 5d7dfa5 | 157-hotfix-markdown-image-parsing |
-| 156 | Actualización del modelo multimodal de VisionService a gemini-2.5-flash y aserciones anti-null [BOT-VISION-UPGRADE] | 2026-07-11 | 55aa05a | 156-bot-vision-upgrade |
-| 155 | Corrección enrutamiento imágenes de catálogo (desacople [MOTO_DETECTADA]) [BOT-VISION-PARSER] | 2026-07-11 | e4d0241 | 155-bot-vision-parser |
-| 154 | Sanitización y alineación fonética fuzzy de transcripción en bloque audio [BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124] | 2026-07-10 | d98a6d0 | 154-hotfix-audio-fuzzy-alignment |
-| 153 | Reubicar human_help_requested post-LINEAR-BLOCKING en bloque audio [BOT-ROUTER-AUDIO-LINEAGE-123] | 2026-07-10 | 5d4ca75 | 153-hotfix-audio-lineage-sync |
-| 152 | Fuzzy Identity Escalation en search_items — ratio>=0.85 activa boost +20k [BOT-PERF-IDENTITY-CALIBRATION-122] | 2026-07-10 | 807c15d | 152-hotfix-catalog-identity |
-| 151 | Corregir model_id en AudioService a gemini-2.5-flash y test de regresión | 2026-07-10 | 42b5f7a | 151-audio-model-alignment |
-| 150 | Alinear credenciales del SDK de Audio y test de regresión | 2026-07-10 | c0aa432 | 150-audio-sdk-alignment |
-| 149 | Propagar fallos de credenciales en AudioService e inyectar test de integración | 2026-07-10 | bac05cc | 149-audio-credentials-integration |
-| 148 | Corregir regresión en el procesamiento de audios en whatsapp.py | 2026-07-10 | 16cbc80 | 148-audio-regression-fix |
-v10.45.16 - OpenCode Backend Auditor Agent alignment completed. Scaffold: PASS.
+**Phase:** Milestone 2 - Phase 2: Siguiente Fase Multimodal
+**Status:** Ready
+**Last activity:** 2026-07-18 - Sincronización de paridad e integridad de pruebas multimodales pasadas con éxito.
