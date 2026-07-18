@@ -228,8 +228,9 @@ async def test_incoming_image_webhook_multimodal_similitude_flow():
             await _handle_message_background(msg_data, background_tasks)
 
             # Assert that update_prospect_summary was called to save 'moto_interest' synchronously
+            # [BOT-PONYTAIL-200] Updated assertion to include ponytail_status=PENDING
             mock_ms.update_prospect_summary.assert_any_call(
-                user_phone, "", {"moto_interest": "TVS Sport 100"}
+                user_phone, "", {"moto_interest": "TVS Sport 100", "ponytail_status": "PENDING"}
             )
             
             # Assert that the outbound Meta payload was built correctly with the mapped image

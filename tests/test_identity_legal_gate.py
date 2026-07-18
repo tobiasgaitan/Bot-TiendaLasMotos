@@ -285,7 +285,8 @@ class TestIdentityLegalGate(unittest.TestCase):
 
         # 5. Verificaciones
         # Debe haberse llamado a update_prospect_summary indicando mutación síncrona
-        mock_ms.update_prospect_summary.assert_any_call("+573192564288", "", {"habeas_data_accepted": True})
+        # [BOT-PONYTAIL-200] Updated assertion to include ponytail_status=PENDING
+        mock_ms.update_prospect_summary.assert_any_call("+573192564288", "", {"habeas_data_accepted": True, "ponytail_status": "PENDING"})
         
         # Debió llamarse a pensar_respuesta con el body mutado a "Sí"
         mock_cerebro.pensar_respuesta.assert_called_once()

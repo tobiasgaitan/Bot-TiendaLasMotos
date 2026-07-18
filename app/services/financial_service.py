@@ -353,6 +353,17 @@ class FinancialService:
             link_url = None
             requires_documents = True
 
+        # [BOT-PONYTAIL-200] Compute ponytail_score from credit score
+        # Clamped to [0-100] and returned as STRING for schema consistency
+        # This runs in parallel to the existing credit flow — no mutation of historical fields
+        ponytail_score_val = ""
+        try:
+            if isinstance(score, (int, float)):
+                ponytail_score_val = str(max(0, min(100, int(round(float(score))))))
+                logger.info(f"🐴 [PONYTAIL] evaluate_profile computed ponytail_score: {ponytail_score_val}")
+        except Exception as e:
+            logger.warning(f"⚠️ [PONYTAIL] Failed to compute ponytail_score in evaluate_profile: {e}")
+
         return {
             "score": score,
             "strategy": strategy_info["strategy"],
@@ -364,7 +375,8 @@ class FinancialService:
             "requires_documents": requires_documents,
             "explanation": f"Basado en tu perfil (Score: {score}), la mejor opción es {strategy_info.get('entity', 'N/A')}.",
             "entidad": entidad,
-            "reportes": reportes
+            "reportes": reportes,
+            "ponytail_score": ponytail_score_val
         }
 
     # Alias for legacy compatibility
