@@ -727,7 +727,12 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                 logger.info(f"👍 [REACTION INTERCEPT] Forzando aceptación de Habeas Data para {user_phone}")
                 if memory_service_module.memory_service:
                     ms_instance = memory_service_module.memory_service
-                    fut = ms_instance.update_prospect_summary(user_phone, "", {"habeas_data_accepted": True})
+                    # [BOT-PONYTAIL-200] Persist ponytail_status=PENDING in parallel to habeas_data_accepted
+                    # Blocking await — no create_task/add_task
+                    fut = ms_instance.update_prospect_summary(user_phone, "", {
+                        "habeas_data_accepted": True,
+                        "ponytail_status": "PENDING"
+                    })
                     if hasattr(fut, "__await__"):
                         await fut
             
@@ -962,8 +967,11 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                     # [MANDATE]: Update prospect_summary with the aligned moto_interest in Firestore synchronously
                                     if matched_item and isinstance(matched_item, dict):
                                         logger.info(f"💾 Persisting aligned moto_interest '{vision_description}' to Firestore for {user_phone}")
+                                        # [BOT-PONYTAIL-200] Persist ponytail_status=PENDING in parallel to moto_interest
+                                        # Blocking await — no create_task/add_task
                                         fut = ms.update_prospect_summary(user_phone, "", {
-                                            "moto_interest": vision_description
+                                            "moto_interest": vision_description,
+                                            "ponytail_status": "PENDING"
                                         })
                                         if hasattr(fut, "__await__"):
                                             await fut
@@ -1337,6 +1345,9 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                         if memory_service_module.memory_service:
                             logger.warning(f"🚨 [JUDGE_FALLBACK] Max retries hit for {user_phone}. Marking human_help_requested=True")
                             await memory_service_module.memory_service.set_human_help_status(user_phone, True)
+                            # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
+                            # Blocking await — no create_task/add_task
+                            await memory_service_module.memory_service.update_prospect_summary(user_phone, "", {"ponytail_status": "DEPRIORITIZED"})
                             await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
                     except Exception as e_ms:
                         logger.error(f"⚠️ [JUDGE_FALLBACK] Error persistencia fallback: {e_ms}")
@@ -1374,6 +1385,9 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                 fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
                 if memory_service_module.memory_service:
                     await memory_service_module.memory_service.set_human_help_status(user_phone, True)
+                    # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
+                    # Blocking await — no create_task/add_task
+                    await memory_service_module.memory_service.update_prospect_summary(user_phone, "", {"ponytail_status": "DEPRIORITIZED"})
                     await _send_whatsapp_message(user_phone, fallback_msg, phone_number_id=phone_number_id)
                     await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
                 return
@@ -1569,6 +1583,9 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                         try:
                             if memory_service_module.memory_service:
                                 await memory_service_module.memory_service.set_human_help_status(user_phone, True)
+                                # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
+                                # Blocking await — no create_task/add_task
+                                await memory_service_module.memory_service.update_prospect_summary(user_phone, "", {"ponytail_status": "DEPRIORITIZED"})
                                 await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
                         except Exception as e_ms:
                             logger.error(f"⚠️ [JUDGE_FALLBACK_AUDIO] Error persistencia fallback: {e_ms}")
@@ -1604,6 +1621,9 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
             if response_text.startswith("HANDOFF_TRIGGERED"):
                 if memory_service_module.memory_service:
                     await memory_service_module.memory_service.set_human_help_status(user_phone, True)
+                    # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
+                    # Blocking await — no create_task/add_task
+                    await memory_service_module.memory_service.update_prospect_summary(user_phone, "", {"ponytail_status": "DEPRIORITIZED"})
                 await _send_whatsapp_message(user_phone, "Te voy a transferir con un compañero para que te ayude con esto. Dame un momento...", phone_number_id=phone_number_id)
                 try:
                     from app.services.notification_service import notification_service

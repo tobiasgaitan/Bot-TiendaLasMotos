@@ -96,6 +96,14 @@ EXTRACTION_SCHEMA = {
                 "cedula_usuario": {
                     "type": "STRING",
                     "description": "Número de cédula del usuario (extraer ÚNICAMENTE si el usuario lo escribe de forma explícita y voluntaria; bias negativo estricto: si no está seguro o no está presente, dejar vacío)."
+                },
+                "ponytail_status": {
+                    "type": "STRING",
+                    "description": "Estado del flujo Ponytail (cola de prioridad de lead). Valores permitidos: UNINITIATED | PENDING | IN_PROGRESS | COMPLETED | DEPRIORITIZED. Bias negativo estricto: si no hay certeza del estado, dejar vacío."
+                },
+                "ponytail_score": {
+                    "type": "STRING",
+                    "description": "Score Ponytail en rango [0-100] calculado a partir de interacciones tempranas (greetings, moto_interest, forma_pago). Bias negativo estricto: si no está seguro o no hay datos suficientes, dejar vacío."
                 }
             },
             "required": ["nombre", "ciudad", "moto_interest", "habeas_data_accepted"]
@@ -583,6 +591,40 @@ class CerebroIA:
         # Phase 1: Default (Profiling / Catalog)
         return "PHASE_1_PROFILING"
 
+    def _determine_ponytail_status(self, prospect_data: Optional[Dict[str, Any]]) -> str:
+        """
+        [BOT-PONYTAIL-200] Deterministic state machine for Ponytail flow (lead-priority tail).
+        Runs parallel to _determine_funnel_phase — does NOT alter greeting or Habeas logic.
+        
+        State transitions:
+        - UNINITIATED → no moto_interest, no greeting-history yet
+        - PENDING → moto_interest set, no moto_confirmada
+        - IN_PROGRESS → moto_confirmada == True
+        - COMPLETED → moto_confirmada == True AND forma_pago set
+        - DEPRIORITIZED → human_help_requested == True (prospect opted out / handoff)
+        
+        Returns one of: "UNINITIATED", "PENDING", "IN_PROGRESS", "COMPLETED", "DEPRIORITIZED"
+        """
+        if not prospect_data:
+            return "UNINITIATED"
+
+        # DEPRIORITIZED takes precedence — handoff / opt-out blocks all other transitions
+        if prospect_data.get("human_help_requested") is True:
+            return "DEPRIORITIZED"
+
+        has_moto_interest = bool(prospect_data.get("moto_interest"))
+        moto_confirmada = prospect_data.get("moto_confirmada") is True
+        has_forma_pago = bool(str(prospect_data.get("forma_pago") or "").strip())
+
+        if moto_confirmada and has_forma_pago:
+            return "COMPLETED"
+        elif moto_confirmada:
+            return "IN_PROGRESS"
+        elif has_moto_interest:
+            return "PENDING"
+        else:
+            return "UNINITIATED"
+
     @observe()  # [BOT-TRACE-201] Trace the full prospect interaction cycle
     async def pensar_respuesta(self, texto: str, context: str = "", prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False) -> str:
         """
@@ -597,6 +639,14 @@ class CerebroIA:
         current_attempt = 0
         forced_instruction = None
         forced_temp = None
+
+        # [BOT-PONYTAIL-200] Defensive initialization of parallel Ponytail state
+        # Ensures keys exist without altering existing CRM fields or greeting logic
+        if prospect_data is not None:
+            if "ponytail_status" not in prospect_data:
+                prospect_data["ponytail_status"] = "UNINITIATED"
+            if "ponytail_score" not in prospect_data:
+                prospect_data["ponytail_score"] = ""
 
         try:
           while current_attempt < max_validation_attempts:
@@ -1702,6 +1752,22 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             entidad=f_args.get("entidad"),
                                             reportes=f_args.get("reportes")
                                         )
+
+                                    # [BOT-PONYTAIL-200] Compute ponytail_score from credit score
+                                    # Clamped to [0-100] and stored as STRING in prospect_data
+                                    # This runs in parallel to the existing credit flow — no mutation of
+                                    # historical CRM fields (moto_interest, habeas_data_accepted, etc.)
+                                    try:
+                                        raw_score = res.get("score", 0)
+                                        if isinstance(raw_score, (int, float)):
+                                            ponytail_score_val = max(0, min(100, int(round(float(raw_score)))))
+                                            if prospect_data is not None:
+                                                prospect_data["ponytail_score"] = str(ponytail_score_val)
+                                                prospect_data["ponytail_status"] = self._determine_ponytail_status(prospect_data)
+                                                logger.info(f"🐴 [PONYTAIL] Score computed: {ponytail_score_val}, Status: {prospect_data['ponytail_status']}")
+                                    except Exception as e:
+                                        logger.warning(f"⚠️ [PONYTAIL] Failed to compute ponytail_score: {e}")
+
                                     if res.get('entity') == "Brilla de Gases":
                                         credit_res = (
                                             f"✅ RESULTADO: {res['score']} Puntos\n"

@@ -1252,7 +1252,8 @@ async def test_whatsapp_reaction_payload_direct_legal_acceptance():
 
             # 5. Verificaciones
             # Debe haberse llamado a update_prospect_summary síncronamente
-            mock_ms.update_prospect_summary.assert_any_call("+573192564288", "", {"habeas_data_accepted": True})
+            # [BOT-PONYTAIL-200] Updated assertion to include ponytail_status=PENDING
+            mock_ms.update_prospect_summary.assert_any_call("+573192564288", "", {"habeas_data_accepted": True, "ponytail_status": "PENDING"})
             
             # prospect_data debió actualizarse a True
             assert mock_prospect_data["habeas_data_accepted"] is True
