@@ -22,6 +22,8 @@ async def test_webhook_response_within_meta_window(timed_assertion, mock_firesto
          patch("app.routers.whatsapp.memory_service_module.memory_service", MagicMock()):
          
         mock_settings.whatsapp_app_secret = None
+        mock_settings.cloud_tasks_queue_path = None
+        mock_settings.task_processor_url = None
         
         async with timed_assertion(15.0):
             response = await webhook_handler(request, bg_tasks)

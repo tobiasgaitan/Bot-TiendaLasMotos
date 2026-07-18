@@ -73,12 +73,14 @@ financial_service = LazyProxy("app.services.financial_service", "financial_servi
 judge_service = LazyProxy("app.services.judge_service", "judge_service")
 memory_service_module = LazyModuleProxy("app.services.memory_service")
 gcp_exceptions = LazyModuleProxy("google.api_core.exceptions")
+firestore = LazyModuleProxy("google.cloud.firestore")
 
 # Class Lazy Proxies
 CerebroIA = LazyProxy("app.services.ai_brain", "CerebroIA")
 VisionService = LazyProxy("app.services.vision_service", "VisionService")
 AudioService = LazyProxy("app.services.audio_service", "AudioService")
 MessageBuffer = LazyProxy("app.services.message_buffer", "MessageBuffer")
+ConfigLoader = LazyProxy("app.core.config_loader", "ConfigLoader")
 
 # Lazy load router orchestrator
 _router_orchestrator = None
@@ -1056,7 +1058,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
         cerebro_ia = CerebroIA(config_loader, catalog_service)
         cerebro_ia.motor_financiero = motor_financiero # Inject Financial Motor
         vision_service = VisionService(db)
-        audio_service = AudioService(config_loader)
+        # Lazy deferred import via Ponytail plan
         
         if memory_service_module.memory_service:
             ms = memory_service_module.memory_service
@@ -1448,7 +1450,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                 current_history = await ms.get_chat_history(user_phone, limit=10)
                 
             if audio_bytes:
-                # Transcribe Audio
+                audio_service = AudioService()
                 transcription = await audio_service.transcribe_audio(audio_bytes, mime_type)
                 
                 if transcription:
