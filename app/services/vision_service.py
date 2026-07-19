@@ -182,10 +182,13 @@ class VisionService:
 
     async def _process_moto(self, image_part: types.Part, brief_desc: str, catalog_items: Optional[List[Dict[str, Any]]] = None) -> str:
         """
+        [BOT-BUILD-MULTIMODAL-INTEGRATION-195] JSON-first structured output with
+        pipe-string fallback (dual-stack ACL compatibility).
+        
         Identify motorcycle and provide structured output for CerebroIA.
         
         Security & Business Logic (QA Baseline):
-        - Why: Returning a structured "MOTO_DETECTADA:" string ensures that the 
+        - Why: Returning a structured response ensures that the
           WhatsApp router can intercept the image result and pass it to CerebroIA.
           This enables strict cross-selling rules (Competencia y Equivalencias) based on catalog availability,
           rather than having VisionService hallucinate responses.
@@ -194,7 +197,11 @@ class VisionService:
         if catalog_items:
             catalog_info = "\nAvailable motorcycles in our catalog:\n"
             for item in catalog_items:
-                catalog_info += f"- Name: '{item.get('name', '')}', Category: '{item.get('category', '')}', Image URL: '{item.get('image_url', '')}', ID: '{item.get('id', '')}'\n"
+                name = item.get("name", "")
+                img = item.get("image_url", "")
+                cid = item.get("id", "")
+                if name or cid:
+                    catalog_info += f"- Name: '{name}', Image URL: '{img}', ID: '{cid}'\n"
 
         prompt = f"""
         TASK: Identify the motorcycle in this image as accurately as possible and match it to our catalog.
@@ -204,22 +211,44 @@ class VisionService:
         - "NKD 125" is ALWAYS "AKT". NEVER say "Victory NKD".
         - Focus ONLY on identifying the brand, model, and category (e.g., Calle, Sport, Scooter).
         - If catalog items are listed below, you MUST match the motorcycle to the closest corresponding model in our catalog.
-        - Choose the best equivalent category and model if there is no exact match.
+        - If there is no exact match, choose the best equivalent.
         
         {catalog_info}
         
         OUTPUT FORMAT:
-        You MUST output EXACTLY this format:
-        MOTO_DETECTADA: [Name of matched model] | Match URL: [image_url of matched model] | Model ID: [ID of matched model]
+        You MUST output a valid JSON object (no markdown fences, no extra text):
+        {{"type":"moto","model_id":"<id from catalog or empty string>","match_url":"<image_url from catalog or empty string>","moto_detectada":"<detected model description>","confidence":0.0}}
         
-        No conversational text, no questions. ONLY this format.
+        If you absolutely cannot produce JSON, fallback to pipe format:
+        MOTO_DETECTADA: [model name] | Match URL: [image_url] | Model ID: [ID]
         """
         response = await self._generate_content_nonblocking(
             contents=[image_part, prompt]
         )
         if not response or not getattr(response, "text", None) or not response.text.strip():
             raise ValueError("GenAI API returned an empty response or nulo payload in _process_moto")
-        return response.text.strip()
+
+        raw_text = response.text.strip()
+
+        # [BOT-BUILD-MULTIMODAL-INTEGRATION-195] JSON-first decode.
+        # If the model returned valid JSON, pass it through directly.
+        # Otherwise, return the raw text as pipe-string fallback (ACL dual-stack).
+        try:
+            candidate = json.loads(raw_text.replace("```json", "").replace("```", "").strip())
+            if isinstance(candidate, dict) and candidate.get("type") == "moto":
+                logger.info(
+                    "🎯 VisionService JSON moto DTO decoded successfully. "
+                    "model_id=%s moto_detectada=%s",
+                    candidate.get("model_id"), candidate.get("moto_detectada"),
+                )
+                return json.dumps(candidate)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            logger.info(
+                "📝 VisionService JSON decode failed; falling back to pipe-string. "
+                "raw preview: %s", raw_text[:120],
+            )
+
+        return raw_text
 
     async def _process_general_image_sentiment(self, image_part: types.Part) -> str:
         """

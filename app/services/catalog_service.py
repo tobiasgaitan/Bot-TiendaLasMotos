@@ -4,6 +4,7 @@ Manages motorcycle catalog from Firestore.
 Provides in-memory access to catalog items with category filtering.
 """
 
+import json
 import logging
 import re
 import unicodedata
@@ -16,6 +17,90 @@ from google.cloud import firestore
 from app.services.semantic_cache_service import SemanticCacheService
 
 logger = logging.getLogger(__name__)
+
+# ── Port & Adapters: DTO Contract v1.0 ──────────────────────────────────────
+
+class VisionMotoMatchDTO:
+    """
+    [BOT-BUILD-MULTIMODAL-INTEGRATION-195] Port contract v1.0.
+    Strict JSON DTO for VisionService → CatalogService handoff.
+
+    Namespace isolation: canonical keys only (model_id, match_url, moto_detectada).
+    Aliases from legacy pipe-strings are resolved by the ACL factory from_vision_raw().
+    """
+    __slots__ = ("model_id", "match_url", "moto_detectada", "confidence")
+
+    def __init__(
+        self,
+        model_id: Optional[str] = None,
+        match_url: Optional[str] = None,
+        moto_detectada: Optional[str] = None,
+        confidence: float = 0.0,
+    ):
+        self.model_id: Optional[str] = model_id or None
+        self.match_url: Optional[str] = match_url or None
+        self.moto_detectada: str = moto_detectada or ""
+        self.confidence: float = float(confidence) if confidence else 0.0
+
+    @staticmethod
+    def from_vision_raw(raw) -> "VisionMotoMatchDTO":
+        """
+        [BOT-BUILD-MULTIMODAL-INTEGRATION-195] ACL Dual-Stack Factory.
+        Accepts dict (JSON path) or str (legacy pipe path).
+        Returns a populated DTO or an empty sentinel (has_data() == False).
+        Never returns None.
+        """
+        if isinstance(raw, dict):
+            return VisionMotoMatchDTO._from_dict(raw)
+        if isinstance(raw, str) and raw.strip():
+            dto = VisionMotoMatchDTO._try_json_decode(raw)
+            if dto.has_data():
+                return dto
+            return VisionMotoMatchDTO._from_pipe_string(raw)
+        return VisionMotoMatchDTO()
+
+    @staticmethod
+    def _from_dict(payload: Dict[str, Any]) -> "VisionMotoMatchDTO":
+        if payload.get("type") != "moto":
+            return VisionMotoMatchDTO()
+        return VisionMotoMatchDTO(
+            model_id=payload.get("model_id"),
+            match_url=payload.get("match_url"),
+            moto_detectada=payload.get("moto_detectada", ""),
+            confidence=float(payload.get("confidence", 0.0)),
+        )
+
+    @staticmethod
+    def _try_json_decode(raw: str) -> "VisionMotoMatchDTO":
+        try:
+            candidate = json.loads(raw)
+            if isinstance(candidate, dict):
+                return VisionMotoMatchDTO._from_dict(candidate)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+        return VisionMotoMatchDTO()
+
+    @staticmethod
+    def _from_pipe_string(raw: str) -> "VisionMotoMatchDTO":
+        parsed = CatalogService._parse_vision_pipe_string(raw)
+        return VisionMotoMatchDTO(
+            model_id=parsed.get("model_id"),
+            match_url=parsed.get("match_url"),
+            moto_detectada=parsed.get("model_name", ""),
+        )
+
+    def has_data(self) -> bool:
+        return bool(self.model_id or self.match_url or self.moto_detectada)
+
+    def to_legacy_pipe(self) -> str:
+        parts = []
+        if self.moto_detectada:
+            parts.append(f"MOTO_DETECTADA: {self.moto_detectada}")
+        if self.match_url:
+            parts.append(f"Match URL: {self.match_url}")
+        if self.model_id:
+            parts.append(f"Model ID: {self.model_id}")
+        return " | ".join(parts) if parts else self.moto_detectada
 
 
 class CategoryAliasesDescriptor:
@@ -1458,6 +1543,23 @@ class CatalogService:
 
         if not vision_response or not isinstance(vision_response, str):
             return None
+
+        # [BOT-BUILD-MULTIMODAL-INTEGRATION-195] JSON-first decode path.
+        # Tries VisionMotoMatchDTO JSON before falling back to legacy pipe.
+        dto = VisionMotoMatchDTO._try_json_decode(vision_response)
+        if dto.has_data():
+            logger.info(
+                "🎯 Multimodal JSON DTO decoded successfully. "
+                "model_id=%s match_url=%s moto_detectada=%s",
+                dto.model_id, dto.match_url, dto.moto_detectada,
+            )
+            return self._match_catalog_item_by_image_dict({
+                "type": "moto",
+                "model_id": dto.model_id,
+                "match_url": dto.match_url,
+                "moto_detectada": dto.moto_detectada,
+                "confidence": dto.confidence,
+            })
 
         parsed = CatalogService._parse_vision_pipe_string(vision_response)
         model_id = parsed["model_id"]
