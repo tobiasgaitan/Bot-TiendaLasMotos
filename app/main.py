@@ -32,7 +32,15 @@ class LazyProxy:
         if self._instance is None:
             import importlib
             module = importlib.import_module(self._import_path)
-            self._instance = getattr(module, self._name)
+            try:
+                self._instance = getattr(module, self._name)
+            except AttributeError:
+                # [BOT-BUILD-CATALOG-READY-RACE-205]
+                # Namespace packages (e.g. google.cloud.firestore) are not exposed as
+                # attributes of the parent package until explicitly imported. Fall back
+                # to importing the fully qualified submodule path so the proxy works
+                # reliably across threads and cold-start conditions.
+                self._instance = importlib.import_module(f"{self._import_path}.{self._name}")
         return self._instance
 
     def __getattr__(self, name):
@@ -257,19 +265,34 @@ async def _run_deferred_initialization(app: FastAPI) -> None:
 
             return creds, db_sync, db_async_client, config_loader_inst, finance_config
 
-        # Execute all blocking I/O in a thread with timeout
+        # [BOT-BUILD-CATALOG-READY-RACE-205]
+        # Execute all blocking network I/O in a thread with a soft budget and a
+        # commit barrier. The thread is shielded from asyncio.wait_for cancellation
+        # so that, if the first timeout fires, the orchestrator can still await its
+        # natural completion and atomically commit the app.state. This prevents the
+        # zombie state where the catalog singleton is hydrated (count>=min) but
+        # app.state.catalog_ready remains False.
+        init_task = asyncio.create_task(asyncio.to_thread(_sync_initialization))
         try:
             creds, db_obj, db_async_obj, config_loader_obj, finance_config_obj = await asyncio.wait_for(
-                asyncio.to_thread(_sync_initialization),
+                asyncio.shield(init_task),
                 timeout=float(settings.db_timeout)
             )
         except asyncio.TimeoutError:
-            logger.exception(
-                f"❌ [DEFERRED-INIT-TIMEOUT] Background initialization exceeded "
-                f"timeout of {settings.db_timeout}s. Catalog will remain unavailable. "
-                f"The webhook handler will continue rejecting with HTTP 503."
+            logger.warning(
+                f"⚠️ [DEFERRED-INIT-TIMEOUT] Background initialization exceeded the first "
+                f"timeout of {settings.db_timeout}s. Awaiting natural completion to preserve "
+                f"the atomic commit barrier. The webhook handler will continue rejecting "
+                f"with HTTP 503 until the commit completes."
             )
-            return
+            try:
+                creds, db_obj, db_async_obj, config_loader_obj, finance_config_obj = await init_task
+            except Exception as timeout_completion_error:
+                logger.exception(
+                    f"❌ [DEFERRED-INIT-TIMEOUT-FAIL] Background initialization failed after "
+                    f"timeout: {timeout_completion_error}. catalog_ready remains False."
+                )
+                return
 
         # Memory service initialization (async-native, runs on event loop)
         try:
@@ -277,7 +300,7 @@ async def _run_deferred_initialization(app: FastAPI) -> None:
         except Exception as mem_error:
             logger.error(f"❌ [DEFERRED-INIT] Failed to initialize Memory Service: {str(mem_error)}", exc_info=True)
 
-        # Store references in app.state for downstream access
+        # Atomic commit: all references and catalog_ready flag are flipped together.
         app.state.config_loader = config_loader_obj
         app.state.db = db_obj
         app.state.db_async = db_async_obj
