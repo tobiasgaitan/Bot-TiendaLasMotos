@@ -45,18 +45,30 @@ class VisionService:
             except Exception as e:
                 logger.exception(f"❌ VisionService init error: {e}")
 
-    async def _call_gemini_with_retry_async(self, func, *args, **kwargs):
+    async def _generate_content_nonblocking(self, contents):
         """
-        Resiliencia de Red (Exponential Backoff) para llamadas asíncronas.
+        [BOT-PLAN-MULTIMODAL-HARDENING-201] Offload síncrono de Gemini a hilo
+        secundario para evitar bloquear el event loop de FastAPI bajo Session Lock.
+        """
+        return await asyncio.to_thread(
+            self.client.models.generate_content,
+            model=self._model_id,
+            contents=contents
+        )
+
+    async def _call_gemini_with_retry_async(self, contents):
+        """
+        Resiliencia de Red (Exponential Backoff) con offload non-blocking.
         """
         max_retries = 2
         delay = 1.5
         for attempt in range(max_retries + 1):
             try:
-                # In google-genai, most calls are sync or need careful async handling
-                # but we wrapper the sync call in a thread or use it directly if within async loop
-                # For now, keeping it simple as the SDK handles many things
-                return func(*args, **kwargs)
+                return await asyncio.to_thread(
+                    self.client.models.generate_content,
+                    model=self._model_id,
+                    contents=contents
+                )
             except APIError as e:
                 if attempt < max_retries:
                     logger.warning(f"⚠️ Vision Gemini API failure (Attempt {attempt+1}/{max_retries+1}). Retrying in {delay}s... Error: {e}")
@@ -119,8 +131,6 @@ class VisionService:
             """
             
             response = await self._call_gemini_with_retry_async(
-                self.client.models.generate_content,
-                model=self._model_id,
                 contents=[image_part, prompt]
             )
             # 2. Extract Contract or JSON
@@ -163,8 +173,7 @@ class VisionService:
         Si es CEDULA o RECIBO_GAS y es LEGIBLE, responde: QUALITY_CHECK: PASSED | DOCUMENTO_DETECTADO: [TIPO]
         Si no es legible o no es un documento válido, responde: QUALITY_CHECK: FAILED | Motivo: [Razón]
         """
-        response = self.client.models.generate_content(
-            model=self._model_id,
+        response = await self._generate_content_nonblocking(
             contents=[image_part, prompt]
         )
         if not response or not getattr(response, "text", None) or not response.text.strip():
@@ -205,8 +214,7 @@ class VisionService:
         
         No conversational text, no questions. ONLY this format.
         """
-        response = self.client.models.generate_content(
-            model=self._model_id,
+        response = await self._generate_content_nonblocking(
             contents=[image_part, prompt]
         )
         if not response or not getattr(response, "text", None) or not response.text.strip():
@@ -230,8 +238,7 @@ class VisionService:
         OUTPUT FORMAT:
         [System Note: User sent an image/sticker. Vision analysis: <your brief description>. Sentiment: <Sentiment>]
         """
-        response = self.client.models.generate_content(
-            model=self._model_id,
+        response = await self._generate_content_nonblocking(
             contents=[image_part, prompt]
         )
         if not response or not getattr(response, "text", None) or not response.text.strip():

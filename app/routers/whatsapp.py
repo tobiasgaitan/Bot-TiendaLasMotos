@@ -775,7 +775,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                     image_bytes = await storage_service.download_media(media_id)
                     if image_bytes:
                         await _ensure_services()
-                        catalog_items = catalog_service.get_all_items()
+                        catalog_items = catalog_service.get_vision_catalog_projection()
                         
                         logger.info(
                             f"📸 Vision AI request for user {user_phone}. MIME: {mime_type}, media_id: {media_id}, catalog_items_count: {len(catalog_items)}"
@@ -945,6 +945,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                 if matched_item and isinstance(matched_item, dict):
                                     vision_description = matched_item["name"]
                                     canonical_image_url = matched_item["image_url"]
+                                    canonical_formatted_price = matched_item.get("formatted_price", "")
                                     logger.info(f"🎯 Multimodal similarity aligned to catalog item '{vision_description}' with URL '{canonical_image_url}'")
                                 else:
                                     # Fallback to legacy string cleanup if no match found
@@ -953,6 +954,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                         vision_description = vision_description.replace(token, "")
                                     vision_description = vision_description.strip(" []\n\r\t:")
                                     canonical_image_url = None
+                                    canonical_formatted_price = ""
                                     logger.warning(f"⚠️ Multimodal similarity could not align '{vision_response}' to any catalog item. Using raw: '{vision_description}'")
 
                                 logger.info(f"🏍️ Procesando imagen como consulta de catálogo de moto: '{vision_description}'")
@@ -989,7 +991,17 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                     if matched_item and isinstance(matched_item, dict) and prospect_data:
                                         prospect_data["moto_interest"] = vision_description
 
-                                    simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
+                                    # [BOT-PLAN-MULTIMODAL-HARDENING-201] Visual Lock: inject canonical data into prompt
+                                    if matched_item and canonical_image_url and canonical_formatted_price:
+                                        simulated_user_msg = (
+                                            f"El usuario acaba de enviar una foto de esta moto: {vision_description}. "
+                                            f"La moto coincide exactamente en nuestro catálogo como {matched_item['name']} "
+                                            f"con precio oficial {canonical_formatted_price}. "
+                                            f"Usa OBLIGATORIAMENTE la imagen exacta: {canonical_image_url} y el precio exacto: {canonical_formatted_price} "
+                                            f"en tu respuesta. No inventes URLs ni precios."
+                                        )
+                                    else:
+                                        simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
                                     if prospect_data: prospect_data["phone"] = user_phone
                                     skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=False)
                                     final_response = await cerebro_ia.pensar_respuesta(
@@ -1002,6 +1014,16 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                     
                                     if not final_response:
                                         final_response = "Lo siento, tuve un problema procesando esa información. ¿Podrías repetirme qué buscas?"
+                                    
+                                    # [BOT-PLAN-MULTIMODAL-HARDENING-201] Visual Lock post-egress: force canonical image if missing
+                                    if matched_item and canonical_image_url and canonical_formatted_price:
+                                        if canonical_image_url not in final_response:
+                                            canonical_markdown = f"\n\n![{matched_item['name']}]({canonical_image_url})"
+                                            final_response = final_response + canonical_markdown
+                                            logger.info(f"🔒 Visual Lock enforced: injected canonical image_url into response for {user_phone}")
+                                        if canonical_formatted_price not in final_response:
+                                            final_response = final_response.rstrip() + f"\n\nPrecio: {canonical_formatted_price}"
+                                            logger.info(f"🔒 Visual Lock enforced: injected canonical formatted_price into response for {user_phone}")
                                     
                                     await ms.save_message(user_phone, "user", simulated_user_msg)
                                     await _process_and_send_egress_message(user_phone, final_response, phone_number_id=phone_number_id)

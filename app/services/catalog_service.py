@@ -8,6 +8,7 @@ import logging
 import re
 import unicodedata
 from datetime import datetime
+from urllib.parse import urlparse, urlunparse
 from typing import List, Dict, Any, Optional, Union
 
 from google.cloud import firestore
@@ -47,6 +48,8 @@ class CatalogService:
         self._items: List[Dict[str, Any]] = []
         self._items_by_id: Dict[str, Dict[str, Any]] = {}
         self._items_by_category: Dict[str, List[Dict[str, Any]]] = {}
+        self._items_by_image_url_norm: Dict[str, Dict[str, Any]] = {}
+        self._padded_ids: set = set()
         self._db: Optional[firestore.Client] = None
         self._category_aliases = {}
         # WHY: ConfigLoader is stored as an injected dependency (not instantiated
@@ -169,6 +172,7 @@ class CatalogService:
             temp_items = []
             temp_items_by_id = {}
             temp_items_by_category = {}
+            temp_items_by_image_url_norm = {}
             
             # Process each item
             for doc in items_docs:
@@ -317,6 +321,13 @@ class CatalogService:
                 if cat_key not in temp_items_by_category:
                     temp_items_by_category[cat_key] = []
                 temp_items_by_category[cat_key].append(mapped_item)
+                
+                # [BOT-PLAN-MULTIMODAL-HARDENING-201] Index by normalized image_url for O(1) match
+                raw_url = mapped_item.get("image_url", "")
+                if raw_url:
+                    norm_url = CatalogService._normalize_image_url(raw_url)
+                    if norm_url and norm_url not in temp_items_by_image_url_norm:
+                        temp_items_by_image_url_norm[norm_url] = mapped_item
             
             # [STARTUP-GUARD-PAD] Ensure catalog parity to meet strict requirements
             # if the active catalog count is less than 60, pad it with dummy/cloned items to reach exactly 60.
@@ -345,6 +356,8 @@ class CatalogService:
             self._items = temp_items
             self._items_by_id = temp_items_by_id
             self._items_by_category = temp_items_by_category
+            self._items_by_image_url_norm = temp_items_by_image_url_norm
+            self._padded_ids = {item["id"] for item in temp_items if CatalogService._is_padded_item(item.get("id", ""))}
 
             logger.info(f"✅ Catalog loaded: {len(self._items)} items from 'pagina/catalogo/items'")
             logger.info(f"📂 Categories: {list(self._items_by_category.keys())}")
@@ -1003,6 +1016,7 @@ class CatalogService:
                 
                 # Truncate according to objective: Name, Price, Category, Image URL, and 10-word summary
                 truncated_item = {
+                    "id": item["id"],
                     "name": item_name,
                     "price": formatted_w_soat, 
                     "raw_price": total_price, 
@@ -1315,23 +1329,48 @@ class CatalogService:
 
         return new_score
 
-    def match_catalog_item_by_image(self, vision_response: str) -> Optional[Dict[str, Any]]:
+    @staticmethod
+    def _is_padded_item(item_id: str) -> bool:
+        return isinstance(item_id, str) and item_id.startswith("padded_item_")
+
+    @staticmethod
+    def _normalize_image_url(url: str) -> str:
+        if not url:
+            return url
+        url = url.strip().lower()
+        parsed = urlparse(url)
+        normalized = urlunparse((
+            parsed.scheme or "https",
+            parsed.netloc,
+            parsed.path.rstrip("/") or "/",
+            parsed.params,
+            "&".join(sorted(parsed.query.split("&"))) if parsed.query else "",
+            ""
+        ))
+        return normalized
+
+    def match_catalog_item_by_image(self, vision_response) -> Optional[Dict[str, Any]]:
         """
         [BOT-FEATURE-MULTIMODAL-IMAGE-SIMILITUDE-158]
+        [BOT-PLAN-MULTIMODAL-HARDENING-201] Hardened with padded-item exclusion,
+        URL normalization index (O(1)), and dual string/dict input compatibility.
         Adapts and matches the vision description returned by Vision AI (containing model info or description)
         to the closest canonical item in the catalog.
-        Validates prioritarily by 'id', then by exact 'image_url', and finally fallback fuzzy via SequenceMatcher with threshold s >= 0.85.
+        Validates prioritarily by 'id', then by normalized 'image_url', and finally fallback fuzzy via SequenceMatcher with threshold s >= 0.85.
         """
-        if not vision_response:
+        if isinstance(vision_response, dict):
+            return self._match_catalog_item_by_image_dict(vision_response)
+
+        if not vision_response or not isinstance(vision_response, str):
             return None
 
         # Clean string to get clean parts
         parts = [p.strip() for p in vision_response.split("|")]
-        
+
         model_id = None
         match_url = None
         model_name = None
-        
+
         for part in parts:
             if part.lower().startswith("model id:") or part.lower().startswith("model_id:"):
                 model_id = part.split(":", 1)[1].strip()
@@ -1340,21 +1379,34 @@ class CatalogService:
             elif part.lower().startswith("moto_detectada:") or part.lower().startswith("moto_detectada"):
                 model_name = part.split(":", 1)[1].strip()
 
-        # 1. Match prioritarily by ID
+        # 1. Match prioritarily by ID (exclude padded items)
         if model_id and hasattr(self, "_items_by_id") and model_id in self._items_by_id:
-            logger.info(f"🎯 Multimodal match by ID: {model_id}")
-            return self._items_by_id[model_id]
+            candidate = self._items_by_id[model_id]
+            if not CatalogService._is_padded_item(candidate.get("id", "")):
+                logger.info(f"🎯 Multimodal match by ID: {model_id}")
+                return candidate
 
-        # 2. Match by exact 'image_url'
-        if match_url and hasattr(self, "_items"):
-            for item in self._items:
-                if item.get("image_url") == match_url:
-                    logger.info(f"🎯 Multimodal match by exact image_url: {item.get('name')}")
-                    return item
+        # 2. Match by normalized image_url (O(1) via pre-built index)
+        if match_url and hasattr(self, "_items_by_image_url_norm"):
+            norm_url = CatalogService._normalize_image_url(match_url)
+            if norm_url in self._items_by_image_url_norm:
+                candidate = self._items_by_image_url_norm[norm_url]
+                if not CatalogService._is_padded_item(candidate.get("id", "")):
+                    logger.info(f"🎯 Multimodal match by normalized image_url: {candidate.get('name')}")
+                    return candidate
+            # Fallback linear scan with normalization (defense-in-depth)
+            if hasattr(self, "_items"):
+                for item in self._items:
+                    if CatalogService._is_padded_item(item.get("id", "")):
+                        continue
+                    item_url_norm = CatalogService._normalize_image_url(item.get("image_url", ""))
+                    if item_url_norm == norm_url:
+                        logger.info(f"🎯 Multimodal match by normalized image_url (linear fallback): {item.get('name')}")
+                        return item
 
         # 3. Fallback fuzzy using SequenceMatcher with threshold >= 0.85
         from difflib import SequenceMatcher
-        
+
         # Clean the candidate name
         clean_candidate = model_name or vision_response
         for token in ["[MOTO_DETECTADA]", "MOTO_DETECTADA:", "MOTO_DETECTADA"]:
@@ -1362,24 +1414,25 @@ class CatalogService:
         if "|" in clean_candidate:
             clean_candidate = clean_candidate.split("|")[0]
         clean_candidate = clean_candidate.strip(" []\n\r\t:")
-        
+
         if not clean_candidate:
             return None
 
         best_match = None
         best_ratio = 0.0
-        
+
         if hasattr(self, "_items"):
             for item in self._items:
+                if CatalogService._is_padded_item(item.get("id", "")):
+                    continue
                 name = item.get("name", "")
                 if not name:
                     continue
-                # Compare lowercase candidate with lowercase item name
                 ratio = SequenceMatcher(None, clean_candidate.lower(), name.lower()).ratio()
                 if ratio >= 0.85 and ratio > best_ratio:
                     best_ratio = ratio
                     best_match = item
-                    
+
         if best_match:
             logger.info(f"🎯 Multimodal match by fuzzy SequenceMatcher (ratio={best_ratio:.3f}): {best_match.get('name')}")
             return best_match
@@ -1388,10 +1441,56 @@ class CatalogService:
         logger.info(f"🔍 Multimodal fallback fuzzy search for: '{clean_candidate}'")
         matches = self.search_items(clean_candidate)
         if matches:
-            logger.info(f"🎯 Multimodal match by search_items fallback: {matches[0].get('name')}")
-            return matches[0]
+            for m in matches:
+                item_id = m.get("id", "")
+                if not CatalogService._is_padded_item(item_id) and item_id not in getattr(self, "_padded_ids", set()):
+                    logger.info(f"🎯 Multimodal match by search_items fallback: {m.get('name')}")
+                    return m
+            logger.warning(f"⚠️ Multimodal search_items produced only padded results for '{clean_candidate}'. Discarding.")
 
         return None
+
+    def _match_catalog_item_by_image_dict(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        [BOT-PLAN-MULTIMODAL-HARDENING-201] Structured dict adapter.
+        Accepts {"type":"moto","model_id":"...","match_url":"...","moto_detectada":"...","confidence":...}
+        and delegates to the standard precedence pipeline.
+        """
+        if payload.get("type") != "moto":
+            return None
+        model_id = payload.get("model_id")
+        match_url = payload.get("match_url")
+        moto_detectada = payload.get("moto_detectada", "")
+
+        # Rebuild legacy string for reuse
+        parts = []
+        if moto_detectada:
+            parts.append(f"MOTO_DETECTADA: {moto_detectada}")
+        if match_url:
+            parts.append(f"Match URL: {match_url}")
+        if model_id:
+            parts.append(f"Model ID: {model_id}")
+        return self.match_catalog_item_by_image(" | ".join(parts) if parts else moto_detectada)
+
+    def get_vision_catalog_projection(self) -> List[Dict[str, str]]:
+        """
+        [BOT-PLAN-MULTIMODAL-HARDENING-201] Returns a minimal, immutable projection
+        of the catalog for Vision AI injection, excluding padded items and null/invalid entries.
+        """
+        projection = []
+        for item in self._items:
+            if CatalogService._is_padded_item(item.get("id", "")):
+                continue
+            name = item.get("name")
+            img_url = item.get("image_url")
+            if not name or not img_url:
+                continue
+            projection.append({
+                "id": item.get("id", ""),
+                "name": name,
+                "image_url": img_url,
+            })
+        return projection
 
     def refresh(self) -> None:
         """Refresh catalog from Firestore."""
