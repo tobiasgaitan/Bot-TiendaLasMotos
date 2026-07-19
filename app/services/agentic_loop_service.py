@@ -8,6 +8,27 @@ from typing import Dict, Any
 
 logger = logging.getLogger("agentic_loop")
 
+TECH_SPEC_TOKENS = {
+    "ficha", "tecnica", "técnica", "especificaciones", "caracteristicas",
+    "características", "cilindraje", "torque", "motor", "potencia",
+    "frenos", "cc", "hp", "nm", "transmision", "transmisión", "peso"
+}
+
+
+def is_tech_spec_query(text: str) -> bool:
+    if not text:
+        return False
+    text_lower = text.lower()
+    for token in TECH_SPEC_TOKENS:
+        if len(token) <= 3:
+            if re.search(r'\b' + re.escape(token) + r'\b', text_lower):
+                return True
+        else:
+            if token in text_lower:
+                return True
+    return False
+
+
 class AgenticOrchestrator:
     def __init__(self, sandbox_path: str = "./tmp/sandbox-106", max_attempts: int = 5):
         self.sandbox_path = sandbox_path
@@ -43,7 +64,15 @@ class AgenticOrchestrator:
     def run_checker(self, bot_response: str, is_catalog_query: bool = False, prospect_data: Dict[str, Any] = None, user_prompt: str = None) -> Dict[str, Any]:
         has_price = bool(re.search(r"\$\d+", bot_response))
         has_image = bool(re.search(r"!\[.*?\]\(.*?\)|\[IMAGE:.*?\]", bot_response))
-        has_ficha = "Ficha Tecnica:" in bot_response if is_catalog_query else True
+
+        has_moto_interest = bool(prospect_data and prospect_data.get("moto_interest"))
+        
+        is_catalog_query_effective = (
+            is_catalog_query
+            or is_tech_spec_query(user_prompt or "")
+        )
+        
+        has_ficha = "Ficha Tecnica:" in bot_response if is_catalog_query_effective else True
 
         # Detección semántica de intenciones de FAQ puras
         is_faq_intent = False
@@ -62,13 +91,8 @@ class AgenticOrchestrator:
             if any(re.search(rf"\b{kw}\b" if kw.isalnum() else re.escape(kw), prompt_lower) for kw in faq_keywords):
                 is_faq_intent = True
 
-        has_moto_interest = bool(prospect_data and prospect_data.get("moto_interest"))
+        bypass_strict = (not is_catalog_query_effective) or (is_faq_intent and not has_moto_interest)
         
-        # Bypass estricto si:
-        # 1. No es una consulta de catálogo activa.
-        # 2. Es una intención de FAQ pura y no hay moto de interés en el CRM.
-        bypass_strict = (not is_catalog_query) or (is_faq_intent and not has_moto_interest)
-
         if bypass_strict:
             # En bypass de FAQ abstracta sin moto de interés asignada,
             # no exigimos precio, imagen, ni tampoco el prefijo Ficha Tecnica.

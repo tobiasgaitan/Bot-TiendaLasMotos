@@ -18,6 +18,17 @@ from app.services.semantic_cache_service import SemanticCacheService
 
 logger = logging.getLogger(__name__)
 
+PRICE_PACKAGE_ANCHOR = "(incluye SOAT, Matrícula, y tramites)"
+
+
+def _ensure_price_anchor(formatted_price: str) -> str:
+    if not formatted_price:
+        return formatted_price
+    if PRICE_PACKAGE_ANCHOR in formatted_price:
+        return formatted_price
+    return f"{formatted_price} {PRICE_PACKAGE_ANCHOR}"
+
+
 # ── Port & Adapters: DTO Contract v1.0 ──────────────────────────────────────
 
 class VisionMotoMatchDTO:
@@ -1108,7 +1119,7 @@ class CatalogService:
                 
                 # Build formatted price with mandatory legal disclaimer
                 # Strict Rule: No assumptions, logic handles reg_cost=0 naturally.
-                formatted_w_soat = f"${total_price:,.0f} (incluye SOAT, Matrícula, y tramites)".replace(",", ".")
+                formatted_w_soat = f"${total_price:,.0f}".replace(",", ".") + f" {PRICE_PACKAGE_ANCHOR}"
                 
                 bonus_info = self._get_active_bonus_info(item.get("bonusAmount"), item.get("bonusEndDate"))
                 
@@ -1504,26 +1515,29 @@ class CatalogService:
         """
         [BOT-PLAN-MULTIMODAL-HARDENING-201] Recompute canonical formatted_price
         from raw price when the catalog item omits the key (e.g. test fixtures).
-        Format: $X.XXX.XXX (period thousands sep, no cents).
+        Format: $X.XXX.XXX (incluye SOAT, Matrícula, y tramites).
         """
         if item.get("formatted_price"):
-            return item["formatted_price"]
+            return _ensure_price_anchor(item["formatted_price"])
         price = item.get("price")
         if not price:
             return ""
-        return f"${price:,.0f}".replace(",", ".")
+        base = f"${price:,.0f}".replace(",", ".")
+        return _ensure_price_anchor(base)
 
     @staticmethod
     def _ensure_formatted_price(item: Dict[str, Any]) -> None:
         """
         [BOT-PLAN-MULTIMODAL-HARDENING-201] Mutate-safe hydration:
         injects formatted_price into the item dict if missing, using the
-        canonical $X.XXX.XXX format derived from price.  No-op if already set.
+        canonical $X.XXX.XXX (incluye SOAT, Matrícula, y tramites) format.
+        No-op if already set (preserving existing anchor if present).
         """
         if not item.get("formatted_price"):
             price = item.get("price")
             if price:
-                item["formatted_price"] = f"${price:,.0f}".replace(",", ".")
+                base = f"${price:,.0f}".replace(",", ".")
+                item["formatted_price"] = _ensure_price_anchor(base)
 
     def match_catalog_item_by_image(self, vision_response) -> Optional[Dict[str, Any]]:
         """

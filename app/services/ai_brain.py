@@ -754,7 +754,8 @@ class CerebroIA:
             is_moto_query = any(kw in texto.lower() for kw in ["moto", "tvs", "victory", "raider", "apache", "sport", "mrx", "bomber", "life"])
             
             # Is specifications/ficha query:
-            is_catalog_query = any(kw in texto.lower() for kw in ["ficha", "tecnica", "especificaciones", "caracteristicas"])
+            from app.services.agentic_loop_service import is_tech_spec_query
+            is_catalog_query = is_tech_spec_query(texto)
             
             if final_text and not final_text.startswith("HANDOFF_TRIGGERED:") and (mentions_moto or is_moto_query):
                 from app.services.agentic_loop_service import AgenticOrchestrator
@@ -784,7 +785,7 @@ class CerebroIA:
                             f"🚨 [PCC VALIDATION] CATALOG_VALIDATION_FAIL - Max validation attempts reached. "
                             f"user_id={user_id} query='{texto}' - Returning degraded response."
                         )
-                        return final_text
+                        return CerebroIA._ensure_soat_anchor(final_text)
                 else:
                     # BOT-BRAIN-FAQ-CATALOG-COLLISION-146: Si run_checker determinó un bypass semántico
                     # (FAQ pura sin moto_interest en CRM), forzar is_catalog_query=False de forma síncrona
@@ -796,12 +797,27 @@ class CerebroIA:
                             f"✅ [PCC BYPASS] Semantic bypass exitoso: FAQ intent sin moto_interest en CRM. "
                             f"is_catalog_query forzado a False. user_id={user_id} query='{texto}'"
                         )
+                    final_text = CerebroIA._ensure_soat_anchor(final_text)
                     return final_text
             else:
                 return final_text
         except HabeasDataBypassInterrupt as hdbi:
             logger.info(f"🛡️ [HABEAS-BYPASS] Cortocircuito limpio ejecutado. Propagando al router.")
             raise
+
+    @staticmethod
+    def _ensure_soat_anchor(text: str) -> str:
+        if not text or not isinstance(text, str):
+            return text
+        if "incluye SOAT" in text:
+            return text
+        price_match = re.search(r'\$[\d.,]+\b', text)
+        if price_match:
+            from app.services.catalog_service import PRICE_PACKAGE_ANCHOR
+            if PRICE_PACKAGE_ANCHOR not in text:
+                replacement = f"{price_match.group(0)} {PRICE_PACKAGE_ANCHOR}"
+                text = text[:price_match.start()] + replacement + text[price_match.end():]
+        return text
 
     @staticmethod
     def clean_markdown_blocks(text: str) -> str:

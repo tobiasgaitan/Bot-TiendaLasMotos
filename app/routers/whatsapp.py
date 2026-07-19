@@ -1037,6 +1037,13 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                         )
                                     else:
                                         simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
+                                    
+                                    # [BOT-207] Propagate user caption and Ficha Tecnica hint
+                                    if caption and caption.strip():
+                                        simulated_user_msg += f" El usuario también escribió: \"{caption.strip()}\"."
+                                        from app.services.agentic_loop_service import is_tech_spec_query
+                                        if is_tech_spec_query(caption.strip()):
+                                            simulated_user_msg += " OBLIGATORIO: incluye el prefijo literal 'Ficha Tecnica:' con las especificaciones del catálogo en tu respuesta."
                                     if prospect_data: prospect_data["phone"] = user_phone
                                     skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=False)
                                     final_response = await cerebro_ia.pensar_respuesta(
@@ -1052,6 +1059,8 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                     
                                     # [BOT-PLAN-MULTIMODAL-HARDENING-201] Visual Lock post-egress: force canonical image if missing
                                     if matched_item and canonical_image_url and canonical_formatted_price:
+                                        from app.services.catalog_service import _ensure_price_anchor
+                                        canonical_formatted_price = _ensure_price_anchor(canonical_formatted_price)
                                         if canonical_image_url not in final_response:
                                             canonical_markdown = f"\n\n![{matched_item['name']}]({canonical_image_url})"
                                             final_response = final_response + canonical_markdown
@@ -1363,9 +1372,10 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                     # run_checker determina semánticamente si la respuesta es FAQ pura
                     # para propagar el flag is_faq_bypass al Juez y evitar falsos positivos
                     # en C1_VISUAL_LOCK ("soporte"→"Sport") y C9_CITY_MISSING ("requisitos"→crédito).
+                    from app.services.agentic_loop_service import is_tech_spec_query
                     _pcc_result = _get_router_orchestrator().run_checker(
                         response_text or "",
-                        is_catalog_query=any(kw in message_body.lower() for kw in ["ficha", "tecnica", "especificaciones"]),
+                        is_catalog_query=is_tech_spec_query(message_body),
                         prospect_data=prospect_data,
                         user_prompt=message_body
                     )
