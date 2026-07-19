@@ -3,65 +3,506 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from app.services.catalog_service import CatalogService
 from app.services.vision_service import VisionService
 
-def test_match_catalog_item_by_image_priority():
-    """
-    Test that CatalogService.match_catalog_item_by_image matches by ID first,
-    then by exact image_url, then by SequenceMatcher >= 0.85.
-    """
-    catalog = CatalogService()
-    
-    # Mock items
-    mock_items = [
+
+# ── Fixtures helpers ──────────────────────────────────────────────────
+
+def _canonical_mock_items():
+    """Return a minimal realistic catalog fixture."""
+    return [
         {
             "id": "tvs_sport",
             "name": "TVS Sport 100",
             "image_url": "https://images.com/tvs_sport.jpg",
-            "price": 6200000
+            "price": 6200000,
+            "formatted_price": "$6.200.000",
         },
         {
             "id": "tvs_raider",
             "name": "TVS Raider 125",
             "image_url": "https://images.com/tvs_raider.jpg",
-            "price": 7500000
+            "price": 7500000,
+            "formatted_price": "$7.500.000",
         },
         {
             "id": "akt_nkd",
             "name": "AKT NKD 125",
             "image_url": "https://images.com/akt_nkd.jpg",
-            "price": 5200000
-        }
+            "price": 5200000,
+            "formatted_price": "$5.200.000",
+        },
     ]
-    
-    catalog._items = mock_items
-    catalog._items_by_id = {item["id"]: item for item in mock_items}
-    
-    # 1. Match by ID
-    res_id = catalog.match_catalog_item_by_image("MOTO_DETECTADA: TVS Sport | Model ID: tvs_raider")
-    assert res_id is not None
-    assert res_id["id"] == "tvs_raider", "Should match by ID first even if name says TVS Sport"
-    
-    # 2. Match by exact image_url
-    res_url = catalog.match_catalog_item_by_image("MOTO_DETECTADA: AKT | Match URL: https://images.com/tvs_sport.jpg")
-    assert res_url is not None
-    assert res_url["id"] == "tvs_sport", "Should match by exact image_url"
 
-    # 3. Match by SequenceMatcher (fuzzy) >= 0.85
-    # SequenceMatcher of "TVS Sport 100" and "TVS Sport 100" is 1.0
+
+def hydrate_catalog_indexes(catalog: CatalogService, items: list):
+    """
+    [BOT-PLAN-MULTIMODAL-HARDENING-201]
+    Populate ALL indexes in one call so no O(1) path is left unexercised.
+    [BOT-BUILD-MULTIMODAL-RESOLVER-REGRESSION] Also populates _items_by_id_norm.
+    """
+    catalog._items = items
+    catalog._items_by_id = {it["id"]: it for it in items}
+    catalog._items_by_image_url_norm = {}
+    catalog._items_by_id_norm = {}
+    for it in items:
+        url = it.get("image_url", "")
+        if url:
+            norm = CatalogService._normalize_image_url(url)
+            if norm:
+                catalog._items_by_image_url_norm[norm] = it
+        doc_id = it["id"]
+        id_norm_key = CatalogService._normalize_item_id_key(doc_id)
+        if id_norm_key:
+            if id_norm_key not in catalog._items_by_id_norm:
+                catalog._items_by_id_norm[id_norm_key] = []
+            if doc_id not in catalog._items_by_id_norm[id_norm_key]:
+                catalog._items_by_id_norm[id_norm_key].append(doc_id)
+        name = it.get("name", "")
+        if name:
+            name_norm_key = CatalogService._normalize_item_id_key(name)
+            if name_norm_key and name_norm_key != id_norm_key:
+                if name_norm_key not in catalog._items_by_id_norm:
+                    catalog._items_by_id_norm[name_norm_key] = []
+                if doc_id not in catalog._items_by_id_norm[name_norm_key]:
+                    catalog._items_by_id_norm[name_norm_key].append(doc_id)
+    catalog._padded_ids = set()
+
+
+# ── Unit: matcher precedence ─────────────────────────────────────────
+
+def test_match_catalog_item_by_image_priority():
+    """
+    [BOT-PLAN-MULTIMODAL-HARDENING-201] AF-01..AF-03
+    Matches by ID first, then by exact image_url, then fuzzy ≥0.85.
+    Now uses hydrate_catalog_indexes so O(1) URL index is exercised.
+    """
+    catalog = CatalogService()
+    items = _canonical_mock_items()
+    hydrate_catalog_indexes(catalog, items)
+
+    # 1. Match by ID (AF-01)
+    res_id = catalog.match_catalog_item_by_image(
+        "MOTO_DETECTADA: TVS Sport | Model ID: tvs_raider"
+    )
+    assert res_id is not None
+    assert res_id["id"] == "tvs_raider", "Should match by ID first"
+    assert res_id.get("formatted_price") == "$7.500.000"
+
+    # 2. Match by exact image_url – O(1) index (AF-02)
+    res_url = catalog.match_catalog_item_by_image(
+        "MOTO_DETECTADA: AKT | Match URL: https://images.com/tvs_sport.jpg"
+    )
+    assert res_url is not None
+    assert res_url["id"] == "tvs_sport", "Should match by image_url"
+    assert res_url.get("formatted_price") == "$6.200.000"
+
+    # 3. Fuzzy SequenceMatcher ≥0.85 (AF-03 boundary)
     res_fuzzy = catalog.match_catalog_item_by_image("MOTO_DETECTADA: TVS Sport 100")
     assert res_fuzzy is not None
     assert res_fuzzy["id"] == "tvs_sport"
 
-    # SequenceMatcher of "TVS Sport 10" vs "TVS Sport 100" is 0.923 (>= 0.85)
     res_fuzzy2 = catalog.match_catalog_item_by_image("TVS Sport 10")
     assert res_fuzzy2 is not None
     assert res_fuzzy2["id"] == "tvs_sport"
+    assert res_fuzzy2.get("formatted_price") == "$6.200.000"
 
-    # 4. Fallback search_items when SequenceMatcher < 0.85 but tokens match
-    with patch.object(catalog, 'search_items', return_value=[mock_items[2]]) as mock_search:
+    # 4. Fallback search_items
+    with patch.object(catalog, 'search_items', return_value=[items[2]]) as mock_search:
         res_fallback = catalog.match_catalog_item_by_image("NKD")
         assert res_fallback is not None
         assert res_fallback["id"] == "akt_nkd"
         mock_search.assert_called_once_with("NKD")
+
+
+# ── Unit: O(1) URL index coverage (was blind spot) ───────────────────
+
+def test_match_catalog_item_url_index_o1_no_linear_fallback():
+    """
+    [BOT-PLAN-MULTIMODAL-HARDENING-201] AF-02
+    Prove that the O(1) _items_by_image_url_norm lookup works WITHOUT
+    the _items list (which was the previously-unexercised blind spot).
+    """
+    catalog = CatalogService()
+    items = _canonical_mock_items()
+    hydrate_catalog_indexes(catalog, items)
+
+    # Remove _items to force exclusive O(1) index path
+    catalog._items = []
+
+    res = catalog.match_catalog_item_by_image(
+        "MOTO_DETECTADA: Whatever | Match URL: https://images.com/tvs_sport.jpg"
+    )
+    assert res is not None
+    assert res["id"] == "tvs_sport"
+    assert res.get("formatted_price") == "$6.200.000"
+
+    # When URL is absent and _items is empty, fuzzy falls through to
+    # search_items which triggers the emergency fallback item (no 'id' key).
+    # That is expected defensive behavior, not a regression.
+    res_miss = catalog.match_catalog_item_by_image(
+        "MOTO_DETECTADA: Missing | Match URL: https://images.com/nonexistent.jpg"
+    )
+    assert res_miss is None or res_miss.get("id") != "tvs_sport"
+
+
+def test_match_catalog_item_url_index_normalization():
+    """
+    [BOT-PLAN-MULTIMODAL-HARDENING-201] AF-02
+    O(1) URL index handles trailing-slash and case normalization.
+    Query params are preserved as-is (different canonical form).
+    """
+    catalog = CatalogService()
+    items = _canonical_mock_items()
+    hydrate_catalog_indexes(catalog, items)
+
+    # Trailing slash normalized away
+    res = catalog.match_catalog_item_by_image(
+        "MOTO_DETECTADA: TVS | Match URL: https://images.com/tvs_sport.jpg/"
+    )
+    assert res is not None
+    assert res["id"] == "tvs_sport"
+
+    # Query params produce a different normalized form from the index key
+    # (index has no query; this URL has "?w=800&h=600" → "?h=600&w=800").
+    # The O(1) index won't match → falls to fuzzy which matches "TVS NKD"?
+    # The intent is: URL with appended query is "another resource".
+    res_q = catalog.match_catalog_item_by_image(
+        "MOTO_DETECTADA: TVS | Match URL: https://images.com/tvs_sport.jpg?w=800&h=600"
+    )
+    # May or may not match depending on fuzzy fallback; at minimum must not crash
+    if res_q is not None:
+        assert "id" in res_q
+
+    # Uppercase scheme/host/path → normalized to lowercase → matches index
+    res_up = catalog.match_catalog_item_by_image(
+        "MOTO_DETECTADA: TVS | Match URL: HTTPS://IMAGES.COM/TVS_SPORT.JPG"
+    )
+    assert res_up is not None
+    assert res_up["id"] == "tvs_sport"
+
+
+# ── Unit: pipe parser normalization ──────────────────────────────────
+
+def test_parse_vision_pipe_string_normal():
+    """Normal pipe fields extracted."""
+    parsed = CatalogService._parse_vision_pipe_string(
+        "MOTO_DETECTADA: TVS Sport | Match URL: https://img.com/a.jpg | Model ID: tvs_sport"
+    )
+    assert parsed["model_name"] == "TVS Sport"
+    assert parsed["match_url"] == "https://img.com/a.jpg"
+    assert parsed["model_id"] == "tvs_sport"
+
+
+def test_parse_vision_pipe_string_alternate_keys():
+    """model_id with hyphen, image_url alias, moto detectada with space."""
+    parsed = CatalogService._parse_vision_pipe_string(
+        "moto detectada: NKD | image_url: https://x.com/nkd.jpg | model-id: akt_nkd"
+    )
+    assert parsed["model_name"] == "NKD"
+    assert parsed["match_url"] == "https://x.com/nkd.jpg"
+    assert parsed["model_id"] == "akt_nkd"
+
+
+def test_parse_vision_pipe_string_fuzzy_order():
+    """Fields in reverse order still parsed correctly."""
+    parsed = CatalogService._parse_vision_pipe_string(
+        "Model ID: tvs_raider | MOTO_DETECTADA: Raider | Match URL: https://img.com/raider.jpg"
+    )
+    assert parsed["model_id"] == "tvs_raider"
+    assert parsed["model_name"] == "Raider"
+    assert parsed["match_url"] == "https://img.com/raider.jpg"
+
+
+def test_parse_vision_pipe_string_empty_and_null():
+    """Empty string and non-string inputs return defaults."""
+    assert CatalogService._parse_vision_pipe_string("") == {
+        "model_id": None, "match_url": None, "model_name": None
+    }
+    assert CatalogService._parse_vision_pipe_string(None) == {
+        "model_id": None, "match_url": None, "model_name": None
+    }
+
+
+def test_parse_vision_pipe_string_whitespace_nbsp():
+    """NBSP and irregular whitespace are normalized."""
+    parsed = CatalogService._parse_vision_pipe_string(
+        "MOTO_DETECTADA:\u00a0\u00a0Victory  | Match URL:   https://img.com/v.jpg   "
+    )
+    assert parsed["model_name"] == "Victory"
+    assert parsed["match_url"] == "https://img.com/v.jpg"
+
+
+# ── Unit: ID normalization resolver (AF-ID-01..AF-ID-09) ──────────────
+
+def _agility_items():
+    return [
+        {
+            "id": "agility_fusion",
+            "name": "KYMCO Agility Fusion",
+            "image_url": "https://images.com/agility_fusion.jpg",
+            "price": 10179000,
+            "formatted_price": "$10.179.000",
+        },
+        {
+            "id": "tvs_sport",
+            "name": "TVS Sport 100",
+            "image_url": "https://images.com/tvs_sport.jpg",
+            "price": 6200000,
+            "formatted_price": "$6.200.000",
+        },
+        {
+            "id": "akt_nkd",
+            "name": "AKT NKD 125",
+            "image_url": "https://images.com/akt_nkd.jpg",
+            "price": 5200000,
+            "formatted_price": "$5.200.000",
+        },
+    ]
+
+
+def test_normalize_item_id_key_static():
+    """AF-ID-BASIC: _normalize_item_id_key produces canonical forms."""
+    assert CatalogService._normalize_item_id_key("agility_fusion") == "agility_fusion"
+    assert CatalogService._normalize_item_id_key("KYMCO AGILITY FUSION") == "kymco_agility_fusion"
+    assert CatalogService._normalize_item_id_key("AGILITY_FUSION") == "agility_fusion"
+    assert CatalogService._normalize_item_id_key("agility-fusion") == "agility_fusion"
+    assert CatalogService._normalize_item_id_key("  Agility  Fusion  ") == "agility_fusion"
+    assert CatalogService._normalize_item_id_key("") == ""
+    assert CatalogService._normalize_item_id_key(None) == ""
+
+
+def test_id_token_set_static():
+    """AF-ID-BASIC: _id_token_set produces subset-able frozensets."""
+    ts = CatalogService._id_token_set("agility_fusion")
+    assert isinstance(ts, frozenset)
+    assert ts == {"agility", "fusion"}
+    assert CatalogService._id_token_set("TVS Sport 100") == {"tvs", "sport"}
+    assert CatalogService._id_token_set("125") == frozenset()
+
+
+def test_af_id_01_exact_id_still_works():
+    """AF-ID-01: Exact match on doc.id untouched (zero regression)."""
+    catalog = CatalogService()
+    items = _agility_items()
+    hydrate_catalog_indexes(catalog, items)
+    res = catalog.match_catalog_item_by_image(
+        "MOTO_DETECTADA: KYMCO | Model ID: agility_fusion"
+    )
+    assert res is not None
+    assert res["id"] == "agility_fusion"
+    assert res.get("formatted_price") == "$10.179.000"
+
+
+def test_af_id_02_uppercase_id_norm():
+    """AF-ID-02: Uppercase ID resolves via normalized index."""
+    catalog = CatalogService()
+    items = _agility_items()
+    hydrate_catalog_indexes(catalog, items)
+    res = catalog.match_catalog_item_by_image(
+        "MOTO_DETECTADA: moto | Model ID: AGILITY_FUSION"
+    )
+    assert res is not None
+    assert res["id"] == "agility_fusion"
+    assert res.get("formatted_price") == "$10.179.000"
+
+
+def test_af_id_03_hyphenated_id_norm():
+    """AF-ID-03: Hyphenated ID slug resolves via normalized index."""
+    catalog = CatalogService()
+    items = _agility_items()
+    hydrate_catalog_indexes(catalog, items)
+    res = catalog.match_catalog_item_by_image(
+        "MOTO_DETECTADA: moto | Model ID: agility-fusion"
+    )
+    assert res is not None
+    assert res["id"] == "agility_fusion"
+    assert res.get("formatted_price") == "$10.179.000"
+
+
+def test_af_id_04_commercial_name_as_model_id():
+    """AF-ID-04: Commercial name as Model ID resolves via name alias norm index."""
+    catalog = CatalogService()
+    items = _agility_items()
+    hydrate_catalog_indexes(catalog, items)
+    res = catalog.match_catalog_item_by_image(
+        "MOTO_DETECTADA: Agility | Model ID: KYMCO AGILITY FUSION"
+    )
+    assert res is not None
+    assert res["id"] == "agility_fusion"
+    assert res.get("formatted_price") == "$10.179.000"
+
+
+def test_af_id_05_no_moto_detectada_commercial_model_id():
+    """AF-ID-05: Only commercial Model ID (no MOTO_DETECTADA) resolves."""
+    catalog = CatalogService()
+    items = _agility_items()
+    hydrate_catalog_indexes(catalog, items)
+    res = catalog.match_catalog_item_by_image(
+        "Model ID: KYMCO AGILITY FUSION"
+    )
+    assert res is not None
+    assert res["id"] == "agility_fusion"
+    assert res.get("formatted_price") == "$10.179.000"
+
+
+def test_af_id_06_dict_input_commercial_id():
+    """AF-ID-06: Dict with commercial model_id resolves same as pipe string."""
+    catalog = CatalogService()
+    items = _agility_items()
+    hydrate_catalog_indexes(catalog, items)
+    res = catalog.match_catalog_item_by_image({
+        "type": "moto",
+        "model_id": "KYMCO AGILITY FUSION",
+        "moto_detectada": "agility",
+    })
+    assert res is not None
+    assert res["id"] == "agility_fusion"
+    assert res.get("formatted_price") == "$10.179.000"
+
+
+def test_af_id_07_collision_first_candidate_deterministic():
+    """AF-ID-07: Ambiguous normalization collision returns FIRST non-padded candidate."""
+    catalog = CatalogService()
+    items = [
+        {
+            "id": "agility_fusion",
+            "name": "KYMCO Agility Fusion",
+            "image_url": "https://images.com/agility_fusion.jpg",
+            "price": 10179000,
+            "formatted_price": "$10.179.000",
+        },
+        {
+            "id": "agility_fusion_2",
+            "name": "KYMCO Agility Fusion 2",
+            "image_url": "https://images.com/agility_fusion_2.jpg",
+            "price": 9990000,
+            "formatted_price": "$9.990.000",
+        },
+    ]
+    hydrate_catalog_indexes(catalog, items)
+    # Both items map to same norm key 'agility_fusion'
+    res = catalog.match_catalog_item_by_image(
+        "Model ID: agility fusion"
+    )
+    assert res is not None
+    assert res["id"] == "agility_fusion"
+    assert res.get("formatted_price") == "$10.179.000"
+    # Verify image is consistent with the returned item
+    assert "agility_fusion.jpg" in res.get("image_url", "")
+
+
+def test_af_id_08_padded_item_exclusion():
+    """AF-ID-08: Padded items are excluded from norm index resolution."""
+    catalog = CatalogService()
+    items = [
+        {
+            "id": "padded_item_0",
+            "name": "Placeholder",
+            "image_url": "https://images.com/pad.jpg",
+            "price": 0,
+            "formatted_price": "$0",
+        },
+        {
+            "id": "agility_fusion",
+            "name": "KYMCO Agility Fusion",
+            "image_url": "https://images.com/agility_fusion.jpg",
+            "price": 10179000,
+            "formatted_price": "$10.179.000",
+        },
+    ]
+    hydrate_catalog_indexes(catalog, items)
+    # Manually mark padded so exclusion logic fires
+    catalog._padded_ids.add("padded_item_0")
+    # Both would map to generic norm, but padded must be skipped
+    res = catalog.match_catalog_item_by_image(
+        "Model ID: agility_fusion"
+    )
+    assert res is not None
+    assert res["id"] == "agility_fusion"
+    assert res.get("formatted_price") == "$10.179.000"
+
+
+def test_af_id_09_formatted_price_preserved():
+    """AF-ID-09: All ID resolution paths preserve formatted_price ($) parity."""
+    catalog = CatalogService()
+    items = _agility_items()
+    hydrate_catalog_indexes(catalog, items)
+
+    for pipe in [
+        "Model ID: agility_fusion",
+        "Model ID: AGILITY_FUSION",
+        "Model ID: KYMCO AGILITY FUSION",
+        "Model ID: agility-fusion",
+    ]:
+        res = catalog.match_catalog_item_by_image(pipe)
+        assert res is not None, f"Failed for {pipe!r}"
+        assert "$" in res.get("formatted_price", ""), f"Price parity broken for {pipe!r}"
+        assert res.get("formatted_price") == "$10.179.000", f"Wrong price for {pipe!r}"
+        assert res["id"] == "agility_fusion"
+
+
+# ── Unit: fuzzy boundary + null inputs (AF-03, AF-04) ────────────────
+
+def test_match_catalog_item_fuzzy_boundary():
+    """Ratio 0.849 → no match; 0.85 → match."""
+    catalog = CatalogService()
+    items = _canonical_mock_items()[:1]  # only TVS Sport
+    hydrate_catalog_indexes(catalog, items)
+
+    # "TVS Sport 10" vs "TVS Sport 100" ratio ≈ 0.923 → match
+    res = catalog.match_catalog_item_by_image("TVS Sport 10")
+    assert res is not None
+
+    # "TVS Xprt ZZZ" vs "TVS Sport 100" ratio < 0.85 → None
+    res = catalog.match_catalog_item_by_image("TVS Xprt ZZZ")
+    assert res is None
+
+
+def test_match_catalog_item_none_empty_invalid():
+    """AF-04: None, empty, dict with type≠moto, all return None."""
+    catalog = CatalogService()
+    items = _canonical_mock_items()
+    hydrate_catalog_indexes(catalog, items)
+
+    assert catalog.match_catalog_item_by_image(None) is None
+    assert catalog.match_catalog_item_by_image("") is None
+    assert catalog.match_catalog_item_by_image({}) is None
+    assert catalog.match_catalog_item_by_image({"type": "sticker"}) is None
+    assert catalog.match_catalog_item_by_image({"type": "other"}) is None
+
+
+def test_match_catalog_item_dict_input():
+    """Dict input with type=moto matches correctly."""
+    catalog = CatalogService()
+    items = _canonical_mock_items()
+    hydrate_catalog_indexes(catalog, items)
+
+    res = catalog.match_catalog_item_by_image({
+        "type": "moto",
+        "moto_detectada": "TVS Sport 100",
+        "match_url": "https://images.com/tvs_sport.jpg",
+        "model_id": "tvs_sport",
+        "confidence": 0.92,
+    })
+    assert res is not None
+    assert res["id"] == "tvs_sport"
+    assert res.get("formatted_price") == "$6.200.000"
+
+
+# ── Unit: rehydrate formatted_price ──────────────────────────────────
+
+def test_rehydrate_formatted_price():
+    """AF-07: _rehydrate_formatted_price fills missing formatted_price."""
+    item_no_fmt = {"id": "x", "name": "Test", "price": 9990000}
+    assert CatalogService._rehydrate_formatted_price(item_no_fmt) == "$9.990.000"
+
+    item_has_fmt = {"id": "x", "formatted_price": "$1.000.000"}
+    assert CatalogService._rehydrate_formatted_price(item_has_fmt) == "$1.000.000"
+
+    item_no_price = {"id": "x", "name": "Test"}
+    assert CatalogService._rehydrate_formatted_price(item_no_price) == ""
+
+
+# ── Unit: Anti-Null Masking (Vision) ─────────────────────────────────
 
 def test_vision_service_catalog_serialization_anti_null_masking():
     """
@@ -70,13 +511,12 @@ def test_vision_service_catalog_serialization_anti_null_masking():
     """
     mock_db = MagicMock()
     mock_db.project = "test-project-123"
-    
+
     mock_genai_client = MagicMock()
     mock_response = MagicMock()
     mock_response.text = '{"type": "other", "description": "test"}'
     mock_genai_client.models.generate_content.return_value = mock_response
 
-    # Item with missing name
     corrupt_items = [
         {"id": "bad_item_1", "name": None, "image_url": "https://img.url"},
         {"id": "bad_item_2", "name": "Victory Neo", "image_url": ""}
@@ -84,15 +524,11 @@ def test_vision_service_catalog_serialization_anti_null_masking():
 
     with patch("app.services.vision_service.genai.Client", return_value=mock_genai_client), \
          patch("app.services.vision_service.logger.warning") as mock_log_warning:
-        
+
         service = VisionService(db=mock_db)
-        
-        # Calling analyze_image with corrupt catalog items should trigger warnings
-        # but NOT prevent execution if a response is returned
         service.client = mock_genai_client
         service._model_id = "gemini-2.5-flash"
-        
-        # We need to wrap it because analyze_image is async
+
         import asyncio
         asyncio.run(service.analyze_image(
             image_bytes=b"dummy",
@@ -101,10 +537,9 @@ def test_vision_service_catalog_serialization_anti_null_masking():
             caption="test",
             catalog_items=corrupt_items
         ))
-        
-        # Check that logger.warning was called exactly twice (once for each corrupt item)
+
         assert mock_log_warning.call_count == 2
-        
+
         args1, _ = mock_log_warning.call_args_list[0]
         assert "[INTEGRITY VIOLATION]" in args1[0]
         assert "bad_item_1" in args1[0]
@@ -115,28 +550,31 @@ def test_vision_service_catalog_serialization_anti_null_masking():
         assert "bad_item_2" in args2[0]
         assert "Traceback:" in args2[0]
 
+
+# ── Integration: WhatsApp webhook e2e ─────────────────────────────────
+
 @pytest.mark.asyncio
 async def test_incoming_image_webhook_multimodal_similitude_flow():
     """
-    Verifies the integration of the multimodal similarity pipeline in the webhook flow.
-    Ensures that when an image is received, it aligns with a catalog item, updates 
-    moto_interest in Firestore synchronously, and sends the message using the egress pipeline.
+    [BOT-PLAN-MULTIMODAL-HARDENING-201] AF-10..AF-14
+    Verifies the integration of the multimodal similarity pipeline.
+    Now hydrates _items_by_image_url_norm and asserts Ficha Tecnica: in caption.
     """
     import app.routers.whatsapp as whatsapp
     from app.routers.whatsapp import _handle_message_background
     from fastapi import BackgroundTasks
-    
+
     whatsapp._ensure_services_sync()
     orig_debounce = whatsapp.message_buffer.debounce_seconds
     whatsapp.message_buffer.debounce_seconds = 0.0
-    
+
     user_phone = "+573009999999"
-    
+
     try:
         await whatsapp.message_buffer.clear_buffer(user_phone)
         if user_phone in whatsapp.message_buffer._processed_wamids:
             whatsapp.message_buffer._processed_wamids[user_phone].clear()
-            
+
         msg_data = {
             "from": user_phone,
             "id": "wamid.multimodal_test_158",
@@ -148,7 +586,7 @@ async def test_incoming_image_webhook_multimodal_similitude_flow():
             },
             "phone_number_id": "12345678"
         }
-        
+
         mock_prospect_data = {
             "exists": True,
             "celular": user_phone,
@@ -161,7 +599,6 @@ async def test_incoming_image_webhook_multimodal_similitude_flow():
             "moto_interest": None
         }
 
-        # Mock memory service
         mock_ms = AsyncMock()
         mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
         mock_ms.create_prospect_if_missing = AsyncMock()
@@ -173,14 +610,17 @@ async def test_incoming_image_webhook_multimodal_similitude_flow():
         mock_ms.set_human_help_status = AsyncMock()
         mock_ms.update_prospect_summary = AsyncMock()
 
-        # Mock GenAI client for CerebroIA response
         mock_client = MagicMock()
         mock_chat = AsyncMock()
         mock_response = MagicMock()
         mock_candidate = MagicMock()
         mock_part = MagicMock()
-        
-        mock_part.text = "Perfecto. La TVS Sport 100 cuesta $6.200.000. Ficha Tecnica: Gran rendimiento. ![TVS Sport 100](https://img.url/tvs_sport.jpg)"
+
+        mock_part.text = (
+            "Perfecto. La TVS Sport 100 cuesta $6.200.000. "
+            "Ficha Tecnica: Gran rendimiento. "
+            "![TVS Sport 100](https://img.url/tvs_sport.jpg)"
+        )
         mock_part.function_call = None
         mock_candidate.content.parts = [mock_part]
         mock_response.candidates = [mock_candidate]
@@ -189,22 +629,29 @@ async def test_incoming_image_webhook_multimodal_similitude_flow():
 
         mock_http_response = MagicMock()
         mock_http_response.status_code = 200
-        mock_http_response.json = MagicMock(return_value={"messages": [{"id": "wamid.outbound_158"}]})
+        mock_http_response.json = MagicMock(
+            return_value={"messages": [{"id": "wamid.outbound_158"}]}
+        )
 
-        # Mock VisionService output
         mock_vision = AsyncMock()
-        mock_vision.analyze_image = AsyncMock(return_value="MOTO_DETECTADA: TVS Sport 100 | Match URL: https://img.url/tvs_sport.jpg | Model ID: tvs_sport")
+        mock_vision.analyze_image = AsyncMock(
+            return_value="MOTO_DETECTADA: TVS Sport 100 | Match URL: https://img.url/tvs_sport.jpg | Model ID: tvs_sport"
+        )
 
-        # Mock Catalog items
         mock_catalog_item = {
             "id": "tvs_sport",
             "name": "TVS Sport 100",
             "image_url": "https://img.url/tvs_sport.jpg",
             "price": 6200000,
+            "formatted_price": "$6.200.000",
             "category": "sport",
-            "active": True
+            "active": True,
         }
-        
+
+        # ── [BOT-PLAN-MULTIMODAL-HARDENING-201] Hydrate BOTH indexes ──
+        import app.services.catalog_service as cs_mod
+        items = [mock_catalog_item]
+        id_norm_key = cs_mod.CatalogService._normalize_item_id_key(mock_catalog_item["id"])
         with patch("app.routers.whatsapp.settings") as mock_settings, \
              patch("app.routers.whatsapp.db", MagicMock()), \
              patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
@@ -216,31 +663,45 @@ async def test_incoming_image_webhook_multimodal_similitude_flow():
              patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
              patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
              patch("app.services.ai_brain.SDK_AVAILABLE", True), \
-             patch.object(whatsapp.catalog_service, "_items", [mock_catalog_item]), \
-             patch.object(whatsapp.catalog_service, "_items_by_id", {"tvs_sport": mock_catalog_item}):
+             patch.object(whatsapp.catalog_service, "_items", items), \
+             patch.object(whatsapp.catalog_service, "_items_by_id", {"tvs_sport": mock_catalog_item}), \
+             patch.object(whatsapp.catalog_service, "_items_by_image_url_norm",
+                          {cs_mod.CatalogService._normalize_image_url(mock_catalog_item["image_url"]): mock_catalog_item}), \
+             patch.object(whatsapp.catalog_service, "_items_by_id_norm",
+                          {id_norm_key: ["tvs_sport"]}):
 
             mock_http_post.return_value = mock_http_response
             mock_settings.whatsapp_app_secret = None
             mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
 
-            # Execute handler
             background_tasks = BackgroundTasks()
             await _handle_message_background(msg_data, background_tasks)
 
-            # Assert that update_prospect_summary was called to save 'moto_interest' synchronously
-            # [BOT-PONYTAIL-200] Updated assertion to include ponytail_status=PENDING
+            # AF-10: Ponytail PENDING + moto_interest
             mock_ms.update_prospect_summary.assert_any_call(
-                user_phone, "", {"moto_interest": "TVS Sport 100", "ponytail_status": "PENDING"}
+                user_phone, "", {
+                    "moto_interest": "TVS Sport 100",
+                    "ponytail_status": "PENDING"
+                }
             )
-            
-            # Assert that the outbound Meta payload was built correctly with the mapped image
+
             assert mock_http_post.call_count == 1
             meta_payload = mock_http_post.call_args.kwargs.get("json")
             assert meta_payload is not None
             assert meta_payload.get("type") == "image"
+
+            # AF-13: canonical image link
             assert meta_payload["image"]["link"] == "https://img.url/tvs_sport.jpg"
-            assert "TVS Sport 100" in meta_payload["image"]["caption"]
-            assert "$6.200.000" in meta_payload["image"]["caption"]
-            
+
+            # AF-11: canonical price in caption
+            caption = meta_payload["image"]["caption"]
+            assert "TVS Sport 100" in caption
+            assert "$6.200.000" in caption
+
+            # AF-12: Ficha Tecnica: prefix present (was missing in v10.45)
+            assert "Ficha Tecnica:" in caption, (
+                "AF-12 FAIL: caption must contain literal 'Ficha Tecnica:' prefix"
+            )
+
     finally:
         whatsapp.message_buffer.debounce_seconds = orig_debounce

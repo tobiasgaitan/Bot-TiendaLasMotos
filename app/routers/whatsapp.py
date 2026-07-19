@@ -946,6 +946,24 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                     vision_description = matched_item["name"]
                                     canonical_image_url = matched_item["image_url"]
                                     canonical_formatted_price = matched_item.get("formatted_price", "")
+
+                                    # [BOT-PLAN-MULTIMODAL-HARDENING-201] Fail-closed: if the item lacks
+                                    # formatted_price (e.g. stub fixture), rehydrate from price before
+                                    # the Visual Lock guard below.  Without this the lock silently skips.
+                                    if not canonical_formatted_price:
+                                        canonical_formatted_price = catalog_service._rehydrate_formatted_price(matched_item)
+                                        if canonical_formatted_price:
+                                            logger.info(
+                                                f"🔒 Visual Lock rehydrated formatted_price for "
+                                                f"{matched_item['name']}: {canonical_formatted_price}"
+                                            )
+                                        else:
+                                            logger.warning(
+                                                f"⚠️ [VISUAL_LOCK_DEGRADED] matched_item '{matched_item['name']}' "
+                                                f"lacks price. Visual Lock will skip canonical injection. "
+                                                "Item: %s", matched_item
+                                            )
+
                                     logger.info(f"🎯 Multimodal similarity aligned to catalog item '{vision_description}' with URL '{canonical_image_url}'")
                                 else:
                                     # Fallback to legacy string cleanup if no match found

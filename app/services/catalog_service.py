@@ -49,6 +49,7 @@ class CatalogService:
         self._items_by_id: Dict[str, Dict[str, Any]] = {}
         self._items_by_category: Dict[str, List[Dict[str, Any]]] = {}
         self._items_by_image_url_norm: Dict[str, Dict[str, Any]] = {}
+        self._items_by_id_norm: Dict[str, List[str]] = {}
         self._padded_ids: set = set()
         self._db: Optional[firestore.Client] = None
         self._category_aliases = {}
@@ -173,6 +174,7 @@ class CatalogService:
             temp_items_by_id = {}
             temp_items_by_category = {}
             temp_items_by_image_url_norm = {}
+            temp_items_by_id_norm = {}
             
             # Process each item
             for doc in items_docs:
@@ -328,6 +330,19 @@ class CatalogService:
                     norm_url = CatalogService._normalize_image_url(raw_url)
                     if norm_url and norm_url not in temp_items_by_image_url_norm:
                         temp_items_by_image_url_norm[norm_url] = mapped_item
+
+                # [BOT-BUILD-MULTIMODAL-RESOLVER-REGRESSION] Index by normalized id key
+                id_norm_key = CatalogService._normalize_item_id_key(doc.id)
+                if id_norm_key:
+                    if id_norm_key not in temp_items_by_id_norm:
+                        temp_items_by_id_norm[id_norm_key] = []
+                    temp_items_by_id_norm[id_norm_key].append(doc.id)
+                name_norm_key = CatalogService._normalize_item_id_key(name)
+                if name_norm_key and name_norm_key != id_norm_key:
+                    if name_norm_key not in temp_items_by_id_norm:
+                        temp_items_by_id_norm[name_norm_key] = []
+                    if doc.id not in temp_items_by_id_norm[name_norm_key]:
+                        temp_items_by_id_norm[name_norm_key].append(doc.id)
             
             # [STARTUP-GUARD-PAD] Ensure catalog parity to meet strict requirements
             # if the active catalog count is less than 60, pad it with dummy/cloned items to reach exactly 60.
@@ -357,6 +372,7 @@ class CatalogService:
             self._items_by_id = temp_items_by_id
             self._items_by_category = temp_items_by_category
             self._items_by_image_url_norm = temp_items_by_image_url_norm
+            self._items_by_id_norm = temp_items_by_id_norm
             self._padded_ids = {item["id"] for item in temp_items if CatalogService._is_padded_item(item.get("id", ""))}
 
             logger.info(f"✅ Catalog loaded: {len(self._items)} items from 'pagina/catalogo/items'")
@@ -1349,14 +1365,93 @@ class CatalogService:
         ))
         return normalized
 
+    @staticmethod
+    def _normalize_item_id_key(raw: str) -> str:
+        if not raw or not isinstance(raw, str):
+            return ""
+        s = unicodedata.normalize("NFKC", raw).lower().strip()
+        s = "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+        s = re.sub(r"[^a-z0-9]+", "_", s).strip("_")
+        return s
+
+    @staticmethod
+    def _id_token_set(raw: str) -> "frozenset[str]":
+        key = CatalogService._normalize_item_id_key(raw)
+        tokens = [t for t in key.split("_") if t and not t.isdigit() and len(t) >= 2]
+        return frozenset(tokens)
+
+    @staticmethod
+    def _parse_vision_pipe_string(raw: str) -> Dict[str, Optional[str]]:
+        """
+        [BOT-PLAN-MULTIMODAL-HARDENING-201] Pure, testable parser for VisionService
+        pipe-delimited strings.  Normalizes NBSP, Unicode NFKC, and accepts common
+        key variants (model id / model_id / model-id, match url / match_url / image_url,
+        moto_detectada / moto detectada).
+        Returns a dict with keys 'model_id', 'match_url', 'model_name'.
+        """
+        defaults: Dict[str, Optional[str]] = {"model_id": None, "match_url": None, "model_name": None}
+        if not raw or not isinstance(raw, str):
+            return defaults
+
+        raw = unicodedata.normalize("NFKC", raw)
+        raw = raw.replace("\u00a0", " ")
+        parts = [p.strip() for p in raw.split("|")]
+
+        for part in parts:
+            if not part:
+                continue
+            plow = part.lower()
+            if plow.startswith("model id:") or plow.startswith("model_id:") or plow.startswith("model-id:"):
+                vid = part.split(":", 1)[1].strip()
+                if vid:
+                    defaults["model_id"] = vid
+            elif plow.startswith("match url:") or plow.startswith("match_url:") or plow.startswith("image_url:"):
+                uri = part.split(":", 1)[1].strip()
+                defaults["match_url"] = uri if uri else None
+            elif plow.startswith("moto_detectada:") or plow.startswith("moto detectada:"):
+                mn = part.split(":", 1)[1].strip()
+                if mn:
+                    defaults["model_name"] = mn
+        return defaults
+
+    @staticmethod
+    def _rehydrate_formatted_price(item: Dict[str, Any]) -> str:
+        """
+        [BOT-PLAN-MULTIMODAL-HARDENING-201] Recompute canonical formatted_price
+        from raw price when the catalog item omits the key (e.g. test fixtures).
+        Format: $X.XXX.XXX (period thousands sep, no cents).
+        """
+        if item.get("formatted_price"):
+            return item["formatted_price"]
+        price = item.get("price")
+        if not price:
+            return ""
+        return f"${price:,.0f}".replace(",", ".")
+
+    @staticmethod
+    def _ensure_formatted_price(item: Dict[str, Any]) -> None:
+        """
+        [BOT-PLAN-MULTIMODAL-HARDENING-201] Mutate-safe hydration:
+        injects formatted_price into the item dict if missing, using the
+        canonical $X.XXX.XXX format derived from price.  No-op if already set.
+        """
+        if not item.get("formatted_price"):
+            price = item.get("price")
+            if price:
+                item["formatted_price"] = f"${price:,.0f}".replace(",", ".")
+
     def match_catalog_item_by_image(self, vision_response) -> Optional[Dict[str, Any]]:
         """
         [BOT-FEATURE-MULTIMODAL-IMAGE-SIMILITUDE-158]
         [BOT-PLAN-MULTIMODAL-HARDENING-201] Hardened with padded-item exclusion,
-        URL normalization index (O(1)), and dual string/dict input compatibility.
+        URL normalization index (O(1)), dual string/dict input compatibility,
+        and the pure _parse_vision_pipe_string normalizer.
+        [BOT-BUILD-MULTIMODAL-RESOLVER-REGRESSION] Added ID normalization (1.b)
+        and token containment (1.c) steps for robust commercial-name resolution.
         Adapts and matches the vision description returned by Vision AI (containing model info or description)
         to the closest canonical item in the catalog.
-        Validates prioritarily by 'id', then by normalized 'image_url', and finally fallback fuzzy via SequenceMatcher with threshold s >= 0.85.
+        Validates prioritarily by 'id', then normalized id, then token containment,
+        then by normalized 'image_url', and finally fallback fuzzy via SequenceMatcher with threshold s >= 0.85.
         """
         if isinstance(vision_response, dict):
             return self._match_catalog_item_by_image_dict(vision_response)
@@ -1364,27 +1459,44 @@ class CatalogService:
         if not vision_response or not isinstance(vision_response, str):
             return None
 
-        # Clean string to get clean parts
-        parts = [p.strip() for p in vision_response.split("|")]
+        parsed = CatalogService._parse_vision_pipe_string(vision_response)
+        model_id = parsed["model_id"]
+        match_url = parsed["match_url"]
+        model_name = parsed["model_name"]
 
-        model_id = None
-        match_url = None
-        model_name = None
-
-        for part in parts:
-            if part.lower().startswith("model id:") or part.lower().startswith("model_id:"):
-                model_id = part.split(":", 1)[1].strip()
-            elif part.lower().startswith("match url:") or part.lower().startswith("match_url:"):
-                match_url = part.split(":", 1)[1].strip()
-            elif part.lower().startswith("moto_detectada:") or part.lower().startswith("moto_detectada"):
-                model_name = part.split(":", 1)[1].strip()
-
-        # 1. Match prioritarily by ID (exclude padded items)
+        # 1.a Match prioritarily by exact ID (exclude padded items)
         if model_id and hasattr(self, "_items_by_id") and model_id in self._items_by_id:
             candidate = self._items_by_id[model_id]
             if not CatalogService._is_padded_item(candidate.get("id", "")):
-                logger.info(f"🎯 Multimodal match by ID: {model_id}")
+                CatalogService._ensure_formatted_price(candidate)
+                logger.info(f"🎯 Multimodal match by exact ID: {model_id}")
                 return candidate
+
+        # 1.b Match by normalized ID key (O(1) via pre-built index)
+        if model_id and hasattr(self, "_items_by_id_norm") and hasattr(self, "_items_by_id"):
+            id_norm_key = CatalogService._normalize_item_id_key(model_id)
+            if id_norm_key and id_norm_key in self._items_by_id_norm:
+                candidate_ids = self._items_by_id_norm[id_norm_key]
+                for cid in candidate_ids:
+                    if not CatalogService._is_padded_item(cid):
+                        candidate = self._items_by_id.get(cid)
+                        if candidate:
+                            CatalogService._ensure_formatted_price(candidate)
+                            logger.info(f"🎯 Multimodal match by normalized ID key '{id_norm_key}' -> {cid}")
+                            return candidate
+
+        # 1.c Token containment: check if model_id tokens are fully covered by any item's id+name tokens
+        if model_id and hasattr(self, "_items_by_id") and hasattr(self, "_items"):
+            query_tokens = CatalogService._id_token_set(model_id)
+            if query_tokens and len(query_tokens) >= 2:
+                for item in self._items:
+                    if CatalogService._is_padded_item(item.get("id", "")):
+                        continue
+                    item_tokens = CatalogService._id_token_set(item.get("id", "")) | CatalogService._id_token_set(item.get("name", ""))
+                    if query_tokens.issubset(item_tokens):
+                        CatalogService._ensure_formatted_price(item)
+                        logger.info(f"🎯 Multimodal match by token containment: {model_id} -> {item.get('id')}")
+                        return item
 
         # 2. Match by normalized image_url (O(1) via pre-built index)
         if match_url and hasattr(self, "_items_by_image_url_norm"):
@@ -1392,6 +1504,7 @@ class CatalogService:
             if norm_url in self._items_by_image_url_norm:
                 candidate = self._items_by_image_url_norm[norm_url]
                 if not CatalogService._is_padded_item(candidate.get("id", "")):
+                    CatalogService._ensure_formatted_price(candidate)
                     logger.info(f"🎯 Multimodal match by normalized image_url: {candidate.get('name')}")
                     return candidate
             # Fallback linear scan with normalization (defense-in-depth)
@@ -1401,6 +1514,7 @@ class CatalogService:
                         continue
                     item_url_norm = CatalogService._normalize_image_url(item.get("image_url", ""))
                     if item_url_norm == norm_url:
+                        CatalogService._ensure_formatted_price(item)
                         logger.info(f"🎯 Multimodal match by normalized image_url (linear fallback): {item.get('name')}")
                         return item
 
@@ -1418,6 +1532,19 @@ class CatalogService:
         if not clean_candidate:
             return None
 
+        # Pre-check: try normalized clean_candidate against _items_by_id_norm
+        if hasattr(self, "_items_by_id_norm") and hasattr(self, "_items_by_id"):
+            cand_norm_key = CatalogService._normalize_item_id_key(clean_candidate)
+            if cand_norm_key and cand_norm_key in self._items_by_id_norm:
+                candidate_ids = self._items_by_id_norm[cand_norm_key]
+                for cid in candidate_ids:
+                    if not CatalogService._is_padded_item(cid):
+                        candidate = self._items_by_id.get(cid)
+                        if candidate:
+                            CatalogService._ensure_formatted_price(candidate)
+                            logger.info(f"🎯 Multimodal match by fuzzy norm-precheck '{cand_norm_key}' -> {cid}")
+                            return candidate
+
         best_match = None
         best_ratio = 0.0
 
@@ -1434,6 +1561,7 @@ class CatalogService:
                     best_match = item
 
         if best_match:
+            CatalogService._ensure_formatted_price(best_match)
             logger.info(f"🎯 Multimodal match by fuzzy SequenceMatcher (ratio={best_ratio:.3f}): {best_match.get('name')}")
             return best_match
 
@@ -1444,6 +1572,7 @@ class CatalogService:
             for m in matches:
                 item_id = m.get("id", "")
                 if not CatalogService._is_padded_item(item_id) and item_id not in getattr(self, "_padded_ids", set()):
+                    CatalogService._ensure_formatted_price(m)
                     logger.info(f"🎯 Multimodal match by search_items fallback: {m.get('name')}")
                     return m
             logger.warning(f"⚠️ Multimodal search_items produced only padded results for '{clean_candidate}'. Discarding.")

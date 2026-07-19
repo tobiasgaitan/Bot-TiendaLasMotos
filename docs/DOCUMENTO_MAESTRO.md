@@ -1,5 +1,5 @@
-### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.45.15)
-Versión: v10.45.15 (Health Port Binding Hotfix)
+### 🛡️ Documento Maestro: Estado de desarrollo página web (v10.45.16)
+Versión: v10.45.16 (Health Port Binding Hotfix)
 Estado: PRODUCTION READY / GCP LIVE (Paridad certificada localmente)
 Último Hito: Refactorización aislada y atómica del endpoint '/health' dentro de 'app/main.py' para obligar a que devuelva un código HTTP 200 OK con el JSON {'status': 'starting', 'detail': 'Catalog initialization in progress'} de manera INMEDIATA y síncrona si no está listo, previniendo excepciones de red externa o I/O secundarias durante el arranque de Cloud Run, y agregando test de hidratación unitario [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192].
 - Hito anterior: Refactorización quirúrgica de `skip_greeting` en `ai_brain.py` para impedir que la variable sea forzada a `True` si el historial está vacío o la sesión se inició tras un `/reset`. Robustecimiento del guardrail de inicialización del catálogo en `whatsapp.py` validando que la cantidad de ítems cargados sea igual o superior a `settings.min_catalog_items` (60 ítems) con un bypass para entornos de prueba (`is_test_mode`). Cierre de ticket [BOT-BRAIN-BUGFIX-FIRST-CONTACT-ALIGNMENT-191].
