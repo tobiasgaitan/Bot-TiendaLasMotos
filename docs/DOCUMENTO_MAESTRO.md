@@ -2,7 +2,7 @@
 
 **Versión:** v10.45.18 (Multimodal Hardening Approved)  
 **Estado:** PRODUCTION READY / GCP LIVE  
-**Coherence Score:** 1.000 (Certificado vía npx agent-cli eval - 320/320 Tests PASSED)
+**Coherence Score:** 1.000 (Certificado vía GSD Framework - 320/320 Tests PASSED)
 
 ---
 
@@ -34,6 +34,6 @@
 
 ## 🏛️ Directivas Inmutables de Arquitectura
 
-1.  **Mandato de Bloqueo CRM (`_CRM_PROTECTED_FIELDS`):** Queda estrictamente prohibido que el motor de extracción de la IA pise, degrade o modifique las cuotas financieras reales o campos manuales introducidos por el asesor comercial.
-2.  **Zero-Silent-Failures:** Queda terminantemente prohibido capturar excepciones genéricas sin inyectar un log forense estructurado completo (`logger.exception`). Toda contingencia de red o timeout debe retornar un `_ContingencySnapshot` controlado.
-3.  **Visual-Lock (PCC Pro):** Toda respuesta que mencione una motocicleta debe incluir de forma obligatoria el precio formateado (`$`) y la imagen estructurada en Markdown nativo (`![]()`) recuperada de `search_catalog`.
+1.  **Mandato de Bloqueo CRM (`_CRM_PROTECTED_FIELDS`):** Queda estrictamente prohibido que el motor de extracción de la IA pise, degrade o modifique las cuotas financieras reales o campos manuales introducidos por el asesor comercial[cite: 3].
+2.  **Zero-Silent-Failures:** Queda terminantemente prohibido capturar excepciones genéricas sin inyectar un log forense estructurado completo (`logger.exception`). Toda contingencia de red o timeout debe retornar un `_ContingencySnapshot` controlado[cite: 3].
+3.  **Visual-Lock (PCC Pro):** Toda respuesta que mencione una motocicleta debe incluir de forma obligatoria el precio formateado (`$`) y la imagen estructurada en Markdown nativo (`![]()`) recuperada de `search_catalog`[cite: 2, 3].
