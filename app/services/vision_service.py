@@ -4,6 +4,7 @@ Handles image analysis using Gemini Vision (Flash).
 """
 
 import logging
+import os
 from typing import Dict, Any, Optional, List
 import json
 import asyncio
@@ -31,6 +32,9 @@ class VisionService:
     def __init__(self, db: firestore.Client):
         self._db = db
         self._model = None
+
+        self._telemetry_enabled = os.getenv("VISION_TELEMETRY_ONLY", "").lower() in ("1", "true")
+        self._last_usage: Dict[str, Dict[str, int]] = {}
         
         if GENAI_AVAILABLE:
             try:
@@ -41,9 +45,28 @@ class VisionService:
                     location="us-central1"    # Default location, can be moved to env
                 )
                 self._model_id = "gemini-2.5-flash"
-                logger.info(f"👁️ VisionService initialized with {self._model_id} via google-genai")
+                logger.info(f"👁️ VisionService initialized with {self._model_id} via google-genai"
+                            f"{' [TELEMETRY ENABLED]' if self._telemetry_enabled else ''}")
             except Exception as e:
                 logger.exception(f"❌ VisionService init error: {e}")
+
+    @staticmethod
+    def _extract_usage(response) -> Dict[str, int]:
+        usage = getattr(response, "usage_metadata", None)
+        if usage is None:
+            return {}
+        return {
+            "prompt_tokens": getattr(usage, "prompt_token_count", 0) or 0,
+            "candidates_tokens": getattr(usage, "candidates_token_count", 0) or 0,
+            "total_tokens": getattr(usage, "total_token_count", 0) or 0,
+        }
+
+    def _capture_usage(self, phase: str, response) -> None:
+        if not self._telemetry_enabled:
+            return
+        usage_data = self._extract_usage(response)
+        if usage_data:
+            self._last_usage[phase] = usage_data
 
     async def _generate_content_nonblocking(self, contents):
         """
@@ -93,6 +116,9 @@ class VisionService:
         if not hasattr(self, 'client'):
             return "Lo siento, no puedo ver la imagen en este momento. 🙈"
 
+        t_total_start = time.perf_counter()
+        self._last_usage.clear()
+
         # Anti-Null Masking validation for catalog items
         if catalog_items:
             for item in catalog_items:
@@ -130,9 +156,13 @@ class VisionService:
             - De lo contrario, output JSON: {"type": "other", "description": "what is it"}
             """
             
+            t_classify_start = time.perf_counter()
             response = await self._call_gemini_with_retry_async(
                 contents=[image_part, prompt]
             )
+            t_classify = time.perf_counter() - t_classify_start
+            self._capture_usage("classify", response)
+
             # 2. Extract Contract or JSON
             if not response or not getattr(response, "text", None):
                 raise ValueError("GenAI API returned an empty response or nulo payload")
@@ -141,24 +171,58 @@ class VisionService:
                 raise ValueError("GenAI API returned an empty text payload")
             
             if "QUALITY_CHECK:" in response_text:
+                self._log_telemetry(t_classify, 0, "kyc_document", image_bytes, mime_type, phone, len(catalog_items) if catalog_items else 0, t_total_start)
                 return response_text
             
             result_json = self._parse_json(response_text)
+            phase_label: str = "other"
             
+            t_phase2_start = time.perf_counter()
             if result_json.get("type") in ["kyc_document", "id_card"]:
                 # This path is kept for backward compatibility if the prompt fails to follow the new contract
                 # but the prompt above should prioritize the text contract.
-                return await self._process_kyc_document(image_part, phone)
-            
+                phase_label = "kyc_document"
+                result = await self._process_kyc_document(image_part, phone)
             elif result_json.get("type") == "moto":
-                return await self._process_moto(image_part, result_json.get("description", ""), catalog_items)
-            
+                phase_label = "moto"
+                result = await self._process_moto(image_part, result_json.get("description", ""), catalog_items)
             else:
-                return await self._process_general_image_sentiment(image_part)
+                phase_label = "sentiment"
+                result = await self._process_general_image_sentiment(image_part)
+            t_phase2 = time.perf_counter() - t_phase2_start
+
+            self._log_telemetry(t_classify, t_phase2, phase_label, image_bytes, mime_type, phone, len(catalog_items) if catalog_items else 0, t_total_start)
+            return result
 
         except Exception as e:
+            t_total = time.perf_counter() - t_total_start
+            if self._telemetry_enabled:
+                logger.info(
+                    "📊 [VISION_TELEMETRY] ERROR | total_latency_s=%.4f "
+                    "catalog_items=%d image_bytes=%d mime=%s phone=%s",
+                    t_total, len(catalog_items) if catalog_items else 0, len(image_bytes), mime_type, phone
+                )
             logger.exception(f"❌ Error analyzing image: {e}")
             raise e
+
+    def _log_telemetry(self, t_classify: float, t_phase2: float, phase: str, image_bytes: bytes, mime_type: str, phone: str, catalog_items_count: int, t_total_start: float) -> None:
+        if not self._telemetry_enabled:
+            return
+        t_total = time.perf_counter() - t_total_start
+        classify_u = self._last_usage.get("classify", {})
+        phase2_u = self._last_usage.get("phase2", {})
+        total_tokens = classify_u.get("total_tokens", 0) + phase2_u.get("total_tokens", 0)
+        logger.info(
+            "📊 [VISION_TELEMETRY] phase=%s "
+            "classify_latency_s=%.4f phase2_latency_s=%.4f total_latency_s=%.4f "
+            "classify_tokens_in=%d classify_tokens_out=%d "
+            "phase2_tokens_in=%d phase2_tokens_out=%d "
+            "total_tokens=%d catalog_items=%d image_bytes=%d mime=%s",
+            phase, t_classify, t_phase2, t_total,
+            classify_u.get("prompt_tokens", 0), classify_u.get("candidates_tokens", 0),
+            phase2_u.get("prompt_tokens", 0), phase2_u.get("candidates_tokens", 0),
+            total_tokens, catalog_items_count, len(image_bytes), mime_type,
+        )
 
     async def _process_kyc_document(self, image_part: types.Part, phone: str) -> str:
         """
@@ -176,6 +240,7 @@ class VisionService:
         response = await self._generate_content_nonblocking(
             contents=[image_part, prompt]
         )
+        self._capture_usage("phase2", response)
         if not response or not getattr(response, "text", None) or not response.text.strip():
             raise ValueError("GenAI API returned an empty response or nulo payload in _process_kyc_document")
         return response.text.strip()
@@ -270,6 +335,7 @@ class VisionService:
         response = await self._generate_content_nonblocking(
             contents=[image_part, prompt]
         )
+        self._capture_usage("phase2", response)
         if not response or not getattr(response, "text", None) or not response.text.strip():
             raise ValueError("GenAI API returned an empty response or nulo payload in _process_general_image_sentiment")
         return response.text.strip()

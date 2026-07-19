@@ -14,6 +14,7 @@ import hmac
 import hashlib
 import os
 import sys
+import time
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
@@ -772,7 +773,9 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                         await _send_whatsapp_message(user_phone, "No pude procesar el archivo. 😢", phone_number_id=phone_number_id)
                         return
 
+                    t_download_start = time.perf_counter()
                     image_bytes = await storage_service.download_media(media_id)
+                    t_download = time.perf_counter() - t_download_start
                     if image_bytes:
                         await _ensure_services()
                         catalog_items = catalog_service.get_vision_catalog_projection()
@@ -940,7 +943,21 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                             # 2. Default: Handle Moto Detection (Legacy / Main Vision Logic)
                             else:
                                 # Use the catalog similarity adapter to align the image/description with a canonical catalog item
+                                t_match_start = time.perf_counter()
                                 matched_item = catalog_service.match_catalog_item_by_image(vision_response)
+                                t_match = time.perf_counter() - t_match_start
+
+                                # [BOT-BUILD-VISION-TELEMETRY-201] Callsite telemetry
+                                telemetry_enabled = os.getenv("VISION_TELEMETRY_ONLY", "").lower() in ("1", "true")
+                                if telemetry_enabled:
+                                    logger.info(
+                                        "📊 [VISION_TELEMETRY_CALLSITE] t_download_s=%.4f t_match_s=%.4f "
+                                        "download_bytes=%d match_path=%s moto=%s",
+                                        t_download, t_match,
+                                        len(image_bytes) if image_bytes else 0,
+                                        "exact" if (matched_item and isinstance(matched_item, dict)) else "none",
+                                        matched_item.get("name") if matched_item and isinstance(matched_item, dict) else "N/A",
+                                    )
                                 
                                 if matched_item and isinstance(matched_item, dict):
                                     vision_description = matched_item["name"]
