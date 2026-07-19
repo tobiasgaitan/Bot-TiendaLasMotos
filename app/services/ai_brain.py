@@ -1019,6 +1019,7 @@ REGLAS ESTRICTAS DE USO:
                 pass
 
         # Evaluate if there is legitimate user history to determine if it is the first contact
+        # [BOT-206] Align with router semantics: exclude current turn message
         has_no_legitimate_history = True
         if history:
             legitimate_messages = []
@@ -1032,6 +1033,15 @@ REGLAS ESTRICTAS DE USO:
                         "sesión ha sido reiniciada" in content_lower):
                         continue
                     legitimate_messages.append(msg)
+            
+            # [BOT-206] Exclude current turn message if it matches the input text
+            # This aligns with router's current_message_saved slicing logic
+            if legitimate_messages and texto:
+                current_turn_normalized = str(texto).lower().strip()
+                last_user_msg = legitimate_messages[-1].get("content", "").lower().strip()
+                if last_user_msg == current_turn_normalized:
+                    legitimate_messages = legitimate_messages[:-1]
+            
             if len(legitimate_messages) > 0:
                 has_no_legitimate_history = False
 
@@ -1076,10 +1086,11 @@ REGLAS ESTRICTAS DE USO:
                 if has_potential_match:
                     matches = self._catalog_service.search_items(texto)
                     if matches:
-                        if not has_no_legitimate_history:
-                            logger.info(f"🔥 [WARM START GREETING BYPASS] Catalog matches found in caliente for '{texto}'. skip_greeting inherited as {skip_greeting}.")
+                        # [BOT-206] Precedencia absoluta del router: skip_greeting es la única autoridad
+                        if skip_greeting:
+                            logger.info(f"🔥 [WARM START GREETING BYPASS] Catalog matches found in caliente for '{texto}'. skip_greeting={skip_greeting}.")
                         else:
-                            logger.info(f"🆕 [FIRST CONTACT SHIELD] Catalog matches found for '{texto}' but history is empty/reset. skip_greeting inherited as {skip_greeting}.")
+                            logger.info(f"🆕 [FIRST CONTACT SHIELD] Catalog matches found for '{texto}' but skip_greeting={skip_greeting}. Mandatory greeting enforced.")
                         if prospect_data is not None:
                             if not prospect_data.get("moto_interest"):
                                 prospect_data["moto_interest"] = matches[0]["name"]
@@ -1637,11 +1648,11 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             # Personalización de resultados (v8.3)
                             if catalog_returned_results:
                                 search_results = f"[SISTEMA: Estos son los resultados para {user_name}. Recomiéndale la mejor opción de forma cálida basándote en su perfil, no solo listes datos.]\n\n" + search_results
-                                # Force skip_greeting and update moto_interest in caliente if not already done
-                                if not has_no_legitimate_history:
+                                # [BOT-206] Precedencia absoluta del router: skip_greeting es la única autoridad para suprimir saludo
+                                if skip_greeting:
                                     search_results += "\n\n[SYSTEM: BYPASS GREETING: Un elemento del catálogo ha sido recuperado en caliente. Tienes ESTRICTAMENTE PROHIBIDO saludar, dar la bienvenida, decir 'Hola' o presentarte. Empieza tu respuesta directamente con la información de la motocicleta.]"
                                 else:
-                                    logger.info(f"🆕 [FIRST CONTACT SHIELD] Tool search_catalog returned results but history is empty/reset. Keeping skip_greeting inherited as {skip_greeting} for mandatory warmth.")
+                                    logger.info(f"🆕 [FIRST CONTACT SHIELD] Tool search_catalog returned results but skip_greeting={skip_greeting}. Mandatory greeting enforced.")
                                 if prospect_data is not None and matches and not prospect_data.get("moto_interest"):
                                     prospect_data["moto_interest"] = matches[0]["name"]
                                     logger.info(f"💾 Updated prospect_data['moto_interest'] to '{matches[0]['name']}' in tool execution.")
