@@ -1179,6 +1179,27 @@ class CatalogService:
         """
         return self.search_items(query)
 
+    def _is_competitor_query(self, query: str) -> bool:
+        """
+        [BOT-BUILD-REGRESSION-TRIAGE-COMPETENCIA-CUOTA-203]
+        Detect if the user query mentions a known competitor brand.
+        Fallback list mirrors the one used by ai_brain.py.
+        """
+        competitor_brands = []
+        try:
+            from app.core.config_loader import ConfigLoader
+            config_loader = ConfigLoader()
+            catalog_config = config_loader.get_catalog_config()
+            competitor_brands = catalog_config.get("competitor_brands") or []
+        except Exception as e:
+            logger.error(f"⚠️ [COMPETITOR QUERY] Error loading competitor brands: {e}")
+
+        if not competitor_brands or not isinstance(competitor_brands, list):
+            competitor_brands = ["boxer", "nkd", "pulsar", "yamaha", "honda", "suzuki", "akt"]
+
+        q = str(query).lower().strip()
+        return any(str(b).lower().strip() in q for b in competitor_brands if b)
+
     def search_catalog(self, query: str) -> str:
         """
         AI Agent entry point for motorcycle search.
@@ -1208,7 +1229,11 @@ class CatalogService:
                         bonus_str = f" [BONO EXCLUSIVO DE CONTADO: {formatted_amt} válido hasta {b_end}]"
                     
                     search_results += f"- {name} ({category}): {price}{bonus_str}\n"
-                    if m.get('image_url'): search_results += f"  Image URL: {m['image_url']}\n"
+                    if m.get('image_url'):
+                        search_results += f"  Image URL: {m['image_url']}\n"
+                        # [BOT-BUILD-REGRESSION-TRIAGE-COMPETENCIA-CUOTA-203]
+                        # Duplicate image as Markdown so the LLM can echo it and satisfy Visual-Lock.
+                        search_results += f"  ![{name}]({m['image_url']})\n"
                     if m.get('link'): search_results += f"  Link: {m['link']}\n"
                     # [BOT-QA-HARDENING-126] Zero-Silent-Failure: Distinguir entre llave AUSENTE (OK, omitir)
                     # y llave PRESENTE con valor None (mutación de llave = error crítico de integridad).
@@ -1229,8 +1254,15 @@ class CatalogService:
                         search_results += f"Ficha Tecnica: {m['summary']}\n"
             else:
                 search_results = "No encontré motos en el catálogo para esa búsqueda."
-                
-            self._cache_service.set(query, search_results)
+
+            # [BOT-BUILD-REGRESSION-TRIAGE-COMPETENCIA-CUOTA-203]
+            # Do not cache a negative result for competitor queries: if the catalog
+            # is temporarily empty or mis-indexed, a cached "No encontré..." would
+            # persist and keep returning the wrong answer even after the item is fixed.
+            if not matches and self._is_competitor_query(query):
+                logger.warning(f"⚠️ [CACHE SKIP] Competitor query '{query}' returned no matches; negative result NOT cached.")
+            else:
+                self._cache_service.set(query, search_results)
 
         # dynamic competitor brand loading via ConfigLoader
         competitor_brands = None

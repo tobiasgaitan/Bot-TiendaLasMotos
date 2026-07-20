@@ -6,6 +6,8 @@ import logging
 import asyncio
 from typing import Dict, Any
 
+from app.services.credit_faq_taxonomy import is_abstract_credit_faq
+
 logger = logging.getLogger("agentic_loop")
 
 TECH_SPEC_TOKENS = {
@@ -75,8 +77,14 @@ class AgenticOrchestrator:
         has_ficha = "Ficha Tecnica:" in bot_response if is_catalog_query_effective else True
 
         # Detección semántica de intenciones de FAQ puras
+        # [BOT-BUILD-REGRESSION-TRIAGE-COMPETENCIA-CUOTA-203]
+        # SSOT: la clasificación de FAQ crediticia abstracta se evalúa ANTES y
+        # de forma INDEPENDIENTE de las palabras clave genéricas de FAQ. Esto
+        # evita que un token como "datacredito" o "reportado" quede atrapado
+        # dentro del anidamiento `if is_faq_intent:` y nunca active el bypass.
+        is_credit_faq_abstract = is_abstract_credit_faq(user_prompt)
+
         is_faq_intent = False
-        is_credit_faq_abstract = False
         if user_prompt:
             faq_keywords = [
                 "horario", "direccion", "dirección", "ubicacion", "ubicación", "donde estan", "dónde están",
@@ -90,26 +98,11 @@ class AgenticOrchestrator:
                 "asesor", "humano", "ayuda", "soporte", "faq", "pregunta", "duda"
             ]
             prompt_lower = user_prompt.lower()
-            if any(re.search(rf"\b{kw}\b" if kw.isalnum() else re.escape(kw), prompt_lower) for kw in faq_keywords):
-                is_faq_intent = True
-            # [BOT-BUILD-REGRESSION-FINANCIAL-AND-FAQ-200]
-            # Credit FAQ abstracta: requisitos/documentos SIN cuantia/simulacion.
-            # Debe bypasear Visual-Lock incluso con moto_interest presente.
-            if is_faq_intent:
-                credit_faq_signals = ["requisitos", "papeles", "documentos", "codeudor",
-                                      "fiador", "fiadores", "aval", "avales", "codeudora",
-                                      "que necesito", "qu\u00e9 necesito", "que piden", "qu\u00e9 piden",
-                                      "que debo", "qu\u00e9 debo",
-                                      "historial", "datacredito", "data credito", "reportado", "reporte",
-                                      "experiencia crediticia", "necesito historial",
-                                      "extranjero", "ppt", "pep", "pasaporte",
-                                      "necesito para", "puedo sacar"]
-                credit_sim_keywords = ["cuota", "cuanto", "cu\u00e1nto", "inicial de",
-                                       "a 24", "a 36", "a 48", "a 12", "simul",
-                                       "cuanto qued", "cu\u00e1nto qued"]
-                has_credit_faq = any(s in prompt_lower for s in credit_faq_signals)
-                has_credit_sim = any(s in prompt_lower for s in credit_sim_keywords)
-                is_credit_faq_abstract = has_credit_faq and not has_credit_sim
+            generic_faq_match = any(
+                re.search(rf"\b{kw}\b" if kw.isalnum() else re.escape(kw), prompt_lower)
+                for kw in faq_keywords
+            )
+            is_faq_intent = generic_faq_match or is_credit_faq_abstract
 
         bypass_strict = (
             (not is_catalog_query_effective)
