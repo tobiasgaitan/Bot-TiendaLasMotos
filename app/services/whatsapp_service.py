@@ -1,16 +1,24 @@
 """
 WhatsApp Service - Interface with Meta WhatsApp Graph API
-==========================================================
+=========================================================
 Handles outgoing messages, media, and status updates (read receipts).
+
+[BOT-BUILD-205] Added payload validation, sanitization, and truncation
+to prevent Graph API rejections due to malformed payloads or length violations.
 """
 
 import logging
 import httpx
+import re
 from typing import Optional, Dict, Any
 from app.core.config import settings
 from app.core.utils import PhoneNormalizer
 
 logger = logging.getLogger(__name__)
+
+# [BOT-BUILD-205] WhatsApp API limits
+MAX_TEXT_BODY_LENGTH = 4096
+MAX_IMAGE_CAPTION_LENGTH = 1024
 
 class WhatsAppService:
     """
@@ -25,13 +33,61 @@ class WhatsAppService:
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
         }
+    
+    @staticmethod
+    def _sanitize_text(text: str) -> str:
+        """
+        [BOT-BUILD-205] Sanitize text by removing control characters and
+        normalizing whitespace to prevent JSON serialization issues.
+        """
+        if not text:
+            return text
+        # Remove control characters (except newlines and tabs)
+        sanitized = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]', '', text)
+        # Normalize multiple spaces to single space (preserve newlines)
+        sanitized = re.sub(r' +', ' ', sanitized)
+        return sanitized.strip()
+    
+    @staticmethod
+    def _truncate_text(text: str, max_length: int) -> str:
+        """
+        [BOT-BUILD-205] Truncate text to max_length, breaking at last space
+        to avoid cutting words. Adds ellipsis indicator if truncated.
+        """
+        if not text or len(text) <= max_length:
+            return text
+        
+        # Find last space within limit
+        truncated = text[:max_length]
+        last_space = truncated.rfind(' ')
+        
+        if last_space > max_length * 0.8:  # Only break at space if reasonable
+            truncated = truncated[:last_space]
+        else:
+            truncated = truncated.rstrip()
+        
+        # Add ellipsis indicator
+        if len(truncated) < len(text):
+            truncated = truncated.rstrip('.,;:!?') + '...'
+        
+        logger.warning(
+            f"⚠️ [PAYLOAD TRUNCATION] Text truncated from {len(text)} to {len(truncated)} chars"
+        )
+        return truncated
 
     async def send_text_message(self, to: str, text: str, reply_to_id: Optional[str] = None, phone_number_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Sends a text message to a WhatsApp user.
+        
+        [BOT-BUILD-205] Added payload validation, sanitization, and truncation.
         """
         # 1. Normalización Atómica (Protocolo Meta)
         to = PhoneNormalizer.normalize(to).lstrip("+")
+        
+        # [BOT-BUILD-205] Sanitize and validate text
+        text = self._sanitize_text(text)
+        if len(text) > MAX_TEXT_BODY_LENGTH:
+            text = self._truncate_text(text, MAX_TEXT_BODY_LENGTH)
         
         target_id = phone_number_id or self.phone_number_id
         url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{target_id}/messages"
@@ -45,6 +101,14 @@ class WhatsAppService:
         
         if reply_to_id:
             payload["context"] = {"message_id": reply_to_id}
+
+        # [BOT-BUILD-205] Validate payload structure before sending
+        try:
+            import json
+            json.dumps(payload)  # Verify JSON serializable
+        except (TypeError, ValueError) as e:
+            logger.exception(f"💥 [PAYLOAD VALIDATION] Payload is not JSON serializable: {e}")
+            raise ValueError(f"Invalid payload structure: {e}") from e
 
         try:
             logger.debug(f"📤 Enviando payload a Meta: {payload}")
@@ -61,7 +125,7 @@ class WhatsAppService:
             logger.error(f"❌ HTTP Error en send_text_message para Destino Final Normalizado: {to} ({e.response.status_code}): {raw_response}")
             raise RuntimeError(f"Meta API Error ({e.response.status_code}): {raw_response}") from e
         except Exception as e:
-            logger.error(f"💥 Error crítico en send_text_message para {to}: {str(e)}")
+            logger.exception(f"💥 Error crítico en send_text_message para {to}: {str(e)}")
             raise
 
     async def mark_as_read(self, msg_id: str, phone_number_id: Optional[str] = None) -> bool:
@@ -89,9 +153,17 @@ class WhatsAppService:
     async def send_image_message(self, to: str, image_url: str, caption: Optional[str] = None, phone_number_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Sends an image message via URL.
+        
+        [BOT-BUILD-205] Added caption validation, sanitization, and truncation.
         """
         # 1. Normalización Atómica (Protocolo Meta)
         to = PhoneNormalizer.normalize(to).lstrip("+")
+        
+        # [BOT-BUILD-205] Sanitize and validate caption
+        if caption:
+            caption = self._sanitize_text(caption)
+            if len(caption) > MAX_IMAGE_CAPTION_LENGTH:
+                caption = self._truncate_text(caption, MAX_IMAGE_CAPTION_LENGTH)
         
         target_id = phone_number_id or self.phone_number_id
         url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{target_id}/messages"
@@ -105,6 +177,14 @@ class WhatsAppService:
         
         if caption:
             payload["image"]["caption"] = caption
+
+        # [BOT-BUILD-205] Validate payload structure before sending
+        try:
+            import json
+            json.dumps(payload)  # Verify JSON serializable
+        except (TypeError, ValueError) as e:
+            logger.exception(f"💥 [PAYLOAD VALIDATION] Image payload is not JSON serializable: {e}")
+            raise ValueError(f"Invalid payload structure: {e}") from e
 
         try:
             logger.debug(f"📤 Enviando imagen a Meta: {payload}")
@@ -121,7 +201,7 @@ class WhatsAppService:
             logger.error(f"❌ HTTP Error en send_image_message para Destino Final Normalizado: {to} ({e.response.status_code}): {raw_response}")
             raise RuntimeError(f"Meta API Error ({e.response.status_code}): {raw_response}") from e
         except Exception as e:
-            logger.error(f"💥 Error crítico en send_image_message para {to}: {str(e)}")
+            logger.exception(f"💥 Error crítico en send_image_message para {to}: {str(e)}")
             raise
 
     async def send_template_message(

@@ -1967,16 +1967,48 @@ def _extract_message_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
 
 async def _send_whatsapp_message(to_phone: str, message_text: str, phone_number_id: Optional[str] = None) -> bool:
-    """Send WhatsApp message via WhatsAppService."""
+    """
+    Send WhatsApp message via WhatsAppService.
+    
+    [BOT-BUILD-205] Added retry logic with degraded payload on HTTP 400 errors.
+    """
     from app.services.whatsapp_service import whatsapp_service
     try:
         await whatsapp_service.send_text_message(to_phone, message_text, phone_number_id=phone_number_id)
         return True
     except httpx.HTTPStatusError as e:
-        logger.error(f"❌ Error HTTP ({e.response.status_code}): El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e.response.text}")
+        error_code = e.response.status_code
+        error_detail = e.response.text
+        
+        # [BOT-BUILD-205] Retry once with degraded payload on HTTP 400 (bad request)
+        if error_code == 400:
+            logger.warning(
+                f"⚠️ [RETRY DEGRADED] HTTP 400 from Meta. Attempting retry with truncated payload. "
+                f"Original length: {len(message_text)} chars. Error: {error_detail[:200]}"
+            )
+            try:
+                # Degrade payload: truncate to 2000 chars and remove complex markdown
+                import re
+                degraded_text = message_text[:2000]
+                # Remove complex markdown that might cause issues
+                degraded_text = re.sub(r'!\[.*?\]\(.*?\)', '[Imagen]', degraded_text)
+                degraded_text = degraded_text.strip()
+                
+                await whatsapp_service.send_text_message(to_phone, degraded_text, phone_number_id=phone_number_id)
+                logger.info(f"✅ [RETRY DEGRADED] Success with truncated payload ({len(degraded_text)} chars)")
+                return True
+            except Exception as retry_error:
+                logger.exception(
+                    f"💥 [RETRY DEGRADED] Failed even with degraded payload. "
+                    f"Forensic: original_length={len(message_text)}, "
+                    f"degraded_length={len(degraded_text)}, error={str(retry_error)}"
+                )
+                return False
+        
+        logger.error(f"❌ Error HTTP ({error_code}): El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {error_detail}")
         return False
     except Exception as e:
-        logger.error(f"❌ Error Genérico: El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e}")
+        logger.exception(f"❌ Error Genérico: El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e}")
         return False
 
 async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "", phone_number_id: Optional[str] = None) -> bool:

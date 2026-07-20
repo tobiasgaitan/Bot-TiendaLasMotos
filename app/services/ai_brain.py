@@ -360,24 +360,23 @@ class CerebroIA:
         """
         [BOT-BUILD-204] Freno Cognitivo — INTERCEPCIÓN_Y_RETORNO_DE_FAQ.
         Bloque de máxima recencia para responder la FAQ sin perder el hilo comercial.
+        
+        [BOT-BUILD-205] Condensed to < 500 chars to reduce LLM confusion.
         """
         simulacion_instruccion = ""
         if turn_intent == TurnIntent.MIXED:
             simulacion_instruccion = (
-                "El usuario también pidió una simulación/cuota en este mismo turno. "
-                "PROCEDE con la simulación mediante calculate_credit_score DESPUÉS de responder la FAQ. "
+                "Simulación permitida: ejecuta calculate_credit_score DESPUÉS de responder la FAQ. "
             )
-        return f"""
-[FRENO COGNITIVO — INTERCEPCIÓN_Y_RETORNO_DE_FAQ — PRIORIDAD MÁXIMA ESTE TURNO]
-1. El usuario preguntó una duda de crédito: "{faq_fragment}".
-   Respóndela en MÁXIMO 2 líneas usando ÚNICAMENTE la información de <credit_matrix_rules>.
-2. PROHIBIDO para responder la FAQ: pedir datos nuevos, ejecutar calculate_credit_score{"" if turn_intent == TurnIntent.MIXED else ", pedir Habeas Data"}, mencionar la política de privacidad, inventar condiciones, o calcular cuotas por tu cuenta.
-{simulacion_instruccion}
-3. OBLIGATORIO: cierra el mensaje repitiendo TEXTUALMENTE la siguiente pregunta pendiente del embudo, sin parafrasearla:
-   "{pending_question}"
-4. La FAQ no avanza ni sustituye el embudo: el estado del CRM y la fase permanecen intactos.
-5. ONE-SHOT RULE redefinida este turno: la ÚNICA pregunta permitida en tu respuesta es la del punto 3. PROHIBIDO el cierre sin pregunta y las invitaciones comerciales genéricas.
-[FIN FRENO COGNITIVO]
+        
+        prohibitions = "" if turn_intent == TurnIntent.MIXED else ", pedir Habeas Data"
+        
+        return f"""[FRENO FAQ — MÁXIMA PRIORIDAD]
+FAQ: "{faq_fragment}"
+Responde en ≤2 líneas usando <credit_matrix_rules>. PROHIBIDO: pedir datos{prohibitions}, calcular cuotas, mencionar política de privacidad.
+{simulacion_instruccion}CIERRE OBLIGATORIO: Repite TEXTUALMENTE: "{pending_question}"
+La FAQ no avanza el embudo. ONE-SHOT: solo la pregunta del cierre está permitida.
+[FIN FRENO]
 """
 
     def _parse_raw_price(self, raw_price_val: Any, price_val: Any) -> float:
@@ -922,7 +921,8 @@ class CerebroIA:
                             f"🚨 [PCC VALIDATION] CATALOG_VALIDATION_FAIL - Max validation attempts reached. "
                             f"user_id={user_id} query='{texto}' - Returning degraded response."
                         )
-                        return CerebroIA._ensure_soat_anchor(final_text)
+                        validated_text = CerebroIA._validate_output(final_text)
+                        return CerebroIA._ensure_soat_anchor(validated_text)
                 else:
                     # BOT-BRAIN-FAQ-CATALOG-COLLISION-146: Si run_checker determinó un bypass semántico
                     # (FAQ pura sin moto_interest en CRM), forzar is_catalog_query=False de forma síncrona
@@ -934,10 +934,12 @@ class CerebroIA:
                             f"✅ [PCC BYPASS] Semantic bypass exitoso: FAQ intent sin moto_interest en CRM. "
                             f"is_catalog_query forzado a False. user_id={user_id} query='{texto}'"
                         )
-                    final_text = CerebroIA._ensure_soat_anchor(final_text)
+                    validated_text = CerebroIA._validate_output(final_text)
+                    final_text = CerebroIA._ensure_soat_anchor(validated_text)
                     return final_text
             else:
-                return final_text
+                validated_text = CerebroIA._validate_output(final_text)
+                return validated_text
         except HabeasDataBypassInterrupt as hdbi:
             logger.info(f"🛡️ [HABEAS-BYPASS] Cortocircuito limpio ejecutado. Propagando al router.")
             raise
@@ -972,6 +974,46 @@ class CerebroIA:
         cleaned = cleaned.replace('```', '').strip()
         
         return cleaned
+    
+    @staticmethod
+    def _validate_output(text: str) -> str:
+        """
+        [BOT-BUILD-205] Validate and sanitize output before sending to user.
+        Removes control characters, normalizes whitespace, and logs warnings
+        for malformed structures.
+        """
+        if not text or not isinstance(text, str):
+            return text
+        
+        original_length = len(text)
+        
+        # 1. Remove control characters (except newlines and tabs)
+        validated = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]', '', text)
+        
+        # 2. Normalize multiple spaces to single space (preserve newlines)
+        validated = re.sub(r' +', ' ', validated)
+        
+        # 3. Remove trailing whitespace from lines
+        validated = re.sub(r'[ \t]+$', '', validated, flags=re.MULTILINE)
+        
+        # 4. Check for malformed markdown (unclosed brackets/parentheses)
+        open_brackets = validated.count('[') - validated.count(']')
+        open_parens = validated.count('(') - validated.count(')')
+        if abs(open_brackets) > 2 or abs(open_parens) > 2:
+            logger.warning(
+                f"⚠️ [OUTPUT VALIDATION] Malformed markdown detected: "
+                f"unclosed brackets={open_brackets}, parens={open_parens}"
+            )
+        
+        # 5. Log if significant sanitization occurred
+        if len(validated) < original_length * 0.95:
+            logger.warning(
+                f"⚠️ [OUTPUT VALIDATION] Output sanitized: "
+                f"{original_length} → {len(validated)} chars "
+                f"({original_length - len(validated)} chars removed)"
+            )
+        
+        return validated.strip()
 
     @staticmethod
     def clean_parrot_phrases(text: str) -> str:
