@@ -86,7 +86,8 @@ class AgenticOrchestrator:
                 "quiénes somos", "nosotros", "pago", "pagar", "efectivo", "tarjeta", "transferencia",
                 "nequi", "daviplata", "financiacion", "financiación", "interes", "interés", "banco",
                 "cuota", "inicial", "credito", "crédito", "financiar", "mensualidad", "papeles",
-                "requisitos", "asesor", "humano", "ayuda", "soporte", "faq", "pregunta", "duda"
+                "requisitos", "fiador", "fiadores", "aval", "avales",
+                "asesor", "humano", "ayuda", "soporte", "faq", "pregunta", "duda"
             ]
             prompt_lower = user_prompt.lower()
             if any(re.search(rf"\b{kw}\b" if kw.isalnum() else re.escape(kw), prompt_lower) for kw in faq_keywords):
@@ -96,6 +97,7 @@ class AgenticOrchestrator:
             # Debe bypasear Visual-Lock incluso con moto_interest presente.
             if is_faq_intent:
                 credit_faq_signals = ["requisitos", "papeles", "documentos", "codeudor",
+                                      "fiador", "fiadores", "aval", "avales", "codeudora",
                                       "que necesito", "qu\u00e9 necesito", "que piden", "qu\u00e9 piden",
                                       "que debo", "qu\u00e9 debo",
                                       "historial", "datacredito", "data credito", "reportado", "reporte",

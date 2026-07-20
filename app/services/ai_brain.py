@@ -257,7 +257,9 @@ class CerebroIA:
         if not text:
             return False
         t = text.lower()
-        faq_signals = ["requisito", "papel", "documento", "codeudor", "qu\u00e9 necesito",
+        faq_signals = ["requisito", "papel", "documento", "codeudor", "fiador", "fiadores",
+                       "aval", "avales", "codeudora",
+                       "qu\u00e9 necesito",
                        "que necesito", "qu\u00e9 piden", "que piden", "qu\u00e9 se necesita",
                        "que se necesita", "qu\u00e9 debo llevar", "que debo llevar",
                        "historial", "datacredito", "data credito", "reportado", "reporte",

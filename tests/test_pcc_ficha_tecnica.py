@@ -1569,6 +1569,9 @@ def test_is_abstract_credit_faq_classifier():
     assert c._is_abstract_credit_faq("estoy reportado puedo sacar credito?") is True
     assert c._is_abstract_credit_faq("necesito datacredito para el credito?") is True
     assert c._is_abstract_credit_faq("soy extranjero, que necesito?") is True
+    assert c._is_abstract_credit_faq("y necesito fiador, para sacaria a credito?") is True
+    assert c._is_abstract_credit_faq("necesito fiadores?") is True
+    assert c._is_abstract_credit_faq("me piden aval para el credito?") is True
     assert c._is_abstract_credit_faq("cuanto queda la cuota a 24 meses") is False
     assert c._is_abstract_credit_faq("cuales son los requisitos y cuanto pago?") is False
     assert c._is_abstract_credit_faq("simula el credito con inicial de 1 millon") is False
@@ -1659,4 +1662,144 @@ def test_create_tools_omits_credit_when_faq_abstract():
         num_without = len(tools_without[0].function_declarations)
         assert num_without == 2, \
             f"FAQ abstracta: expected 2 tools (sin credit), got {num_without}"
+
+
+def test_run_checker_fiador_bypass_with_moto_interest():
+    """
+    [BOT-BUILD-REGRESSION-FAQ-FIADOR-CUOTA-202]
+    'fiador', 'fiadores', 'aval' con moto_interest -> bypass activado.
+    Antes caian en fallback de supervisor por token ausente en el lexicon.
+    """
+    from app.services.agentic_loop_service import AgenticOrchestrator
+    orchestrator = AgenticOrchestrator()
+
+    for prompt in [
+        "y necesito fiador, para sacaria a credito?",
+        "necesito fiadores?",
+        "me piden aval para el credito?",
+    ]:
+        result = orchestrator.run_checker(
+            "FAQ credit matrix response.",
+            is_catalog_query=True,
+            prospect_data={"moto_interest": "TVS Raider 125", "nombre": "Carlos"},
+            user_prompt=prompt
+        )
+        assert result.get("bypass_strict") is True, (
+            f"FAQ fiador/aval '{prompt}' con moto_interest DEBE activar bypass."
+        )
+
+
+@pytest.mark.asyncio
+async def test_raider_125_brilla_golden_419120():
+    """
+    [BOT-BUILD-REGRESSION-FAQ-FIADOR-CUOTA-202]
+    Golden TVS RAIDER 125: assetPrice=$7.771.896, inicial=$858.000, 24m Brilla
+    -> $419.120 cuota_mensual exacta (Simulador Web oficial).
+    Antiregresion contra $420.762 (WA bug con precio catalogo inflado).
+    Usa el helper path: net_price = assetPrice - reg_cost para simular
+    el strip+re-add que ocurre en produccion via _calculate_payment_helper.
+    """
+    from app.services.financial_service import financial_service
+    from app.core.config_loader import ConfigLoader
+    from app.core.security import get_firebase_credentials_object
+    from google.cloud import firestore
+    from app.core.config import settings
+
+    import os
+    old_cred = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if old_cred == "/tmp/fake-key.json":
+        os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+    try:
+        credentials = get_firebase_credentials_object()
+    finally:
+        if old_cred is not None:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = old_cred
+
+    db = firestore.Client(
+        project=settings.gcp_project_id,
+        credentials=credentials
+    )
+    config_loader = ConfigLoader(db)
+    financial_service._config_service.initialize(db)
+    config_loader.load_all()
+
+    # Official SSOT: assetPrice=$7.771.896, cc=0 (sin financeDocs)
+    # Helper strip: base = 7771896 - 780000 = 6991896
+    # calculate_payment re-add: asset = 6991896 + 780000 = 7771896
+    official_asset = 7771896.0
+    net_price = official_asset - 780000.0
+    res = financial_service.calculate_payment(
+        precio=net_price,
+        inicial=858000.0,
+        plazo_meses=24,
+        entidad="Brilla de Gases",
+        moto_cc=0.0,
+        category="motos"
+    )
+    cuota = res.get("cuota_mensual", 0)
+    assert cuota == 419120.0, (
+        f"Raider 125 golden cuota mismatch: expected 419120, got {cuota}"
+    )
+    assert round(res.get("capital_financiado", 0)) == 7259591, (
+        f"Wrong capital_financiado: {res.get('capital_financiado')}"
+    )
+    assert round(res.get("cuota_aval", 0)) == 24199, (
+        f"Wrong cuota_aval: {res.get('cuota_aval')}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_raider_125_anti_regression_420762():
+    """
+    [BOT-BUILD-REGRESSION-FAQ-FIADOR-CUOTA-202]
+    Verifica que con el precio del catalogo actual (7.799.999) y cc=0
+    la formula produce $420.762 (WA bug) y NO $419.120 (oficial).
+    Este test documenta el SSOT mismatch en los datos del catalogo:
+    el precio de catalogo ($7.799.999) es $28.103 mayor que el oficial ($7.771.896).
+    Path simulado: helper strip (reg=780k) + calculate re-add -> asset=7.799.999.
+    """
+    from app.services.financial_service import financial_service
+    from app.core.config_loader import ConfigLoader
+    from app.core.security import get_firebase_credentials_object
+    from google.cloud import firestore
+    from app.core.config import settings
+
+    import os
+    old_cred = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if old_cred == "/tmp/fake-key.json":
+        os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+    try:
+        credentials = get_firebase_credentials_object()
+    finally:
+        if old_cred is not None:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = old_cred
+
+    db = firestore.Client(
+        project=settings.gcp_project_id,
+        credentials=credentials
+    )
+    config_loader = ConfigLoader(db)
+    financial_service._config_service.initialize(db)
+    config_loader.load_all()
+
+    # Path produccion real: catalogo price=7.799.999, cc=None->0
+    # Helper: base = 7799999 - 780000 = 7019999
+    # calculate: asset = 7019999 + 780000 = 7799999, docs=0
+    catalog_price = 7799999.0
+    net_price = catalog_price - 780000.0
+    res = financial_service.calculate_payment(
+        precio=net_price,
+        inicial=858000.0,
+        plazo_meses=24,
+        entidad="Brilla de Gases",
+        moto_cc=0.0,
+        category="motos"
+    )
+    cuota = res.get("cuota_mensual", 0)
+    assert cuota == 420762.0, (
+        f"Raider 125 WA regression: expected 420762 (catalog), got {cuota}"
+    )
+    assert cuota != 419120.0, (
+        "Anti-regression: catalog path should NOT match official 419120 yet."
+    )
 
