@@ -15,7 +15,7 @@ from datetime import datetime
 
 from app.utils.json_processor import clean_json_voorhees
 from app.core.exceptions import HabeasDataBypassInterrupt
-from app.services.credit_faq_taxonomy import is_abstract_credit_faq
+from app.services.credit_faq_taxonomy import is_abstract_credit_faq, classify_credit_turn, TurnIntent
 
 logger = logging.getLogger(__name__)
 
@@ -312,6 +312,73 @@ class CerebroIA:
         credit_faq_taxonomy para evitar listas divergentes con agentic_loop_service.
         """
         return is_abstract_credit_faq(text)
+
+    def _get_pending_funnel_question(self, phase: str, prospect_data: Optional[Dict[str, Any]]) -> str:
+        """
+        [BOT-BUILD-204] Retorna textualmente la última pregunta pendiente del embudo
+        para que el Freno Cognitivo la repita sin paráfrasis.
+        """
+        data = prospect_data or {}
+        p_name = data.get("nombre")
+        p_ciudad = data.get("ciudad")
+        p_payment = data.get("forma_pago")
+
+        if phase == "PHASE_1_PROFILING":
+            if not p_name:
+                return "¿Con quién tengo el gusto?"
+            elif not p_ciudad:
+                return "¿Desde qué ciudad nos escribes?"
+            elif not p_payment:
+                return "¿Prefieres compra de contado o a crédito?"
+            return "¿En qué más puedo ayudarte?"
+
+        if phase == "PHASE_2_HABEAS_DATA":
+            is_accepted = data.get("habeas_data_accepted") is True
+            if not is_accepted:
+                return (
+                    "Para darte el valor exacto de las cuotas mediante nuestro sistema de Brilla de Gases, "
+                    "¿me autorizas el tratamiento de tus datos? (Política: https://tiendalasmotos.com/politica-de-privacidad). "
+                    "Solo confírmame con un 'Sí'."
+                )
+            if not p_name:
+                return "¿Podrías indicarme tu nombre completo?"
+            if not p_ciudad:
+                return "¿Desde qué ciudad nos escribes?"
+            return "¿Me confirmas para continuar con el estudio de crédito?"
+
+        if phase == "PHASE_3_CREDIT_PROFILING":
+            return "Continuemos con el perfilamiento para tu estudio de crédito. ¿Me indicas el dato que falta?"
+
+        return "¿En qué más puedo ayudarte?"
+
+    def _compose_faq_brake_block(
+        self,
+        faq_fragment: str,
+        pending_question: str,
+        turn_intent: TurnIntent
+    ) -> str:
+        """
+        [BOT-BUILD-204] Freno Cognitivo — INTERCEPCIÓN_Y_RETORNO_DE_FAQ.
+        Bloque de máxima recencia para responder la FAQ sin perder el hilo comercial.
+        """
+        simulacion_instruccion = ""
+        if turn_intent == TurnIntent.MIXED:
+            simulacion_instruccion = (
+                "El usuario también pidió una simulación/cuota en este mismo turno. "
+                "PROCEDE con la simulación mediante calculate_credit_score DESPUÉS de responder la FAQ. "
+            )
+        return f"""
+[FRENO COGNITIVO — INTERCEPCIÓN_Y_RETORNO_DE_FAQ — PRIORIDAD MÁXIMA ESTE TURNO]
+1. El usuario preguntó una duda de crédito: "{faq_fragment}".
+   Respóndela en MÁXIMO 2 líneas usando ÚNICAMENTE la información de <credit_matrix_rules>.
+2. PROHIBIDO para responder la FAQ: pedir datos nuevos, ejecutar calculate_credit_score{"" if turn_intent == TurnIntent.MIXED else ", pedir Habeas Data"}, mencionar la política de privacidad, inventar condiciones, o calcular cuotas por tu cuenta.
+{simulacion_instruccion}
+3. OBLIGATORIO: cierra el mensaje repitiendo TEXTUALMENTE la siguiente pregunta pendiente del embudo, sin parafrasearla:
+   "{pending_question}"
+4. La FAQ no avanza ni sustituye el embudo: el estado del CRM y la fase permanecen intactos.
+5. ONE-SHOT RULE redefinida este turno: la ÚNICA pregunta permitida en tu respuesta es la del punto 3. PROHIBIDO el cierre sin pregunta y las invitaciones comerciales genéricas.
+[FIN FRENO COGNITIVO]
+"""
 
     def _parse_raw_price(self, raw_price_val: Any, price_val: Any) -> float:
         """
@@ -1095,6 +1162,9 @@ REGLAS ESTRICTAS DE USO:
         import asyncio
         from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable, InvalidArgument
 
+        # [BOT-BUILD-204] Deterministic credit turn intent from the raw user text.
+        turn_intent = classify_credit_turn([texto])
+
         # 1. Deterministic state evaluation
         phase = self._determine_funnel_phase(prospect_data, history)
         
@@ -1252,31 +1322,24 @@ REGLAS ESTRICTAS DE USO:
                 "y recibos de gas para que el asesor humano pueda cerrar el trámite."
             )
 
-        # --- DOBLE GATE PREVENTIVO: FAQ abstracta de crédito ---
+        # --- DOBLE GATE PREVENTIVO: FAQ abstracta de crédito (INTERCEPCIÓN_Y_RETORNO) ---
         # [BOT-BUILD-REGRESSION-FAQ-FALLBACK-201]
-        # Si el clasificador determina que es una consulta informativa de requisitos/
-        # historial/reportes (no simulación), omitir calculate_credit_score del payload
-        # y sobreescribir funnel para no forzar Habeas Data en este turno.
-        is_faq_abstract = self._is_abstract_credit_faq(texto)
-        omit_credit_this_turn = is_faq_abstract
-        faq_mandate = ""
-        if is_faq_abstract:
-            logger.info(f"🛡️ [Doble Gate] FAQ abstracta detectada: omitiendo credit tool y forzando credit_matrix_rules.")
-            funnel_instruction = (
-                "[MANDATO FAQ CRÉDITO] El usuario ha preguntado sobre requisitos, "
-                "documentos, historial crediticio o condiciones generales del crédito. "
-                "NO necesita ni quiere una simulación de cuotas. "
-                "Responde de forma concisa y directa SOLO con la información de "
-                "<credit_matrix_rules> de tu system instruction:\n"
-                "- Empleados: Cédula, email, celular.\n"
-                "- Reportados: Cédula + 10% de inicial OBLIGATORIA.\n"
-                "- Extranjeros: PPT/PEP + Pasaporte + Dirección física.\n"
-                "- Brilla: Cédula + 2 últimos recibos de gas pagados.\n"
-                "PROHIBIDO ABSOLUTO: calcular cuotas, pedir Habeas Data, "
-                "ejecutar calculate_credit_score, o mencionar el enlace de "
-                "política de privacidad."
+        # [BOT-BUILD-204] Se usa el intento de turno completo (FAQ_ONLY / MIXED / NONE).
+        # FAQ_ONLY: se omite calculate_credit_score y se responde la FAQ desde
+        # <credit_matrix_rules>, retomando el embudo al final.
+        # MIXED: se responde la FAQ en ≤2 líneas Y se permite la simulación/colección
+        # de datos en el mismo turno.
+        is_faq_intercept = turn_intent in (TurnIntent.FAQ_ONLY, TurnIntent.MIXED)
+        omit_credit_this_turn = (turn_intent == TurnIntent.FAQ_ONLY)
+        faq_brake_block = ""
+        if is_faq_intercept:
+            pending_question = self._get_pending_funnel_question(phase, prospect_data)
+            faq_brake_block = self._compose_faq_brake_block(texto, pending_question, turn_intent)
+            logger.info(
+                f"🛡️ [Doble Gate] FAQ abstracta detectada (intent={turn_intent.value}): "
+                f"credit tool omitido={omit_credit_this_turn}. "
+                f"Pregunta pendiente del embudo: {pending_question[:80]}"
             )
-            omit_credit_this_turn = True
 
         for attempt in range(max_retries):
             try:
@@ -1326,6 +1389,10 @@ REGLAS ESTRICTAS DE USO:
                 if skip_greeting:
                     base_instruction = self._assemble_skip_greeting_prompt(base_instruction, prospect_data, texto)
 
+                intercepcion_faq_xml = (
+                    f"\n    <intercepcion_faq>{turn_intent.value}</intercepcion_faq>"
+                    if is_faq_intercept else ""
+                )
 
                 full_prompt = f"""
 {base_instruction}
@@ -1338,7 +1405,7 @@ REGLAS ESTRICTAS DE USO:
   </prospecto>
 
   <estado_del_embudo>
-    <fase_actual>{phase}</fase_actual>
+    <fase_actual>{phase}</fase_actual>{intercepcion_faq_xml}
     <instruccion_de_cierre>{funnel_instruction}</instruccion_de_cierre>
   </estado_del_embudo>
 
@@ -1398,6 +1465,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 if prospect_data and prospect_data.get("nombre"):
                     p_name = prospect_data.get("nombre")
                     full_prompt += f"\n[CRITICAL IDENTITY RULE: Estás hablando con {p_name}. Tu respuesta DEBE empezar con un saludo personalizado hacia él. Ignorar esto es un fallo de seguridad.]\n"
+                
+                # --- FRENO COGNITIVO FAQ-CRÉDITO (máxima recencia) ---
+                if faq_brake_block:
+                    full_prompt += faq_brake_block + "\n"
                 
                 full_prompt += "Juan Pablo:"
                 
@@ -1808,9 +1879,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                             # --- TOOL REJECTION: FAQ abstracta de creditos ---
                             # [BOT-BUILD-REGRESSION-FINANCIAL-AND-FAQ-200]
-                            # Si el usuario pregunta por requisitos/documentos de credito
-                            # sin pedir cuotas/valores, responder desde credit_matrix_rules
-                            # sin ejecutar simulacion ciega ni script de Habeas Data.
+                            # [BOT-BUILD-204] Solo se rechaza la tool cuando el turno es
+                            # FAQ_ONLY. En turnos MIXED la simulación es legítima y debe
+                            # coexistir con la respuesta de <credit_matrix_rules>.
                             faq_check_text = str(f_args.get("__user_query__") or "")
                             if not faq_check_text and history:
                                 for h in reversed(history):
@@ -1822,9 +1893,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     if t:
                                         faq_check_text = t
                                         break
-                            if self._is_abstract_credit_faq(str(texto)):
-                                faq_check_text = str(texto)
-                            if faq_check_text and self._is_abstract_credit_faq(faq_check_text):
+                            if turn_intent == TurnIntent.FAQ_ONLY and faq_check_text and self._is_abstract_credit_faq(faq_check_text):
                                 reject_faq_msg = (
                                     "[MANDATO FAQ CREDITO] Pregunta abstracta de requisitos detectada.\n"
                                     "Responde SOLO con la informacion de credit_matrix_rules del system instruction:\n"

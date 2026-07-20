@@ -66,6 +66,7 @@ class ConfigService:
             
             if financial_doc.exists:
                 self._financial_config = financial_doc.to_dict()
+                self._normalize_registration_rows(self._financial_config)
                 logger.info(f"✅ Financial config loaded from Certified Route: {len(self._financial_config)} keys")
             else:
                 logger.critical("🔥 CRITICAL: 'financial_config/.../global_params' not found! Using Hardcoded Defaults.")
@@ -102,6 +103,30 @@ class ConfigService:
             logger.error(f"❌ Error loading configurations: {str(e)}")
             self._financial_config = self.DEFAULT_FINANCIAL.copy()
             self._partners_config = {}
+
+    def _normalize_registration_rows(self, config: Dict[str, Any]) -> None:
+        """
+        [BOT-BUILD-204] Normaliza en memoria las filas de costos de matrícula.
+        Algunos documentos (ej. financieras/*) usan 'registrationCreditGeneral'
+        mientras que global_params usa 'registrationCredit'. Para mantener un
+        único punto de lectura sin romper contratos existentes, copiamos el
+        campo *General al campo canónico cuando este último falta.
+        """
+        rows = config.get("rows", [])
+        if not rows:
+            return
+        normalized = 0
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if "registrationCredit" not in row and "registrationCreditGeneral" in row:
+                row["registrationCredit"] = row["registrationCreditGeneral"]
+                normalized += 1
+            if "registrationCash" not in row and "registrationCashGeneral" in row:
+                row["registrationCash"] = row["registrationCashGeneral"]
+                normalized += 1
+        if normalized:
+            logger.info(f"🔄 [REGISTRATION_KEY_NORMALIZATION] Normalized {normalized} row field(s) from *General to canonical")
 
     def _normalize_entity_id(self, entity_id: str) -> str:
         """
@@ -208,29 +233,39 @@ class ConfigService:
             # Normalize inputs
             norm_category = str(category or "").upper().strip()
             
-            # 1. Match by specific category (Special cases: ELECTRICA, MOTOCARRO)
+            # 1. Match by specific category (Special cases: ELECTRICA, MOTOCARRO).
+            # Defensive: una fila que define una banda CC cerrada (maxCC < 9999)
+            # NO debe desactivar la matemática de cilindraje por coincidencia de
+            # categoría genérica (BOT-BUILD-204).
             for row in rows:
                 row_cat = str(row.get("category") or "").upper().strip()
-                if row_cat and norm_category == row_cat:
-                    cost = int(row.get("registrationCredit", 0))
+                if not row_cat or norm_category != row_cat:
+                    continue
+                if row.get("minCC") is not None and row.get("maxCC") is not None:
+                    max_cc = int(row.get("maxCC", 0))
+                    if max_cc < 9999:
+                        logger.debug(f"🛡️ Category match skipped for closed CC band: {norm_category} ({row.get('minCC')}-{max_cc})")
+                        continue
+                cost = int(row.get("registrationCredit") or row.get("registrationCreditGeneral", 0))
+                if cost:
                     logger.debug(f"✅ Match by Category: {norm_category} -> ${cost}")
                     return cost
+                logger.warning(f"⚠️ Category row matched for '{norm_category}' but no registration cost found")
             
             # 2. Match by Cylinder Capacity (CC)
             if cc is not None:
                 import math
                 cc_val = math.floor(float(cc))
-                if cc_val <= 125:
-                    logger.debug(f"✅ Match by CC <= 125 override: {cc_val}cc -> $780000")
-                    return 780000
                 for row in rows:
                     min_cc = int(row.get("minCC", 0))
                     max_cc = int(row.get("maxCC", 99999))
                     
                     if min_cc <= cc_val <= max_cc:
-                        cost = int(row.get("registrationCredit", 0))
-                        logger.debug(f"✅ Match by CC Range: {min_cc}-{max_cc} ({cc_val}cc) -> ${cost}")
-                        return cost
+                        cost = int(row.get("registrationCredit") or row.get("registrationCreditGeneral", 0))
+                        if cost:
+                            logger.debug(f"✅ Match by CC Range: {min_cc}-{max_cc} ({cc_val}cc) -> ${cost}")
+                            return cost
+                        logger.warning(f"⚠️ CC band {min_cc}-{max_cc} matched but no registration cost found")
             
             # 3. Fallback: Log Error (Violation to No-Assumption Policy)
             logger.error(f"⚠️ [MANDATO v6.8.0] Fallo de Match: Falta CC o Categoría para calcular costo de trámite (CC: {cc}, Cat: {category})")

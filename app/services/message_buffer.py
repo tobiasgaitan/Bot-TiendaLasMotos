@@ -204,6 +204,21 @@ class MessageBuffer:
             
             return aggregated
     
+    def get_credit_turn_intent(self, wa_id: str) -> "TurnIntent":
+        """
+        Classify the buffered fragments as a credit turn BEFORE they are joined
+        into a single blob. This prevents an early simulation fragment from
+        poisoning an abstract FAQ fragment (BOT-BUILD-204).
+        
+        Returns:
+            TurnIntent enum value (none/faq_only/mixed).
+        """
+        from app.services.credit_faq_taxonomy import classify_credit_turn
+        messages = self._buffers.get(wa_id, [])
+        intent = classify_credit_turn(messages)
+        logger.info(f"🧩 [BUFFER_INTENT] {wa_id}: {intent.value} from {len(messages)} fragment(s)")
+        return intent
+    
     async def clear_buffer(self, wa_id: str) -> None:
         """
         Clear the message buffer and active task for the user.

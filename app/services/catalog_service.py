@@ -1408,25 +1408,42 @@ class CatalogService:
                 if k in d_lower: return d_lower[k]
             return None
 
+        source = "unknown"
         try:
             # Phase 1: Search root
             cc_val = find_in_dict(data, ["displacement", "cilindraje", "cc"])
+            if cc_val is not None:
+                source = "root"
             
             # Phase 2: Search fichatecnica
             if cc_val is None:
                 ft = data.get("fichatecnica") or data.get("ficha_tecnica") or {}
                 cc_val = find_in_dict(ft, ["cilindraje", "displacement", "cc", "rango cilindraje"])
+                if cc_val is not None:
+                    source = "ficha_tecnica"
 
             if cc_val is None:
                 return 0
+
+            if source == "ficha_tecnica" and isinstance(cc_val, str) and "rango" in cc_val.lower():
+                logger.warning(
+                    f"⚠️ [DisplacementExtractorV2] CC extraído de un rango textual: '{cc_val}'. "
+                    f"Se usará el primer número; considere migrar la ficha técnica a un valor exacto."
+                )
 
             # Phase 3: Regex strict extraction (r'\d+(?:\.\d+)?')
             # Why: Ensures 159.7 CC -> 159.7 and prevents ValueError on int()
             match = re.search(r'\d+(?:\.\d+)?', str(cc_val))
             if match:
                 # Phase 4: float -> int (Truncate as per Legal Requirement)
-                return int(float(match.group(0)))
+                cc_int = int(float(match.group(0)))
+                logger.debug(
+                    f"🔧 [DisplacementExtractorV2] CC extraído: raw='{cc_val}', source={source}, "
+                    f"parsed={cc_int}"
+                )
+                return cc_int
             
+            logger.warning(f"⚠️ [DisplacementExtractorV2] No se encontró un número en '{cc_val}' (source={source})")
             return 0
         except Exception as e:
             logger.error(f"⚠️ Error extracting CC: {str(e)}")
