@@ -69,40 +69,75 @@ async def test_task_processor_rejects_with_503_if_catalog_not_fully_loaded():
 
 
 @pytest.mark.asyncio
-async def test_startup_lifespan_timeout_keeps_catalog_ready_false():
+async def test_startup_lifespan_timeout_recovers_and_commits_catalog_ready():
     """
-    [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
-    Test that the lifespan startup keeps catalog_ready as False if the background
-    initialization exceeds the timeout.
-    
-    WHY: The deferred init pattern runs _run_deferred_initialization as an
-    asyncio.create_task(). We mock it to simulate a timeout scenario.
+    [BOT-BUILD-CATALOG-READY-RACE-205]
+    Test that the deferred initialization path recovers from an asyncio.TimeoutError
+    by awaiting the natural completion of the background thread and committing the
+    result atomically. catalog_ready must be True once the thread finishes successfully,
+    eliminating the zombie state (count>0, ready=False) observed in Cloud Run cold starts.
     """
+    import app.main as main_module
+
     with patch("app.main.settings") as mock_settings, \
          patch("app.main.get_firebase_credentials_object") as mock_creds, \
          patch("app.main.firestore") as mock_firestore, \
          patch("app.main.config_service") as mock_config_service, \
          patch("app.main.ConfigLoader") as mock_config_loader, \
          patch("app.main.FinanceConfigLoader") as mock_finance_config_loader, \
-         patch("app.main.storage_service") as mock_storage_service:
-         
+         patch("app.main.storage_service") as mock_storage_service, \
+         patch.object(main_module, "TEST_MODE", False):
+
         mock_settings.db_timeout = 0.05
         mock_settings.gcp_project_id = "test-project"
         mock_creds.return_value = MagicMock()
-        
-        # Simulate high latency in config_service initialization (inside to_thread)
+
+        # Simulate high latency in config_service initialization (inside to_thread).
+        # The first budget (0.05s) will expire, but the thread must still complete
+        # and trigger the atomic commit barrier.
         def slow_init(*args, **kwargs):
             import time
             time.sleep(0.5)  # 0.5s > 0.05s timeout
-            
+
         mock_config_service.initialize.side_effect = slow_init
-        
+
         with patch.dict(os.environ, {"TEST_MODE": "false"}):
             async with lifespan(app):
                 # The lifespan completes immediately and unblocks the port.
-                # Now we wait for the background task to finish.
+                # Now we wait for the background task to finish (including recovery).
                 await app.state.startup_task
-                # Ensure catalog_ready is still False since it timed out
+                # The commit barrier must flip catalog_ready to True once the thread finishes.
+                assert app.state.catalog_ready is True
+
+
+@pytest.mark.asyncio
+async def test_startup_lifespan_init_failure_keeps_catalog_ready_false():
+    """
+    [BOT-BUILD-CATALOG-READY-RACE-205]
+    Test that a genuine failure in the deferred initialization thread leaves
+    catalog_ready as False and does not commit partial state.
+    """
+    import app.main as main_module
+
+    with patch("app.main.settings") as mock_settings, \
+         patch("app.main.get_firebase_credentials_object") as mock_creds, \
+         patch("app.main.firestore") as mock_firestore, \
+         patch("app.main.config_service") as mock_config_service, \
+         patch("app.main.ConfigLoader") as mock_config_loader, \
+         patch("app.main.FinanceConfigLoader") as mock_finance_config_loader, \
+         patch("app.main.storage_service") as mock_storage_service, \
+         patch.object(main_module, "TEST_MODE", False):
+
+        mock_settings.db_timeout = 5
+        mock_settings.gcp_project_id = "test-project"
+        mock_creds.return_value = MagicMock()
+
+        # Simulate a real failure inside the initialization thread.
+        mock_config_service.initialize.side_effect = RuntimeError("Firestore unavailable")
+
+        with patch.dict(os.environ, {"TEST_MODE": "false"}):
+            async with lifespan(app):
+                await app.state.startup_task
                 assert app.state.catalog_ready is False
 
 

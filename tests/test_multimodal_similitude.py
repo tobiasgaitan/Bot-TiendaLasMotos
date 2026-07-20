@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
-from app.services.catalog_service import CatalogService
+from app.services.catalog_service import CatalogService, PRICE_PACKAGE_ANCHOR
 from app.services.vision_service import VisionService
 
 
@@ -85,7 +85,7 @@ def test_match_catalog_item_by_image_priority():
     )
     assert res_id is not None
     assert res_id["id"] == "tvs_raider", "Should match by ID first"
-    assert res_id.get("formatted_price") == "$7.500.000"
+    assert res_id.get("formatted_price") == f"$7.500.000 {PRICE_PACKAGE_ANCHOR}"
 
     # 2. Match by exact image_url – O(1) index (AF-02)
     res_url = catalog.match_catalog_item_by_image(
@@ -93,7 +93,7 @@ def test_match_catalog_item_by_image_priority():
     )
     assert res_url is not None
     assert res_url["id"] == "tvs_sport", "Should match by image_url"
-    assert res_url.get("formatted_price") == "$6.200.000"
+    assert res_url.get("formatted_price") == f"$6.200.000 {PRICE_PACKAGE_ANCHOR}"
 
     # 3. Fuzzy SequenceMatcher ≥0.85 (AF-03 boundary)
     res_fuzzy = catalog.match_catalog_item_by_image("MOTO_DETECTADA: TVS Sport 100")
@@ -103,7 +103,7 @@ def test_match_catalog_item_by_image_priority():
     res_fuzzy2 = catalog.match_catalog_item_by_image("TVS Sport 10")
     assert res_fuzzy2 is not None
     assert res_fuzzy2["id"] == "tvs_sport"
-    assert res_fuzzy2.get("formatted_price") == "$6.200.000"
+    assert res_fuzzy2.get("formatted_price") == f"$6.200.000 {PRICE_PACKAGE_ANCHOR}"
 
     # 4. Fallback search_items
     with patch.object(catalog, 'search_items', return_value=[items[2]]) as mock_search:
@@ -133,7 +133,7 @@ def test_match_catalog_item_url_index_o1_no_linear_fallback():
     )
     assert res is not None
     assert res["id"] == "tvs_sport"
-    assert res.get("formatted_price") == "$6.200.000"
+    assert res.get("formatted_price") == f"$6.200.000 {PRICE_PACKAGE_ANCHOR}"
 
     # When URL is absent and _items is empty, fuzzy falls through to
     # search_items which triggers the emergency fallback item (no 'id' key).
@@ -289,7 +289,7 @@ def test_af_id_01_exact_id_still_works():
     )
     assert res is not None
     assert res["id"] == "agility_fusion"
-    assert res.get("formatted_price") == "$10.179.000"
+    assert res.get("formatted_price") == f"$10.179.000 {PRICE_PACKAGE_ANCHOR}"
 
 
 def test_af_id_02_uppercase_id_norm():
@@ -302,7 +302,7 @@ def test_af_id_02_uppercase_id_norm():
     )
     assert res is not None
     assert res["id"] == "agility_fusion"
-    assert res.get("formatted_price") == "$10.179.000"
+    assert res.get("formatted_price") == f"$10.179.000 {PRICE_PACKAGE_ANCHOR}"
 
 
 def test_af_id_03_hyphenated_id_norm():
@@ -315,7 +315,7 @@ def test_af_id_03_hyphenated_id_norm():
     )
     assert res is not None
     assert res["id"] == "agility_fusion"
-    assert res.get("formatted_price") == "$10.179.000"
+    assert res.get("formatted_price") == f"$10.179.000 {PRICE_PACKAGE_ANCHOR}"
 
 
 def test_af_id_04_commercial_name_as_model_id():
@@ -328,7 +328,7 @@ def test_af_id_04_commercial_name_as_model_id():
     )
     assert res is not None
     assert res["id"] == "agility_fusion"
-    assert res.get("formatted_price") == "$10.179.000"
+    assert res.get("formatted_price") == f"$10.179.000 {PRICE_PACKAGE_ANCHOR}"
 
 
 def test_af_id_05_no_moto_detectada_commercial_model_id():
@@ -341,7 +341,7 @@ def test_af_id_05_no_moto_detectada_commercial_model_id():
     )
     assert res is not None
     assert res["id"] == "agility_fusion"
-    assert res.get("formatted_price") == "$10.179.000"
+    assert res.get("formatted_price") == f"$10.179.000 {PRICE_PACKAGE_ANCHOR}"
 
 
 def test_af_id_06_dict_input_commercial_id():
@@ -356,7 +356,7 @@ def test_af_id_06_dict_input_commercial_id():
     })
     assert res is not None
     assert res["id"] == "agility_fusion"
-    assert res.get("formatted_price") == "$10.179.000"
+    assert res.get("formatted_price") == f"$10.179.000 {PRICE_PACKAGE_ANCHOR}"
 
 
 def test_af_id_07_collision_first_candidate_deterministic():
@@ -385,7 +385,7 @@ def test_af_id_07_collision_first_candidate_deterministic():
     )
     assert res is not None
     assert res["id"] == "agility_fusion"
-    assert res.get("formatted_price") == "$10.179.000"
+    assert res.get("formatted_price") == f"$10.179.000 {PRICE_PACKAGE_ANCHOR}"
     # Verify image is consistent with the returned item
     assert "agility_fusion.jpg" in res.get("image_url", "")
 
@@ -418,7 +418,7 @@ def test_af_id_08_padded_item_exclusion():
     )
     assert res is not None
     assert res["id"] == "agility_fusion"
-    assert res.get("formatted_price") == "$10.179.000"
+    assert res.get("formatted_price") == f"$10.179.000 {PRICE_PACKAGE_ANCHOR}"
 
 
 def test_af_id_09_formatted_price_preserved():
@@ -436,7 +436,7 @@ def test_af_id_09_formatted_price_preserved():
         res = catalog.match_catalog_item_by_image(pipe)
         assert res is not None, f"Failed for {pipe!r}"
         assert "$" in res.get("formatted_price", ""), f"Price parity broken for {pipe!r}"
-        assert res.get("formatted_price") == "$10.179.000", f"Wrong price for {pipe!r}"
+        assert res.get("formatted_price") == f"$10.179.000 {PRICE_PACKAGE_ANCHOR}", f"Wrong price for {pipe!r}"
         assert res["id"] == "agility_fusion"
 
 
@@ -485,18 +485,23 @@ def test_match_catalog_item_dict_input():
     })
     assert res is not None
     assert res["id"] == "tvs_sport"
-    assert res.get("formatted_price") == "$6.200.000"
+    assert res.get("formatted_price") == f"$6.200.000 {PRICE_PACKAGE_ANCHOR}"
 
 
 # ── Unit: rehydrate formatted_price ──────────────────────────────────
 
 def test_rehydrate_formatted_price():
-    """AF-07: _rehydrate_formatted_price fills missing formatted_price."""
+    """AF-07: _rehydrate_formatted_price fills missing formatted_price with anchor."""
+    from app.services.catalog_service import PRICE_PACKAGE_ANCHOR
     item_no_fmt = {"id": "x", "name": "Test", "price": 9990000}
-    assert CatalogService._rehydrate_formatted_price(item_no_fmt) == "$9.990.000"
+    result = CatalogService._rehydrate_formatted_price(item_no_fmt)
+    assert "$9.990.000" in result
+    assert PRICE_PACKAGE_ANCHOR in result
 
     item_has_fmt = {"id": "x", "formatted_price": "$1.000.000"}
-    assert CatalogService._rehydrate_formatted_price(item_has_fmt) == "$1.000.000"
+    result = CatalogService._rehydrate_formatted_price(item_has_fmt)
+    assert "$1.000.000" in result
+    assert PRICE_PACKAGE_ANCHOR in result
 
     item_no_price = {"id": "x", "name": "Test"}
     assert CatalogService._rehydrate_formatted_price(item_no_price) == ""

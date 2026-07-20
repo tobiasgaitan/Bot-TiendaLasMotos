@@ -762,6 +762,61 @@ class TestIdentityLegalGate(unittest.TestCase):
         self.assertNotIn("STRICT RULE: DO NOT under any circumstance start your response", prompt_arg, "El prompt no debe suprimir el saludo.")
 
     @patch("app.services.ai_brain.SDK_AVAILABLE", False)
+    def test_first_contact_with_saved_message_no_bypass(self):
+        """
+        GIVEN: Historial con el mensaje actual ya guardado (router guardó antes de evaluar).
+        AND: skip_greeting=False (primer contacto real).
+        WHEN: CerebroIA ensambla el prompt inicial.
+        THEN: El prompt debe contener MANDATORY WARMTH.
+        AND: El prompt NO debe contener STRICT RULE (supresión de saludo).
+        """
+        from app.services.ai_brain import CerebroIA
+        cerebro = CerebroIA()
+        cerebro.client = MagicMock()
+        cerebro._model_id = "gemini-2.0-flash"
+        
+        # Mock catalog service con Ninja 500
+        mock_catalog = MagicMock()
+        mock_catalog._items = [{"name": "Ninja 500", "price": "$38.000.000"}]
+        mock_catalog._tokenize = lambda x: ["ninja", "500"]
+        mock_catalog._phonetic_normalize = lambda x: x
+        mock_catalog.search_items = MagicMock(return_value=[{"name": "Ninja 500", "price": "$38.000.000"}])
+        cerebro._catalog_service = mock_catalog
+        
+        # Mock de respuesta simple (sin tool-loop)
+        mock_chat = AsyncMock()
+        mock_response = MagicMock()
+        mock_part = MagicMock()
+        mock_part.text = "Hola, soy Juan Pablo, asesor de Auteco Las Motos. ¡Claro que manejamos la Ninja 500!"
+        mock_part.function_call = None
+        mock_response.candidates = [MagicMock(content=MagicMock(parts=[mock_part]))]
+        mock_chat.send_message = AsyncMock(return_value=mock_response)
+        
+        cerebro.client.aio.chats.create = MagicMock(return_value=mock_chat)
+        
+        # [BOT-206] Historial con mensaje actual ya guardado (flujo real del router)
+        history = [
+            {"role": "user", "content": "tienen la Ninja 500?"}
+        ]
+        
+        # skip_greeting=False (primer contacto real)
+        import asyncio
+        res = asyncio.run(cerebro.pensar_respuesta(
+            "tienen la Ninja 500?", 
+            history=history, 
+            skip_greeting=False
+        ))
+        
+        # Verificar que el prompt contenga MANDATORY WARMTH (saludo obligatorio)
+        mock_chat.send_message.assert_called_once()
+        prompt_arg = mock_chat.send_message.call_args[0][0]
+        self.assertIn("MANDATORY WARMTH", prompt_arg, "El prompt debe exigir el saludo de Juan Pablo en primer contacto.")
+        self.assertNotIn("STRICT RULE: DO NOT under any circumstance start your response", prompt_arg, "El prompt no debe suprimir el saludo.")
+        
+        # Verificar que la respuesta final contenga la presentación de Juan Pablo
+        self.assertIn("Juan Pablo", res, "La respuesta debe incluir la presentación de Juan Pablo.")
+
+    @patch("app.services.ai_brain.SDK_AVAILABLE", False)
     def test_consecutive_out_of_catalog_query_suppresses_greeting(self):
         """
         GIVEN: Una sesión iniciada con una moto válida y un mensaje continuo sobre una moto inexistente.

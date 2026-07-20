@@ -1108,18 +1108,17 @@ class CatalogService:
         for _, item in scored_results:
             if item["id"] not in seen_ids:
                 # --- PRICE CONSOLIDATION (Audit v6.8.0) ---
-                # Mandato de Oficio: Summation occurs in backend. AI is prohibited.
+                # [BOT-BUILD-PRICE-REGRESSION-195] Delegated to SSOT builder.
                 base_price = item.get("price", 0)
                 cc = item.get("cc")
                 category = item.get("category")
-                
-                # Fetch registration cost from memory-cached config (O(1))
+
                 reg_cost = config_service.get_registration_cost(cc=cc, category=category)
                 total_price = base_price + reg_cost
-                
-                # Build formatted price with mandatory legal disclaimer
-                # Strict Rule: No assumptions, logic handles reg_cost=0 naturally.
-                formatted_w_soat = f"${total_price:,.0f}".replace(",", ".") + f" {PRICE_PACKAGE_ANCHOR}"
+
+                formatted_w_soat = CatalogService.build_commercial_price(
+                    price=base_price, cc=cc, category=category,
+                )
                 
                 bonus_info = self._get_active_bonus_info(item.get("bonusAmount"), item.get("bonusEndDate"))
                 
@@ -1511,33 +1510,68 @@ class CatalogService:
         return defaults
 
     @staticmethod
+    def build_commercial_price(price: float, cc: Optional[int] = None, category: Optional[str] = None) -> str:
+        """
+        [BOT-BUILD-PRICE-REGRESSION-195] SSOT builder for commercial (contado) price.
+        Computes base_price + registration cost and formats with the legal anchor.
+        Returns: "$X.XXX.XXX (incluye SOAT, Matrícula, y tramites)".
+        The raw price field remains immutable per architectural constraint.
+        """
+        from app.services.config_service import config_service
+        reg_cost = config_service.get_registration_cost(cc=cc, category=category)
+        total_price = int(price) + reg_cost
+        return f"${total_price:,.0f}".replace(",", ".") + f" {PRICE_PACKAGE_ANCHOR}"
+
+    @staticmethod
     def _rehydrate_formatted_price(item: Dict[str, Any]) -> str:
         """
-        [BOT-PLAN-MULTIMODAL-HARDENING-201] Recompute canonical formatted_price
-        from raw price when the catalog item omits the key (e.g. test fixtures).
-        Format: $X.XXX.XXX (incluye SOAT, Matrícula, y tramites).
+        [BOT-BUILD-PRICE-REGRESSION-195] Recompute canonical formatted_price
+        via build_commercial_price (SSOT builder). Always adds registration
+        cost regardless of whether a legacy formatted_price exists on the item.
+        Falls back to extracting numeric value from formatted_price string
+        when raw price is absent.
         """
-        if item.get("formatted_price"):
-            return _ensure_price_anchor(item["formatted_price"])
         price = item.get("price")
-        if not price:
+        if price is not None and isinstance(price, (int, float)):
+            return CatalogService.build_commercial_price(
+                price=price,
+                cc=item.get("cc"),
+                category=item.get("category"),
+            )
+        formatted = item.get("formatted_price")
+        if not formatted:
             return ""
-        base = f"${price:,.0f}".replace(",", ".")
-        return _ensure_price_anchor(base)
+        import re
+        match = re.search(r'\$([\d.,]+)', str(formatted))
+        if match:
+            try:
+                price = int(match.group(1).replace(".", "").replace(",", ""))
+                return CatalogService.build_commercial_price(
+                    price=price,
+                    cc=item.get("cc"),
+                    category=item.get("category"),
+                )
+            except (ValueError, TypeError):
+                pass
+        return _ensure_price_anchor(str(formatted))
 
     @staticmethod
     def _ensure_formatted_price(item: Dict[str, Any]) -> None:
         """
-        [BOT-PLAN-MULTIMODAL-HARDENING-201] Mutate-safe hydration:
-        injects formatted_price into the item dict if missing, using the
-        canonical $X.XXX.XXX (incluye SOAT, Matrícula, y tramites) format.
-        No-op if already set (preserving existing anchor if present).
+        [BOT-BUILD-PRICE-REGRESSION-195] Mutate-safe hydration:
+        always recomputes formatted_price via build_commercial_price (SSOT builder).
+        No-op if price is missing or non-numeric.
         """
-        if not item.get("formatted_price"):
-            price = item.get("price")
-            if price:
-                base = f"${price:,.0f}".replace(",", ".")
-                item["formatted_price"] = _ensure_price_anchor(base)
+        price = item.get("price")
+        if not price:
+            return
+        if not isinstance(price, (int, float)):
+            return
+        item["formatted_price"] = CatalogService.build_commercial_price(
+            price=price,
+            cc=item.get("cc"),
+            category=item.get("category"),
+        )
 
     def match_catalog_item_by_image(self, vision_response) -> Optional[Dict[str, Any]]:
         """

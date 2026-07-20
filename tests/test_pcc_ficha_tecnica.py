@@ -1363,4 +1363,93 @@ async def test_agility_fusion_exact_parity():
     assert res_helper_full.get("cuota_mensual") == 550469.0, f"Helper full cuota mismatch: expected 550469, got {res_helper_full.get('cuota_mensual')}"
 
 
+def test_is_tech_spec_query_detection():
+    from app.services.agentic_loop_service import is_tech_spec_query
+    assert is_tech_spec_query("cilindraje") is True
+    assert is_tech_spec_query("cuál es el torque de la raider") is True
+    assert is_tech_spec_query("que motor tiene") is True
+    assert is_tech_spec_query("potencia hp frenos abs") is True
+    assert is_tech_spec_query("cc de la moto") is True
+    assert is_tech_spec_query("ficha tecnica") is True
+    assert is_tech_spec_query("hola") is False
+    assert is_tech_spec_query("precio de la moto") is False
+    assert is_tech_spec_query("") is False
+    assert is_tech_spec_query(None) is False
+
+
+def test_is_tech_spec_query_no_false_positive_short_tokens():
+    from app.services.agentic_loop_service import is_tech_spec_query
+    assert is_tech_spec_query("accede") is False
+    assert is_tech_spec_query("chips") is False
+    assert is_tech_spec_query("photoshop") is False
+    assert is_tech_spec_query("acceso") is False
+
+
+def test_run_checker_no_bypass_on_tech_specs():
+    from app.services.agentic_loop_service import AgenticOrchestrator
+    orchestrator = AgenticOrchestrator()
+    result = orchestrator.run_checker(
+        "Claro, la moto tiene Ficha Tecnica: 150cc. Precio: $9.000.000. ![moto](http://img.url)",
+        is_catalog_query=False,
+        prospect_data={"moto_interest": "Apache 160"},
+        user_prompt="cuál es el cilindraje"
+    )
+    assert result["success"] is True
+    assert result.get("bypass_strict") is not True
+
+
+def test_run_checker_faq_bypass_without_tech_specs():
+    from app.services.agentic_loop_service import AgenticOrchestrator
+    orchestrator = AgenticOrchestrator()
+    result = orchestrator.run_checker(
+        "Estamos en la Calle 30 #79-85 en Santa Marta.",
+        is_catalog_query=False,
+        prospect_data={},
+        user_prompt="donde estan ubicados"
+    )
+    assert result["success"] is True
+    assert result.get("bypass_strict") is True
+
+
+def test_price_anchor_preserved():
+    from app.services.catalog_service import _ensure_price_anchor, PRICE_PACKAGE_ANCHOR
+    result = _ensure_price_anchor("$5.000.000")
+    assert PRICE_PACKAGE_ANCHOR in result
+    anchored = "$9.000.000 (incluye SOAT, Matrícula, y tramites)"
+    result = _ensure_price_anchor(anchored)
+    assert result == anchored
+
+
+def test_price_anchor_not_double_applied():
+    from app.services.catalog_service import _ensure_price_anchor, PRICE_PACKAGE_ANCHOR
+    already = f"$8.000.000 {PRICE_PACKAGE_ANCHOR}"
+    result = _ensure_price_anchor(already)
+    assert result.count(PRICE_PACKAGE_ANCHOR) == 1
+
+
+def test_price_package_anchor_present_in_search():
+    from app.services.catalog_service import catalog_service
+    from app.services.config_service import config_service
+    from unittest.mock import patch, MagicMock
+    mock_item = {
+        "id": "test-anchor",
+        "name": "Test Anchor Moto",
+        "price": 5000000,
+        "cc": 150,
+        "category": "Urban",
+        "image_url": "http://img.url",
+        "link": "http://link.url",
+        "summary": "Test summary"
+    }
+    with patch.object(catalog_service, '_items', [mock_item]), \
+         patch.object(catalog_service, '_db', MagicMock()), \
+         patch.object(config_service, '_financial_config', None), \
+         patch.object(config_service, 'get_registration_cost', return_value=0):
+        catalog_service.load_configurations = MagicMock()
+        catalog_service._cache_service.clear()
+        from app.services.catalog_service import PRICE_PACKAGE_ANCHOR
+        res = catalog_service.search_catalog("Test Anchor")
+        assert PRICE_PACKAGE_ANCHOR in res, "PRICE_PACKAGE_ANCHOR must be present in catalog search output"
+
+
 
