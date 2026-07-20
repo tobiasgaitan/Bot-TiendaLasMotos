@@ -96,11 +96,15 @@ class AgenticOrchestrator:
             # Debe bypasear Visual-Lock incluso con moto_interest presente.
             if is_faq_intent:
                 credit_faq_signals = ["requisitos", "papeles", "documentos", "codeudor",
-                                      "que necesito", "qué necesito", "que piden", "qué piden",
-                                      "que debo", "qué debo"]
-                credit_sim_keywords = ["cuota", "cuanto", "cuánto", "inicial de",
+                                      "que necesito", "qu\u00e9 necesito", "que piden", "qu\u00e9 piden",
+                                      "que debo", "qu\u00e9 debo",
+                                      "historial", "datacredito", "data credito", "reportado", "reporte",
+                                      "experiencia crediticia", "necesito historial",
+                                      "extranjero", "ppt", "pep", "pasaporte",
+                                      "necesito para", "puedo sacar"]
+                credit_sim_keywords = ["cuota", "cuanto", "cu\u00e1nto", "inicial de",
                                        "a 24", "a 36", "a 48", "a 12", "simul",
-                                       "cuanto qued", "cuánto qued"]
+                                       "cuanto qued", "cu\u00e1nto qued"]
                 has_credit_faq = any(s in prompt_lower for s in credit_faq_signals)
                 has_credit_sim = any(s in prompt_lower for s in credit_sim_keywords)
                 is_credit_faq_abstract = has_credit_faq and not has_credit_sim

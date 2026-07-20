@@ -1556,6 +1556,7 @@ async def test_cc_zero_does_not_assume_125_cc_regression():
 def test_is_abstract_credit_faq_classifier():
     """
     [BOT-BUILD-REGRESSION-FINANCIAL-AND-FAQ-200]
+    [BOT-BUILD-REGRESSION-FAQ-FALLBACK-201] Ampliado con historial/reportado/datacredito.
     Validacion determinista del clasificador de FAQ abstracta de credito.
     """
     from app.services.ai_brain import CerebroIA
@@ -1564,6 +1565,10 @@ def test_is_abstract_credit_faq_classifier():
     assert c._is_abstract_credit_faq("ok, y si la quiero sacar a credito, cuales son los requisitos?") is True
     assert c._is_abstract_credit_faq("necesito codeudor?") is True
     assert c._is_abstract_credit_faq("que papeles necesito?") is True
+    assert c._is_abstract_credit_faq("Quiero, saber si para un credito necesito historial?") is True
+    assert c._is_abstract_credit_faq("estoy reportado puedo sacar credito?") is True
+    assert c._is_abstract_credit_faq("necesito datacredito para el credito?") is True
+    assert c._is_abstract_credit_faq("soy extranjero, que necesito?") is True
     assert c._is_abstract_credit_faq("cuanto queda la cuota a 24 meses") is False
     assert c._is_abstract_credit_faq("cuales son los requisitos y cuanto pago?") is False
     assert c._is_abstract_credit_faq("simula el credito con inicial de 1 millon") is False
@@ -1607,4 +1612,51 @@ def test_run_checker_credit_sim_no_bypass_with_moto_interest():
         "Simulacion de cuota con moto_interest NO debe activar bypass."
 
 
+def test_run_checker_historial_reportado_bypass_with_moto_interest():
+    """
+    [BOT-BUILD-REGRESSION-FAQ-FALLBACK-201]
+    'necesito historial' / 'estoy reportado' con moto_interest -> bypass activado.
+    Estos queries caian en fallback de supervisor antes del Doble Gate.
+    """
+    from app.services.agentic_loop_service import AgenticOrchestrator
+    orchestrator = AgenticOrchestrator()
+
+    for prompt in [
+        "Quiero, saber si para un credito necesito historial?",
+        "estoy reportado puedo sacar credito?",
+        "necesito datacredito para el credito?",
+    ]:
+        result = orchestrator.run_checker(
+            "FAQ credit matrix response.",
+            is_catalog_query=True,
+            prospect_data={"moto_interest": "Apache 160", "nombre": "Carlos"},
+            user_prompt=prompt
+        )
+        assert result.get("bypass_strict") is True, \
+            f"FAQ abstracta '{prompt}' con moto_interest DEBE activar bypass."
+
+
+def test_create_tools_omits_credit_when_faq_abstract():
+    """
+    [BOT-BUILD-REGRESSION-FAQ-FALLBACK-201]
+    _create_tools(omit_credit=True) NO debe incluir calculate_credit_score.
+    Verifica que el numero de tool declarations sea 3 sin omitir y 2 omitiendo.
+    """
+    from unittest.mock import patch, MagicMock
+    import app.services.ai_brain as brain_module
+
+    with patch.object(brain_module, "SDK_AVAILABLE", True):
+        cerebro = brain_module.CerebroIA()
+        cerebro._determine_funnel_phase = MagicMock(return_value="PHASE_1_PROFILING")
+
+        tools_with = cerebro._create_tools(omit_credit=False)
+        assert tools_with is not None
+        num_with = len(tools_with[0].function_declarations)
+        assert num_with == 3, f"Expected 3 tools (handoff, catalog, credit), got {num_with}"
+
+        tools_without = cerebro._create_tools(omit_credit=True)
+        assert tools_without is not None
+        num_without = len(tools_without[0].function_declarations)
+        assert num_without == 2, \
+            f"FAQ abstracta: expected 2 tools (sin credit), got {num_without}"
 

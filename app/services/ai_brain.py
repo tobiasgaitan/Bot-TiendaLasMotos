@@ -249,7 +249,8 @@ class CerebroIA:
     def _is_abstract_credit_faq(self, text: str) -> bool:
         """
         [BOT-BUILD-REGRESSION-FINANCIAL-AND-FAQ-200]
-        Deterministic classifier: user asks about credit requirements/documents
+        [BOT-BUILD-REGRESSION-FAQ-FALLBACK-201] Lexicon ampliado con historial/reportado/datacredito.
+        Deterministic classifier: user asks about credit requirements/documents/history
         WITHOUT requesting a specific cuota/simulation.
         Returns True only for abstract FAQ; False if user wants amounts.
         """
@@ -258,7 +259,11 @@ class CerebroIA:
         t = text.lower()
         faq_signals = ["requisito", "papel", "documento", "codeudor", "qu\u00e9 necesito",
                        "que necesito", "qu\u00e9 piden", "que piden", "qu\u00e9 se necesita",
-                       "que se necesita", "qu\u00e9 debo llevar", "que debo llevar"]
+                       "que se necesita", "qu\u00e9 debo llevar", "que debo llevar",
+                       "historial", "datacredito", "data credito", "reportado", "reporte",
+                       "experiencia crediticia", "necesito historial", "que piden",
+                       "extranjero", "ppt", "pep", "pasaporte", "c\u00e9dula",
+                       "necesito para", "se necesita para", "puedo sacar"]
         negative_signals = ["cuota", "cu\u00e1nto pago", "cuanto pago", "simul",
                             "inicial de", "a 24", "a 36", "a 48", "cuanto quedar",
                             "cu\u00e1nto quedar", "valor de la cuota"]
@@ -893,7 +898,7 @@ class CerebroIA:
             
         return cleaned
 
-    def _create_tools(self, prospect_data: Optional[Dict[str, Any]] = None) -> Optional[List[types.Tool]]:
+    def _create_tools(self, prospect_data: Optional[Dict[str, Any]] = None, omit_credit: bool = False) -> Optional[List[types.Tool]]:
         """
         Create tools for function calling (human handoff).
         Returns: Tool object with function declarations, or None if not available
@@ -1011,13 +1016,17 @@ REGLAS ESTRICTAS DE USO:
             function_declarations = [handoff_function, catalog_function]
             
             # Stop-Gate Logic (Audit P2 1.1)
+            # [BOT-BUILD-REGRESSION-FAQ-FALLBACK-201]
+            # En turnos de FAQ abstracta de credito, se omite calculate_credit_score
+            # del payload expuesto al LLM para prevenir simulaciones ciegas y Habeas forzado.
             phase = self._determine_funnel_phase(prospect_data)
             moto_confirmada = prospect_data.get("moto_confirmada") is True if prospect_data else False
             
-            # Reverted: credit_function is now always included to avoid LLM panic loops,
-            # and we reject it at runtime if called in PHASE_1_PROFILING (Tool Rejection Pattern)
-            function_declarations.append(credit_function)
-            logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Phase: {phase})")
+            if not omit_credit:
+                function_declarations.append(credit_function)
+                logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Phase: {phase})")
+            else:
+                logger.info(f"🛠️ Toolset: [handoff, catalog] — credit OMITIDO (FAQ abstracta) (Phase: {phase})")
 
             return [types.Tool(function_declarations=function_declarations)]
         except Exception as e:
@@ -1198,10 +1207,36 @@ REGLAS ESTRICTAS DE USO:
                 "y recibos de gas para que el asesor humano pueda cerrar el trámite."
             )
 
+        # --- DOBLE GATE PREVENTIVO: FAQ abstracta de crédito ---
+        # [BOT-BUILD-REGRESSION-FAQ-FALLBACK-201]
+        # Si el clasificador determina que es una consulta informativa de requisitos/
+        # historial/reportes (no simulación), omitir calculate_credit_score del payload
+        # y sobreescribir funnel para no forzar Habeas Data en este turno.
+        is_faq_abstract = self._is_abstract_credit_faq(texto)
+        omit_credit_this_turn = is_faq_abstract
+        faq_mandate = ""
+        if is_faq_abstract:
+            logger.info(f"🛡️ [Doble Gate] FAQ abstracta detectada: omitiendo credit tool y forzando credit_matrix_rules.")
+            funnel_instruction = (
+                "[MANDATO FAQ CRÉDITO] El usuario ha preguntado sobre requisitos, "
+                "documentos, historial crediticio o condiciones generales del crédito. "
+                "NO necesita ni quiere una simulación de cuotas. "
+                "Responde de forma concisa y directa SOLO con la información de "
+                "<credit_matrix_rules> de tu system instruction:\n"
+                "- Empleados: Cédula, email, celular.\n"
+                "- Reportados: Cédula + 10% de inicial OBLIGATORIA.\n"
+                "- Extranjeros: PPT/PEP + Pasaporte + Dirección física.\n"
+                "- Brilla: Cédula + 2 últimos recibos de gas pagados.\n"
+                "PROHIBIDO ABSOLUTO: calcular cuotas, pedir Habeas Data, "
+                "ejecutar calculate_credit_score, o mencionar el enlace de "
+                "política de privacidad."
+            )
+            omit_credit_this_turn = True
+
         for attempt in range(max_retries):
             try:
                 # 1. DYNAMIC TOOLS
-                dynamic_tools = self._create_tools(prospect_data)
+                dynamic_tools = self._create_tools(prospect_data, omit_credit=omit_credit_this_turn)
                 
                 # 2. CONSOLIDATE XML PROMPT
                 user_name = prospect_data.get("nombre", "desconocido") if prospect_data else "desconocido"
