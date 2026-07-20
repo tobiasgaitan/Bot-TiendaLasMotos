@@ -84,12 +84,10 @@ class FinancialService:
 
                 cc_val = math.floor(float(moto_cc))
                 
-                # Rule: if cylinder capacity <= 125 cc, registration cost to finance is strictly 780000 COP,
-                # otherwise take the corresponding value from matrix/global params.
-                if cc_val <= 125:
-                    reg_cost = 780000.0
-                else:
-                    reg_cost = float(self._config_service.get_registration_cost(cc=cc_val, category=category))
+                # SSOT registration cost from config service (matrix/global params).
+                # Si cc es 0 o desconocido, se obtiene el costo de matrícula del bracket default (0-99).
+                # El hardcode de $780.000 fue eliminado en favor de SSOT único.
+                reg_cost = float(self._config_service.get_registration_cost(cc=cc_val, category=category))
                 
                 # Adaptive price adapter to handle net vs. full catalog prices transparently
                 try:
@@ -109,10 +107,7 @@ class FinancialService:
                         item_cc = item.get("cc")
                         if item_cc is not None:
                             item_cc_val = int(item_cc)
-                            if item_cc_val <= 125:
-                                item_reg_cost = 780000.0
-                            else:
-                                item_reg_cost = float(self._config_service.get_registration_cost(cc=item_cc_val, category=category))
+                            item_reg_cost = float(self._config_service.get_registration_cost(cc=item_cc_val, category=category))
                             
                             item_price = float(item.get("price", 0))
                             possible_values = [item_price - item_reg_cost, item_price, item_price + item_reg_cost]
@@ -123,8 +118,8 @@ class FinancialService:
 
                     if best_item:
                         best_item_cc = int(best_item.get("cc", 0))
-                        if best_item_cc <= 125:
-                            item_reg_cost = 780000.0
+                        item_reg_cost = float(self._config_service.get_registration_cost(cc=best_item_cc, category=category))
+                        if 0 < best_item_cc <= 125:
                             expected_net_price = float(best_item.get("price", 0))
                             
                             if precio >= (expected_net_price + item_reg_cost - 10000):
@@ -139,8 +134,8 @@ class FinancialService:
                 # Reconstruct catalog price (full price including registration)
                 assetPrice = precio + reg_cost
                 
-                # Check if registration is financed (only up to 125 cc)
-                financeDocs = (cc_val <= 125)
+                # Check if registration is financed (only for known cc ≤ 125)
+                financeDocs = (0 < cc_val <= 125)
                 docsTotal = reg_cost if financeDocs else 0.0
                 
                 # Next.js pipeline: p1_base = assetPrice - inicial + docsTotal

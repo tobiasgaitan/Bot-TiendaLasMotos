@@ -76,6 +76,7 @@ class AgenticOrchestrator:
 
         # Detección semántica de intenciones de FAQ puras
         is_faq_intent = False
+        is_credit_faq_abstract = False
         if user_prompt:
             faq_keywords = [
                 "horario", "direccion", "dirección", "ubicacion", "ubicación", "donde estan", "dónde están",
@@ -90,8 +91,25 @@ class AgenticOrchestrator:
             prompt_lower = user_prompt.lower()
             if any(re.search(rf"\b{kw}\b" if kw.isalnum() else re.escape(kw), prompt_lower) for kw in faq_keywords):
                 is_faq_intent = True
+            # [BOT-BUILD-REGRESSION-FINANCIAL-AND-FAQ-200]
+            # Credit FAQ abstracta: requisitos/documentos SIN cuantia/simulacion.
+            # Debe bypasear Visual-Lock incluso con moto_interest presente.
+            if is_faq_intent:
+                credit_faq_signals = ["requisitos", "papeles", "documentos", "codeudor",
+                                      "que necesito", "qué necesito", "que piden", "qué piden",
+                                      "que debo", "qué debo"]
+                credit_sim_keywords = ["cuota", "cuanto", "cuánto", "inicial de",
+                                       "a 24", "a 36", "a 48", "a 12", "simul",
+                                       "cuanto qued", "cuánto qued"]
+                has_credit_faq = any(s in prompt_lower for s in credit_faq_signals)
+                has_credit_sim = any(s in prompt_lower for s in credit_sim_keywords)
+                is_credit_faq_abstract = has_credit_faq and not has_credit_sim
 
-        bypass_strict = (not is_catalog_query_effective) or (is_faq_intent and not has_moto_interest)
+        bypass_strict = (
+            (not is_catalog_query_effective)
+            or is_credit_faq_abstract
+            or (is_faq_intent and not has_moto_interest)
+        )
         
         if bypass_strict:
             # En bypass de FAQ abstracta sin moto de interés asignada,

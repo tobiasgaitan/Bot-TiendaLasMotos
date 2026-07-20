@@ -255,7 +255,7 @@ async def test_habeas_data_gate_before_credit_score():
         
         # Inmutabilidad del Formato PCC Pro (Validación Visual):
         # Debe certificar mediante Regex secuencial la presencia exacta del signo pesos ($) pegado al valor numérico formateado.
-        assert re.search(r"\$581,506", response) is not None, "El formato de cuota formateada no cumple con la regla de negocio ($581,506)."
+        assert re.search(r"\$539,421", response) is not None, "El formato de cuota formateada no cumple con la regla de negocio ($539,421)."
         
         # Debe omitir marcas de agua de proveedores financieros.
         assert "Crediorbe" not in response, "La marca de agua 'Crediorbe' no debe figurar en la respuesta de contingencia ciego."
@@ -268,7 +268,7 @@ async def test_habeas_data_gate_before_credit_score():
  
         # Aserciones rígidas de contenido de BOT-BRAIN-RETURN-082
         assert "$" in response, "El resultado debe contener el signo pesos ($)."
-        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $581,506 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, "El resultado debe contener la cadena esperada."
+        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $539,421 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, "El resultado debe contener la cadena esperada."
     # Si habeas_data_accepted es True, la validación pasa, y sí se procesa el catálogo y simulador.
     # [BOT-QA-HARDENING-126] Además, actualizar el mock_catalog para simular URL compleja de Meta/Firebase Storage
     # con query params (token, alt, size) — el transformador dinámico debe preservar la URL intacta.
@@ -605,7 +605,7 @@ async def test_habeas_bypass_interrupt_e2e():
         assert "$" in response, f"El resultado debe contener el signo pesos ($). Respuesta: {response[:200]}"
 
         # ASSERT 3: Contains the expected cuota structure
-        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $581,506 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, (
+        assert "Si te interesa a crédito con la inicial de $996,900, las cuotas a 24 meses serían aproximadamente de $539,421 (incluye SOAT y Matrícula). *Nota: Este es un valor aproximado.*" in response, (
             f"El resultado debe contener the expected copywriting. Respuesta: {response[:200]}"
         )
 
@@ -1162,9 +1162,11 @@ async def test_router_faq_bypass_propagation_to_judge():
         prospect_data=prospect_with_moto_interest,
         user_prompt="cuales son los requisitos?"
     )
-    # Con moto_interest activo + is_catalog_query=True sin precio/imagen => fallo esperado
-    assert pcc_result_strict.get("bypass_strict") is not True, (
-        "Con moto_interest activo, el bypass NO debe activarse sobre is_catalog_query=True."
+    # Con moto_interest activo + FAQ abstracta de credito (requisitos sin cuota/simulacion)
+    # el bypass DEBE activarse para no penalizar respuestas de credit_matrix_rules.
+    # [BOT-BUILD-REGRESSION-FINANCIAL-AND-FAQ-200]
+    assert pcc_result_strict.get("bypass_strict") is True, (
+        "Con moto_interest activo + FAQ abstracta de credito, el bypass DEBE activarse."
     )
 
 
@@ -1319,13 +1321,13 @@ async def test_agility_fusion_exact_parity():
     config_loader.load_all()
     catalog_service.initialize(db, config_loader)
 
-    # Scenario 1: Direct calculate_payment calls (simulating judge_service where moto_cc=0.0)
+    # Scenario 1: Direct calculate_payment calls with correct cc (KYMCO = 124.6)
     res_direct_net = financial_service.calculate_payment(
         precio=9399000.0,
         inicial=1017900.0,
         plazo_meses=24,
         entidad="Brilla de Gases",
-        moto_cc=0.0,
+        moto_cc=124.6,
         category="motos"
     )
     assert res_direct_net.get("cuota_mensual") == 550469.0, f"Direct net cuota mismatch: expected 550469, got {res_direct_net.get('cuota_mensual')}"
@@ -1335,7 +1337,7 @@ async def test_agility_fusion_exact_parity():
         inicial=1017900.0,
         plazo_meses=24,
         entidad="Brilla de Gases",
-        moto_cc=0.0,
+        moto_cc=124.6,
         category="motos"
     )
     assert res_direct_full.get("cuota_mensual") == 550469.0, f"Direct full cuota mismatch: expected 550469, got {res_direct_full.get('cuota_mensual')}"
@@ -1450,6 +1452,159 @@ def test_price_package_anchor_present_in_search():
         from app.services.catalog_service import PRICE_PACKAGE_ANCHOR
         res = catalog_service.search_catalog("Test Anchor")
         assert PRICE_PACKAGE_ANCHOR in res, "PRICE_PACKAGE_ANCHOR must be present in catalog search output"
+
+
+@pytest.mark.asyncio
+async def test_apache_160_brilla_golden_parity():
+    """
+    [BOT-BUILD-REGRESSION-FINANCIAL-AND-FAQ-200]
+    Golden Apache 160 test: net price=$9.650.000, inicial=$1.051.000,
+    cc=159.7, 24m Brilla -> $567.882 cuota_mensual exacta.
+    Regression contra $613.473 (WA antiguo con rama <=125cc erronea).
+    assetPrice reconstruido = 9.650.000 + 860.000 = 10.510.000.
+    """
+    from app.services.financial_service import financial_service
+    from app.core.config_loader import ConfigLoader
+    from app.core.security import get_firebase_credentials_object
+    from google.cloud import firestore
+    from app.core.config import settings
+
+    import os
+    old_cred = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if old_cred == "/tmp/fake-key.json":
+        os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+    try:
+        credentials = get_firebase_credentials_object()
+    finally:
+        if old_cred is not None:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = old_cred
+
+    db = firestore.Client(
+        project=settings.gcp_project_id,
+        credentials=credentials
+    )
+    config_loader = ConfigLoader(db)
+    financial_service._config_service.initialize(db)
+    config_loader.load_all()
+
+    # Net price = full - reg_cost = 10510000 - 860000 = 9650000
+    net_price = 10510000.0 - 860000.0
+    res = financial_service.calculate_payment(
+        precio=net_price,
+        inicial=1051000.0,
+        plazo_meses=24,
+        entidad="Brilla de Gases",
+        moto_cc=159.7,
+        category="motos"
+    )
+    assert res.get("cuota_mensual") == 567882.0, \
+        f"Apache 160 golden cuota mismatch: expected 567882, got {res.get('cuota_mensual')}"
+    assert round(res.get("capital_financiado", 0)) == 9931950, \
+        f"Wrong capital_financiado: {res.get('capital_financiado')}"
+    assert round(res.get("cuota_aval", 0)) == 33107, \
+        f"Wrong cuota_aval: {res.get('cuota_aval')}"
+
+
+@pytest.mark.asyncio
+async def test_cc_zero_does_not_assume_125_cc_regression():
+    """
+    [BOT-BUILD-REGRESSION-FINANCIAL-AND-FAQ-200]
+    Cuando moto_cc=0 (desconocido), NO se deben asumir tramites
+    financiados de <=125cc. financeDocs debe ser False.
+    """
+    from app.services.financial_service import financial_service
+    from app.core.config_loader import ConfigLoader
+    from app.core.security import get_firebase_credentials_object
+    from google.cloud import firestore
+    from app.core.config import settings
+
+    import os
+    old_cred = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if old_cred == "/tmp/fake-key.json":
+        os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+    try:
+        credentials = get_firebase_credentials_object()
+    finally:
+        if old_cred is not None:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = old_cred
+
+    db = firestore.Client(
+        project=settings.gcp_project_id,
+        credentials=credentials
+    )
+    config_loader = ConfigLoader(db)
+    financial_service._config_service.initialize(db)
+    config_loader.load_all()
+
+    net_price = 10510000.0 - 860000.0
+    res = financial_service.calculate_payment(
+        precio=net_price,
+        inicial=1051000.0,
+        plazo_meses=24,
+        entidad="Brilla de Gases",
+        moto_cc=0.0,
+        category="motos"
+    )
+    cuota = res.get("cuota_mensual", 0)
+    assert cuota != 613473.0, \
+        f"REGRESSION: cc=0 still produces old buggy cuota 613473"
+    assert cuota > 0, "cuota should be positive"
+    assert cuota <= 567882.0, \
+        f"cc=0 produced cuota {cuota} higher than golden 567882"
+
+
+def test_is_abstract_credit_faq_classifier():
+    """
+    [BOT-BUILD-REGRESSION-FINANCIAL-AND-FAQ-200]
+    Validacion determinista del clasificador de FAQ abstracta de credito.
+    """
+    from app.services.ai_brain import CerebroIA
+    c = CerebroIA()
+
+    assert c._is_abstract_credit_faq("ok, y si la quiero sacar a credito, cuales son los requisitos?") is True
+    assert c._is_abstract_credit_faq("necesito codeudor?") is True
+    assert c._is_abstract_credit_faq("que papeles necesito?") is True
+    assert c._is_abstract_credit_faq("cuanto queda la cuota a 24 meses") is False
+    assert c._is_abstract_credit_faq("cuales son los requisitos y cuanto pago?") is False
+    assert c._is_abstract_credit_faq("simula el credito con inicial de 1 millon") is False
+    assert c._is_abstract_credit_faq("hola") is False
+
+
+def test_run_checker_credit_faq_abstract_bypass_with_moto_interest():
+    """
+    [BOT-BUILD-REGRESSION-FINANCIAL-AND-FAQ-200]
+    FAQ abstracta de credito (requisitos sin cuota) con moto_interest -> bypass activado.
+    """
+    from app.services.agentic_loop_service import AgenticOrchestrator
+    orchestrator = AgenticOrchestrator()
+
+    result = orchestrator.run_checker(
+        "Los requisitos son: Cedula, recibos de gas...",
+        is_catalog_query=True,
+        prospect_data={"moto_interest": "Apache 160", "nombre": "Carlos"},
+        user_prompt="ok, y si la quiero sacar a credito, cuales son los requisitos?"
+    )
+    assert result["success"] is True, "run_checker debe aprobar FAQ abstracta."
+    assert result.get("bypass_strict") is True, \
+        "FAQ abstracta de credito con moto_interest debe activar bypass."
+
+
+def test_run_checker_credit_sim_no_bypass_with_moto_interest():
+    """
+    [BOT-BUILD-REGRESSION-FINANCIAL-AND-FAQ-200]
+    Simulacion de cuota con moto_interest -> NO bypass (flujo normal de credito).
+    """
+    from app.services.agentic_loop_service import AgenticOrchestrator
+    orchestrator = AgenticOrchestrator()
+
+    result = orchestrator.run_checker(
+        "Precio: $9.000.000. Cuota: $450.000. Sin imagen.",
+        is_catalog_query=True,
+        prospect_data={"moto_interest": "Apache 160", "nombre": "Carlos"},
+        user_prompt="cuanto quedaria la cuota a 24 meses?"
+    )
+    assert result.get("bypass_strict") is not True, \
+        "Simulacion de cuota con moto_interest NO debe activar bypass."
 
 
 

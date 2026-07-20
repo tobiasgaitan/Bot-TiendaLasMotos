@@ -246,6 +246,26 @@ class CerebroIA:
                 
         return False
 
+    def _is_abstract_credit_faq(self, text: str) -> bool:
+        """
+        [BOT-BUILD-REGRESSION-FINANCIAL-AND-FAQ-200]
+        Deterministic classifier: user asks about credit requirements/documents
+        WITHOUT requesting a specific cuota/simulation.
+        Returns True only for abstract FAQ; False if user wants amounts.
+        """
+        if not text:
+            return False
+        t = text.lower()
+        faq_signals = ["requisito", "papel", "documento", "codeudor", "qu\u00e9 necesito",
+                       "que necesito", "qu\u00e9 piden", "que piden", "qu\u00e9 se necesita",
+                       "que se necesita", "qu\u00e9 debo llevar", "que debo llevar"]
+        negative_signals = ["cuota", "cu\u00e1nto pago", "cuanto pago", "simul",
+                            "inicial de", "a 24", "a 36", "a 48", "cuanto quedar",
+                            "cu\u00e1nto quedar", "valor de la cuota"]
+        has_faq = any(s in t for s in faq_signals)
+        has_negative = any(s in t for s in negative_signals)
+        return has_faq and not has_negative
+
     def _parse_raw_price(self, raw_price_val: Any, price_val: Any) -> float:
         """
         Parses price raw and fallback values robustly.
@@ -534,7 +554,7 @@ class CerebroIA:
         is_credit = bool(str(prospect_data.get("forma_pago") or "").strip().lower() in ["credito", "crédito"])
         is_financial_intent = False
         if history:
-            finance_keywords = ["cuota", "credito", "crédito", "financiar", "mensualidad", "requisitos", "cuanto pago", "papeles"]
+            finance_keywords = ["cuota", "credito", "crédito", "financiar", "mensualidad", "cuanto pago"]
             last_msgs = []
             for m in reversed(history):
                 if isinstance(m, dict):
@@ -1696,6 +1716,41 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 response_parts.append(types.Part.from_function_response(
                                     name=f_name,
                                     response={"error": reject_msg}
+                                ))
+                                continue
+
+                            # --- TOOL REJECTION: FAQ abstracta de creditos ---
+                            # [BOT-BUILD-REGRESSION-FINANCIAL-AND-FAQ-200]
+                            # Si el usuario pregunta por requisitos/documentos de credito
+                            # sin pedir cuotas/valores, responder desde credit_matrix_rules
+                            # sin ejecutar simulacion ciega ni script de Habeas Data.
+                            faq_check_text = str(f_args.get("__user_query__") or "")
+                            if not faq_check_text and history:
+                                for h in reversed(history):
+                                    t = None
+                                    if isinstance(h, dict) and h.get("role") == "user":
+                                        t = str(h.get("content", ""))
+                                    elif hasattr(h, "parts"):
+                                        t = "".join(getattr(p, "text", "") for p in h.parts if hasattr(p, "text"))
+                                    if t:
+                                        faq_check_text = t
+                                        break
+                            if self._is_abstract_credit_faq(str(texto)):
+                                faq_check_text = str(texto)
+                            if faq_check_text and self._is_abstract_credit_faq(faq_check_text):
+                                reject_faq_msg = (
+                                    "[MANDATO FAQ CREDITO] Pregunta abstracta de requisitos detectada.\n"
+                                    "Responde SOLO con la informacion de credit_matrix_rules del system instruction:\n"
+                                    "- Empleados: Requieren Cedula, email, celular.\n"
+                                    "- Reportados: Requieren Cedula + 10% de inicial OBLIGATORIA.\n"
+                                    "- Extranjeros: Requieren PPT/PEP + Pasaporte + Direccion fisica.\n"
+                                    "- Brilla: Requieren Cedula + 2 ultimos recibos de gas pagados.\n"
+                                    "PROHIBIDO calcular cuotas, ejecutar simulacion o pedir Habeas Data."
+                                )
+                                logger.info(f"🛑 [TOOL REJECTION] FAQ abstracta detectada. Rechazando calculate_credit_score.")
+                                response_parts.append(types.Part.from_function_response(
+                                    name=f_name,
+                                    response={"error": reject_faq_msg}
                                 ))
                                 continue
 
