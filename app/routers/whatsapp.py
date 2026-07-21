@@ -1195,7 +1195,17 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                         exc_info=True
                     )
                     await _send_whatsapp_message(user_phone, "Tuve un problema viendo el archivo. ¿Me cuentas qué es? 😅", phone_number_id=phone_number_id)
-            
+            else:
+                # Zero-Silent-Failures (BOT-BUILD-REGRESSION-MULTIMODAL-01):
+                # db=None (deferred init incomplete or Firestore down) used to skip
+                # the entire media branch SILENTLY — no forensic log, no user feedback.
+                logger.critical(
+                    f"🔥 [MEDIA-DB-UNAVAILABLE] Media recibida de {user_phone} (Type: {msg_type}) "
+                    f"pero el cliente Firestore (db) es None. Ingesta multimodal imposible. "
+                    f"Revisar deferred-init / salud de Firestore."
+                )
+                await _send_whatsapp_message(user_phone, "No pude descargar el archivo. Intenta de nuevo.", phone_number_id=phone_number_id)
+
             return  # EARLY EXIT: Stop processing here
             
         # 1.5 Save User Message to History (PERSISTENCE FIX)

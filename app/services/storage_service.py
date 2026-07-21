@@ -134,8 +134,10 @@ class StorageService:
         """Download media from WhatsApp."""
         import httpx
         try:
-            # [FIX] Regresión detectada en arqueología: v18.0 → v25.0 (alineado con whatsapp_service.py)
-            url = f"https://graph.facebook.com/v25.0/{media_id}"
+            # WHY: single-source Graph API version (BOT-BUILD-REGRESSION-MULTIMODAL-01).
+            # The previous hardcoded v25.0 claimed alignment with whatsapp_service.py,
+            # but that service builds its URLs from settings.whatsapp_api_version.
+            url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{media_id}"
             headers = {"Authorization": f"Bearer {settings.whatsapp_token}"}
             
             async with httpx.AsyncClient() as client:
@@ -147,10 +149,25 @@ class StorageService:
                 r2.raise_for_status()
                 return r2.content
         except httpx.HTTPStatusError as e:
-            logger.error(f"❌ Error HTTP downloading media ({e.response.status_code}): {e.response.text}")
+            status = e.response.status_code
+            if status in (401, 403):
+                # Zero-Silent-Failures: credential rejection is FATAL and requires
+                # WHATSAPP_TOKEN rotation. It must never be confused with a
+                # transient network error.
+                logger.critical(
+                    f"🔥 [MEDIA-AUTH-FATAL] Meta rechazó la credencial de descarga "
+                    f"(HTTP {status}) para media_id={media_id}. WHATSAPP_TOKEN expirado "
+                    f"o inválido — se requiere rotación. Response: {e.response.text}"
+                )
+            else:
+                logger.error(
+                    f"❌ Error HTTP downloading media ({status}): {e.response.text}",
+                    exc_info=True
+                )
             return None
         except Exception as e:
-            logger.error(f"❌ Error downloading media: {e}")
+            # Transient candidate (DNS, timeout, connection reset).
+            logger.exception(f"❌ Error downloading media: {e}")
             return None
 
 
