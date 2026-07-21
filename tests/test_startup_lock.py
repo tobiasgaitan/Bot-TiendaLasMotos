@@ -367,7 +367,7 @@ def test_settings_token_stripping():
     """
     with patch("app.core.config.load_dotenv"), \
          patch.dict(os.environ, {
-             "WHATSAPP_TOKEN": "\n ***REMOVED*** \r",
+             "WHATSAPP_TOKEN": "\n fake_system_user_token_194 \r",
              "PHONE_NUMBER_ID": " 1234567890 \n",
              "WEBHOOK_VERIFY_TOKEN": "\r secret_verify_token_123 ",
              "WHATSAPP_APP_SECRET": " \nmy_app_secret_abc\r ",
@@ -377,7 +377,7 @@ def test_settings_token_stripping():
         custom_settings = Settings()
         
         # Rigid assertions to ensure correct stripping
-        assert custom_settings.whatsapp_token == "***REMOVED***"
+        assert custom_settings.whatsapp_token == "fake_system_user_token_194"
         assert custom_settings.phone_number_id == "1234567890"
         assert custom_settings.webhook_verify_token == "secret_verify_token_123"
         assert custom_settings.whatsapp_app_secret == "my_app_secret_abc"

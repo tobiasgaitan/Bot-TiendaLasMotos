@@ -12,10 +12,10 @@ jobs:
     
     env:
       TEST_MODE: "true"
-      ADMIN_API_KEY: "d993b590f6630e1d08fe6fee1478ae8ce75b11c96f33483e95b3d27bfdcc61b4"
-      WHATSAPP_TOKEN: "***REMOVED***"
-      PHONE_NUMBER_ID: "1036387702901476"
-      WEBHOOK_VERIFY_TOKEN: "tiendalasmotos_secret_123"
+      ADMIN_API_KEY: "${{ secrets.ADMIN_API_KEY }}"
+      WHATSAPP_TOKEN: "${{ secrets.WHATSAPP_TOKEN }}"
+      PHONE_NUMBER_ID: "${{ secrets.PHONE_NUMBER_ID }}"
+      WEBHOOK_VERIFY_TOKEN: "${{ secrets.WEBHOOK_VERIFY_TOKEN }}"
       FIRESTORE_COLLECTION: "prospectos"
       GOOGLE_APPLICATION_CREDENTIALS: "/tmp/fake-key.json"
 
