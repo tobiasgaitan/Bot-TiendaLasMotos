@@ -1108,11 +1108,27 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                         simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
                                     
                                     # [BOT-207] Propagate user caption and Ficha Tecnica hint
+                                    caption_is_tech = False
                                     if caption and caption.strip():
                                         simulated_user_msg += f" El usuario también escribió: \"{caption.strip()}\"."
                                         from app.services.agentic_loop_service import is_tech_spec_query
-                                        if is_tech_spec_query(caption.strip()):
-                                            simulated_user_msg += " OBLIGATORIO: incluye el prefijo literal 'Ficha Tecnica:' con las especificaciones del catálogo en tu respuesta."
+                                        caption_is_tech = is_tech_spec_query(caption.strip())
+                                        if caption_is_tech:
+                                            # [BOT-BUILD-BUGFIX-MULTIMODAL-CAPTION-01] Inyección determinista:
+                                            # el dato canónico viaja en el prompt, no solo la obligación retórica.
+                                            matched_summary = matched_item.get("summary") if matched_item and isinstance(matched_item, dict) else None
+                                            if matched_summary:
+                                                simulated_user_msg += (
+                                                    f" OBLIGATORIO: incluye el prefijo literal 'Ficha Tecnica:' seguido de "
+                                                    f"estas especificaciones canónicas del catálogo: {matched_summary}"
+                                                )
+                                            else:
+                                                if matched_item and isinstance(matched_item, dict):
+                                                    logger.warning(
+                                                        f"⚠️ [CAPTION-01] matched_item '{matched_item.get('name', 'unknown')}' sin "
+                                                        f"'summary' canónico para {user_phone}. Conservando hint retórico (R9)."
+                                                    )
+                                                simulated_user_msg += " OBLIGATORIO: incluye el prefijo literal 'Ficha Tecnica:' con las especificaciones del catálogo en tu respuesta."
                                     if prospect_data: prospect_data["phone"] = user_phone
                                     skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=False)
                                     final_response = await cerebro_ia.pensar_respuesta(
@@ -1137,6 +1153,15 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                                         if canonical_formatted_price not in final_response:
                                             final_response = final_response.rstrip() + f"\n\nPrecio: {canonical_formatted_price}"
                                             logger.info(f"🔒 Visual Lock enforced: injected canonical formatted_price into response for {user_phone}")
+                                    
+                                    # [BOT-BUILD-BUGFIX-MULTIMODAL-CAPTION-01] Backstop PCC post-generación:
+                                    # si el caption era técnico y el LLM omitió el prefijo obligatorio, inyectar
+                                    # el bloque canónico (espejo determinista del Visual Lock de precio/imagen).
+                                    if caption_is_tech:
+                                        backstop_summary = matched_item.get("summary") if matched_item and isinstance(matched_item, dict) else None
+                                        if backstop_summary and "Ficha Tecnica:" not in final_response:
+                                            final_response = final_response.rstrip() + f"\n\nFicha Tecnica: {backstop_summary}"
+                                            logger.info(f"🔒 [CAPTION-01] Backstop enforced: injected canonical 'Ficha Tecnica:' block into response for {user_phone}")
                                     
                                     await ms.save_message(user_phone, "user", simulated_user_msg)
                                     await _process_and_send_egress_message(user_phone, final_response, phone_number_id=phone_number_id)

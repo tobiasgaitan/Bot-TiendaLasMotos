@@ -13,7 +13,16 @@ logger = logging.getLogger("agentic_loop")
 TECH_SPEC_TOKENS = {
     "ficha", "tecnica", "técnica", "especificaciones", "caracteristicas",
     "características", "cilindraje", "torque", "motor", "potencia",
-    "frenos", "cc", "hp", "nm", "transmision", "transmisión", "peso"
+    "frenos", "cc", "hp", "nm", "transmision", "transmisión", "peso",
+    # [BOT-BUILD-BUGFIX-MULTIMODAL-CAPTION-01] Léxico técnico coloquial (dominio CO).
+    # Todos > 3 chars ⇒ el matcher de subcadena gobierna; el guard de tokens cortos
+    # con \b queda intacto (test_is_tech_spec_query_no_false_positive_short_tokens).
+    # Degradación benigna documentada: un falso positivo solo AÑADE la ficha a una
+    # respuesta que ya presenta una moto; jamás silencia información.
+    "cambios", "velocidad", "marchas", "encendido", "arranque",
+    "inyeccion", "inyección", "carburador", "alimentacion", "alimentación",
+    "tablero", "suspension", "suspensión", "tanque", "freno",
+    "chasis", "llanta", "consumo"
 }
 
 
