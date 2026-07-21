@@ -35,25 +35,26 @@
 - [x] Corrección en el enrutamiento de imágenes de catálogo desacoplando la dependencia de '[MOTO_DETECTADA]' e inyección de logs estructurados forenses en caso de fallo (BOT-VISION-PARSER).
 - [x] Sanitización y alineación fonética fuzzy de transcripción en bloque audio para resolver variaciones tipográficas degradadas (BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124).
 - [x] Corregir regresión en el procesamiento de audios mediante la inyección de la última pregunta del bot en generate_and_update_summary (BOT-BUGFIX-AUDIO-REGRESSION-121).
+- [x] Certificación de cierre del Milestone 2 - Phase 1 (Similitud Multimodal e Integración): pipeline de comparación de imágenes contra catálogo verificado físicamente (grafo + código + 349/349 tests bajo `.venv`), pin determinista del guardrail de inicialización en tests zombi (supresión de RuntimeWarning transversal de suite), pin de entorno Python 3.13 documentado y sincronía documental PSD ejecutada [BOT-BUILD-MULTIMODAL-CIERRE-196].
 
-## Milestone 2: Similitud Multimodal de Imagen [IN PROGRESS]
+## Milestone 2: Similitud Multimodal de Imagen [COMPLETED]
 
 ### Progress
 
 | Phase | Name | Status | Plans | Date |
 |-------|------|--------|-------|------|
-| 1 | Similitud Multimodal e Integración | In Progress | `implementation_plan.md` | 2026-07-11 |
+| 1 | Similitud Multimodal e Integración | Completed | `implementation_plan.md` | 2026-07-11 |
 
 ### Phases
 
 #### Phase 1: Similitud Multimodal e Integración
 **Goal:** Implementar el pipeline completo de comparación de imágenes y alineación con las URLs de catálogo y metadatos de Firestore.
 **Requirements:** [R7, R8, R9, R10, R11, R12]
-- [ ] Implementar `match_catalog_item_by_image` en `CatalogService`
-- [ ] Refinar `analyze_image` y `_process_moto` en `VisionService`
-- [ ] Integrar el flujo en `whatsapp.py`
-- [ ] Generar y ejecutar tests en `tests/test_multimodal_similitude.py`
-- [ ] Validar no regresión y eval general
+- [x] Implementar `match_catalog_item_by_image` en `CatalogService`
+- [x] Refinar `analyze_image` y `_process_moto` en `VisionService`
+- [x] Integrar el flujo en `whatsapp.py`
+- [x] Generar y ejecutar tests en `tests/test_multimodal_similitude.py`
+- [x] Validar no regresión y eval general (349/349 tests PASSED bajo `.venv` Python 3.13, 25/25 multimodales) [BOT-BUILD-MULTIMODAL-CIERRE-196]
 
 ---
-*Last updated: 2026-07-16*
+*Last updated: 2026-07-20*

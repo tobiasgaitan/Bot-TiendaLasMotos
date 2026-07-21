@@ -1,13 +1,14 @@
-# 🛡️ Documento Maestro: Estado de Desarrollo Core (v10.45.29)
+# 🛡️ Documento Maestro: Estado de Desarrollo Core (v10.45.31)
 
-**Versión:** v10.45.29 (Multimodal Hardening Approved)  
+**Versión:** v10.45.31 (Milestone 2 Phase 1 — Multimodal CLOSED & CERTIFIED)  
 **Estado:** PRODUCTION READY / GCP LIVE  
-**Coherence Score:** 1.000 (Certificado vía GSD Framework - 320/320 Tests PASSED)
+**Coherence Score:** 1.000 (Certificado vía GSD Framework - 357/357 Tests PASSED, 0 failed)
 
 ---
 
 ## 🚀 Últimos Hitos Consolidados (Línea de Producción)
 
+*   **Cierre Certificado Milestone 2 - Phase 1 (v10.45.31):** Certificación atómica del pipeline de Similitud Multimodal e Integración (R7–R12: `match_catalog_item_by_image`, `analyze_image`/`_process_moto` JSON-first, integración webhook, suite `test_multimodal_similitude.py` 25/25). Autopsia de falso negativo del entorno documentada (intérprete sistema 3.14 vs `.venv` 3.13 → `ModuleNotFoundError: ffmpeg`), pin de entorno documentado en `README.md`, pin determinista del guardrail de inicialización en `tests/test_zombie_recovery_flow.py` (supresión del RuntimeWarning transversal de la suite) y sincronía documental PSD ejecutada (ROADMAP/REQUIREMENTS/STATE). Eval GSD: **Score 1.000 — DEPLOY AUTHORIZED** [BOT-BUILD-MULTIMODAL-CIERRE-196].
 *   **Saneamiento de Credenciales (v10.45.14):** Inyección de `.strip()` agresivo en `app/core/config.py` sobre `WHATSAPP_TOKEN` y `WHATSAPP_APP_SECRET` antes de la validación. Elimina espacios residuales de la terminal y robustece `tests/test_startup_lock.py` [BOT-INFRA-BUGFIX-TOKEN-STRIP-194].
 *   **Port Binding & Health Endpoint (v10.45.29):** Refactorización atómica de `/health` en `app/main.py`. Devuelve HTTP 200 OK y `{"status": "starting"}` de forma síncrona inmediata si el catálogo no se ha hidratado, previniendo caídas por timeout de Cloud Run. Desacopla la validación rígida (len >= 60) confinándola exclusivamente en los middlewares de `app/routers/whatsapp.py` [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192].
 *   **Guardrail de Primer Contacto (v10.45.29):** Refactorización de `skip_greeting` en `ai_brain.py`. Impide el bypass del saludo comercial en el primer contacto o tras un `/reset` (`has_no_legitimate_history = True`). Fuerza la validación de caché mínima (`min_catalog_items = 60`) en producción con bypass controlado (`is_test_mode`) [BOT-BRAIN-BUGFIX-FIRST-CONTACT-ALIGNMENT-191].
