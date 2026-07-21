@@ -631,6 +631,45 @@ async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
         )
 
 
+async def _open_session_and_refresh(ms, user_phone: str) -> Optional[Dict[str, Any]]:
+    """
+    [RF-2 / Gateway de Estado Transicional] Costura única de apertura de sesión CRM.
+    Secuencia bloqueante (Sincronía de Oficio): create_prospect_if_missing →
+    update_last_interaction → transition_to_in_progress [ARCH-BULK-META-010] →
+    re-fetch anti-stale [HOTFIX v9.8.3]. Devuelve el prospect_data fresco.
+    Pineada por CH-3 (tests/test_characterization_etapa1.py). Extracción estructural
+    pura: cero cambio semántico respecto del bloque original.
+    """
+    await ms.create_prospect_if_missing(user_phone)
+    await ms.update_last_interaction(user_phone)
+
+    # [ARCH-BULK-META-010] MÁQUINA DE ESTADOS: PENDING → IN_PROGRESS
+    # WHY: Los prospectos de carga masiva arrancan en 'PENDING'. La primera
+    # respuesta real del usuario (este webhook 'messages') activa la transición.
+    # El await bloqueante garantiza commit en Firestore antes de continuar
+    # con la lógica del bot (mandato de sincronía ARCH-BULK-META-010).
+    await ms.transition_to_in_progress(user_phone)
+
+    # --- [HOTFIX v9.8.3] REFRESH METADATA ---
+    # WHY: If we just created the prospect or transitioned it, the local 
+    # 'prospect_data' object is STALE. We must refresh it so the JudgeService
+    # doesn't reject valid users (C3/C9 rejections).
+    prospect_data = await ms.get_prospect_data(user_phone)
+    logger.info(f"👤 Prospect Data Refreshed: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
+    return prospect_data
+
+
+async def _mark_ponytail_deprioritized(ms, user_phone: str) -> None:
+    """
+    [RF-2 / Gateway de Estado Transicional] Única vía autorizada para persistir
+    ponytail_status=DEPRIORITIZED en el pipeline webhook (invariante BOT-PONYTAIL-200).
+    Blocking await — no create_task/add_task (Sincronía de Oficio): el commit en
+    Firestore se garantiza antes del egreso hacia la API externa.
+    Debe invocarse DESPUÉS de set_human_help_status(True) (correlación pineada por CH-4).
+    """
+    await ms.update_prospect_summary(user_phone, "", {"ponytail_status": "DEPRIORITIZED"})
+
+
 @observe(name="whatsapp_webhook_background")
 async def _handle_message_background(msg_data: Dict[str, Any], background_tasks: BackgroundTasks) -> None:
     """Lógica principal del bot (Procesamiento Asíncrono con bloqueo por sesión)"""
@@ -1246,22 +1285,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                 skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=True)
     
                 # 3. NOW update/create timestamps AFTER decision is made
-                await ms.create_prospect_if_missing(user_phone)
-                await ms.update_last_interaction(user_phone)
-    
-                # [ARCH-BULK-META-010] MÁQUINA DE ESTADOS: PENDING → IN_PROGRESS
-                # WHY: Los prospectos de carga masiva arrancan en 'PENDING'. La primera
-                # respuesta real del usuario (este webhook 'messages') activa la transición.
-                # El await bloqueante garantiza commit en Firestore antes de continuar
-                # con la lógica del bot (mandato de sincronía ARCH-BULK-META-010).
-                await ms.transition_to_in_progress(user_phone)
-    
-                # --- [HOTFIX v9.8.3] REFRESH METADATA ---
-                # WHY: If we just created the prospect or transitioned it, the local 
-                # 'prospect_data' object is STALE. We must refresh it so the JudgeService
-                # doesn't reject valid users (C3/C9 rejections).
-                prospect_data = await ms.get_prospect_data(user_phone)
-                logger.info(f"👤 Prospect Data Refreshed: {prospect_data.get('name', 'Unknown') if prospect_data else 'None'}")
+                prospect_data = await _open_session_and_refresh(ms, user_phone)
                 
                 # Human Gatekeeper Check (Mantenibilidad)
                 if prospect_data and prospect_data.get('human_help_requested', False):
@@ -1443,8 +1467,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                             logger.warning(f"🚨 [JUDGE_FALLBACK] Max retries hit for {user_phone}. Marking human_help_requested=True")
                             await memory_service_module.memory_service.set_human_help_status(user_phone, True)
                             # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
-                            # Blocking await — no create_task/add_task
-                            await memory_service_module.memory_service.update_prospect_summary(user_phone, "", {"ponytail_status": "DEPRIORITIZED"})
+                            await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
                             await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
                     except Exception as e_ms:
                         logger.error(f"⚠️ [JUDGE_FALLBACK] Error persistencia fallback: {e_ms}")
@@ -1483,8 +1506,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                 if memory_service_module.memory_service:
                     await memory_service_module.memory_service.set_human_help_status(user_phone, True)
                     # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
-                    # Blocking await — no create_task/add_task
-                    await memory_service_module.memory_service.update_prospect_summary(user_phone, "", {"ponytail_status": "DEPRIORITIZED"})
+                    await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
                     await _send_whatsapp_message(user_phone, fallback_msg, phone_number_id=phone_number_id)
                     await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
                 return
@@ -1681,8 +1703,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                             if memory_service_module.memory_service:
                                 await memory_service_module.memory_service.set_human_help_status(user_phone, True)
                                 # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
-                                # Blocking await — no create_task/add_task
-                                await memory_service_module.memory_service.update_prospect_summary(user_phone, "", {"ponytail_status": "DEPRIORITIZED"})
+                                await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
                                 await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
                         except Exception as e_ms:
                             logger.error(f"⚠️ [JUDGE_FALLBACK_AUDIO] Error persistencia fallback: {e_ms}")
@@ -1719,8 +1740,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                 if memory_service_module.memory_service:
                     await memory_service_module.memory_service.set_human_help_status(user_phone, True)
                     # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
-                    # Blocking await — no create_task/add_task
-                    await memory_service_module.memory_service.update_prospect_summary(user_phone, "", {"ponytail_status": "DEPRIORITIZED"})
+                    await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
                 await _send_whatsapp_message(user_phone, "Te voy a transferir con un compañero para que te ayude con esto. Dame un momento...", phone_number_id=phone_number_id)
                 try:
                     from app.services.notification_service import notification_service
