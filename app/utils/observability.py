@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Any, Dict, Optional, List
 
 logger = logging.getLogger(__name__)
@@ -11,6 +12,31 @@ try:
 except ImportError:
     OTEL_AVAILABLE = False
     logger.warning("⚠️ [LANGFUSE] OpenTelemetry or Langfuse SDK components not found. Telemetry updates will be disabled.")
+
+# --- LANGFUSE CREDENTIALS GATE [BOT-BUILD-DEUDA-OTEL-03-06] ---
+# WHY: El SDK de Langfuse v4 auto-inicializa un exportador OTLP en background al
+# importarse. Sin credenciales físicas (LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY),
+# ese exportador reintenta en bucle y genera ruido de exportación en los logs.
+# Este gate evalúa las credenciales ANTES del import del SDK y, si faltan, desactiva
+# la exportación vía el flag oficial LANGFUSE_TRACING_ENABLED=false.
+# CONTRATO BOT-QA-GATE-110: el decorador `observe` real NUNCA se degrada a shim;
+# solo se silencia la exportación. Fail-safe: ante cualquier error de evaluación,
+# la telemetría queda desactivada (no bloqueante).
+def _resolve_langfuse_credentials():
+    """Resolve Langfuse credentials: settings first, os.getenv as fallback."""
+    try:
+        from app.core.config import settings
+        return settings.langfuse_public_key, settings.langfuse_secret_key
+    except Exception:
+        logger.exception("🔍 [LANGFUSE_GATE] Failed to resolve credentials from settings; falling back to os.getenv.")
+        return os.getenv("LANGFUSE_PUBLIC_KEY"), os.getenv("LANGFUSE_SECRET_KEY")
+
+_lf_public_key, _lf_secret_key = _resolve_langfuse_credentials()
+LANGFUSE_ENABLED = bool(_lf_public_key and _lf_secret_key)
+
+if not LANGFUSE_ENABLED:
+    os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
+    logger.warning("⚠️ [LANGFUSE_GATE] LANGFUSE_PUBLIC_KEY/SECRET_KEY missing. Telemetry export silenced (real @observe decorator preserved).")
 
 # Try to import the real observe decorator
 try:

@@ -121,7 +121,8 @@ class NotificationService:
             return False
         
         try:
-            url = f"https://graph.facebook.com/v18.0/{settings.phone_number_id}/messages"
+            # WHY: single-source Graph API version (BOT-BUILD-REGRESSION-MULTIMODAL-01).
+            url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{settings.phone_number_id}/messages"
             headers = {
                 "Authorization": f"Bearer {settings.whatsapp_token}",
                 "Content-Type": "application/json"

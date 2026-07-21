@@ -3,6 +3,7 @@ import re
 from unittest.mock import patch, MagicMock
 from app.services.catalog_service import catalog_service
 from app.services.config_service import config_service
+from app.services.credit_faq_taxonomy import classify_credit_turn, TurnIntent
 
 def test_pcc_ficha_tecnica_no_silent_null():
     """
@@ -1252,6 +1253,8 @@ async def test_brilla_gases_real_firestore_cuotas():
     assert res_vic.get("cuota_mensual") == 748844.0, f"Victory Bet ABS cuota mismatch: expected 748844, got {res_vic.get('cuota_mensual')}"
     
     # TVS Sport 100 ELS (inicial = 665,000 COP, 24m)
+    # [BOT-BUILD-204] cc=99.7 -> banda 0-99 (registrationCredit=700.000),
+    # corregido desde el override quemado de 780.000.
     res_tvs = cerebro._calculate_payment_helper(
         precio=5949999.0,
         inicial=665000.0,
@@ -1260,7 +1263,7 @@ async def test_brilla_gases_real_firestore_cuotas():
         moto_cc=99.7,
         category="motos"
     )
-    assert res_tvs.get("cuota_mensual") == 369501.0, f"TVS Sport 100 ELS cuota mismatch: expected 369501, got {res_tvs.get('cuota_mensual')}"
+    assert res_tvs.get("cuota_mensual") == 364825.0, f"TVS Sport 100 ELS cuota mismatch: expected 364825, got {res_tvs.get('cuota_mensual')}"
 
     # KYMCO Agility Fusion (inicial = 1,017,900 COP, 24m) - net price
     res_kymco_net = cerebro._calculate_payment_helper(
@@ -1385,6 +1388,33 @@ def test_is_tech_spec_query_no_false_positive_short_tokens():
     assert is_tech_spec_query("chips") is False
     assert is_tech_spec_query("photoshop") is False
     assert is_tech_spec_query("acceso") is False
+
+
+def test_is_tech_spec_query_colloquial_lexicon_caption01():
+    """
+    [BOT-BUILD-BUGFIX-MULTIMODAL-CAPTION-01] Léxico técnico coloquial (dominio CO).
+    Pineado tras el incidente de runtime Meta: los captions 'cuantos cambios tiene?'
+    y 'que tipo de encendido maneja?' NO activaban la obligación PCC 'Ficha Tecnica:'
+    porque TECH_SPEC_TOKENS solo cubría vocabulario formal.
+    """
+    from app.services.agentic_loop_service import is_tech_spec_query
+    # Captions exactos del incidente de runtime
+    assert is_tech_spec_query("cuantos cambios tiene?") is True
+    assert is_tech_spec_query("que tipo de encendido maneja?") is True
+    # Familia coloquial ampliada
+    assert is_tech_spec_query("de cuantas velocidades es") is True
+    assert is_tech_spec_query("freno delantero") is True
+    assert is_tech_spec_query("el tablero es digital?") is True
+    assert is_tech_spec_query("que consumo tiene") is True
+    assert is_tech_spec_query("capacidad del tanque") is True
+    assert is_tech_spec_query("es de inyección o carburador") is True
+    assert is_tech_spec_query("como es la suspensión delantera") is True
+    assert is_tech_spec_query("arranque electrico o de crank") is True
+    assert is_tech_spec_query("cuantas marchas trae") is True
+    # Controles negativos (no regresión del clasificador)
+    assert is_tech_spec_query("precio de la moto") is False
+    assert is_tech_spec_query("quiero financiar") is False
+    assert is_tech_spec_query("muy bonita") is False
 
 
 def test_run_checker_no_bypass_on_tech_specs():
@@ -1690,14 +1720,15 @@ def test_run_checker_fiador_bypass_with_moto_interest():
 
 
 @pytest.mark.asyncio
-async def test_raider_125_brilla_golden_419120():
+async def test_raider_125_brilla_post_fix_414444():
     """
     [BOT-BUILD-REGRESSION-FAQ-FIADOR-CUOTA-202]
-    Golden TVS RAIDER 125: assetPrice=$7.771.896, inicial=$858.000, 24m Brilla
-    -> $419.120 cuota_mensual exacta (Simulador Web oficial).
-    Antiregresion contra $420.762 (WA bug con precio catalogo inflado).
-    Usa el helper path: net_price = assetPrice - reg_cost para simular
-    el strip+re-add que ocurre en produccion via _calculate_payment_helper.
+    [BOT-BUILD-204] El helper normaliza Raider 125 a cc=0 (web parity) y lee
+    ahora registrationCredit de la banda 0-99 (700.000) en lugar del override
+    quemado de 780.000. assetPrice resultante = 6.991.896 + 700.000 = 7.691.896;
+    cuota_mensual = 414.444.
+    Este test documenta el nuevo valor SSOT; el anti-regresión mantiene el
+    path de catálogo (7.799.999).
     """
     from app.services.financial_service import financial_service
     from app.core.config_loader import ConfigLoader
@@ -1737,26 +1768,27 @@ async def test_raider_125_brilla_golden_419120():
         category="motos"
     )
     cuota = res.get("cuota_mensual", 0)
-    assert cuota == 419120.0, (
-        f"Raider 125 golden cuota mismatch: expected 419120, got {cuota}"
+    assert cuota == 414444.0, (
+        f"Raider 125 post-fix cuota mismatch: expected 414444, got {cuota}"
     )
-    assert round(res.get("capital_financiado", 0)) == 7259591, (
+    assert round(res.get("capital_financiado", 0)) == 7175591, (
         f"Wrong capital_financiado: {res.get('capital_financiado')}"
     )
-    assert round(res.get("cuota_aval", 0)) == 24199, (
+    assert round(res.get("cuota_aval", 0)) == 23919, (
         f"Wrong cuota_aval: {res.get('cuota_aval')}"
     )
 
 
 @pytest.mark.asyncio
-async def test_raider_125_anti_regression_420762():
+async def test_raider_125_anti_regression_416086():
     """
     [BOT-BUILD-REGRESSION-FAQ-FIADOR-CUOTA-202]
-    Verifica que con el precio del catalogo actual (7.799.999) y cc=0
-    la formula produce $420.762 (WA bug) y NO $419.120 (oficial).
-    Este test documenta el SSOT mismatch en los datos del catalogo:
-    el precio de catalogo ($7.799.999) es $28.103 mayor que el oficial ($7.771.896).
-    Path simulado: helper strip (reg=780k) + calculate re-add -> asset=7.799.999.
+    [BOT-BUILD-204] Verifica que con el precio del catalogo actual (7.799.999) y
+    cc=0, la formula produce ahora $416.086 (SSOT: banda 0-99 = 700.000, no el
+    override quemado de 780.000). El helper strip sigue siendo 780.000 para mantener
+    la base normalizada legacy, pero el re-add lee Firestore -> 700.000.
+    Este test documenta el mismatch residual: el helper strip (780k) ya no
+    coincide con el re-add (700k) hasta que se normalice la base.
     """
     from app.services.financial_service import financial_service
     from app.core.config_loader import ConfigLoader
@@ -1784,7 +1816,7 @@ async def test_raider_125_anti_regression_420762():
 
     # Path produccion real: catalogo price=7.799.999, cc=None->0
     # Helper: base = 7799999 - 780000 = 7019999
-    # calculate: asset = 7019999 + 780000 = 7799999, docs=0
+    # calculate: asset = 7019999 + 700000 = 7719999, docs=0
     catalog_price = 7799999.0
     net_price = catalog_price - 780000.0
     res = financial_service.calculate_payment(
@@ -1796,10 +1828,234 @@ async def test_raider_125_anti_regression_420762():
         category="motos"
     )
     cuota = res.get("cuota_mensual", 0)
-    assert cuota == 420762.0, (
-        f"Raider 125 WA regression: expected 420762 (catalog), got {cuota}"
+    assert cuota == 416086.0, (
+        f"Raider 125 WA regression: expected 416086 (catalog), got {cuota}"
     )
-    assert cuota != 419120.0, (
-        "Anti-regression: catalog path should NOT match official 419120 yet."
+    assert cuota != 414444.0, (
+        "Anti-regression: catalog path should NOT match official 414444 yet."
     )
+
+
+# =============================================================================
+# [BOT-BUILD-204] NUEVA SUITE E2E — SELECTOR DE BANDA Y FRENO COGNITIVO
+# =============================================================================
+
+
+def test_classify_credit_turn_fragments():
+    """
+    El clasificador por turno evita que un fragmento de simulación envenene
+    una pregunta FAQ abstracta cuando el buffer agrega mensajes.
+    """
+    # Fragmento de simulación + FAQ abstracta -> MIXED (ambas intenciones)
+    assert classify_credit_turn([
+        "cuanto queda la cuota a 24 meses",
+        "y necesito fiador, para sacarla a credito?"
+    ]) == TurnIntent.MIXED
+
+    # Solo FAQ -> FAQ_ONLY
+    assert classify_credit_turn([
+        "y necesito fiador, para sacarla a credito?"
+    ]) == TurnIntent.FAQ_ONLY
+
+    # Solo simulación -> NONE
+    assert classify_credit_turn([
+        "cuanto queda la cuota a 24 meses"
+    ]) == TurnIntent.NONE
+
+    # Texto blob unido con ambas señales -> MIXED, ya no es un punto ciego.
+    blob = "cuanto queda la cuota a 24 meses y necesito fiador, para sacarla a credito?"
+    assert classify_credit_turn([blob]) == TurnIntent.MIXED
+
+
+@pytest.mark.parametrize(
+    "cc,category,expected_cost",
+    [
+        (99.7, None, 700000),          # Banda 0-99
+        (124.7, None, 780000),         # Banda 100-124
+        (125.0, None, 860000),         # Banda 125-200
+        (159.7, None, 860000),         # Banda 125-200
+        (201.0, None, 1340000),        # Banda gt-200
+        (99.7, "URBANA Y/O TRABAJO", 700000),  # Categoría no debe saltar a 125-200
+        (None, "ELECTRICA", 460000),   # Categoría especial pura
+        (None, "MOTOCARRO Y/O MOTOCARGUERO", 1050000),  # Categoría especial con rango
+    ],
+)
+def test_get_registration_cost_exact_cc_band(cc, category, expected_cost):
+    """
+    [BOT-BUILD-204] El selector debe usar la banda CC exacta y NO dejar que
+    una categoría genérica en una fila con banda cerrada desactive la matemática.
+    """
+    rows = [
+        {"minCC": 0, "maxCC": 99, "registrationCreditGeneral": 700000, "id": "0-99"},
+        {"minCC": 100, "maxCC": 124, "registrationCreditGeneral": 780000, "id": "100-124"},
+        {"minCC": 125, "maxCC": 200, "registrationCreditGeneral": 860000, "category": "URBANA Y/O TRABAJO", "id": "125-200"},
+        {"minCC": 201, "maxCC": 99999, "registrationCreditGeneral": 1340000, "id": "gt-200"},
+        {"category": "ELECTRICA", "registrationCreditGeneral": 460000, "id": "electrical"},
+        {"minCC": 0, "maxCC": 99999, "registrationCreditGeneral": 1050000, "category": "MOTOCARRO Y/O MOTOCARGUERO", "id": "motocarro"},
+    ]
+    # Las filas usan registrationCreditGeneral; la normalización debe copiarlo.
+    with patch.object(config_service, "_financial_config", {"rows": rows}):
+        assert config_service.get_registration_cost(cc=cc, category=category) == expected_cost
+
+
+def test_get_registration_cost_no_hardcoded_override():
+    """
+    [BOT-BUILD-204] Con el override eliminado, cc <= 125 ya no retorna un valor
+    quemado; retorna la banda real de Firestore.
+    """
+    rows = [
+        {"minCC": 0, "maxCC": 99, "registrationCredit": 700000, "id": "0-99"},
+        {"minCC": 100, "maxCC": 124, "registrationCredit": 780000, "id": "100-124"},
+    ]
+    with patch.object(config_service, "_financial_config", {"rows": rows}):
+        assert config_service.get_registration_cost(cc=99, category=None) == 700000
+        assert config_service.get_registration_cost(cc=124, category=None) == 780000
+
+
+def test_build_commercial_price_sport_100_zero_ninety_nine_band():
+    """
+    [BOT-BUILD-204] TVS Sport 100 (cc=99.7) debe sumar la banda 0-99 (=700.000)
+    al precio base, no el override quemado de 780.000.
+    """
+    rows = [
+        {"minCC": 0, "maxCC": 99, "registrationCredit": 700000, "id": "0-99"},
+        {"minCC": 100, "maxCC": 124, "registrationCredit": 780000, "id": "100-124"},
+    ]
+    with patch.object(config_service, "_financial_config", {"rows": rows}):
+        from app.services.catalog_service import CatalogService
+        price = 5_000_000
+        result = CatalogService.build_commercial_price(price=price, cc=99.7, category="motos")
+        assert "$5.700.000" in result, f"Expected $5.700.000 band in result, got {result}"
+
+
+@pytest.mark.asyncio
+async def test_pensar_respuesta_faq_only_brake_block_e2e():
+    """
+    [BOT-BUILD-204] E2E del orquestador con la personalidad completa:
+    - FAQ abstracta de fiador en PHASE_2_HABEAS_DATA.
+    - El prompt debe contener el Freno Cognitivo, <intercepcion_faq>faq_only</intercepcion_faq>
+      y la pregunta pendiente textual.
+    - calculate_credit_score debe estar ausente de las tools.
+    """
+    from app.services.ai_brain import CerebroIA
+    from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
+    import app.services.ai_brain as brain_module
+
+    with patch.object(brain_module, "SDK_AVAILABLE", True):
+        cerebro = CerebroIA()
+        cerebro.client = MagicMock()
+        cerebro._model_id = "gemini-test"
+
+        mock_catalog = MagicMock()
+        mock_catalog.get_catalog_aliases.return_value = {}
+        cerebro._catalog_service = mock_catalog
+
+        prospect = {
+            "nombre": "Carlos",
+            "moto_interest": "TVS Raider 125",
+            "forma_pago": "crédito",
+            "ciudad": "Bogotá",
+            # habeas_data_accepted ausente => PHASE_2_HABEAS_DATA
+        }
+
+        captured_prompt = None
+        captured_config = None
+
+        async def mock_generate(*args, **kwargs):
+            nonlocal captured_prompt, captured_config
+            if len(args) > 1:
+                captured_prompt = args[1]
+            captured_config = kwargs.get("config")
+            # Respuesta tipo LLM: 2 líneas de FAQ + pregunta pendiente
+            return MagicMock(
+                candidates=[MagicMock(content=MagicMock(parts=[MagicMock(text="Para fiador, depende del perfil; Brilla no lo requiere. ¿Me autorizas el tratamiento de tus datos?")]))]
+            )
+
+        with patch.object(cerebro, "_get_current_instruction", return_value=JUAN_PABLO_SYSTEM_INSTRUCTION), \
+             patch.object(cerebro, "_call_gemini_with_retry_async", new=mock_generate):
+            await cerebro.pensar_respuesta(
+                "y necesito fiador, para sacarla a credito?",
+                prospect_data=prospect,
+                history=[{"role": "user", "content": "cuanto vale la raider 125"}],
+                skip_greeting=True
+            )
+
+        assert captured_prompt is not None, "El prompt completo no fue capturado"
+        prompt = captured_prompt
+
+        # [BOT-BUILD-205] Updated assertions to match condensed brake block format
+        assert "[FRENO FAQ — MÁXIMA PRIORIDAD]" in prompt, "Falta bloque de freno cognitivo"
+        assert "<intercepcion_faq>faq_only</intercepcion_faq>" in prompt, "Falta tag intercepcion_faq=faq_only"
+        assert "Para darte el valor exacto de las cuotas" in prompt, "Falta pregunta pendiente textual de Habeas Data"
+        assert "PROHIBIDO:" in prompt, "Falta prohibición en FAQ brake block"
+
+        # Verificar que calculate_credit_score no está en las tools
+        tools = getattr(captured_config, "tools", None)
+        if tools:
+            declarations = []
+            for tool in tools:
+                declarations.extend(getattr(tool, "function_declarations", []) or [])
+            tool_names = [getattr(d, "name", None) for d in declarations]
+            assert "calculate_credit_score" not in tool_names, "FAQ_ONLY no debe incluir calculate_credit_score"
+
+
+@pytest.mark.asyncio
+async def test_pensar_respuesta_mixed_turn_keeps_credit_tool():
+    """
+    [BOT-BUILD-204] Turno MIXED (cuota + FAQ) debe mantener calculate_credit_score
+    y aún inyectar el freno cognitivo para responder la FAQ en ≤2 líneas.
+    """
+    from app.services.ai_brain import CerebroIA
+    from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
+    import app.services.ai_brain as brain_module
+
+    with patch.object(brain_module, "SDK_AVAILABLE", True):
+        cerebro = CerebroIA()
+        cerebro.client = MagicMock()
+        cerebro._model_id = "gemini-test"
+
+        mock_catalog = MagicMock()
+        mock_catalog.get_catalog_aliases.return_value = {}
+        cerebro._catalog_service = mock_catalog
+
+        prospect = {
+            "nombre": "Carlos",
+            "moto_interest": "TVS Raider 125",
+            "forma_pago": "crédito",
+            "ciudad": "Bogotá",
+        }
+
+        captured_prompt = None
+        captured_config = None
+
+        async def mock_generate(*args, **kwargs):
+            nonlocal captured_prompt, captured_config
+            if len(args) > 1:
+                captured_prompt = args[1]
+            captured_config = kwargs.get("config")
+            return MagicMock(
+                candidates=[MagicMock(content=MagicMock(parts=[MagicMock(text="Con fiador no es obligatorio. Te calculo la cuota a 24 meses y te la mando. ¿Me autorizas el tratamiento de tus datos?")]))]
+            )
+
+        with patch.object(cerebro, "_get_current_instruction", return_value=JUAN_PABLO_SYSTEM_INSTRUCTION), \
+             patch.object(cerebro, "_call_gemini_with_retry_async", new=mock_generate):
+            await cerebro.pensar_respuesta(
+                "cuanto queda la cuota a 24 meses y necesito fiador, para sacarla a credito?",
+                prospect_data=prospect,
+                history=[],
+                skip_greeting=True
+            )
+
+        assert captured_prompt is not None
+        assert "<intercepcion_faq>mixed</intercepcion_faq>" in captured_prompt
+        # [BOT-BUILD-205] Updated assertion to match condensed brake block format
+        assert "calculate_credit_score" in captured_prompt, "MIXED debe mencionar calculate_credit_score"
+
+        tools = getattr(captured_config, "tools", None)
+        if tools:
+            declarations = []
+            for tool in tools:
+                declarations.extend(getattr(tool, "function_declarations", []) or [])
+            tool_names = [getattr(d, "name", None) for d in declarations]
+            assert "calculate_credit_score" in tool_names, "MIXED debe incluir calculate_credit_score"
 

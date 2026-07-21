@@ -224,12 +224,13 @@ async def test_boxer_competitor_bypasses_drift_interceptor():
 # ── TVS Raider 125: normalización de base amortizable ──
 
 @pytest.mark.asyncio
-async def test_raider_125_helper_path_419120():
+async def test_raider_125_helper_path_414444():
     """
     [BOT-BUILD-REGRESSION-TRIAGE-COMPETENCIA-CUOTA-203]
-    El helper del agente debe normalizar la base amortizable de la Raider 125
-    (precio catálogo $7.799.999 / cc=124) a los parámetros oficiales del
-    simulador web: base=$6.991.896 y cc=0, produciendo cuota exacta $419.120.
+    [BOT-BUILD-204] El helper del agente normaliza la base amortizable de la Raider 125
+    (precio catálogo $7.799.999 / cc=124) a base=$6.991.896 y cc=0. Ahora el re-add lee
+    la banda 0-99 (=700.000) de Firestore, produciendo cuota $414.444 hasta que la base
+    legacy (strip=780.000) se realinee con SSOT.
     """
     from app.services.ai_brain import CerebroIA
     from app.services.financial_service import financial_service
@@ -266,9 +267,9 @@ async def test_raider_125_helper_path_419120():
         category="motos",
         moto_name="TVS RAIDER 125",
     )
-    assert res.get("cuota_mensual") == 419120.0, (
-        f"Raider 125 helper path mismatch: expected 419120, got {res.get('cuota_mensual')}"
+    assert res.get("cuota_mensual") == 414444.0, (
+        f"Raider 125 helper path mismatch: expected 414444, got {res.get('cuota_mensual')}"
     )
-    assert round(res.get("capital_financiado", 0)) == 7259591, (
+    assert round(res.get("capital_financiado", 0)) == 7175591, (
         f"Wrong capital_financiado: {res.get('capital_financiado')}"
     )

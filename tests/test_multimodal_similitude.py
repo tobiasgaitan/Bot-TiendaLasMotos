@@ -710,3 +710,209 @@ async def test_incoming_image_webhook_multimodal_similitude_flow():
 
     finally:
         whatsapp.message_buffer.debounce_seconds = orig_debounce
+
+
+# ── [BOT-BUILD-BUGFIX-MULTIMODAL-CAPTION-01] Harness compartido T2–T4 ────
+
+async def _run_image_caption_flow(caption: str, summary: str, llm_text: str):
+    """
+    Conduce la rama imagen+caption de `_handle_message_background` con catálogo
+    hidratado (índices id / url_norm / id_norm) y LLM mockeado.
+    Retorna (mock_ms, mock_http_post) para aserciones de prompt y de egreso.
+    """
+    import app.routers.whatsapp as whatsapp
+    from app.routers.whatsapp import _handle_message_background
+    from fastapi import BackgroundTasks
+
+    whatsapp._ensure_services_sync()
+    orig_debounce = whatsapp.message_buffer.debounce_seconds
+    whatsapp.message_buffer.debounce_seconds = 0.0
+
+    user_phone = "+573008888888"
+
+    try:
+        await whatsapp.message_buffer.clear_buffer(user_phone)
+        if user_phone in whatsapp.message_buffer._processed_wamids:
+            whatsapp.message_buffer._processed_wamids[user_phone].clear()
+
+        msg_data = {
+            "from": user_phone,
+            "id": f"wamid.caption01_{caption[:12]}",
+            "type": "image",
+            "image": {
+                "id": "media_id_caption01",
+                "mime_type": "image/jpeg",
+                "caption": caption
+            },
+            "phone_number_id": "12345678"
+        }
+
+        mock_prospect_data = {
+            "exists": True,
+            "celular": user_phone,
+            "chatbot_status": "ACTIVE",
+            "status": "IN_PROGRESS",
+            "habeas_data_accepted": True,
+            "nombre": "Juan Caption",
+            "ciudad": "Cali",
+            "forma_pago": "credito",
+            "moto_interest": None
+        }
+
+        mock_ms = AsyncMock()
+        mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+        mock_ms.create_prospect_if_missing = AsyncMock()
+        mock_ms.get_chat_history = AsyncMock(return_value=[])
+        mock_ms.save_message = AsyncMock()
+        mock_ms.generate_and_update_summary = AsyncMock()
+        mock_ms.update_last_interaction = AsyncMock()
+        mock_ms.transition_to_in_progress = AsyncMock()
+        mock_ms.set_human_help_status = AsyncMock()
+        mock_ms.update_prospect_summary = AsyncMock()
+
+        mock_client = MagicMock()
+        mock_chat = AsyncMock()
+        mock_response = MagicMock()
+        mock_candidate = MagicMock()
+        mock_part = MagicMock()
+        mock_part.text = llm_text
+        mock_part.function_call = None
+        mock_candidate.content.parts = [mock_part]
+        mock_response.candidates = [mock_candidate]
+        mock_chat.send_message = AsyncMock(return_value=mock_response)
+        mock_client.aio.chats.create = MagicMock(return_value=mock_chat)
+
+        mock_http_response = MagicMock()
+        mock_http_response.status_code = 200
+        mock_http_response.json = MagicMock(
+            return_value={"messages": [{"id": "wamid.outbound_caption01"}]}
+        )
+
+        mock_vision = AsyncMock()
+        mock_vision.analyze_image = AsyncMock(
+            return_value="MOTO_DETECTADA: TVS Sport 100 | Match URL: https://img.url/tvs_sport.jpg | Model ID: tvs_sport"
+        )
+
+        mock_catalog_item = {
+            "id": "tvs_sport",
+            "name": "TVS Sport 100",
+            "image_url": "https://img.url/tvs_sport.jpg",
+            "price": 6200000,
+            "formatted_price": "$6.200.000",
+            "category": "sport",
+            "active": True,
+        }
+        if summary is not None:
+            mock_catalog_item["summary"] = summary
+
+        import app.services.catalog_service as cs_mod
+        items = [mock_catalog_item]
+        id_norm_key = cs_mod.CatalogService._normalize_item_id_key(mock_catalog_item["id"])
+        # [CAPTION-01] Los índices se parchan sobre el SINGLETON real
+        # (app.services.catalog_service.catalog_service), no sobre el LazyProxy
+        # del router: LazyProxy no define __setattr__, por lo que patch.object
+        # sobre el proxy es invisible para el self real del matcher (placebo).
+        with patch("app.routers.whatsapp.settings") as mock_settings, \
+             patch("app.routers.whatsapp.db", MagicMock()), \
+             patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
+             patch("app.routers.whatsapp.judge_service") as mock_judge, \
+             patch("app.routers.whatsapp.VisionService", return_value=mock_vision), \
+             patch("app.routers.whatsapp.storage_service.download_media", AsyncMock(return_value=b"dummy_bytes")), \
+             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_http_post, \
+             patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+             patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+             patch("app.services.ai_brain.SDK_AVAILABLE", True), \
+             patch.object(cs_mod.catalog_service, "_items", items), \
+             patch.object(cs_mod.catalog_service, "_items_by_id", {"tvs_sport": mock_catalog_item}), \
+             patch.object(cs_mod.catalog_service, "_items_by_image_url_norm",
+                          {cs_mod.CatalogService._normalize_image_url(mock_catalog_item["image_url"]): mock_catalog_item}), \
+             patch.object(cs_mod.catalog_service, "_items_by_id_norm",
+                          {id_norm_key: ["tvs_sport"]}), \
+             patch.object(cs_mod.catalog_service, "_db", MagicMock()):
+
+            mock_http_post.return_value = mock_http_response
+            mock_settings.whatsapp_app_secret = None
+            mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+
+            await _handle_message_background(msg_data, BackgroundTasks())
+            return mock_ms, mock_http_post
+
+    finally:
+        whatsapp.message_buffer.debounce_seconds = orig_debounce
+
+
+@pytest.mark.asyncio
+async def test_image_tech_caption_injects_canonical_ficha_hint():
+    """
+    [CAPTION-01 / T2] Caption técnico: el simulated_user_msg persistido como
+    mensaje 'user' transporta el hint OBLIGATORIO con la ficha canónica del
+    ítem matcheado, y el egreso contiene el prefijo literal 'Ficha Tecnica:'.
+    """
+    summary = "Motor 124.8cc, caja de 4 cambios, encendido eléctrico"
+    llm_text = (
+        "La TVS Sport 100 cuesta $6.200.000. "
+        "Ficha Tecnica: Motor 124.8cc, caja de 4 cambios, encendido eléctrico. "
+        "![TVS Sport 100](https://img.url/tvs_sport.jpg)"
+    )
+    mock_ms, mock_http_post = await _run_image_caption_flow(
+        caption="cuantos cambios tiene?", summary=summary, llm_text=llm_text
+    )
+
+    user_saves = [c for c in mock_ms.save_message.call_args_list if c.args[1] == "user"]
+    assert len(user_saves) == 1
+    simulated_user_msg = user_saves[0].args[2]
+    assert 'El usuario también escribió: "cuantos cambios tiene?"' in simulated_user_msg
+    assert "OBLIGATORIO: incluye el prefijo literal 'Ficha Tecnica:'" in simulated_user_msg
+    assert summary in simulated_user_msg
+
+    assert mock_http_post.call_count == 1
+    meta_payload = mock_http_post.call_args.kwargs.get("json")
+    assert meta_payload.get("type") == "image"
+    assert "Ficha Tecnica:" in meta_payload["image"]["caption"]
+
+
+@pytest.mark.asyncio
+async def test_image_tech_caption_backstop_injects_ficha_when_llm_omits():
+    """
+    [CAPTION-01 / T3] Backstop determinista: el LLM omite el prefijo → el router
+    inyecta 'Ficha Tecnica: {summary}' canónico post-generación, antes del egreso.
+    """
+    summary = "Motor 124.8cc, caja de 4 cambios, encendido eléctrico"
+    llm_text = (
+        "Claro, la TVS Sport 100 cuesta $6.200.000. "
+        "![TVS Sport 100](https://img.url/tvs_sport.jpg)"
+    )
+    mock_ms, mock_http_post = await _run_image_caption_flow(
+        caption="que tipo de encendido maneja?", summary=summary, llm_text=llm_text
+    )
+
+    assert mock_http_post.call_count == 1
+    caption_out = mock_http_post.call_args.kwargs["json"]["image"]["caption"]
+    assert "Ficha Tecnica:" in caption_out
+    assert summary in caption_out
+
+
+@pytest.mark.asyncio
+async def test_image_nontech_caption_no_ficha_injection():
+    """
+    [CAPTION-01 / T4] No-regresión: caption no técnico → sin hint OBLIGATORIO y
+    sin backstop; el egreso queda libre de bloques 'Ficha Tecnica:' añadidos por
+    la costura visual.
+    """
+    summary = "Motor 124.8cc, caja de 4 cambios, encendido eléctrico"
+    llm_text = (
+        "Claro, la TVS Sport 100 cuesta $6.200.000. "
+        "![TVS Sport 100](https://img.url/tvs_sport.jpg)"
+    )
+    mock_ms, mock_http_post = await _run_image_caption_flow(
+        caption="muy bonita", summary=summary, llm_text=llm_text
+    )
+
+    user_saves = [c for c in mock_ms.save_message.call_args_list if c.args[1] == "user"]
+    assert len(user_saves) == 1
+    assert "OBLIGATORIO" not in user_saves[0].args[2]
+
+    assert mock_http_post.call_count == 1
+    caption_out = mock_http_post.call_args.kwargs["json"]["image"]["caption"]
+    assert "Ficha Tecnica:" not in caption_out

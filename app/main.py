@@ -94,6 +94,13 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Auteco Las Motos Backend...")
     app.state.catalog_ready = False
 
+    # [BOT-BUILD-DEUDA-OTEL-03-06] Telemetry status report (zero I/O, non-blocking).
+    from app.utils.observability import LANGFUSE_ENABLED
+    if LANGFUSE_ENABLED:
+        logger.info(f"🔭 Telemetry: ACTIVE (host={settings.langfuse_host})")
+    else:
+        logger.info("🔭 Telemetry: DISABLED (missing LANGFUSE_* credentials, export silenced)")
+
     if not TEST_MODE:
         # WHY: Launch heavy init in background so Uvicorn can open port 8080 immediately.
         # The startup_task is stored in app.state for test awaiting (test_startup_lock.py).
@@ -210,6 +217,23 @@ async def lifespan(app: FastAPI):
         await audit_module.audit_service.shutdown()
     else:
         logger.info("ℹ️ AuditService module never loaded, skipping audit flush.")
+
+    # [BOT-BUILD-DEUDA-OTEL-03-06] Conditional Langfuse flush on shutdown.
+    # WHY sys.modules: avoids triggering the langfuse import during shutdown if the
+    # observability module was never loaded. Flush is best-effort and timeout-bounded
+    # so it never blocks container teardown in Cloud Run.
+    observability_module = sys.modules.get("app.utils.observability")
+    if observability_module is not None and getattr(observability_module, "LANGFUSE_ENABLED", False):
+        try:
+            from langfuse import get_client
+            await asyncio.wait_for(asyncio.to_thread(get_client().flush), timeout=5.0)
+            logger.info("🔭 [LANGFUSE] Telemetry buffer flushed successfully.")
+        except asyncio.TimeoutError:
+            logger.warning("⏱️ [LANGFUSE] Telemetry flush timed out (5s); continuing shutdown.")
+        except Exception:
+            logger.exception("❌ [LANGFUSE] Unexpected error flushing telemetry buffer; continuing shutdown.")
+    else:
+        logger.info("ℹ️ Telemetry disabled or observability module never loaded, skipping Langfuse flush.")
 
 
 async def _run_deferred_initialization(app: FastAPI) -> None:

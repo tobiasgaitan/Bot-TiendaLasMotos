@@ -403,6 +403,8 @@ async def test_meta_payload_leak_prevention_and_bypass():
     mock_memory_service.update_last_interaction = AsyncMock()
     mock_memory_service.transition_to_in_progress = AsyncMock()
     mock_memory_service.generate_and_update_summary = AsyncMock()
+    # [RF-1] Barrera durable del embudo: reclamo siempre exitoso en este test
+    mock_memory_service.claim_webhook_idempotency = AsyncMock(return_value=True)
     
     # Mock CerebroIA & JudgeService
     # Mock self._catalog_service inside cerebro to return the Raider 125 catalog item
@@ -675,6 +677,8 @@ async def test_whatsapp_reaction_payload_processing():
         mock_memory_service.transition_to_in_progress = AsyncMock()
         mock_memory_service.generate_and_update_summary = AsyncMock()
         mock_memory_service.set_human_help_status = AsyncMock()
+        # [RF-1] Barrera durable del embudo: reclamo siempre exitoso en este test
+        mock_memory_service.claim_webhook_idempotency = AsyncMock(return_value=True)
         
         # Mock CerebroIA.pensar_respuesta
         captured_user_message = []
@@ -932,6 +936,8 @@ async def test_clean_text_message_bypasses_reaction_interceptor_and_preserves_di
         mock_memory_service.generate_and_update_summary = AsyncMock()
         mock_memory_service.set_human_help_status = AsyncMock()
         mock_memory_service.update_prospect_summary = AsyncMock()
+        # [RF-1] Barrera durable del embudo: reclamo siempre exitoso en este test
+        mock_memory_service.claim_webhook_idempotency = AsyncMock(return_value=True)
         
         # Mock CerebroIA.pensar_respuesta
         captured_user_message = []
@@ -1061,6 +1067,8 @@ async def test_concurrency_stress_phonetic_boser():
         mock_memory_service.generate_and_update_summary = AsyncMock()
         mock_memory_service.set_human_help_status = AsyncMock()
         mock_memory_service.update_prospect_summary = AsyncMock()
+        # [RF-1] Barrera durable del embudo: reclamo siempre exitoso en este test
+        mock_memory_service.claim_webhook_idempotency = AsyncMock(return_value=True)
         
         # Una de las actualizaciones de estado lanzará una excepción para testear try/except
         async def mock_update_whatsapp_status(phone_number, status_value, wamid, errors=None):

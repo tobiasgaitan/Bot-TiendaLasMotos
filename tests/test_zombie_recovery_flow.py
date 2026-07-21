@@ -35,6 +35,11 @@ async def test_handle_message_background_zombie_recovery():
 
     mock_ms = AsyncMock()
     mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+    # [BOT-BUILD-MULTIMODAL-CIERRE-196] Boy Scout: pin determinista del guardrail
+    # de inicialización (whatsapp.py L1305-1311). Sin esta línea, la rama depende
+    # de la heurística isinstance(...return_value, Mock), dejando el flujo a merced
+    # de plomería implícita del mock (riesgo de prospect_data Mock-coroutine).
+    mock_ms.get_or_create_prospect = AsyncMock(return_value=mock_prospect_data)
     mock_ms.create_prospect_if_missing = AsyncMock()
     mock_ms.get_chat_history = AsyncMock(return_value=[])
     mock_ms.save_message = AsyncMock()
@@ -149,6 +154,10 @@ async def test_handle_message_background_post_reset_recovery():
     mock_ms.get_prospect_data = AsyncMock(
         side_effect=[mock_prospect_deleted, mock_prospect_rebuilt, mock_prospect_rebuilt, mock_prospect_rebuilt]
     )
+    # [BOT-BUILD-MULTIMODAL-CIERRE-196] Boy Scout: pin determinista del guardrail
+    # de inicialización (whatsapp.py L1305-1311). Garantiza prospect_data dict
+    # real independientemente de la heurística de detección de mocks del router.
+    mock_ms.get_or_create_prospect = AsyncMock(return_value=mock_prospect_rebuilt)
     mock_ms.create_prospect_if_missing = AsyncMock()
     mock_ms.get_chat_history = AsyncMock(return_value=[])
     mock_ms.save_message = AsyncMock()
