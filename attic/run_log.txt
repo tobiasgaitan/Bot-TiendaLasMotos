@@ -1,0 +1,213 @@
+deploy	Set up job	﻿2026-05-07T04:06:04.4664380Z Current runner version: '2.334.0'
+deploy	Set up job	2026-05-07T04:06:04.4693801Z ##[group]Runner Image Provisioner
+deploy	Set up job	2026-05-07T04:06:04.4695622Z Hosted Compute Agent
+deploy	Set up job	2026-05-07T04:06:04.4696965Z Version: 20260213.493
+deploy	Set up job	2026-05-07T04:06:04.4697888Z Commit: 5c115507f6dd24b8de37d8bbe0bb4509d0cc0fa3
+deploy	Set up job	2026-05-07T04:06:04.4699198Z Build Date: 2026-02-13T00:28:41Z
+deploy	Set up job	2026-05-07T04:06:04.4700528Z Worker ID: ***e3fd86f6-d7ae-466a-8c66-a6f49f85ec5c***
+deploy	Set up job	2026-05-07T04:06:04.4702119Z Azure Region: northcentralus
+deploy	Set up job	2026-05-07T04:06:04.4703003Z ##[endgroup]
+deploy	Set up job	2026-05-07T04:06:04.4704869Z ##[group]Operating System
+deploy	Set up job	2026-05-07T04:06:04.4705725Z Ubuntu
+deploy	Set up job	2026-05-07T04:06:04.4706582Z 24.04.4
+deploy	Set up job	2026-05-07T04:06:04.4707281Z LTS
+deploy	Set up job	2026-05-07T04:06:04.4708105Z ##[endgroup]
+deploy	Set up job	2026-05-07T04:06:04.4709132Z ##[group]Runner Image
+deploy	Set up job	2026-05-07T04:06:04.4709970Z Image: ubuntu-24.04
+deploy	Set up job	2026-05-07T04:06:04.4710796Z Version: 20260413.86.1
+deploy	Set up job	2026-05-07T04:06:04.4712147Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260413.86/images/ubuntu/Ubuntu2404-Readme.md
+deploy	Set up job	2026-05-07T04:06:04.4714175Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260413.86
+deploy	Set up job	2026-05-07T04:06:04.4715411Z ##[endgroup]
+deploy	Set up job	2026-05-07T04:06:04.4716941Z ##[group]GITHUB_TOKEN Permissions
+deploy	Set up job	2026-05-07T04:06:04.4719680Z Contents: read
+deploy	Set up job	2026-05-07T04:06:04.4720564Z Metadata: read
+deploy	Set up job	2026-05-07T04:06:04.4721380Z Packages: read
+deploy	Set up job	2026-05-07T04:06:04.4722200Z ##[endgroup]
+deploy	Set up job	2026-05-07T04:06:04.4724516Z Secret source: Actions
+deploy	Set up job	2026-05-07T04:06:04.4725768Z Prepare workflow directory
+deploy	Set up job	2026-05-07T04:06:04.5067271Z Prepare all required actions
+deploy	Set up job	2026-05-07T04:06:04.5106968Z Getting action download info
+deploy	Set up job	2026-05-07T04:06:04.8995939Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+deploy	Set up job	2026-05-07T04:06:05.0378911Z Download action repository 'astral-sh/setup-uv@v5' (SHA:d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86)
+deploy	Set up job	2026-05-07T04:06:05.4388845Z Download action repository 'google-github-actions/auth@v2' (SHA:c200f3691d83b41bf9bbd8638997a462592937ed)
+deploy	Set up job	2026-05-07T04:06:05.7417517Z Download action repository 'google-github-actions/setup-gcloud@v2' (SHA:e427ad8a34f8676edf47cf7d7925499adf3eb74f)
+deploy	Set up job	2026-05-07T04:06:06.1413673Z Complete job name: deploy
+deploy	Checkout code	﻿2026-05-07T04:06:06.2320707Z ##[group]Run actions/checkout@v4
+deploy	Checkout code	2026-05-07T04:06:06.2322409Z with:
+deploy	Checkout code	2026-05-07T04:06:06.2323598Z   repository: tobiasgaitan/Bot-TiendaLasMotos
+deploy	Checkout code	2026-05-07T04:06:06.2325334Z   token: ***
+deploy	Checkout code	2026-05-07T04:06:06.2326414Z   ssh-strict: true
+deploy	Checkout code	2026-05-07T04:06:06.2327540Z   ssh-user: git
+deploy	Checkout code	2026-05-07T04:06:06.2328878Z   persist-credentials: true
+deploy	Checkout code	2026-05-07T04:06:06.2330125Z   clean: true
+deploy	Checkout code	2026-05-07T04:06:06.2331262Z   sparse-checkout-cone-mode: true
+deploy	Checkout code	2026-05-07T04:06:06.2332568Z   fetch-depth: 1
+deploy	Checkout code	2026-05-07T04:06:06.2333682Z   fetch-tags: false
+deploy	Checkout code	2026-05-07T04:06:06.2334821Z   show-progress: true
+deploy	Checkout code	2026-05-07T04:06:06.2335961Z   lfs: false
+deploy	Checkout code	2026-05-07T04:06:06.2337024Z   submodules: false
+deploy	Checkout code	2026-05-07T04:06:06.2338193Z   set-safe-directory: true
+deploy	Checkout code	2026-05-07T04:06:06.2340022Z ##[endgroup]
+deploy	Checkout code	2026-05-07T04:06:06.3507077Z Syncing repository: tobiasgaitan/Bot-TiendaLasMotos
+deploy	Checkout code	2026-05-07T04:06:06.3512789Z ##[group]Getting Git version info
+deploy	Checkout code	2026-05-07T04:06:06.3516164Z Working directory is '/home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos'
+deploy	Checkout code	2026-05-07T04:06:06.3550245Z [command]/usr/bin/git version
+deploy	Checkout code	2026-05-07T04:06:06.3552657Z git version 2.53.0
+deploy	Checkout code	2026-05-07T04:06:06.3574175Z ##[endgroup]
+deploy	Checkout code	2026-05-07T04:06:06.3589642Z Temporarily overriding HOME='/home/runner/work/_temp/7ea18add-c910-4441-bd4b-80435d019a93' before making global git config changes
+deploy	Checkout code	2026-05-07T04:06:06.3595103Z Adding repository directory to the temporary git global config as a safe directory
+deploy	Checkout code	2026-05-07T04:06:06.3603648Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos
+deploy	Checkout code	2026-05-07T04:06:06.3635163Z Deleting the contents of '/home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos'
+deploy	Checkout code	2026-05-07T04:06:06.3638583Z ##[group]Initializing the repository
+deploy	Checkout code	2026-05-07T04:06:06.3643057Z [command]/usr/bin/git init /home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos
+deploy	Checkout code	2026-05-07T04:06:06.3726767Z hint: Using 'master' as the name for the initial branch. This default branch name
+deploy	Checkout code	2026-05-07T04:06:06.3729820Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+deploy	Checkout code	2026-05-07T04:06:06.3732152Z hint: to use in all of your new repositories, which will suppress this warning,
+deploy	Checkout code	2026-05-07T04:06:06.3735133Z hint: call:
+deploy	Checkout code	2026-05-07T04:06:06.3736700Z hint:
+deploy	Checkout code	2026-05-07T04:06:06.3739051Z hint: 	git config --global init.defaultBranch <name>
+deploy	Checkout code	2026-05-07T04:06:06.3740640Z hint:
+deploy	Checkout code	2026-05-07T04:06:06.3742114Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+deploy	Checkout code	2026-05-07T04:06:06.3744473Z hint: 'development'. The just-created branch can be renamed via this command:
+deploy	Checkout code	2026-05-07T04:06:06.3746261Z hint:
+deploy	Checkout code	2026-05-07T04:06:06.3747348Z hint: 	git branch -m <name>
+deploy	Checkout code	2026-05-07T04:06:06.3748561Z hint:
+deploy	Checkout code	2026-05-07T04:06:06.3750401Z hint: Disable this message with "git config set advice.defaultBranchName false"
+deploy	Checkout code	2026-05-07T04:06:06.3753024Z Initialized empty Git repository in /home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos/.git/
+deploy	Checkout code	2026-05-07T04:06:06.3757188Z [command]/usr/bin/git remote add origin https://github.com/tobiasgaitan/Bot-TiendaLasMotos
+deploy	Checkout code	2026-05-07T04:06:06.3771007Z ##[endgroup]
+deploy	Checkout code	2026-05-07T04:06:06.3773538Z ##[group]Disabling automatic garbage collection
+deploy	Checkout code	2026-05-07T04:06:06.3775214Z [command]/usr/bin/git config --local gc.auto 0
+deploy	Checkout code	2026-05-07T04:06:06.3804513Z ##[endgroup]
+deploy	Checkout code	2026-05-07T04:06:06.3806358Z ##[group]Setting up auth
+deploy	Checkout code	2026-05-07T04:06:06.3810382Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+deploy	Checkout code	2026-05-07T04:06:06.3839357Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+deploy	Checkout code	2026-05-07T04:06:06.4116177Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+deploy	Checkout code	2026-05-07T04:06:06.4148065Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+deploy	Checkout code	2026-05-07T04:06:06.4358533Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+deploy	Checkout code	2026-05-07T04:06:06.4398506Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+deploy	Checkout code	2026-05-07T04:06:06.4635895Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+deploy	Checkout code	2026-05-07T04:06:06.4669606Z ##[endgroup]
+deploy	Checkout code	2026-05-07T04:06:06.4671578Z ##[group]Fetching the repository
+deploy	Checkout code	2026-05-07T04:06:06.4678288Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +f7085f8afe65410f90e94fb6fe1963e0ee44c5d9:refs/remotes/origin/beta
+deploy	Checkout code	2026-05-07T04:06:06.8472845Z From https://github.com/tobiasgaitan/Bot-TiendaLasMotos
+deploy	Checkout code	2026-05-07T04:06:06.8475001Z  * [new ref]         f7085f8afe65410f90e94fb6fe1963e0ee44c5d9 -> origin/beta
+deploy	Checkout code	2026-05-07T04:06:06.8502873Z ##[endgroup]
+deploy	Checkout code	2026-05-07T04:06:06.8505135Z ##[group]Determining the checkout info
+deploy	Checkout code	2026-05-07T04:06:06.8507311Z ##[endgroup]
+deploy	Checkout code	2026-05-07T04:06:06.8509791Z [command]/usr/bin/git sparse-checkout disable
+deploy	Checkout code	2026-05-07T04:06:06.8549495Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+deploy	Checkout code	2026-05-07T04:06:06.8577772Z ##[group]Checking out the ref
+deploy	Checkout code	2026-05-07T04:06:06.8579939Z [command]/usr/bin/git checkout --progress --force -B beta refs/remotes/origin/beta
+deploy	Checkout code	2026-05-07T04:06:06.8730923Z Switched to a new branch 'beta'
+deploy	Checkout code	2026-05-07T04:06:06.8734141Z branch 'beta' set up to track 'origin/beta'.
+deploy	Checkout code	2026-05-07T04:06:06.8741333Z ##[endgroup]
+deploy	Checkout code	2026-05-07T04:06:06.8772926Z [command]/usr/bin/git log -1 --format=%H
+deploy	Checkout code	2026-05-07T04:06:06.8795497Z f7085f8afe65410f90e94fb6fe1963e0ee44c5d9
+deploy	Install uv	﻿2026-05-07T04:06:06.9123914Z ##[group]Run astral-sh/setup-uv@v5
+deploy	Install uv	2026-05-07T04:06:06.9125268Z with:
+deploy	Install uv	2026-05-07T04:06:06.9126880Z   github-token: ***
+deploy	Install uv	2026-05-07T04:06:06.9128034Z   enable-cache: auto
+deploy	Install uv	2026-05-07T04:06:06.9129611Z   cache-dependency-glob: **/uv.lock
+deploy	Install uv	**/requirements*.txt
+deploy	Install uv	
+deploy	Install uv	2026-05-07T04:06:06.9131157Z   prune-cache: true
+deploy	Install uv	2026-05-07T04:06:06.9132327Z   ignore-nothing-to-cache: false
+deploy	Install uv	2026-05-07T04:06:06.9133635Z   ignore-empty-workdir: false
+deploy	Install uv	2026-05-07T04:06:06.9134856Z ##[endgroup]
+deploy	Install uv	2026-05-07T04:06:07.4799603Z Downloading uv from "https://github.com/astral-sh/uv/releases/download/0.11.11/uv-x86_64-unknown-linux-gnu.tar.gz" ...
+deploy	Install uv	2026-05-07T04:06:07.8432484Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/81054458-d625-4c8b-b88c-84b631fbbf8a -f /home/runner/work/_temp/15bf68c2-c8a2-430f-8984-4be639c9f478
+deploy	Install uv	2026-05-07T04:06:08.2994970Z Added /home/runner/.local/bin to the path
+deploy	Install uv	2026-05-07T04:06:08.2998235Z Added /opt/hostedtoolcache/uv/0.11.11/x86_64 to the path
+deploy	Install uv	2026-05-07T04:06:08.3022055Z Set UV_CACHE_DIR to /home/runner/work/_temp/setup-uv-cache
+deploy	Install uv	2026-05-07T04:06:08.3023024Z Successfully installed uv version 0.11.11
+deploy	Install uv	2026-05-07T04:06:08.3024146Z Searching files using cache dependency glob: **/uv.lock,**/requirements*.txt
+deploy	Install uv	2026-05-07T04:06:08.3325740Z /home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos/requirements.txt
+deploy	Install uv	2026-05-07T04:06:08.3417815Z /home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos/uv.lock
+deploy	Install uv	2026-05-07T04:06:08.3432036Z Found 2 files to hash.
+deploy	Install uv	2026-05-07T04:06:08.4763037Z Trying to restore uv cache from GitHub Actions cache with key: setup-uv-1-x86_64-unknown-linux-gnu-unknown-5f51056bb00ee1d203640c79ea112f0b9512808da869498fc87cd46c6b7cf21e
+deploy	Install uv	2026-05-07T04:06:08.5781599Z Cache hit for: setup-uv-1-x86_64-unknown-linux-gnu-unknown-5f51056bb00ee1d203640c79ea112f0b9512808da869498fc87cd46c6b7cf21e
+deploy	Install uv	2026-05-07T04:06:08.9527346Z Received 5455941 of 5455941 (100.0%), 18.5 MBs/sec
+deploy	Install uv	2026-05-07T04:06:08.9528153Z Cache Size: ~5 MB (5455941 B)
+deploy	Install uv	2026-05-07T04:06:08.9568279Z [command]/usr/bin/tar -xf /home/runner/work/_temp/7f984319-8ac9-47e3-b356-693fe561e9ae/cache.tzst -P -C /home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos --use-compress-program unzstd
+deploy	Install uv	2026-05-07T04:06:09.0023720Z Cache restored successfully
+deploy	Install uv	2026-05-07T04:06:09.0033086Z uv cache restored from GitHub Actions cache with key: setup-uv-1-x86_64-unknown-linux-gnu-unknown-5f51056bb00ee1d203640c79ea112f0b9512808da869498fc87cd46c6b7cf21e
+deploy	Authenticate to Google Cloud	﻿2026-05-07T04:06:09.0250866Z ##[group]Run google-github-actions/auth@v2
+deploy	Authenticate to Google Cloud	2026-05-07T04:06:09.0251315Z with:
+deploy	Authenticate to Google Cloud	2026-05-07T04:06:09.0260883Z   credentials_json: ***
+deploy	Authenticate to Google Cloud	2026-05-07T04:06:09.0261234Z   create_credentials_file: true
+deploy	Authenticate to Google Cloud	2026-05-07T04:06:09.0261590Z   export_environment_variables: true
+deploy	Authenticate to Google Cloud	2026-05-07T04:06:09.0261940Z   universe: googleapis.com
+deploy	Authenticate to Google Cloud	2026-05-07T04:06:09.0262258Z   cleanup_credentials: true
+deploy	Authenticate to Google Cloud	2026-05-07T04:06:09.0262570Z   access_token_lifetime: 3600s
+deploy	Authenticate to Google Cloud	2026-05-07T04:06:09.0263016Z   access_token_scopes: https://www.googleapis.com/auth/cloud-platform
+deploy	Authenticate to Google Cloud	2026-05-07T04:06:09.0263493Z   id_token_include_email: false
+deploy	Authenticate to Google Cloud	2026-05-07T04:06:09.0263794Z env:
+deploy	Authenticate to Google Cloud	2026-05-07T04:06:09.0264101Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+deploy	Authenticate to Google Cloud	2026-05-07T04:06:09.0264492Z ##[endgroup]
+deploy	Authenticate to Google Cloud	2026-05-07T04:06:09.1174407Z Created credentials file at "/home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos/gha-creds-ece1122ddf204b13.json"
+deploy	Set up Cloud SDK	﻿2026-05-07T04:06:09.1332364Z ##[group]Run google-github-actions/setup-gcloud@v2
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1332803Z with:
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1333077Z   version: latest
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1333363Z   skip_install: false
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1333654Z   skip_tool_cache: false
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1333948Z env:
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1334257Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1334983Z   CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: /home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos/gha-creds-ece1122ddf204b13.json
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1335937Z   GOOGLE_APPLICATION_CREDENTIALS: /home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos/gha-creds-ece1122ddf204b13.json
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1336812Z   GOOGLE_GHA_CREDS_PATH: /home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos/gha-creds-ece1122ddf204b13.json
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1337627Z   CLOUDSDK_CORE_PROJECT: tiendalasmotos
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1338000Z   CLOUDSDK_PROJECT: tiendalasmotos
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1338341Z   GCLOUD_PROJECT: tiendalasmotos
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1339013Z   GCP_PROJECT: tiendalasmotos
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1339370Z   GOOGLE_CLOUD_PROJECT: tiendalasmotos
+deploy	Set up Cloud SDK	2026-05-07T04:06:09.1339706Z ##[endgroup]
+deploy	Set up Cloud SDK	2026-05-07T04:06:10.6437216Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/9d59599b-22dd-4785-bac1-638b75ec83c0 -f /home/runner/work/_temp/224da33c-b534-4f1c-8392-39e4cb28f27d
+deploy	Set up Cloud SDK	2026-05-07T04:06:30.9156119Z Successfully authenticated
+deploy	Deploy to Cloud Run	﻿2026-05-07T04:06:30.9351918Z ##[group]Run gcloud run deploy bot-tiendalasmotos-beta \
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9352517Z [36;1mgcloud run deploy bot-tiendalasmotos-beta \[0m
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9352937Z [36;1m  --source . \[0m
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9353253Z [36;1m  --region us-central1 \[0m
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9353614Z [36;1m  --project tiendalasmotos \[0m
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9355789Z [36;1m  --set-env-vars="PHONE_NUMBER_ID=***,WHATSAPP_TOKEN=***,FIRESTORE_COLLECTION=prospectos,WEBHOOK_VERIFY_TOKEN=***,ADMIN_API_KEY=***" \[0m
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9356515Z [36;1m  --allow-unauthenticated[0m
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9381544Z shell: /usr/bin/bash -e ***0***
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9381894Z env:
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9382222Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9382941Z   CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: /home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos/gha-creds-ece1122ddf204b13.json
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9383890Z   GOOGLE_APPLICATION_CREDENTIALS: /home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos/gha-creds-ece1122ddf204b13.json
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9384786Z   GOOGLE_GHA_CREDS_PATH: /home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos/gha-creds-ece1122ddf204b13.json
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9385384Z   CLOUDSDK_CORE_PROJECT: tiendalasmotos
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9385737Z   CLOUDSDK_PROJECT: tiendalasmotos
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9386090Z   GCLOUD_PROJECT: tiendalasmotos
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9386423Z   GCP_PROJECT: tiendalasmotos
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9386758Z   GOOGLE_CLOUD_PROJECT: tiendalasmotos
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9387172Z   CLOUDSDK_METRICS_ENVIRONMENT: github-actions-setup-gcloud
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9387621Z   CLOUDSDK_METRICS_ENVIRONMENT_VERSION: 2.2.1
+deploy	Deploy to Cloud Run	2026-05-07T04:06:30.9387975Z ##[endgroup]
+deploy	Deploy to Cloud Run	2026-05-07T04:06:34.6190271Z Building using Dockerfile and deploying container to Cloud Run service [bot-tiendalasmotos-beta] in project [tiendalasmotos] region [us-central1]
+deploy	Deploy to Cloud Run	2026-05-07T04:06:34.6191593Z Building and deploying...
+deploy	Deploy to Cloud Run	2026-05-07T04:06:34.9519676Z Validating configuration.......done
+deploy	Deploy to Cloud Run	2026-05-07T04:06:35.6541133Z Uploading sources...........done
+deploy	Deploy to Cloud Run	2026-05-07T04:08:28.9295756Z Building Container.........................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................failed
+deploy	Deploy to Cloud Run	2026-05-07T04:08:28.9302108Z Deployment failed
+deploy	Deploy to Cloud Run	2026-05-07T04:08:28.9719204Z ERROR: (gcloud.run.deploy) Build failed; check build logs for details
+deploy	Deploy to Cloud Run	2026-05-07T04:08:29.1142142Z ##[error]Process completed with exit code 1.
+deploy	Post Authenticate to Google Cloud	﻿2026-05-07T04:08:29.1268006Z Post job cleanup.
+deploy	Post Authenticate to Google Cloud	2026-05-07T04:08:29.2150836Z Removed exported credentials at "/home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos/gha-creds-ece1122ddf204b13.json".
+deploy	Post Checkout code	﻿2026-05-07T04:08:29.2292530Z Post job cleanup.
+deploy	Post Checkout code	2026-05-07T04:08:29.3270770Z [command]/usr/bin/git version
+deploy	Post Checkout code	2026-05-07T04:08:29.3307355Z git version 2.53.0
+deploy	Post Checkout code	2026-05-07T04:08:29.3354126Z Temporarily overriding HOME='/home/runner/work/_temp/06d6743b-c816-4c22-9e78-da37093ddf9d' before making global git config changes
+deploy	Post Checkout code	2026-05-07T04:08:29.3355334Z Adding repository directory to the temporary git global config as a safe directory
+deploy	Post Checkout code	2026-05-07T04:08:29.3362120Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Bot-TiendaLasMotos/Bot-TiendaLasMotos
+deploy	Post Checkout code	2026-05-07T04:08:29.3403823Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+deploy	Post Checkout code	2026-05-07T04:08:29.3434878Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+deploy	Post Checkout code	2026-05-07T04:08:29.3656961Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+deploy	Post Checkout code	2026-05-07T04:08:29.3677046Z http.https://github.com/.extraheader
+deploy	Post Checkout code	2026-05-07T04:08:29.3689791Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+deploy	Post Checkout code	2026-05-07T04:08:29.3718446Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+deploy	Post Checkout code	2026-05-07T04:08:29.3932364Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+deploy	Post Checkout code	2026-05-07T04:08:29.3962071Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+deploy	Complete job	﻿2026-05-07T04:08:29.4309530Z Cleaning up orphan processes
+deploy	Complete job	2026-05-07T04:08:29.4594907Z ##[warning]Node.js 20 actions are deprecated. The following actions are running on Node.js 20 and may not work as expected: actions/checkout@v4, astral-sh/setup-uv@v5, google-github-actions/auth@v2, google-github-actions/setup-gcloud@v2. Actions will be forced to run with Node.js 24 by default starting June 2nd, 2026. Node.js 20 will be removed from the runner on September 16th, 2026. Please check if updated versions of these actions are available that support Node.js 24. To opt into Node.js 24 now, set the FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true environment variable on the runner or in your workflow file. Once Node.js 24 becomes the default, you can temporarily opt out by setting ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

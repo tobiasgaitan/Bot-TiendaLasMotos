@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
 ## Tasks Completadas (v10.45.14)
+- [x] Erradicar la vulnerabilidad concurrente de lectura/escritura en los Singletons de configuración (`ConfigLoader` core y `FinanceConfigLoader`) mediante RLock interno de escritura y commit atómico assign-at-end, con autopsia forense pre/post en `tests/test_refresh_atomicity.py` (7 invariantes: sin estado rasgado, sin defaults transitorios, fallback por documento preservado, getters libres de lock); cuarentena de artefactos raíz obsoletos en `attic/` + `.graphifyignore` con regeneración del grafo (0 aristas cruzadas core↔finance, 0 nodos huérfanos); cierre formal de RF-3 y RF-4; 367/367 tests verdes [BOT-BUILD-REFACTOR-03-05-RESIDUAL].
 - [x] Restaurar el enrutamiento de intención técnica en payloads visuales (imagen + caption): ampliación del léxico coloquial de TECH_SPEC_TOKENS (cambios, encendido, velocidad, marchas, arranque, tablero, suspensión, tanque, freno, etc.), inyección determinista de la ficha canónica del ítem matcheado en 'simulated_user_msg' (bloque [BOT-207]) y backstop post-generación estilo Visual Lock que garantiza el prefijo obligatorio 'Ficha Tecnica:' (PCC Pro) en la rama imagen de 'app/routers/whatsapp.py', con 4 tests nuevos (léxico T1 + flujo T2-T4) y certificación 368/368 bajo 'npx agent-cli eval' [BOT-BUILD-BUGFIX-MULTIMODAL-CAPTION-01].
 - [x] Modificar 'app/core/config.py' en la carga de variables de entorno para aplicar un saneamiento agresivo (.strip()) sobre las credenciales críticas de la API (incluyendo 'WHATSAPP_TOKEN' y 'WHATSAPP_APP_SECRET') antes de ejecutar '_validate_config()'. Esto limpiará de forma automática cualquier espacio o salto de línea residual introducido por la terminal, y agregar el caso de prueba unitaria en 'tests/test_startup_lock.py' [BOT-INFRA-BUGFIX-TOKEN-STRIP-194].
 - [x] Refactorizar de forma aislada y atómica el endpoint '/health' dentro de 'app/main.py' para obligar a que devuelva un código HTTP 200 OK con el JSON {'status': 'starting', 'detail': 'Catalog initialization in progress'} de manera INMEDIATA y síncrona si no está listo, y agregar el test 'test_health_endpoint_never_returns_503_during_hydration' [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192].
@@ -58,4 +59,4 @@
 - [x] Validar no regresión y eval general (349/349 tests PASSED bajo `.venv` Python 3.13, 25/25 multimodales) [BOT-BUILD-MULTIMODAL-CIERRE-196]
 
 ---
-*Last updated: 2026-07-20*
+*Last updated: 2026-07-21*

@@ -7,6 +7,7 @@ Loads and manages dynamic configuration from Firestore for:
 """
 
 import logging
+import threading
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -62,6 +63,11 @@ class ConfigLoader:
         self._routing_rules: Optional[Dict[str, Any]] = None
         self._catalog_config: Optional[Dict[str, Any]] = None
         self._last_loaded: Optional[datetime] = None
+        # [BOT-BUILD-REFACTOR-03-05-RESIDUAL]
+        # WHY: RLock de escritura. Serializa load_all()/refresh() entre hilos
+        # (el startup diferido y el refresh admin vía asyncio.to_thread comparten
+        # el executor por defecto). NUNCA se adquiere en los getters (vía rápida).
+        self._write_lock = threading.RLock()
         self._initialized = True
     
     def load_all(self) -> None:
@@ -73,76 +79,88 @@ class ConfigLoader:
             - configuracion/routing_rules: Message routing keywords
             - configuracion/catalog_config: Product catalog settings
         """
-        try:
-            logger.info("🧠 Loading v8.0.0 dynamic configuration...")
-            
-            # Load Juan Pablo personality configuration
-            self._load_juan_pablo_personality()
-            
-            # Load routing rules
-            self._load_routing_rules()
-            
-            # Load catalog configuration
-            self._load_catalog_config()
-            
-            self._last_loaded = datetime.now()
-            logger.info("✅ v8.0.0 configuration loaded successfully")
-            
-        except Exception as e:
-            logger.error(f"❌ Error loading v8.0.0 configuration: {str(e)}")
-            # Initialize with safe defaults to prevent crashes
-            self._initialize_defaults()
+        # WHY RLock + assign-at-end: los 3 documentos se acumulan en variables
+        # locales y se publican en un único commit final. Un lector concurrente
+        # ve el snapshot previo ÍNTEGRO o el nuevo ÍNTEGRO; jamás una mezcla
+        # rasgada ni defaults transitorios (BOT-BUILD-REFACTOR-03-05-RESIDUAL).
+        with self._write_lock:
+            try:
+                logger.info("🧠 Loading v8.0.0 dynamic configuration...")
+
+                # Load Juan Pablo personality configuration
+                juan_pablo_personality = self._load_juan_pablo_personality()
+
+                # Load routing rules
+                routing_rules = self._load_routing_rules()
+
+                # Load catalog configuration
+                catalog_config = self._load_catalog_config()
+
+                # ATOMIC COMMIT (cada asignación es GIL-atómica, sin I/O entre ellas)
+                self._juan_pablo_personality = juan_pablo_personality
+                self._routing_rules = routing_rules
+                self._catalog_config = catalog_config
+                self._last_loaded = datetime.now()
+                logger.info("✅ v8.0.0 configuration loaded successfully")
+
+            except Exception as e:
+                logger.error(f"❌ Error loading v8.0.0 configuration: {str(e)}")
+                # Initialize with safe defaults to prevent crashes
+                self._initialize_defaults()
     
-    def _load_juan_pablo_personality(self) -> None:
+    def _load_juan_pablo_personality(self) -> Dict[str, Any]:
         """Load Juan Pablo AI personality configuration from Firestore."""
         try:
             doc_ref = self._db.collection("configuracion").document("juan_pablo_personality")
             doc = doc_ref.get()
-            
+
             if doc.exists:
-                self._juan_pablo_personality = doc.to_dict()
-                logger.info(f"✅ Juan Pablo personality loaded (model: {self._juan_pablo_personality.get('model_version')})")
+                personality = doc.to_dict()
+                logger.info(f"✅ Juan Pablo personality loaded (model: {personality.get('model_version')})")
+                return personality
             else:
                 logger.warning("⚠️  Juan Pablo personality document not found, using defaults")
-                self._juan_pablo_personality = self._get_default_juan_pablo_personality()
-                
+                return self._get_default_juan_pablo_personality()
+
         except Exception as e:
             logger.error(f"❌ Error loading Juan Pablo personality: {str(e)}")
-            self._juan_pablo_personality = self._get_default_juan_pablo_personality()
+            return self._get_default_juan_pablo_personality()
     
-    def _load_routing_rules(self) -> None:
+    def _load_routing_rules(self) -> Dict[str, Any]:
         """Load message routing rules from Firestore."""
         try:
             doc_ref = self._db.collection("configuracion").document("routing_rules")
             doc = doc_ref.get()
-            
+
             if doc.exists:
-                self._routing_rules = doc.to_dict()
-                logger.info(f"✅ Routing rules loaded ({len(self._routing_rules.get('financial_keywords', []))} financial keywords)")
+                routing_rules = doc.to_dict()
+                logger.info(f"✅ Routing rules loaded ({len(routing_rules.get('financial_keywords', []))} financial keywords)")
+                return routing_rules
             else:
                 logger.warning("⚠️  Routing rules document not found, using defaults")
-                self._routing_rules = self._get_default_routing_rules()
-                
+                return self._get_default_routing_rules()
+
         except Exception as e:
             logger.error(f"❌ Error loading routing rules: {str(e)}")
-            self._routing_rules = self._get_default_routing_rules()
+            return self._get_default_routing_rules()
     
-    def _load_catalog_config(self) -> None:
+    def _load_catalog_config(self) -> Dict[str, Any]:
         """Load catalog configuration from Firestore."""
         try:
             doc_ref = self._db.collection("configuracion").document("catalog_config")
             doc = doc_ref.get()
-            
+
             if doc.exists:
-                self._catalog_config = doc.to_dict()
-                logger.info(f"✅ Catalog config loaded ({len(self._catalog_config.get('items', []))} items)")
+                catalog_config = doc.to_dict()
+                logger.info(f"✅ Catalog config loaded ({len(catalog_config.get('items', []))} items)")
+                return catalog_config
             else:
                 logger.warning("⚠️  Catalog config document not found, using defaults")
-                self._catalog_config = self._get_default_catalog_config()
-                
+                return self._get_default_catalog_config()
+
         except Exception as e:
             logger.error(f"❌ Error loading catalog config: {str(e)}")
-            self._catalog_config = self._get_default_catalog_config()
+            return self._get_default_catalog_config()
             
 
     

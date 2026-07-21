@@ -5,6 +5,7 @@ Implements in-memory caching with TTL (5 minutes) and robust fallbacks.
 """
 
 import logging
+import threading
 import time
 from typing import Dict, Any, Optional
 from google.cloud import firestore
@@ -59,6 +60,11 @@ class FinanceConfigLoader:
         self._financial_cache: Optional[Dict[str, Any]] = None
         self._partners_cache: Optional[Dict[str, Any]] = None
         self._last_fetch_time = 0.0
+        # [BOT-BUILD-REFACTOR-03-05-RESIDUAL]
+        # WHY: RLock de escritura. _check_cache() refresca inline en hilos de
+        # request al expirar el TTL; serializa esas mutaciones. NUNCA se adquiere
+        # en los getters (vía rápida de lectura).
+        self._write_lock = threading.RLock()
         self._initialized = True
         logger.info("🔧 FinanceConfigLoader initialized (Service Layer)")
 
@@ -74,38 +80,46 @@ class FinanceConfigLoader:
             logger.error("❌ FinanceConfigLoader: Cannot refresh, DB not initialized.")
             return
 
-        try:
-            # 1. Financial Config
-            fin_ref = self._db.collection("financial_config").document("general").collection("global_params").document("global_params")
-            fin_doc = fin_ref.get()
-            
-            if fin_doc.exists:
-                self._financial_cache = fin_doc.to_dict()
-                logger.info(f"✅ Loaded Financial Config from Firestore: {self._financial_cache}")
-            else:
-                logger.critical("🔥 CRITICAL: 'financial_config/.../global_params' not found! Using Hardcoded Defaults.")
-                self._financial_cache = self.DEFAULT_FINANCIAL.copy()
+        # WHY RLock + assign-at-end: ambos documentos se acumulan en variables
+        # locales y se publican en un único commit final. Un lector concurrente
+        # ve el par previo ÍNTEGRO o el nuevo ÍNTEGRO; jamás una mezcla rasgada
+        # (BOT-BUILD-REFACTOR-03-05-RESIDUAL).
+        with self._write_lock:
+            try:
+                # 1. Financial Config
+                fin_ref = self._db.collection("financial_config").document("general").collection("global_params").document("global_params")
+                fin_doc = fin_ref.get()
 
-            # 2. Partners Config
-            aliados_ref = self._db.collection("configuracion").document("aliados")
-            aliados_doc = aliados_ref.get()
-            
-            if aliados_doc.exists:
-                self._partners_cache = aliados_doc.to_dict()
-                logger.info(f"✅ Loaded Partners Config from Firestore: {len(self._partners_cache)} items")
-            else:
-                logger.critical("🔥 CRITICAL: 'configuracion/aliados' not found! Using Hardcoded Defaults.")
-                self._partners_cache = self.DEFAULT_PARTNERS.copy()
+                if fin_doc.exists:
+                    financial_cache = fin_doc.to_dict()
+                    logger.info(f"✅ Loaded Financial Config from Firestore: {financial_cache}")
+                else:
+                    logger.critical("🔥 CRITICAL: 'financial_config/.../global_params' not found! Using Hardcoded Defaults.")
+                    financial_cache = self.DEFAULT_FINANCIAL.copy()
 
-            self._last_fetch_time = time.time()
-            
-        except Exception as e:
-            logger.critical(f"🔥 CRITICAL: Error refreshing config: {e}. using defaults.")
-            # Ensure we have something
-            if not self._financial_cache:
-                self._financial_cache = self.DEFAULT_FINANCIAL.copy()
-            if not self._partners_cache:
-                self._partners_cache = self.DEFAULT_PARTNERS.copy()
+                # 2. Partners Config
+                aliados_ref = self._db.collection("configuracion").document("aliados")
+                aliados_doc = aliados_ref.get()
+
+                if aliados_doc.exists:
+                    partners_cache = aliados_doc.to_dict()
+                    logger.info(f"✅ Loaded Partners Config from Firestore: {len(partners_cache)} items")
+                else:
+                    logger.critical("🔥 CRITICAL: 'configuracion/aliados' not found! Using Hardcoded Defaults.")
+                    partners_cache = self.DEFAULT_PARTNERS.copy()
+
+                # ATOMIC COMMIT (cada asignación es GIL-atómica, sin I/O entre ellas)
+                self._financial_cache = financial_cache
+                self._partners_cache = partners_cache
+                self._last_fetch_time = time.time()
+
+            except Exception as e:
+                logger.critical(f"🔥 CRITICAL: Error refreshing config: {e}. using defaults.")
+                # Ensure we have something
+                if not self._financial_cache:
+                    self._financial_cache = self.DEFAULT_FINANCIAL.copy()
+                if not self._partners_cache:
+                    self._partners_cache = self.DEFAULT_PARTNERS.copy()
 
     def _check_cache(self) -> None:
         """Checks if cache is valid, otherwise refreshes."""
