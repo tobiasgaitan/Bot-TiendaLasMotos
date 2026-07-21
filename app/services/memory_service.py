@@ -681,6 +681,52 @@ class MemoryService:
         except Exception as e:
             logger.exception(f"❌ [STATUSES] Error actualizando metadata.whatsapp para {phone_number}: {e}")
 
+    async def claim_webhook_idempotency(self, wamid: str, phone: str) -> bool:
+        """
+        [RF-1 / BOT-BUILD-REFACTOR-ETAPA1-WAVE2-200] Reclamo atómico de idempotencia (Piso 2).
+
+        Crea el documento `processed_webhooks/{wamid}` con semántica create-only:
+          - Primera entrega → crea y retorna True.
+          - Entrega duplicada (reintento Cloud Tasks / Meta) → AlreadyExists → retorna False.
+
+        WHY: La barrera RAM (register_wamid) vive solo en webhook_handler y por proceso;
+        este reclamo durable cubre el worker multi-instancia de Cloud Run. El documento
+        porta `claimed_at` para limpieza operativa vía TTL de Firestore (tarea de infra).
+        """
+        doc_ref = self._db.collection("processed_webhooks").document(wamid)
+        try:
+            await asyncio.wait_for(
+                doc_ref.create({
+                    "wamid": wamid,
+                    "phone": phone,
+                    "claimed_at": firestore.SERVER_TIMESTAMP
+                }),
+                timeout=settings.db_timeout
+            )
+            return True
+        except gcp_exceptions.AlreadyExists:
+            logger.warning(
+                f"🔄 [RF-1] Entrega duplicada ignorada por reclamo durable: "
+                f"wamid='{wamid}' phone='{phone}'"
+            )
+            return False
+
+    async def release_webhook_claim(self, wamid: str, phone: str) -> None:
+        """
+        [RF-1] Libera el reclamo durable ante fallo de procesamiento, permitiendo el
+        reproceso vía reintento de Cloud Tasks (TTL 120s, BOT-BRAIN-ALIGNMENT-099).
+        Best-effort: jamás enmascara la excepción original del pipeline.
+        """
+        doc_ref = self._db.collection("processed_webhooks").document(wamid)
+        try:
+            await asyncio.wait_for(doc_ref.delete(), timeout=settings.db_timeout)
+            logger.info(f"🔓 [RF-1] Reclamo de idempotencia liberado para reproceso: wamid='{wamid}'")
+        except Exception as e:
+            logger.exception(
+                f"❌ [RF-1] Fallo al liberar reclamo de idempotencia "
+                f"wamid='{wamid}' phone='{phone}': {e}"
+            )
+
 
 # ──────────────────────────────────────────────────────────────────────
 # Module-level singleton (used by routers)

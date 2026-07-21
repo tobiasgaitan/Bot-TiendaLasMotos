@@ -640,10 +640,43 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
         logger.error("❌ Message payload missing 'from' phone number")
         return
     user_phone = PhoneNormalizer.normalize(raw_phone)
-    
+
+    # [RF-1 / BOT-BUILD-REFACTOR-ETAPA1-WAVE2-200] Barrera de idempotencia durable (Piso 2).
+    # WHY: La barrera RAM (register_wamid, Piso 1, intacta en webhook_handler) solo protege
+    # la ingesta en ESTA instancia. Este reclamo atómico en Firestore (colección
+    # 'processed_webhooks', create-only) cubre las entregas duplicadas de Cloud Tasks
+    # (at-least-once, multi-instancia) en el embudo compartido por ambas rutas.
+    # Kill-switch de rollback: WEBHOOK_IDEMPOTENCY_ENABLED=false.
+    msg_id_unique = msg_data.get("id") or f"{user_phone}_{int(datetime.now().timestamp())}"
+    ms = memory_service_module.memory_service
+    idempotency_armed = settings.webhook_idempotency_enabled and bool(ms)
+    if idempotency_armed:
+        try:
+            claimed = await ms.claim_webhook_idempotency(msg_id_unique, user_phone)
+        except Exception as e:
+            # Degradación controlada: ante fallo de INFRAESTRUCTURA del reclamo (red/timeout)
+            # se continúa con la barrera RAM (Piso 1) y la contingencia propia del impl.
+            claimed = True
+            logger.exception(
+                f"⚠️ [RF-1] No se pudo evaluar el reclamo durable para wamid='{msg_id_unique}' "
+                f"phone='{user_phone}' (degradando a Piso 1): {e}"
+            )
+        if not claimed:
+            return  # Entrega duplicada: efecto exactly-once garantizado por el reclamo.
+
     lock = await _get_session_lock(user_phone)
-    async with lock:
-        await _handle_message_background_impl(msg_data, background_tasks)
+    try:
+        async with lock:
+            await _handle_message_background_impl(msg_data, background_tasks)
+    except Exception as e:
+        logger.exception(
+            f"❌ [RF-1] Fallo procesando mensaje wamid='{msg_id_unique}' phone='{user_phone}': {e}"
+        )
+        # Contrato de fallo RF-1: liberar el reclamo para permitir el reproceso
+        # vía reintento de Cloud Tasks (TTL 120s, BOT-BRAIN-ALIGNMENT-099).
+        if idempotency_armed:
+            await ms.release_webhook_claim(msg_id_unique, user_phone)
+        raise
 
 async def _handle_message_background_impl(msg_data: Dict[str, Any], background_tasks: BackgroundTasks) -> None:
     """Lógica principal del bot (Procesamiento Asíncrono - Implementación)"""

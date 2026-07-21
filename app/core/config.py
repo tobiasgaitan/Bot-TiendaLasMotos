@@ -61,6 +61,11 @@ class Settings:
         self.cloud_tasks_queue_path: Optional[str] = os.getenv("CLOUD_TASKS_QUEUE_PATH")
         self.task_processor_url: Optional[str] = os.getenv("TASK_PROCESSOR_URL")
         
+        # Durable Webhook Idempotency (RF-1 / BOT-BUILD-REFACTOR-ETAPA1-WAVE2-200)
+        # WHY: Kill-switch de rollback para la barrera durable 'processed_webhooks'
+        # (Piso 2). Activa por defecto; desactivar SOLO ante regresión certificada.
+        self.webhook_idempotency_enabled: bool = os.getenv("WEBHOOK_IDEMPOTENCY_ENABLED", "true").strip().lower() == "true"
+        
         # Validate critical settings
         self._validate_config()
 
