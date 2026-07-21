@@ -192,7 +192,11 @@ def _evaluate_skip_greeting(current_history: list, prospect_data: Optional[Dict[
 # Global variables initialized to None
 db = None
 config_loader = None
-motor_financiero = None
+# WHY: bound eagerly to the financial_service singleton (LazyProxy, L73) instead
+# of a lazy None filled inside _ensure_services_sync. Same object, zero observable
+# change; eliminates the transient None state that could be injected into
+# cerebro_ia. The module-level name is kept because tests patch it contractually.
+motor_financiero = financial_service
 message_buffer = None
 _active_resets = set() # v9.8.3: Guard against concurrent resets
 
@@ -239,11 +243,8 @@ def _ensure_services_sync():
             logger.error(f"❌ [INIT] ConfigService init failed: {e}", exc_info=True)
 
     # 3. Financial Service (Consolidated v1.5.0)
-    if db and not motor_financiero:
-         try:
-            motor_financiero = financial_service
-         except Exception as e:
-            logger.error(f"❌ [INIT] FinancialService init failed: {e}", exc_info=True)
+    # WHY: motor_financiero is now bound eagerly at module level (see STATE &
+    # INITIALIZATION). No lazy assignment remains here.
 
     # 4. Catalog Service
     if db and not catalog_service._db:

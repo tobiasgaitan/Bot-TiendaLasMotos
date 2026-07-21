@@ -6,6 +6,7 @@ DESIGN: Self-sufficient with lazy initialization.
 Does NOT rely on global memory_service to avoid 503 errors during startup.
 """
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -253,7 +254,11 @@ async def reset_handoff(
         )
         
         # Initialize Firestore and update flag (self-sufficient)
-        _set_human_help_status_direct(request.phone, request.status)
+        # WHY to_thread: _set_human_help_status_direct performs synchronous
+        # Firestore I/O (client + get + update/set). Running it directly on the
+        # event loop would block all concurrent requests (Linear Blocking,
+        # BOT-INFRA-ASYNC-094).
+        await asyncio.to_thread(_set_human_help_status_direct, request.phone, request.status)
         
         # Prepare success response
         status_text = "muted (human mode)" if request.status else "active (bot responding)"
@@ -330,7 +335,10 @@ async def refresh_config(
         config_loader = ConfigLoader()
 
         logger.info("🔄 Admin API: Force-refreshing ConfigLoader Singleton cache from Firestore...")
-        config_loader.refresh()
+        # WHY to_thread: refresh() performs 3 synchronous Firestore reads via
+        # load_all(). Running it on the event loop would block all concurrent
+        # requests (Linear Blocking, BOT-INFRA-ASYNC-094).
+        await asyncio.to_thread(config_loader.refresh)
 
         # Build a summary of what was reloaded for the operator
         personality = config_loader.get_juan_pablo_personality()
@@ -503,9 +511,13 @@ async def admin_health_check():
     # Test Firestore connectivity
     firestore_available = False
     try:
-        db = firestore.Client()
-        # Quick test query
-        db.collection(settings.firestore_collection).limit(1).get()
+        def _probe_firestore():
+            db = firestore.Client()
+            # Quick test query
+            db.collection(settings.firestore_collection).limit(1).get()
+        # WHY to_thread: the probe performs synchronous Firestore I/O and must
+        # not block the event loop (Linear Blocking, BOT-INFRA-ASYNC-094).
+        await asyncio.to_thread(_probe_firestore)
         firestore_available = True
     except Exception as e:
         logger.error(f"❌ Admin health check: Firestore unavailable: {str(e)}")

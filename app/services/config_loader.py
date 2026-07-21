@@ -11,7 +11,7 @@ from google.cloud import firestore
 
 logger = logging.getLogger(__name__)
 
-class ConfigLoader:
+class FinanceConfigLoader:
     """
     Service to load and cache configuration from Firestore.
     Follows Singleton pattern for shared state.
@@ -43,7 +43,7 @@ class ConfigLoader:
 
     def __new__(cls, db: Optional[firestore.Client] = None):
         if cls._instance is None:
-            cls._instance = super(ConfigLoader, cls).__new__(cls)
+            cls._instance = super(FinanceConfigLoader, cls).__new__(cls)
         return cls._instance
 
     def __init__(self, db: Optional[firestore.Client] = None):
@@ -51,7 +51,7 @@ class ConfigLoader:
             return
             
         if db is None:
-            logger.warning("Construction of ConfigLoader without DB client. Waiting for initialize.")
+            logger.warning("Construction of FinanceConfigLoader without DB client. Waiting for initialize.")
             self._db = None
         else:
             self._db = db
@@ -60,7 +60,7 @@ class ConfigLoader:
         self._partners_cache: Optional[Dict[str, Any]] = None
         self._last_fetch_time = 0.0
         self._initialized = True
-        logger.info("🔧 ConfigLoader initialized (Service Layer)")
+        logger.info("🔧 FinanceConfigLoader initialized (Service Layer)")
 
     def initialize(self, db: firestore.Client) -> None:
         """Late initialization of DB client."""
@@ -71,7 +71,7 @@ class ConfigLoader:
     def _refresh_cache(self) -> None:
         """Forces a refresh of the cache from Firestore."""
         if not self._db:
-            logger.error("❌ ConfigLoader: Cannot refresh, DB not initialized.")
+            logger.error("❌ FinanceConfigLoader: Cannot refresh, DB not initialized.")
             return
 
         try:

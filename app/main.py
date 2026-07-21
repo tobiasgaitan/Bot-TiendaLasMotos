@@ -56,7 +56,7 @@ firestore = LazyProxy("google.cloud", "firestore")
 get_firebase_credentials_object = LazyProxy("app.core.security", "get_firebase_credentials_object")
 ConfigLoader = LazyProxy("app.core.config_loader", "ConfigLoader")
 config_service = LazyProxy("app.services.config_service", "config_service")
-FinanceConfigLoader = LazyProxy("app.services.config_loader", "ConfigLoader")
+FinanceConfigLoader = LazyProxy("app.services.config_loader", "FinanceConfigLoader")
 storage_service = LazyProxy("app.services.storage_service", "storage_service")
 catalog_service = LazyProxy("app.services.catalog_service", "catalog_service")
 init_memory_service = LazyProxy("app.services.memory_service", "init_memory_service")
@@ -200,6 +200,16 @@ async def lifespan(app: FastAPI):
         await memory_service.shutdown()
     else:
         logger.warning("⚠️ MemoryService not initialized, skipping shutdown flush.")
+
+    # WHY sys.modules: audit_service performs BigQuery network I/O at import time.
+    # A direct import here would trigger that I/O during shutdown if the module was
+    # never loaded. Flushing only makes sense when the module (and its tracked
+    # tasks) already exists. (Zero-Silent-Failures / CLI Readiness exception.)
+    audit_module = sys.modules.get("app.services.audit_service")
+    if audit_module is not None:
+        await audit_module.audit_service.shutdown()
+    else:
+        logger.info("ℹ️ AuditService module never loaded, skipping audit flush.")
 
 
 async def _run_deferred_initialization(app: FastAPI) -> None:

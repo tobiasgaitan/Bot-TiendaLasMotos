@@ -1,6 +1,6 @@
 """
 Memory Service - CRM Integration & Long-Term Memory
-v9.6.0 - GSD Standard Compatibility (Linear Blocking)
+v9.8.5 - GSD Standard Compatibility (Linear Blocking)
 
 CHANGELOG v9.6.0:
   - Renamed self.db → self._db (tests access memory_service._db)

@@ -5,7 +5,7 @@ Logs interactions to BigQuery for auditing and analytics.
 
 import logging
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Set
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,7 @@ class AuditService:
             cls._instance.client = None
             cls._instance.dataset_id = "audit_logs"
             cls._instance.table_id = "interactions"
+            cls._instance._pending_tasks: Set[asyncio.Task] = set()
             
             if BQ_AVAILABLE:
                 try:
@@ -130,6 +131,37 @@ class AuditService:
             print(traceback.format_exc(), flush=True)
             raise
 
+    def _track_task(self, coro) -> asyncio.Task:
+        """
+        Register a coroutine as a tracked task to ensure visibility during shutdown.
+        WHY: an untracked create_task only holds a weak reference — the task can be
+        garbage-collected mid-flight, silently losing BigQuery audit rows.
+        Pattern reused from MemoryService._track_task (no new abstraction).
+        """
+        task = asyncio.create_task(coro)
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+        return task
+
+    async def shutdown(self, timeout: int = 8) -> None:
+        """
+        Graceful Shutdown Mechanism (Atomic Audit Flush).
+        Waits for all tracked insert tasks to complete before process termination.
+        Must never raise: shutdown of the process takes precedence.
+        """
+        if not self._pending_tasks:
+            logger.info("👋 [AUDIT-SHUTDOWN] No pending audit tasks. Closing cleanly.")
+            return
+
+        logger.info(f"⏳ [AUDIT-SHUTDOWN] Flushing {len(self._pending_tasks)} pending audit tasks (Timeout: {timeout}s)...")
+        try:
+            await asyncio.wait_for(asyncio.gather(*self._pending_tasks, return_exceptions=True), timeout=timeout)
+            logger.info("✅ [AUDIT-SHUTDOWN] All audit tasks flushed successfully.")
+        except asyncio.TimeoutError:
+            logger.warning(f"⚠️ [AUDIT-SHUTDOWN] Audit flush timed out after {timeout}s. {len(self._pending_tasks)} tasks lost.")
+        except Exception as e:
+            logger.exception(f"❌ [AUDIT-SHUTDOWN] Error during audit flush: {e}")
+
     async def log_interaction(self, 
                               phone: str, 
                               input_text: str, 
@@ -153,8 +185,8 @@ class AuditService:
             "metadata": "{}" # placeholder for JSON string
         }
         
-        # fire and forget task
-        asyncio.create_task(self._insert_row(row))
+        # tracked task (Zero-Silent-Failures: visible and flushable at shutdown)
+        self._track_task(self._insert_row(row))
 
     async def _insert_row(self, row: Dict[str, Any]):
         """Internal insertion logic."""
@@ -178,8 +210,9 @@ class AuditService:
                pass # Success (silent)
                
         except Exception as e:
-            # Silent fail to not disrupt service
-            logger.warning(f"⚠️ Audit Log failed: {e}")
+            # Contained to not disrupt service, but ALWAYS with forensic trace
+            # (Zero-Silent-Failures).
+            logger.exception(f"⚠️ Audit Log failed: {e}")
 
 # Global Instance
 audit_service = AuditService()

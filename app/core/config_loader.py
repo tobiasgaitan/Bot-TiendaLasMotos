@@ -69,7 +69,7 @@ class ConfigLoader:
         Load all v8.0.0 configuration documents from Firestore.
         
         Loads:
-            - configuracion/sebas_personality: AI personality configuration
+            - configuracion/juan_pablo_personality: AI personality configuration
             - configuracion/routing_rules: Message routing keywords
             - configuracion/catalog_config: Product catalog settings
         """
