@@ -1,48 +1,61 @@
 # Plan 04-01: Rotación T0 + Reescritura Forense Git — Summary
 
 **Executed:** 2026-07-22
-**Status:** ⏸️ Partial — PAUSADO en compuerta T0 (rotación de credenciales pendiente por el usuario)
-**Commits:** 2 (`0926140` docs plans fase, `34c738f` checklist + evidencia)
+**Status:** ✅ Complete
+**Commits:** `0926140` → `34c738f` → `7bd97c1` → `cba8657` (rescue) — reescritos como `6b44496` → `53d8adb` → `2f15f6b` → `116e08e`
 
 ## What Was Built
-- Checklist de rotación T0 (`04-01-ROTATION-CHECK.md`) — estado PENDING, bloqueante para el push.
-- Inventario forense completo: 3 literales únicos (2 tokens Meta EAATOs… 195/200 chars; 1 webhookSecret `secr…` 38 chars). Verificados NO-credenciales: `EAA_DUMMY_TOKEN_TEST` (allowlist), `.npmrc` `_authToken` (ref `${ENV_VAR}`), `key.json`/`.env` (nunca commiteados).
-- Clon espejo de origin (6 ramas, 1098 commits, refs/pull/1-2 de GitHub PRs) + reescritura con `git filter-repo --replace-text` (0.31s, repack OK).
-- Verificación post-rewrite en espejo: **0 hits de credenciales** en `rev-list --all`; whap.json muestra `***REMOVED***` (3 ocurrencias); 0 `BEGIN PRIVATE KEY` / `npm_` / `_authToken` literal; fsck limpio; conteo de commits intacto.
+- Checklist de rotación T0 (`04-01-ROTATION-CHECK.md`) — **CONFIRMED** por el usuario 2026-07-22 (R1–R6).
+- Inventario forense: 3 literales únicos (2 tokens Meta EAATOs… 195/200 chars; 1 webhookSecret 38 chars). Exclusiones verificadas: `EAA_DUMMY_TOKEN_TEST` (allowlist), `.npmrc` `_authToken` (ref `${ENV_VAR}`), `key.json`/`.env` (nunca commiteados).
+- Commit de rescate `cba8657`: trabajo Etapa-1 en curso + **purga de whap.json del tip de beta** (contenía webhookSecret vivo).
+- Reescritura total con `git filter-repo --replace-text` (2 pasadas: inicial + refresh con 4 commits nuevos) y **force-push de las 6 ramas a origin**.
+- Realineación local completa + eliminación de refs contaminados locales (tags v1.0.1/v1.0.2, rama hotfix-infra-k6-124, stash 2026-05-03 archivado y eliminado) + `git gc --prune=now`.
+- `secrets.txt` y archivos de extracción destruidos post-push.
+
+## Force-Push Results (verificado vía `git ls-remote origin`)
+| Rama | SHA anterior | SHA nuevo |
+|------|-------------|-----------|
+| beta | 2bd7329 | **116e08e** |
+| dev | 5fd6066 | **3929de3** |
+| feature-ponytail | 0dbbd47 | **86257fa** |
+| fix/pipeline-qa-gate-073 | 6ddec72 | **f21c87c** |
+| main | d7b7ebf | **c67ac22** |
+| master | 7d50408 | **4598a96** |
+
+Tags: ninguna en remoto (v1.0.1/v1.0.2 eran solo locales → eliminadas, NO publicadas).
 
 ## Files Created/Modified
 | File | Action | Description |
 |------|--------|-------------|
-| 04-01-ROTATION-CHECK.md | Created | Checklist T0 (R1-R9), estado PENDING |
-| evidence/secrets-manifest-REDACTED.md | Created | Manifiesto de 3 literales (prefijos/longitudes, sin valores) |
-| evidence/filter-repo.log | Created | Log de ejecución filter-repo |
-| evidence/post-rewrite-scan.log | Created | Escaneo forense post-rewrite (0 hits) |
+| 04-01-ROTATION-CHECK.md | Created/Updated | Checklist T0 → CONFIRMED |
+| evidence/secrets-manifest-REDACTED.md | Created | Manifiesto 3 literales (sin valores) |
+| evidence/filter-repo.log | Created | Log filter-repo |
+| evidence/post-rewrite-scan.log | Created | Escaneo 0-hits del espejo |
+| evidence/stash-archive-2026-05-03.patch | Created | Diff del stash eliminado (3392 líneas, 0 secretos) |
 
-## Verification Results
-- [x] `git grep -E "EAA[A-Za-z0-9_-]{20,}" $(rev-list --all)` en espejo → **0** (excl. dummy allowlisted)
-- [x] `git log -p --all -- whap.json` → `"webhookSecret": "***REMOVED***"` ×3
-- [x] Integridad: 1098 commits preservados, fsck sin errores
-- [ ] Force-push a origin — **BLOQUEADO** hasta confirmación de rotación (R6)
+## Verification Results (acceptance criterion #1)
+- [x] Espejo: `git grep -E "EAA[A-Za-z0-9_-]{20,}" $(rev-list --all)` → **0 hits** (excl. dummy)
+- [x] Local post-gc: mismo escaneo → **0 hits**
+- [x] `git log -p --all -- whap.json` → `"webhookSecret": "***REMOVED***"` ×4
+- [x] 0 `BEGIN PRIVATE KEY` / `npm_…{36}` / `_authToken=` literal en historial
+- [x] Integridad: 1098 commits + 4 nuevos (docs/rescue) preservados; fsck limpio
+- [x] Remoto: 6 ramas en SHAs nuevos verificados contra espejo
 
-## Estado de artefactos sensibles
-- `secrets.txt` (valores reales): workspace temporal `$TMPDIR/opencode/incident-ha-201/`, chmod 600. Se destruye tras el push exitoso. NUNCA commiteado.
-
-## Decisiones del usuario (2026-07-22)
-1. Rotación: **AÚN NO** → pausa en compuerta T0.
-2. Salvaguarda trabajo Etapa-1 sin commitear: **commit de rescate en beta** antes del push.
-3. Refs locales contaminados (tags v1.0.1/v1.0.2, rama hotfix-infra-k6-124): **eliminar ambos** en la realineación.
-
-## Procedimiento de reanudación (cuando el usuario confirme ROTACIÓN)
-1. Commit de rescate en beta con el trabajo Etapa-1 en curso.
-2. Refrescar espejo (fetch + re-ejecutar filter-repo si hubo commits nuevos) — 0.3s.
-3. `git -C <espejo> push --force --all https://github.com/tobiasgaitan/Bot-TiendaLasMotos.git`.
-4. Realineación local: fetch + rebase/reset a `origin/beta`; eliminar tags v1.0.1/v1.0.2 y rama hotfix-infra-k6-124; `git gc --prune=now`.
-5. Destruir `secrets.txt`; verificación remota final (`git ls-remote`); actualizar este SUMMARY a Complete.
-6. Recordatorio documentado: ticket a GitHub Support para purga de cachés (R7) — los SHAs antiguos y refs/pull/* siguen sirviendo contenido antiguo hasta GC del servidor.
+## Notable Decisions
+1. Rotación confirmada por el usuario ANTES del push (compuerta T0 respetada).
+2. Tags v1.0.1/v1.0.2 (solo locales) eliminadas, no publicadas — evita contaminar origin con refs a historia vieja.
+3. Stash del 2026-05-03 (WIP on main, 11 semanas de antigüedad) archivado como patch y eliminado: era la última ref local que mantenía vivo el grafo contaminado (101 hits residuales → 0).
+4. `refs/pull/1-2` de GitHub no son force-pusheables: los SHAs antiguos siguen accesibles vía caché/PRs de GitHub hasta GC del servidor → **acción externa pendiente: ticket a GitHub Support (R7)**.
 
 ## Issues Encountered
-- zsh interpreta `$c:whap.json` como modificador `:w` en loops → resuelto con `${c}:whap.json`.
-- BSD grep de macOS no soporta `\s` → extracción migrada a Python `re`.
+- zsh `$c:file` → modificador `:w` en loops; resuelto con `${c}:file`.
+- BSD grep sin `\s`; extracción migrada a Python `re`.
+- Fetch local→espejo rechazado (non-fast-forward post-rewrite); resuelto con `fetch --force`.
+- Tags locales arrastradas al espejo por fetch; eliminadas del espejo antes del push.
+
+## Residual Risks (documentados)
+- Caché de GitHub (vistas web, PRs #1/#2, SHAs directos) sirve contenido antiguo hasta GC del servidor. Mitigado por: rotación T0 (credenciales muertas) + recomendación R7 (ticket Support).
+- Clones/forks previos de terceros conservan la historia vieja (irremediable; mitigado por rotación).
 
 ---
-*Executed: 2026-07-22 | Pausado en compuerta T0 — awaiting user rotation confirmation*
+*Completed: 2026-07-22 | Wave 04-01 CLOSED — historial Git forense limpio (local + remoto)*

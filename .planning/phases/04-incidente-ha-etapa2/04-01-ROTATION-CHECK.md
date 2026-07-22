@@ -1,7 +1,7 @@
 # 04-01 · T0 — Checklist de Rotación de Credenciales (BLOQUEANTE)
 
 **Incidente:** H-A — Token real de Meta publicado en repo público + webhookSecret de whap.json en historial Git.
-**Estado:** ⏳ PENDING — NINGÚN force-push se ejecuta hasta que TODAS las casillas estén confirmadas por el usuario.
+**Estado:** ✅ CONFIRMED (R1–R6) — rotación confirmada por el usuario el 2026-07-22; force-push ejecutado y verificado. R7–R9 quedan como seguimiento externo.
 
 > Reescribir el historial sin rotar las credenciales es COSMÉTICO: cualquier actor que haya clonado/visitado el repo público posee los secretos. La rotación es la única remediación real; la reescritura es higiene forense.
 
@@ -19,7 +19,8 @@
 - [ ] **R3.** Actualizar `WHATSAPP_TOKEN` en GitHub → Settings → Secrets and variables → Actions (si existe como secret de repo para los workflows).
 - [ ] **R4.** Rotar `webhookSecret` de whap: generar nuevo valor (≥32 chars aleatorios), actualizar en el entorno donde whap.json se materializa (NO commitear el archivo — está gitignored vía `*.json`).
 - [ ] **R5.** Smoke test post-rotación: webhook Meta → bot responde en ambiente beta (firma HMAC válida, HTTP 200).
-- [ ] **R6.** Confirmar aquí la rotación: responder "ROTACIÓN CONFIRMADA" para desbloquear el force-push.
+- [x] **R1–R5.** Rotación de credenciales y actualización de secretos — confirmada por el usuario (2026-07-22).
+- [x] **R6.** "ROTACIÓN CONFIRMADA — push" recibido 2026-07-22 → force-push de 6 ramas ejecutado y verificado (`git ls-remote`).
 
 ## Acciones posteriores recomendadas (fuera del repo)
 
