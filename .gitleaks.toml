@@ -1,0 +1,46 @@
+# [BOT-BUILD-SECURITY-202] Configuración Gitleaks — Barrera anti-filtración de secretos
+# Consumida por: (1) paso CI "Secret Leak Gate" en qa-pipeline.yml,
+# (2) hook pre-push versionado en scripts/gitleaks-pre-push.sh.
+title = "Bot-TiendaLasMotos — gitleaks policy"
+
+[extend]
+useDefault = true
+
+# Regla explícita: token de Meta Graph API / WhatsApp Business (formato EAA...).
+# Motivación forense: Incidente H-A (token real publicado en repo público).
+[[rules]]
+id = "meta-graph-api-token"
+description = "Meta Graph API (WhatsApp Business) access token — Incidente H-A"
+regex = '''EAA[A-Za-z0-9_\-]{20,}'''
+
+# Allowlist del fixture sintético aprobado (Fase 2): inequívoco, 17 chars tras EAA,
+# documentado como no-credencial. Cualquier otra cadena EAA de 20+ chars BLOQUEA.
+[[rules.allowlists]]
+regexes = ['''EAA_DUMMY_TOKEN_TEST''']
+
+# Regla explícita: PAT de npm / GitHub Packages (motivación: .npmrc rastreado con _authToken).
+[[rules]]
+id = "npm-access-token"
+description = "npm / GitHub Packages access token"
+regex = '''npm_[A-Za-z0-9]{36}'''
+
+# Allowlist global — SOLO falsos positivos verificados forensemente (2026-07-21):
+# 1. moto_master_2026: valor dev DOCUMENTADO y blacklisteado por _validate_config()
+#    (docstring de ejemplo curl en app/routers/admin.py). No es una credencial real.
+# 2. 87654321-abcd-...: UUID sintético en fixture de URL Firebase Storage
+#    (tests/test_agentic_loop_async.py).
+# 3. S-TOON-Protocol/**: repo externo vendorizado (no rastreado); su notebook
+#    contiene 51 vectores SINTÉTICOS de validación (huellas ≠ token comprometido).
+# 4. __pycache__: artefactos de bytecode gitignored (duplican hallazgos de fuente).
+# NOTA: .env y key.json NO se excluyen — son secretos locales reales; su detección
+# en escaneos `dir` es el comportamiento deseado (recordatorio de rotación H-A).
+[allowlist]
+description = "Falsos positivos verificados — BOT-BUILD-SECURITY-202"
+regexes = [
+  '''moto_master_2026''',
+  '''87654321-abcd-efgh-ijkl-0987654321ba''',
+]
+paths = [
+  '''S-TOON-Protocol/.*''',
+  '''.*__pycache__.*''',
+]
