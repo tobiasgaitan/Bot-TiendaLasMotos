@@ -4,6 +4,15 @@ from unittest.mock import patch, MagicMock
 from app.services.catalog_service import catalog_service
 from app.services.config_service import config_service
 from app.services.credit_faq_taxonomy import classify_credit_turn, TurnIntent
+from tests.factories import make_catalog, format_cop
+from tests.validators import (
+    RE_EXTRACT_PRECIOS,
+    assert_price_consistency,
+    assert_ficha_explicit,
+    assert_catalog_price_format,
+    assert_image_reference,
+    assert_no_pii_leak,
+)
 
 def test_pcc_ficha_tecnica_no_silent_null():
     """
@@ -1926,6 +1935,89 @@ def test_build_commercial_price_sport_100_zero_ninety_nine_band():
         price = 5_000_000
         result = CatalogService.build_commercial_price(price=price, cc=99.7, category="motos")
         assert "$5.700.000" in result, f"Expected $5.700.000 band in result, got {result}"
+
+# ============================================================================
+# [Incidente H-A · HA-4] PCC Pro — Validadores Regex centralizados (tests/validators.py)
+# ============================================================================
+
+def test_pcc_pro_regex_validators_dynamic_catalog():
+    """PCC Pro con validadores regex centralizados sobre catálogo DINÁMICO (HA-3/HA-4).
+
+    Verifica sobre la salida real de search_catalog: ficha explícita, consistencia
+    exacta precio-respuesta ↔ precio-catálogo, formato canónico COP, referencia de
+    imagen válida y ausencia de PII en la salida comercial.
+    """
+    items = make_catalog(60)
+    item = items[0]
+
+    with patch.object(catalog_service, '_items', [item]), \
+         patch.object(catalog_service, '_db', MagicMock()), \
+         patch.object(config_service, '_financial_config', None), \
+         patch.object(config_service, 'get_registration_cost', return_value=0):
+
+        catalog_service.load_configurations = MagicMock()
+        catalog_service._cache_service.clear()
+
+        res = catalog_service.search_catalog(item['name'].split()[1])
+
+    # 1. 'Ficha Tecnica:' explícita con contenido no vacío ni 'None'
+    assert_ficha_explicit(res)
+
+    # 2. Consistencia exacta: el precio mostrado ES el precio canónico del ítem
+    assert_price_consistency(res, item['price'])
+
+    # 3. El precio extraído cumple la forma canónica $X.XXX.XXX
+    extracted = RE_EXTRACT_PRECIOS.search(res)
+    assert extracted is not None, "La respuesta no contiene ningún monto COP extraíble."
+    assert_catalog_price_format(f"${extracted.group(1)}")
+
+    # 4. Referencia de imagen válida (markdown o URL plana)
+    assert_image_reference(res)
+
+    # 5. Higiene PII de la salida comercial: sin teléfonos/emails embebidos
+    assert_no_pii_leak(res)
+
+
+def test_pcc_pro_regex_mutation_checks():
+    """Mutation checks obligatorios (HA-4): cada validador PCC DEBE fallar (AssertionError)
+    ante un fixture mutado — anti-falso-positivo de la instrumentación regex."""
+    item = make_catalog(1)[0]
+    canonical = format_cop(item['price'])
+    valid = (
+        f"- {item['name']} ({item['category']}): {canonical} (incluye SOAT)\n"
+        f"![{item['name']}]({item['image_url']})\n"
+        f"Ficha Tecnica: {item['summary']}"
+    )
+
+    # Sanity: el fixture válido supera todos los validadores.
+    assert_price_consistency(valid, item['price'])
+    assert_ficha_explicit(valid)
+    assert_image_reference(valid)
+
+    # M1 — precio mutado (+10.000): inconsistencia precio-respuesta ↔ catálogo.
+    mutated_price = valid.replace(canonical, format_cop(item['price'] + 10_000))
+    with pytest.raises(AssertionError):
+        assert_price_consistency(mutated_price, item['price'])
+
+    # M2 — ficha vaciada: prefijo presente pero contenido nulo.
+    with pytest.raises(AssertionError):
+        assert_ficha_explicit(valid.replace(f"Ficha Tecnica: {item['summary']}", "Ficha Tecnica:  "))
+
+    # M3 — ficha 'None' silenciosa.
+    with pytest.raises(AssertionError):
+        assert_ficha_explicit(valid.replace(f"Ficha Tecnica: {item['summary']}", "Ficha Tecnica: None"))
+
+    # M4 — formato de precio no canónico (separador ',' estilo en-US).
+    with pytest.raises(AssertionError):
+        assert_catalog_price_format(f"${item['price']:,}")
+
+    # M5 — imagen eliminada de la respuesta.
+    with pytest.raises(AssertionError):
+        assert_image_reference(valid.replace(f"![{item['name']}]({item['image_url']})", ""))
+
+    # M6 — PII inyectada en la salida (teléfono CO).
+    with pytest.raises(AssertionError):
+        assert_no_pii_leak(valid + " Llámanos al +57 319 856 7788")
 
 
 @pytest.mark.asyncio
