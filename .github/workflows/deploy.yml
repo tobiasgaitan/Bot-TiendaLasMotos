@@ -48,23 +48,23 @@ jobs:
       # Reaplicar ÚNICAMENTE si el secreto se recrea. El Regression Guard de
       # qa-pipeline.yml bloquea la reintroducción de pasos IAM en workflows.
 
-      # [BOT-BUILD-INFRA-TOKEN-ROTATION-201] Resolución de la versión ENABLED más reciente
-      # para binding pineado (revisiones inmutables, rollback determinista).
-      - name: Resolve latest enabled WHATSAPP_TOKEN secret version
-        id: token_version
+      # [BOT-PLAN-CICD-SECRET-LIST-206] Se ERRADICÓ la resolución manual de versiones:
+      # 'gcloud secrets versions list' exige secretmanager.viewer (privilegio de
+      # metadata que la SA de deploy NO posee ni poseerá — PERMISSION_DENIED forense
+      # del run 29890766582; y su rama de error mentía: el secreto SÍ tenía 2
+      # versiones ENABLED). El binding usa el alias 'latest', que Cloud Run resuelve
+      # en la creación de la revisión (inmutable → rollback determinista preservado;
+      # estado vivo ya probado: secretRef → WHATSAPP_TOKEN:latest).
+      # Pre-flight pasivo con el permiso YA concedido (versions.access, PASO 0 del
+      # ticket 205): falla rápido si el secreto no tuviera payload ENABLED accesible.
+      - name: Pre-flight — WHATSAPP_TOKEN payload accesible (latest)
         run: |
-          TOKEN_VERSION=$(gcloud secrets versions list WHATSAPP_TOKEN \
-            --project tiendalasmotos \
-            --filter="state=ENABLED" \
-            --sort-by="~createTime" \
-            --limit=1 \
-            --format="value(name)" | awk -F/ '{print $NF}')
-          if [ -z "$TOKEN_VERSION" ]; then
-            echo "❌ FORENSIC: secreto WHATSAPP_TOKEN sin versiones ENABLED en tiendalasmotos."
-            echo "   Bootstrap: printf '%s' '<system-user-token>' | gcloud secrets versions add WHATSAPP_TOKEN --data-file=-"
+          if ! gcloud secrets versions access latest --secret=WHATSAPP_TOKEN --project=tiendalasmotos > /dev/null; then
+            echo "❌ FORENSIC: secreto WHATSAPP_TOKEN sin payload ENABLED accesible (o bootstrap 205 ausente)."
+            echo "   Bootstrap: printf '%s' '<system-user-token>' | gcloud secrets versions add WHATSAPP_TOKEN --data-file=- --project=tiendalasmotos"
             exit 1
           fi
-          echo "version=${TOKEN_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "✅ FORENSIC: payload WHATSAPP_TOKEN accesible vía alias latest (sin lectura de metadata)."
 
       # [BOT-BUILD-CICD-SECRET-REF-204] Patrón atómico unificado (espejo de deploy-beta.yml).
       # WHATSAPP_TOKEN jamás viaja como literal en --set-env-vars: colisión de tipos
@@ -72,6 +72,8 @@ jobs:
       # deploy job #88819603750). --set-env-vars reemplaza TODAS las env vars
       # literales, por lo que el binding del secreto se hace en el MISMO deploy
       # (--set-secrets): revisión atómica, sin ventana sin credencial.
+      # [BOT-PLAN-CICD-SECRET-LIST-206] Alias 'latest': resolución server-side en la
+      # creación de la revisión; cero lectura de metadata de secretos desde CI.
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy bot-tiendalasmotos \
@@ -79,7 +81,7 @@ jobs:
             --region us-central1 \
             --project tiendalasmotos \
             --set-env-vars="PHONE_NUMBER_ID=${{ secrets.PHONE_NUMBER_ID }},FIRESTORE_COLLECTION=prospectos,WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }},ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }},WHATSAPP_APP_SECRET=${{ secrets.WHATSAPP_APP_SECRET }},LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }},LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }},LANGFUSE_HOST=${{ secrets.LANGFUSE_HOST }}" \
-            --set-secrets="WHATSAPP_TOKEN=WHATSAPP_TOKEN:${{ steps.token_version.outputs.version }}" \
+            --set-secrets="WHATSAPP_TOKEN=WHATSAPP_TOKEN:latest" \
             --allow-unauthenticated
 
       - name: Make Service Public

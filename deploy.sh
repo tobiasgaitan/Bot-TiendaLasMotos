@@ -15,23 +15,23 @@ uvx google-agents-cli run deploy bot-tiendalasmotos --source . --region us-centr
 # Runtime SAs vigentes: prod = bot-admin@tiendalasmotos.iam.gserviceaccount.com ·
 # beta = <PROJECT_NUMBER>-compute@developer.gserviceaccount.com
 # Deploy SA (github-actions-deploy@): secretAccessor a nivel RECURSO (bootstrap 205 aplicado).
-echo "🔐 Binding WHATSAPP_TOKEN desde Secret Manager (versión pineada)..."
+# [BOT-PLAN-CICD-SECRET-LIST-206] Resolución manual ERRADICADA ('versions list' exige
+# secretmanager.viewer — privilegio de metadata innecesario). Alias 'latest': Cloud Run
+# resuelve la versión en la creación de la revisión (inmutable → rollback determinista
+# preservado; estado vivo ya probado: secretRef → WHATSAPP_TOKEN:latest).
+echo "🔐 Binding WHATSAPP_TOKEN desde Secret Manager (alias latest)..."
 
-TOKEN_VERSION=$(gcloud secrets versions list WHATSAPP_TOKEN \
-  --project tiendalasmotos \
-  --filter="state=ENABLED" \
-  --sort-by="~createTime" \
-  --limit=1 \
-  --format="value(name)" | awk -F/ '{print $NF}')
-if [ -z "$TOKEN_VERSION" ]; then
-  echo "❌ FORENSIC: secreto WHATSAPP_TOKEN sin versiones ENABLED en tiendalasmotos."
-  echo "   Bootstrap: printf '%s' '<system-user-token>' | gcloud secrets versions add WHATSAPP_TOKEN --data-file=-"
+# Pre-flight pasivo: valida payload ENABLED accesible SIN lectura de metadata
+# (usa versions.access, ya concedido; redirige el payload a /dev/null por higiene).
+if ! gcloud secrets versions access latest --secret=WHATSAPP_TOKEN --project=tiendalasmotos > /dev/null; then
+  echo "❌ FORENSIC: secreto WHATSAPP_TOKEN sin payload ENABLED accesible en tiendalasmotos."
+  echo "   Bootstrap: printf '%s' '<system-user-token>' | gcloud secrets versions add WHATSAPP_TOKEN --data-file=- --project=tiendalasmotos"
   exit 1
 fi
-echo "🔑 Binding WHATSAPP_TOKEN=WHATSAPP_TOKEN:${TOKEN_VERSION}"
+echo "🔑 Binding WHATSAPP_TOKEN=WHATSAPP_TOKEN:latest"
 gcloud run services update bot-tiendalasmotos \
   --region us-central1 \
   --project tiendalasmotos \
-  --update-secrets="WHATSAPP_TOKEN=WHATSAPP_TOKEN:${TOKEN_VERSION}" || {
+  --update-secrets="WHATSAPP_TOKEN=WHATSAPP_TOKEN:latest" || {
   echo "❌ FORENSIC: fallo --update-secrets en bot-tiendalasmotos (revisar IAM de la SA de runtime y existencia del servicio)"; exit 1; }
 echo "✅ Deploy completado: WHATSAPP_TOKEN respaldado por Secret Manager."

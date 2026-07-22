@@ -51,7 +51,7 @@ jobs:
       # (colisión de tipos contra secretKeyRef — deploy job #88819603750).
       # El secreto SOLO se enlaza vía Secret Manager (set-secrets / update-secrets).
       # Vigila el artefacto correcto: el propio YAML (clase de bug invisible a pytest).
-      - name: Regression Guard — Secrets & IAM Hygiene
+      - name: Regression Guard — Secrets, IAM & Metadata Hygiene
         run: |
           if grep -rnE '(set-env-vars|update-env-vars)=.*WHATSAPP_TOKEN' .github/workflows/; then
             echo "❌ FORENSIC: WHATSAPP_TOKEN detectado como literal en un flag de env vars."
@@ -67,7 +67,17 @@ jobs:
             echo "   IAM se provisiona out-of-band (ticket BOT-BUILD-CICD-IAM-205)."
             exit 1
           fi
-          echo "✅ FORENSIC: workflows limpios de inyección literal y mutación IAM."
+          # [BOT-BUILD-CICD-SECRET-LIST-206] El pipeline NO debe leer metadata de
+          # secretos: la resolución de versiones es server-side (alias latest).
+          # La lectura de versiones exigiría secretmanager.viewer (privilegio
+          # rechazado — PERMISSION_DENIED forense, run 29890766582). Mismo
+          # mecanismo anti auto-disparo ([s]) y filtro de comentarios.
+          if grep -rnE 'secrets version[s] list' .github/workflows/ | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#'; then
+            echo "❌ FORENSIC: lectura de metadata de secretos detectada como paso ejecutable."
+            echo "   Patrón obligatorio: alias latest resuelto por Cloud Run (ticket BOT-BUILD-CICD-SECRET-LIST-206)."
+            exit 1
+          fi
+          echo "✅ FORENSIC: workflows limpios de inyección literal, mutación IAM y lectura de metadata."
 
       - name: Setup Node.js Environment
         uses: actions/setup-node@v4
