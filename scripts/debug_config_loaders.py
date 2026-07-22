@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 # Add project root to path
 sys.path.append(os.getcwd())
 
-from app.services.config_loader import ConfigLoader as FinanceConfigLoader
+from app.services.config_loader import FinanceConfigLoader
 from app.core.config_loader import ConfigLoader as CoreConfigLoader
 
 def test_loaders():

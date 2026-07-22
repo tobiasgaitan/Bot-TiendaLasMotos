@@ -1,8 +1,0 @@
-{
-  "$schema": "./schema/whap-config.schema.json",
-  "webhookUrls": [
-    "1234567890:http://localhost:8000/whatsapp/webhook"
-  ],
-  "webhookSecret": "***REMOVED***",
-  "port": 3010
-}

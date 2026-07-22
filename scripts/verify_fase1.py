@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 # Add project root to path
 sys.path.append(os.getcwd())
 
-from app.services.config_loader import ConfigLoader
+from app.services.config_loader import FinanceConfigLoader
 from app.services.finance import MotorFinanciero
 
 async def test_config_loader():
@@ -28,7 +28,7 @@ async def test_config_loader():
     mock_db.collection.return_value.document.return_value.get.return_value = mock_fin_doc
     
     # Initialize Loader
-    loader = ConfigLoader(mock_db)
+    loader = FinanceConfigLoader(mock_db)
     loader.initialize(mock_db)
     
     config = loader.get_financial_config()

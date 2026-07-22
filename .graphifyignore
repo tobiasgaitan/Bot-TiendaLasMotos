@@ -1,0 +1,6 @@
+# [BOT-BUILD-REFACTOR-03-05-RESIDUAL] WS-4
+# Zona de cuarentena: artefactos obsoletos (scripts raíz, logs, ejemplos
+# caducos) que contaminaban el corpus con aristas INFERIDAS (God Node
+# estadístico). Se conservan físicamente por reversibilidad pero quedan
+# excluidos del AST/Data-Lineage del grafo.
+attic
