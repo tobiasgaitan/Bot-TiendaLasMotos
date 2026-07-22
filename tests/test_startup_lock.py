@@ -3,6 +3,9 @@ import asyncio
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from fastapi import HTTPException, BackgroundTasks
+# REAL-LIFESPAN-EXEMPTION (04-03b): este archivo ES la suite del propio lifespan —
+# sus usos de TestClient ejercitan directamente el camino real de producción
+# (deferred init, commit barrier, port binding). Exención documentada y aprobada.
 from fastapi.testclient import TestClient
 
 from app.main import app, lifespan

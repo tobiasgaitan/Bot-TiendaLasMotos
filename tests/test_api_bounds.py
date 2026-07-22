@@ -2,7 +2,6 @@ import pytest
 import hmac
 import hashlib
 import json
-from fastapi.testclient import TestClient
 from fastapi import HTTPException
 from unittest.mock import patch, AsyncMock, MagicMock
 from app.main import app
@@ -11,27 +10,27 @@ from app.services.whatsapp_service import whatsapp_service
 from app.services.catalog_service import catalog_service
 from app.services.config_service import config_service
 
-client = TestClient(app)
-
-def test_webhook_signature_missing():
+def test_webhook_signature_missing(real_lifespan_client):
+    # [Incidente H-A · HA-2] Cliente sobre lifespan real (fixture).
+    client, _items = real_lifespan_client
     # Send request without signature header
     response = client.post("/webhook", json={"foo": "bar"})
     assert response.status_code == 401
     assert "Signature missing" in response.json()["detail"]
 
-def test_webhook_signature_invalid():
+def test_webhook_signature_invalid(real_lifespan_client):
+    client, _items = real_lifespan_client
     # Send request with invalid signature header
     headers = {"X-Hub-Signature-256": "sha256=invalid_signature_hex"}
     response = client.post("/webhook", json={"foo": "bar"}, headers=headers)
     assert response.status_code == 401
     assert "Signature mismatch" in response.json()["detail"]
 
-def test_webhook_signature_valid(monkeypatch):
-    # [Incidente H-A · HA-2] Guard estricto e incondicional: este test ejerce el
-    # flujo HTTP real → se satisface el guard explícitamente (catálogo listo +
-    # mínimo 0) sin tocar la simetría HMAC (settings.whatsapp_app_secret intacto).
-    monkeypatch.setattr(app.state, "catalog_ready", True, raising=False)
-    monkeypatch.setattr(settings, "min_catalog_items", 0)
+def test_webhook_signature_valid(real_lifespan_client):
+    # [Incidente H-A · HA-2] El fixture satisface el guard estricto como en producción
+    # (catalog_ready=True post-lifespan real + 60 ítems dinámicos >= min_items=60),
+    # preservando la simetría HMAC con el app_secret del entorno de pruebas.
+    client, _items = real_lifespan_client
     payload = {
         "object": "whatsapp_business_account",
         "entry": [{

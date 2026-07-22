@@ -93,6 +93,76 @@ def catalog_guard_ready(dynamic_catalog, monkeypatch):
     else:
         delattr(app.state, "catalog_ready")
 
+@pytest.fixture
+def real_lifespan_client(dynamic_catalog, monkeypatch):
+    """[Incidente H-A · HA-2] TestClient sobre el LIFESPAN REAL de producción.
+
+    WHY: erradicada la rama inline de modo de pruebas (04-03a), todo cliente de pruebas
+    debe atravesar el mismo camino que Cloud Run — lifespan real → background deferred
+    init → commit barrier (`app.state.catalog_ready=True`). El I/O externo (Firestore,
+    Secret Manager, Storage, MemoryService) se mockea en la frontera (LazyProxies de
+    app.main); el catálogo se inyecta DINÁMICAMENTE (60 ítems de tests/factories.py)
+    y el umbral se fija al valor de producción (`min_catalog_items=60`), de modo que el
+    STARTUP-GUARD del router se ejecuta exactamente como en producción.
+
+    El deferred init real incluye un `asyncio.sleep(2)` deliberado (BOT-190) — coste
+    aceptado ~2s por instanciación a cambio de fidelidad total.
+
+    Yield: (client, items) — TestClient dentro de contexto de lifespan COMPLETADO.
+    Falla explícitamente (TimeoutError) si el commit barrier no se alcanza en 15s:
+    zero-silent-failures — jamás devolver un cliente en estado zombi.
+    """
+    import time
+    import app.main as main_module
+    from app.main import app
+    from app.core.config import settings as app_settings
+    from fastapi.testclient import TestClient
+
+    # Umbral de producción: el guard valida 60 >= 60 contra el catálogo dinámico.
+    monkeypatch.setattr(app_settings, "min_catalog_items", 60)
+
+    mock_config_loader_inst = MagicMock()
+    mock_config_loader_inst.get_juan_pablo_personality.return_value = {"model_version": "gemini-2.0-flash"}
+    mock_config_loader_inst.get_routing_rules.return_value = {"financial_keywords": []}
+    mock_config_loader_inst.get_catalog_config.return_value = {"items": []}
+
+    state_snapshot = {}
+    with patch.object(main_module, "get_firebase_credentials_object", return_value=MagicMock()), \
+         patch.object(main_module, "firestore") as _mock_firestore, \
+         patch.object(main_module, "config_service") as _mock_config_service, \
+         patch.object(main_module, "ConfigLoader", return_value=mock_config_loader_inst), \
+         patch.object(main_module, "FinanceConfigLoader", return_value=MagicMock()), \
+         patch.object(main_module, "storage_service") as _mock_storage, \
+         patch.object(main_module, "init_memory_service", MagicMock()), \
+         patch.object(main_module, "catalog_service") as mock_main_catalog:
+
+        # El init diferido de main consume el proxy mockeado (no-op); el router
+        # sigue viendo el singleton REAL con los 60 ítems dinámicos instalados.
+        mock_main_catalog.get_all_items.return_value = dynamic_catalog
+
+        # Snapshot de app.state para restauración higiénica en teardown.
+        for attr in ("catalog_ready", "config_loader", "db", "db_async", "finance_config_loader", "startup_task"):
+            if hasattr(app.state, attr):
+                state_snapshot[attr] = getattr(app.state, attr)
+
+        with TestClient(app) as client:
+            deadline = time.monotonic() + 15.0
+            while not getattr(app.state, "catalog_ready", False):
+                if time.monotonic() > deadline:
+                    raise TimeoutError(
+                        "real_lifespan_client: el deferred init no completó en 15s "
+                        "(catalog_ready=False) — estado zombi, abortando."
+                    )
+                time.sleep(0.05)
+            yield client, dynamic_catalog
+
+    # Teardown: restaurar app.state al snapshot previo (aislamiento entre tests).
+    for attr in ("catalog_ready", "config_loader", "db", "db_async", "finance_config_loader", "startup_task"):
+        if attr in state_snapshot:
+            setattr(app.state, attr, state_snapshot[attr])
+        elif hasattr(app.state, attr):
+            delattr(app.state, attr)
+
 class AsyncStreamMock:
     """
     Mock estandarizado para simular firestore.Query.stream().
