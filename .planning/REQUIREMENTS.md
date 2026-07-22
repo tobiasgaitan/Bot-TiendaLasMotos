@@ -27,5 +27,15 @@ Requerimientos de la fase `03-refactor-etapa1` (God Nodes, idempotencia durable,
 | RF-5 | Fragmentación de `_handle_message_background_impl` en pipelines de medios, cognitivo y egreso con DI explícita; impl reducido a orquestador (<300 líneas) con firmas públicas inmutables. | 3 | Open |
 | RF-6 | Red de caracterización Feathers del flujo Meta→Firestore (`tests/test_characterization_etapa1.py`, 5 pins CH-1…CH-5) como red de seguridad previa a toda intervención. | 3 | In Progress [BOT-BUILD-REFACTOR-ETAPA1-WAVE1-199] |
 
+## V3 — Incidente H-A: Saneamiento Forense Git + Reestructuración de Pruebas [BOT-PLAN-INCIDENT-HA-201]
+Requerimientos de la fase `04-incidente-ha-etapa2` (Milestone 3 Etapa 2). Ejecutados bajo `BOT-BUILD-INCIDENT-HA-201` con verificación en `04-VERIFICATION.md`.
+
+| ID | Requirement | Phase | Status |
+|----|-------------|-------|--------|
+| HA-1 | Saneamiento forense del historial Git: rotación T0 de credenciales (prerequisito bloqueante) + reescritura total con `git filter-repo --replace-text` (2 tokens Meta + webhookSecret → `***REMOVED***`), force-push de 6 ramas, eliminación de refs locales contaminados; verificación `git grep` sobre `rev-list --all` = 0 hits. | 4 | Done [04-01] |
+| HA-2 | Erradicación TOTAL del bypass `is_test_mode`: guard estricto incondicional en `whatsapp.py` (×2), lifespan camino único en `main.py`, padding por settings en `catalog_service.py`, default uniforme 40 en `config.py`, arnés/CI libres del seam (`rg` = 0 hits); migración TestClient a lifespan real vía `real_lifespan_client`. | 4 | Done [04-03a, 04-03b] |
+| HA-3 | Mocking dinámico en memoria: `tests/factories.py` (generador determinista seed=2026, precios dinámicos, `TEST_SMLV` central) + fixtures `dynamic_catalog`/`catalog_guard_ready`; eliminación de literales SMLV/precios del arnés migrado. | 4 | Done [04-02] |
+| HA-4 | Instrumentación de validadores Regex (`tests/validators.py`): PCC Pro (consistencia precio, ficha explícita, formato COP, imagen) y Sanitize PII (no-leak phone/email, control-chars, whitelist, truncado 50) con mutation checks obligatorios (13). | 4 | Done [04-04] |
+
 ---
-*Last updated: 2026-07-21 | RF-3/RF-4 cerrados [BOT-BUILD-REFACTOR-03-05-RESIDUAL]: invariante de atomicidad del refresh demostrado (7/7 `tests/test_refresh_atomicity.py`), 367/367 tests PASSED bajo `.venv` (Python 3.13), grafo regenerado con 0 aristas cruzadas core↔finance.*
+*Last updated: 2026-07-22 | Incidente H-A CERRADO [BOT-BUILD-INCIDENT-HA-201]: 378/378 tests PASSED, 0 RuntimeWarnings, Coherence 1.000; autopsia en `.planning/phases/04-incidente-ha-etapa2/PYTEST-AUTOPSY.md`.*

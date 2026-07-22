@@ -1,17 +1,18 @@
-# 🛡️ Documento Maestro: Estado de Desarrollo Core (v10.45.47)
+# 🛡️ Documento Maestro: Estado de Desarrollo Core (v10.45.48)
 
-**Versión:** v10.45.47 (Milestone 2 Phase 1 — Multimodal CLOSED & CERTIFIED)  
+**Versión:** v10.45.48 (Milestone 3 Etapa 2 — Incidente H-A CLOSED & CERTIFIED)  
 **Estado:** PRODUCTION READY / GCP LIVE  
-**Coherence Score:** 1.000 (Certificado vía GSD Framework - 357/357 Tests PASSED, 0 failed)
+**Coherence Score:** 1.000 (Certificado vía GSD Framework - 378/378 Tests PASSED, 0 failed, 0 RuntimeWarnings)
 
 ---
 
 ## 🚀 Últimos Hitos Consolidados (Línea de Producción)
 
+*   **Incidente H-A Cerrado (v10.45.48):** Saneamiento forense del historial Git y reestructuración del arnés de pruebas [BOT-BUILD-INCIDENT-HA-201]. (1) Historial reescrito con `git filter-repo --replace-text` tras rotación T0: 6 ramas force-pusheadas, 2 tokens Meta reales y webhookSecret → `***REMOVED***`, 0 hits de credenciales en `git grep` sobre `rev-list --all` (riesgo residual documentado: caché de GitHub/PRs hasta GC del servidor — ticket a Support recomendado). (2) **Erradicación TOTAL del bypass `is_test_mode`:** el guard de catálogo es ahora estricto e incondicional en `webhook_handler`/`task_processor`; lifespan de camino único en `main.py` (eliminada la rama inline de pruebas + DummyConfigLoader); padding de catálogo gobernado por `settings.min_catalog_items` (0 = off explícito); default uniforme 40 en `config.py` sin detección de pytest; arnés y CI libres del seam (0 hits). (3) Mocking dinámico: `tests/factories.py` (seed fija, precios dinámicos, `TEST_SMLV` central) + fixture `real_lifespan_client` (lifespan real con umbral de producción 60). (4) 8 validadores regex PCC Pro/Sanitize PII con 13 mutation checks. Autopsia: `PYTEST-AUTOPSY.md` — **378/378 PASSED, Coherence 1.000 — DEPLOY AUTHORIZED**.
 *   **Cierre Certificado Milestone 2 - Phase 1 (v10.45.47):** Certificación atómica del pipeline de Similitud Multimodal e Integración (R7–R12: `match_catalog_item_by_image`, `analyze_image`/`_process_moto` JSON-first, integración webhook, suite `test_multimodal_similitude.py` 25/25). Autopsia de falso negativo del entorno documentada (intérprete sistema 3.14 vs `.venv` 3.13 → `ModuleNotFoundError: ffmpeg`), pin de entorno documentado en `README.md`, pin determinista del guardrail de inicialización en `tests/test_zombie_recovery_flow.py` (supresión del RuntimeWarning transversal de la suite) y sincronía documental PSD ejecutada (ROADMAP/REQUIREMENTS/STATE). Eval GSD: **Score 1.000 — DEPLOY AUTHORIZED** [BOT-BUILD-MULTIMODAL-CIERRE-196].
 *   **Saneamiento de Credenciales (v10.45.14):** Inyección de `.strip()` agresivo en `app/core/config.py` sobre `WHATSAPP_TOKEN` y `WHATSAPP_APP_SECRET` antes de la validación. Elimina espacios residuales de la terminal y robustece `tests/test_startup_lock.py` [BOT-INFRA-BUGFIX-TOKEN-STRIP-194].
 *   **Port Binding & Health Endpoint (v10.45.29):** Refactorización atómica de `/health` en `app/main.py`. Devuelve HTTP 200 OK y `{"status": "starting"}` de forma síncrona inmediata si el catálogo no se ha hidratado, previniendo caídas por timeout de Cloud Run. Desacopla la validación rígida (len >= 60) confinándola exclusivamente en los middlewares de `app/routers/whatsapp.py` [BOT-INFRA-BUGFIX-HEALTH-PORT-BINDING-192].
-*   **Guardrail de Primer Contacto (v10.45.29):** Refactorización de `skip_greeting` en `ai_brain.py`. Impide el bypass del saludo comercial en el primer contacto o tras un `/reset` (`has_no_legitimate_history = True`). Fuerza la validación de caché mínima (`min_catalog_items = 60`) en producción con bypass controlado (`is_test_mode`) [BOT-BRAIN-BUGFIX-FIRST-CONTACT-ALIGNMENT-191].
+*   **Guardrail de Primer Contacto (v10.45.29):** Refactorización de `skip_greeting` en `ai_brain.py`. Impide el bypass del saludo comercial en el primer contacto o tras un `/reset` (`has_no_legitimate_history = True`). Fuerza la validación de caché mínima (`min_catalog_items = 60`) en producción ~~con bypass controlado (`is_test_mode`)~~ → **SUPERSEDED v10.45.48:** el bypass fue ERRADICADO (Incidente H-A); el guard es ahora estricto e incondicional [BOT-BRAIN-BUGFIX-FIRST-CONTACT-ALIGNMENT-191].
 *   **Lifespan Async Delay (v10.45.29):** Inyección de un retardo asíncrono no bloqueante estricto de 2 segundos (`await asyncio.sleep(2)`) al inicio de `_run_deferred_initialization` en `app/main.py`. Permite que Uvicorn enlace el puerto 8080 antes de levantar las conexiones pesadas de red externa [BOT-BACKEND-BUGFIX-LIFESPAN-DELAY-190].
 
 ---
