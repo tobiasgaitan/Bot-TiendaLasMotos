@@ -14,6 +14,7 @@ from typing import List, Dict, Any, Optional, Union
 
 from google.cloud import firestore
 
+from app.core.config import settings
 from app.services.semantic_cache_service import SemanticCacheService
 
 logger = logging.getLogger(__name__)
@@ -440,14 +441,19 @@ class CatalogService:
                     if doc.id not in temp_items_by_id_norm[name_norm_key]:
                         temp_items_by_id_norm[name_norm_key].append(doc.id)
             
-            # [STARTUP-GUARD-PAD] Ensure catalog parity to meet strict requirements
-            # if the active catalog count is less than 60, pad it with dummy/cloned items to reach exactly 60.
-            # Only do this when not running in test mode to avoid breaking unit test assertions.
-            import sys
-            import os
-            is_test = os.getenv("TEST_MODE") == "true" or "pytest" in sys.modules
-            target_min = 60
-            if not is_test and len(temp_items) < target_min and len(temp_items) > 0:
+            # [STARTUP-GUARD-PAD] Ensure catalog parity to meet strict requirements:
+            # if the active catalog count is below settings.min_catalog_items, pad it with
+            # dummy/cloned items to reach exactly that target.
+            # [Incidente H-A · HA-2] El objetivo del padding lo gobierna EXPLÍCITAMENTE
+            # settings.min_catalog_items (60 en producción; los tests lo controlan vía
+            # monkeypatch) — la detección de pytest como seam fue erradicada.
+            # Un target de 0 desactiva el padding de forma explícita.
+            try:
+                target_min = int(settings.min_catalog_items)
+            except (TypeError, ValueError) as e:
+                logger.exception(f"❌ [STARTUP-GUARD-PAD] min_catalog_items inválido ({settings.min_catalog_items!r}): {e}")
+                target_min = 60
+            if target_min > 0 and 0 < len(temp_items) < target_min:
                 logger.info(f"Padding catalog from {len(temp_items)} to {target_min} items for parity.")
                 base_item = temp_items[0]
                 for i in range(target_min - len(temp_items)):

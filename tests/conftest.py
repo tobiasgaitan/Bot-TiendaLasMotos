@@ -19,8 +19,10 @@ def mock_env_vars():
     """
     with patch.dict(os.environ, {
         "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/fake-key.json",
-        "TEST_MODE": "true",
-        "MIN_CATALOG_ITEMS": "0",
+        # [Incidente H-A · HA-2] Las variables de modo de pruebas y el mínimo de
+        # catálogo forzado a 0 fueron erradicados del arnés global: el guard es
+        # estricto y los tests lo satisfacen vía fixtures dinámicos
+        # (dynamic_catalog / catalog_guard_ready).
         # Credenciales críticas — requeridas por Settings()._validate_config()
         # Valores de prueba seguros, nunca tokens reales de producción.
         "WHATSAPP_TOKEN": "TEST_WHATSAPP_TOKEN_PLACEHOLDER_197",
@@ -75,8 +77,8 @@ def catalog_guard_ready(dynamic_catalog, monkeypatch):
     vía TestClient: catálogo dinámico instalado (60 ítems) + app.state.catalog_ready=True
     + settings.min_catalog_items=60. Restaura app.state en teardown.
 
-    WHY (Incidente H-A · HA-2): tras la erradicación del bypass is_test_mode (04-03a),
-    el guard es incondicional — este fixture es la forma aprobada de satisfacerlo.
+    WHY (Incidente H-A · HA-2): tras la erradicación del bypass de modo de pruebas
+    (04-03a), el guard es incondicional — este fixture es la forma aprobada de satisfacerlo.
     """
     from app.main import app
     from app.routers import whatsapp as whatsapp_router

@@ -23,7 +23,6 @@ FULL_POOL = {
     "ADMIN_API_KEY": "test_admin_key_not_a_real_secret_197",
     "WEBHOOK_VERIFY_TOKEN": "test_verify_token_197",
     "WHATSAPP_APP_SECRET": "test_app_secret_no_real",
-    "MIN_CATALOG_ITEMS": "0",
     "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/fake-key.json",
 }
 

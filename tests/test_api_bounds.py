@@ -26,7 +26,12 @@ def test_webhook_signature_invalid():
     assert response.status_code == 401
     assert "Signature mismatch" in response.json()["detail"]
 
-def test_webhook_signature_valid():
+def test_webhook_signature_valid(monkeypatch):
+    # [Incidente H-A · HA-2] Guard estricto e incondicional: este test ejerce el
+    # flujo HTTP real → se satisface el guard explícitamente (catálogo listo +
+    # mínimo 0) sin tocar la simetría HMAC (settings.whatsapp_app_secret intacto).
+    monkeypatch.setattr(app.state, "catalog_ready", True, raising=False)
+    monkeypatch.setattr(settings, "min_catalog_items", 0)
     payload = {
         "object": "whatsapp_business_account",
         "entry": [{

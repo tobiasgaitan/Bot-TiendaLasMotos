@@ -44,6 +44,8 @@ async def test_audio_regression_last_bot_question_injection():
         return json.dumps(payload_dict).encode("utf-8")
     mock_request.body = mock_body
     mock_request.headers = {"X-Hub-Signature-256": "sha256=dummy"}
+    # [Incidente H-A · HA-2] Guard estricto: el request debe presentar catálogo listo.
+    mock_request.app.state.catalog_ready = True
 
     # Mock del MemoryService
     mock_memory_service = MagicMock()

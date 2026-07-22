@@ -78,16 +78,13 @@ async def test_startup_lifespan_timeout_recovers_and_commits_catalog_ready():
     result atomically. catalog_ready must be True once the thread finishes successfully,
     eliminating the zombie state (count>0, ready=False) observed in Cloud Run cold starts.
     """
-    import app.main as main_module
-
     with patch("app.main.settings") as mock_settings, \
          patch("app.main.get_firebase_credentials_object") as mock_creds, \
          patch("app.main.firestore") as mock_firestore, \
          patch("app.main.config_service") as mock_config_service, \
          patch("app.main.ConfigLoader") as mock_config_loader, \
          patch("app.main.FinanceConfigLoader") as mock_finance_config_loader, \
-         patch("app.main.storage_service") as mock_storage_service, \
-         patch.object(main_module, "TEST_MODE", False):
+         patch("app.main.storage_service") as mock_storage_service:
 
         mock_settings.db_timeout = 0.05
         mock_settings.gcp_project_id = "test-project"
@@ -102,13 +99,12 @@ async def test_startup_lifespan_timeout_recovers_and_commits_catalog_ready():
 
         mock_config_service.initialize.side_effect = slow_init
 
-        with patch.dict(os.environ, {"TEST_MODE": "false"}):
-            async with lifespan(app):
-                # The lifespan completes immediately and unblocks the port.
-                # Now we wait for the background task to finish (including recovery).
-                await app.state.startup_task
-                # The commit barrier must flip catalog_ready to True once the thread finishes.
-                assert app.state.catalog_ready is True
+        async with lifespan(app):
+            # The lifespan completes immediately and unblocks the port.
+            # Now we wait for the background task to finish (including recovery).
+            await app.state.startup_task
+            # The commit barrier must flip catalog_ready to True once the thread finishes.
+            assert app.state.catalog_ready is True
 
 
 @pytest.mark.asyncio
@@ -118,16 +114,13 @@ async def test_startup_lifespan_init_failure_keeps_catalog_ready_false():
     Test that a genuine failure in the deferred initialization thread leaves
     catalog_ready as False and does not commit partial state.
     """
-    import app.main as main_module
-
     with patch("app.main.settings") as mock_settings, \
          patch("app.main.get_firebase_credentials_object") as mock_creds, \
          patch("app.main.firestore") as mock_firestore, \
          patch("app.main.config_service") as mock_config_service, \
          patch("app.main.ConfigLoader") as mock_config_loader, \
          patch("app.main.FinanceConfigLoader") as mock_finance_config_loader, \
-         patch("app.main.storage_service") as mock_storage_service, \
-         patch.object(main_module, "TEST_MODE", False):
+         patch("app.main.storage_service") as mock_storage_service:
 
         mock_settings.db_timeout = 5
         mock_settings.gcp_project_id = "test-project"
@@ -136,10 +129,9 @@ async def test_startup_lifespan_init_failure_keeps_catalog_ready_false():
         # Simulate a real failure inside the initialization thread.
         mock_config_service.initialize.side_effect = RuntimeError("Firestore unavailable")
 
-        with patch.dict(os.environ, {"TEST_MODE": "false"}):
-            async with lifespan(app):
-                await app.state.startup_task
-                assert app.state.catalog_ready is False
+        async with lifespan(app):
+            await app.state.startup_task
+            assert app.state.catalog_ready is False
 
 
 @pytest.mark.asyncio
@@ -163,10 +155,9 @@ async def test_startup_lifespan_catalog_size_check_fails_in_production():
         mock_settings.min_catalog_items = 60
         mock_settings.gcp_project_id = "test-project"
         
-        with patch.dict(os.environ, {"TEST_MODE": "false"}):
-            async with lifespan(app):
-                await app.state.startup_task
-                assert app.state.catalog_ready is True
+        async with lifespan(app):
+            await app.state.startup_task
+            assert app.state.catalog_ready is True
 
 
 @pytest.mark.asyncio
@@ -188,10 +179,9 @@ async def test_startup_lifespan_successful_initialization_sets_catalog_ready_tru
         mock_settings.min_catalog_items = 60
         mock_settings.gcp_project_id = "test-project"
         
-        with patch.dict(os.environ, {"TEST_MODE": "false"}):
-            async with lifespan(app):
-                await app.state.startup_task
-                assert app.state.catalog_ready is True
+        async with lifespan(app):
+            await app.state.startup_task
+            assert app.state.catalog_ready is True
 
 
 @pytest.mark.asyncio
@@ -213,8 +203,7 @@ async def test_deferred_init_port_available_before_hydration():
          patch("app.main.config_service") as mock_config_service, \
          patch("app.main.FinanceConfigLoader") as mock_finance_config_loader, \
          patch("app.main.storage_service") as mock_storage_service, \
-         patch.object(catalog_service, "get_all_items", return_value=make_catalog(60)), \
-         patch.object(main_module, "TEST_MODE", False):
+         patch.object(catalog_service, "get_all_items", return_value=make_catalog(60)):
          
         mock_settings.db_timeout = 5
         mock_settings.gcp_project_id = "test-project"
@@ -271,8 +260,7 @@ async def test_health_returns_starting_immediately_when_catalog_empty_before_hyd
          patch("app.main.config_service") as mock_config_service, \
          patch("app.main.FinanceConfigLoader") as mock_finance_config_loader, \
          patch("app.main.storage_service") as mock_storage_service, \
-         patch.object(catalog_service, "get_all_items", return_value=[]), \
-         patch.object(main_module, "TEST_MODE", False):
+         patch.object(catalog_service, "get_all_items", return_value=[]):
          
         mock_settings.db_timeout = 5
         mock_settings.gcp_project_id = "test-project"

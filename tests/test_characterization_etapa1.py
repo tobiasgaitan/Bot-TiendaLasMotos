@@ -65,6 +65,8 @@ def _mock_webhook_request(payload_dict: dict) -> MagicMock:
 
     mock_request.body = mock_body
     mock_request.headers = {"X-Hub-Signature-256": "sha256=dummy"}
+    # [Incidente H-A · HA-2] Guard estricto: el request debe presentar catálogo listo.
+    mock_request.app.state.catalog_ready = True
     return mock_request
 
 
@@ -127,6 +129,8 @@ async def test_ch1_task_processor_duplicate_delivery_exactly_once():
     """
     payload_dict = _build_payload("wamid.ch1_duplicate")
     mock_request = MagicMock()
+    # [Incidente H-A · HA-2] Guard estricto: el request debe presentar catálogo listo.
+    mock_request.app.state.catalog_ready = True
 
     async def mock_json():
         return payload_dict
@@ -174,6 +178,8 @@ async def test_rf1_claim_released_on_processing_failure_allows_retry():
     """
     payload_dict = _build_payload("wamid.rf1_release")
     mock_request = MagicMock()
+    # [Incidente H-A · HA-2] Guard estricto: el request debe presentar catálogo listo.
+    mock_request.app.state.catalog_ready = True
 
     async def mock_json():
         return payload_dict

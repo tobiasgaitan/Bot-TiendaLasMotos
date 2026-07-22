@@ -21,10 +21,16 @@ class TestCatalogPriceBonus(unittest.TestCase):
         self.mock_config = self.config_patcher.start()
         self.mock_config.get_registration_cost.return_value = 0
         
+        # [Incidente H-A · HA-2] Desactivar explícitamente el STARTUP-GUARD-PAD:
+        # target_min = 0 → padding off (asserts de conteos exactos).
+        self.min_items_patcher = patch('app.core.config.settings.min_catalog_items', 0)
+        self.min_items_patcher.start()
+        
         self.service._db = MagicMock()
 
     def tearDown(self):
         self.config_patcher.stop()
+        self.min_items_patcher.stop()
 
     def test_load_catalog_extracts_canonical_price_and_bonus(self):
         """

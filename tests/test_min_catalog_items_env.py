@@ -4,7 +4,6 @@ Tests for environment variable precedence in Settings class (specifically MIN_CA
 """
 
 import os
-import sys
 from unittest.mock import patch
 import pytest
 
@@ -62,9 +61,14 @@ def test_min_catalog_items_fallback():
 
 
 def test_min_catalog_items_default():
-    """Test that MIN_CATALOG_ITEMS falls back to default 40 (or 0 if under pytest) if not set anywhere."""
+    """Test that MIN_CATALOG_ITEMS falls back to the uniform default 40 when not set anywhere.
+
+    [Incidente H-A · HA-2] El default ya NO depende del contexto de ejecución:
+    la detección de pytest (que degradaba el mínimo a 0) fue erradicada de config.py.
+    """
     with patch.dict(os.environ, clear=True):
-        # 3. Test absolute default: if neither environment nor dotenv sets it, default is 0 for pytest, 40 otherwise
+        # Absolute default: if neither environment nor dotenv sets it, the value is 40
+        # in EVERY context (producción, CI y pytest por igual).
         def mock_load_dotenv(*args, **kwargs):
             # Set other critical vars to pass validation
             os.environ["GOOGLE_CLOUD_PROJECT"] = "test-project"
@@ -79,15 +83,6 @@ def test_min_catalog_items_default():
 
         with patch("app.core.config.load_dotenv", side_effect=mock_load_dotenv):
             from app.core.config import Settings
-            
-            # Since we are running under pytest, this should be 0 by default
+
             settings_inst = Settings()
-            assert settings_inst.min_catalog_items == 0
-            
-            # Test without pytest in sys.modules
-            modified_modules = sys.modules.copy()
-            if "pytest" in modified_modules:
-                del modified_modules["pytest"]
-            with patch("sys.modules", new=modified_modules):
-                settings_inst_no_pytest = Settings()
-                assert settings_inst_no_pytest.min_catalog_items == 40
+            assert settings_inst.min_catalog_items == 40

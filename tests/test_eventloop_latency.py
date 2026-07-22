@@ -6,13 +6,18 @@ from tests.conftest_chaos import slow_async_mock, timed_assertion, mock_firestor
 @pytest.mark.asyncio
 async def test_webhook_response_within_meta_window(timed_assertion, mock_firestore_with_latency, mock_gemini_with_latency):
     from app.routers.whatsapp import webhook_handler
-    from fastapi import BackgroundTasks, Request
+    from fastapi import BackgroundTasks
     
-    request = MagicMock(spec=Request)
+    # WHY sin spec=Request [Incidente H-A · HA-2]: con spec, el mock hereda __len__
+    # de la interfaz Mapping de HTTPConnection (retorna 0) → bool(request) es False
+    # y el guard `if request and ...` hace short-circuit ignorando catalog_ready.
+    request = MagicMock()
     request.headers = {}
     async def mock_body():
         return b'{"object":"whatsapp_business_account","entry":[{"id":"123","changes":[{"value":{"messaging_product":"whatsapp","metadata":{"display_phone_number":"123456","phone_number_id":"999999"},"messages":[{"from":"5730000000","id":"wamid.1","timestamp":"1672531199","text":{"body":"Test"},"type":"text"}]},"field":"messages"}]}]}'
     request.body = mock_body
+    # [Incidente H-A · HA-2] Guard estricto: catálogo listo + mínimo explícito en 0.
+    request.app.state.catalog_ready = True
     
     bg_tasks = BackgroundTasks()
     
@@ -22,6 +27,7 @@ async def test_webhook_response_within_meta_window(timed_assertion, mock_firesto
          patch("app.routers.whatsapp.memory_service_module.memory_service", MagicMock()):
          
         mock_settings.whatsapp_app_secret = None
+        mock_settings.min_catalog_items = 0
         mock_settings.cloud_tasks_queue_path = None
         mock_settings.task_processor_url = None
         

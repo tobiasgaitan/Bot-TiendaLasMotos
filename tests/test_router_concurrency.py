@@ -43,10 +43,13 @@ async def test_concurrent_webhook_idempotency():
     mock_request_1 = MagicMock()
     mock_request_1.body = mock_body
     mock_request_1.headers = {"X-Hub-Signature-256": "sha256=dummy"}
+    # [Incidente H-A · HA-2] Guard estricto: el request debe presentar catálogo listo.
+    mock_request_1.app.state.catalog_ready = True
 
     mock_request_2 = MagicMock()
     mock_request_2.body = mock_body
     mock_request_2.headers = {"X-Hub-Signature-256": "sha256=dummy"}
+    mock_request_2.app.state.catalog_ready = True
 
     # Mock dependencies
     # We use a real MessageBuffer instance to test the actual Lock/deduplication logic!

@@ -12,6 +12,8 @@ async def test_webhook_handler_synchronous_blocking():
     """
     # 1. Mock Request Payload (Mensaje de usuario)
     mock_request = MagicMock()
+    # [Incidente H-A · HA-2] Guard estricto: el request debe presentar catálogo listo.
+    mock_request.app.state.catalog_ready = True
     payload_dict = {
         "object": "whatsapp_business_account",
         "entry": [{
@@ -93,6 +95,8 @@ async def test_webhook_handler_synchronous_blocking():
          patch("app.routers.whatsapp._handle_message_background", side_effect=track_handle_message):
          
         mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        # [Incidente H-A · HA-2] Guard estricto: mínimo explícito en 0 (catálogo no es el sujeto del test).
+        mock_settings.min_catalog_items = 0
         mock_settings.cloud_tasks_queue_path = None
         mock_settings.task_processor_url = None
         
@@ -146,6 +150,8 @@ async def test_webhook_cloud_tasks_enqueuing():
     """
     # 1. Mock Request Payload (Mensaje de usuario)
     mock_request = MagicMock()
+    # [Incidente H-A · HA-2] Guard estricto: el request debe presentar catálogo listo.
+    mock_request.app.state.catalog_ready = True
     payload_dict = {
         "object": "whatsapp_business_account",
         "entry": [{
@@ -185,6 +191,8 @@ async def test_webhook_cloud_tasks_enqueuing():
          patch("app.routers.whatsapp.message_buffer", mock_message_buffer):
          
         mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        # [Incidente H-A · HA-2] Guard estricto: mínimo explícito en 0.
+        mock_settings.min_catalog_items = 0
         mock_settings.cloud_tasks_queue_path = "projects/my-project/locations/us-central1/queues/my-queue"
         mock_settings.task_processor_url = "https://my-service.run.app/webhook/task-processor"
         
@@ -205,6 +213,8 @@ async def test_task_processor_synchronous_execution():
     y valida la autenticación interna X-Task-Token.
     """
     mock_request = MagicMock()
+    # [Incidente H-A · HA-2] Guard estricto: el request debe presentar catálogo listo.
+    mock_request.app.state.catalog_ready = True
     payload_dict = {
         "object": "whatsapp_business_account",
         "entry": [{
@@ -238,6 +248,8 @@ async def test_task_processor_synchronous_execution():
          patch("app.routers.whatsapp._handle_message_background", new_callable=AsyncMock) as mock_handle:
         
         mock_settings.webhook_verify_token = "secret_token"
+        # [Incidente H-A · HA-2] Guard estricto: mínimo explícito en 0.
+        mock_settings.min_catalog_items = 0
         
         response = await task_processor(mock_request, background_tasks)
         
@@ -291,6 +303,8 @@ async def test_webhook_handler_status_delegation_to_background():
     de procesarlo síncronamente cuando Cloud Tasks no está activo.
     """
     mock_request = MagicMock()
+    # [Incidente H-A · HA-2] Guard estricto: el request debe presentar catálogo listo.
+    mock_request.app.state.catalog_ready = True
     payload_dict = {
         "object": "whatsapp_business_account",
         "entry": [{
@@ -324,6 +338,8 @@ async def test_webhook_handler_status_delegation_to_background():
          patch("app.routers.whatsapp._handle_statuses_background") as mock_handle_statuses:
 
         mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        # [Incidente H-A · HA-2] Guard estricto: mínimo explícito en 0 (catálogo no es el sujeto del test).
+        mock_settings.min_catalog_items = 0
         mock_settings.cloud_tasks_queue_path = None
         mock_settings.task_processor_url = None
 

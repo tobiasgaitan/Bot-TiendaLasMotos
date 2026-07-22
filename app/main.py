@@ -11,7 +11,6 @@ of Cloud Run before any network I/O completes.
 
 import logging
 import asyncio
-import os
 import sys
 from contextlib import asynccontextmanager
 
@@ -69,8 +68,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-TEST_MODE = os.getenv("TEST_MODE") == "true" or "pytest" in sys.modules
-
 # [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
 # WHY: Module-level initialization of Firestore/Secret Manager was executing
 # network calls during Python's import system (before Uvicorn could bind the port).
@@ -101,103 +98,15 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("🔭 Telemetry: DISABLED (missing LANGFUSE_* credentials, export silenced)")
 
-    if not TEST_MODE:
-        # WHY: Launch heavy init in background so Uvicorn can open port 8080 immediately.
-        # The startup_task is stored in app.state for test awaiting (test_startup_lock.py).
-        app.state.startup_task = asyncio.create_task(
-            _run_deferred_initialization(app)
-        )
-    else:
-        # TEST_MODE: Run inline initialization with mocks
-        logger.info("🧪 Running inline lifespan initialization (TEST_MODE)...")
-        try:
-            # 1. Get Firebase credentials
-            credentials_obj = get_firebase_credentials_object()
-            
-            # 2. Initialize Firestore clients
-            db_obj = firestore.Client(
-                project=settings.gcp_project_id,
-                credentials=credentials_obj
-            )
-            db_async_obj = firestore.AsyncClient(
-                project=settings.gcp_project_id,
-                credentials=credentials_obj
-            )
-            
-            # 3. Load configurations and services
-            config_loader_obj = ConfigLoader(db_obj)
-            
-            app.state.config_loader = config_loader_obj
-            app.state.db = db_obj
-            app.state.db_async = db_async_obj
-            
-            # 4. Initialize Cloud Storage
-            storage_service.initialize(credentials_obj)
-            
-            # 5. Initialize Memory Service
-            try:
-                init_memory_service(db_async_obj)
-            except Exception as mem_error:
-                logger.error(f"❌ Failed to initialize Memory Service: {str(mem_error)}", exc_info=True)
-            
-            # 6. Initialize core services (Linear Startup) with timeout
-            def run_initialization_sync():
-                logger.info("⚡ Linear Startup: Initializing config service...")
-                config_service.initialize(db_obj)
-                
-                logger.info("⚡ Linear Startup: Loading dynamic configurations...")
-                config_loader_obj.load_all()
-                
-                logger.info("🏍️  Linear Startup: Initializing catalog service...")
-                # WHY: config_loader_obj is passed as an injected dependency (post-hydration)
-                # to eliminate the race condition in CatalogService.load_catalog().
-                catalog_service.initialize(db_obj, config_loader_obj)
-                
-                logger.info("💰 Linear Startup: Loading Financial Configuration...")
-                finance_config_loader_inst = FinanceConfigLoader(db_obj)
-                
-                return finance_config_loader_inst
+    # WHY: Launch heavy init in background so Uvicorn can open port 8080 immediately.
+    # The startup_task is stored in app.state for test awaiting (test_startup_lock.py).
+    # [Incidente H-A · HA-2] Camino único de inicialización: la antigua rama inline
+    # de modo de pruebas (mocks + fallback DummyConfigLoader) fue erradicada. Los tests
+    # ejercitan este mismo camino de producción con servicios mockeados (fixtures de conftest.py).
+    app.state.startup_task = asyncio.create_task(
+        _run_deferred_initialization(app)
+    )
 
-            logger.info(f"⏳ Running database synchronization with timeout of {settings.db_timeout}s...")
-            try:
-                finance_config_loader_obj = await asyncio.wait_for(
-                    asyncio.to_thread(run_initialization_sync),
-                    timeout=float(settings.db_timeout)
-                )
-                app.state.finance_config_loader = finance_config_loader_obj
-                
-                catalog_items_count = len(catalog_service.get_all_items())
-                app.state.catalog_ready = True
-                logger.info(f"✅ [STARTUP-SUCCESS] Catálogo hidratado sin timeouts. Loaded items: {catalog_items_count}")
-            except asyncio.TimeoutError as te:
-                logger.exception(f"❌ [STARTUP-TIMEOUT] Database synchronization exceeded timeout of {settings.db_timeout} seconds (BOT-INFRA-33).")
-            except Exception as exc:
-                logger.exception(f"❌ [STARTUP-ERROR] Critical failure during database synchronization: {exc}")
-                
-        except Exception as e:
-            logger.error(f"❌ Startup failed during early setup: {str(e)}")
-            if os.getenv("TEST_MODE") == "true":
-                logger.warning("🧪 TEST_MODE: Ignoring startup failure to allow mock integration testing")
-                from unittest.mock import MagicMock
-                class DummyConfigLoader:
-                    def get_juan_pablo_personality(self): return {"name": "Juan Pablo Mock", "model_version": "gemini-2.0-flash"}
-                    def get_routing_rules(self): return {"financial_keywords": []}
-                    def get_catalog_config(self): return {"items": []}
-                class DummyFinanceConfigLoader:
-                    pass
-                app.state.config_loader = DummyConfigLoader()
-                app.state.finance_config_loader = DummyFinanceConfigLoader()
-                app.state.db = MagicMock()
-                app.state.db_async = MagicMock()
-                app.state.catalog_ready = True
-            else:
-                raise
-
-        # Assign a dummy completed task to app.state.startup_task to support existing test assertions
-        async def dummy_completed_task():
-            pass
-        app.state.startup_task = asyncio.create_task(dummy_completed_task())
-    
     yield
     
     # Shutdown

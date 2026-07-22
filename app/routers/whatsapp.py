@@ -417,21 +417,17 @@ async def webhook_handler(
         if request and hasattr(request, "app") and hasattr(request.app, "state"):
             catalog_ready = getattr(request.app.state, "catalog_ready", False) is True
             
-        is_test_mode = os.getenv("TEST_MODE") == "true" or "pytest" in sys.modules
         catalog_items_count = len(catalog_service.get_all_items())
-        min_items_val = settings.min_catalog_items
-        if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
-            min_items = 0
-        else:
-            try:
-                min_items = int(min_items_val)
-            except (TypeError, ValueError):
-                min_items = 60
-            
-        should_bypass = is_test_mode and min_items == 0
-        
-        if not should_bypass:
-            if not catalog_ready or catalog_items_count < min_items:
+        # [Incidente H-A · HA-2] Guard estricto e incondicional: sin bypass de
+        # test-mode ni sniffing de Mocks. El parseo de min_items jamás falla en
+        # silencio (Zero-Silent-Failures).
+        try:
+            min_items = int(settings.min_catalog_items)
+        except (TypeError, ValueError) as e:
+            logger.exception(f"❌ [STARTUP-GUARD] min_catalog_items inválido ({settings.min_catalog_items!r}): {e}")
+            min_items = 60
+
+        if not catalog_ready or catalog_items_count < min_items:
                 logger.error(
                     f"❌ [STARTUP-GUARD] Webhook rejected: catalog is not fully loaded "
                     f"({catalog_items_count}/{min_items} items, catalog_ready={catalog_ready})."
@@ -523,21 +519,17 @@ async def task_processor(
         if request and hasattr(request, "app") and hasattr(request.app, "state"):
             catalog_ready = getattr(request.app.state, "catalog_ready", False) is True
             
-        is_test_mode = os.getenv("TEST_MODE") == "true" or "pytest" in sys.modules
         catalog_items_count = len(catalog_service.get_all_items())
-        min_items_val = settings.min_catalog_items
-        if type(min_items_val).__name__ in ('Mock', 'MagicMock', 'AsyncMock'):
-            min_items = 0
-        else:
-            try:
-                min_items = int(min_items_val)
-            except (TypeError, ValueError):
-                min_items = 60
-            
-        should_bypass = is_test_mode and min_items == 0
-        
-        if not should_bypass:
-            if not catalog_ready or catalog_items_count < min_items:
+        # [Incidente H-A · HA-2] Guard estricto e incondicional: sin bypass de
+        # test-mode ni sniffing de Mocks. El parseo de min_items jamás falla en
+        # silencio (Zero-Silent-Failures).
+        try:
+            min_items = int(settings.min_catalog_items)
+        except (TypeError, ValueError) as e:
+            logger.exception(f"❌ [STARTUP-GUARD] min_catalog_items inválido ({settings.min_catalog_items!r}): {e}")
+            min_items = 60
+
+        if not catalog_ready or catalog_items_count < min_items:
                 logger.error(
                     f"❌ [STARTUP-GUARD] Task processor rejected: catalog is not fully loaded "
                     f"({catalog_items_count}/{min_items} items, catalog_ready={catalog_ready})."

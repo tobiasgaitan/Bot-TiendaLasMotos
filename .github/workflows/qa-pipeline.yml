@@ -11,12 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     
     env:
-      TEST_MODE: "true"
-      # [BOT-BUILD-INFRA-QA-DUMMY-TOKEN-202] MIN_CATALOG_ITEMS=0 activa el bypass
-      # legítimo del STARTUP-GUARD en TEST_MODE (should_bypass = is_test_mode and
-      # min_items == 0). Sin esta variable, uvicorn defaultea a 40 y el webhook
-      # efímero sin Firestore recibe 503 (gate rojo por causa ajena al token).
-      MIN_CATALOG_ITEMS: "0"
+      # [Incidente H-A · HA-2] El bypass del STARTUP-GUARD vía variables de modo de
+      # pruebas (mínimo forzado a 0) fue erradicado: el guard es estricto e
+      # incondicional y la suite lo satisface con mocking dinámico en memoria
+      # (tests/factories.py).
       # [BOT-BUILD-INFRA-QA-DUMMY-TOKEN-202] Pool dummy determinista: desvincula el
       # gate de QA de los secretos de producción. Satisface _validate_config()
       # (no-vacío, fuera de la blacklist moto_master_2026/motos2026) y es

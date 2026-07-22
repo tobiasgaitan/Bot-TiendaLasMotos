@@ -4,7 +4,6 @@ Includes both WhatsApp and Google Cloud Platform configuration.
 """
 
 import os
-import sys
 from typing import Optional
 from dotenv import load_dotenv
 
@@ -80,8 +79,10 @@ class Settings:
         if gcp_min_catalog_items is not None:
             self.min_catalog_items = int(gcp_min_catalog_items)
         else:
-            default_min_items = "0" if "pytest" in sys.modules else "40"
-            self.min_catalog_items = int(os.getenv("MIN_CATALOG_ITEMS", default_min_items))
+            # [Incidente H-A · HA-2] Default uniforme "40" en todo contexto: la
+            # detección de pytest para degradar el mínimo a 0 fue erradicada.
+            # Los tests controlan el valor explícitamente vía monkeypatch/env.
+            self.min_catalog_items = int(os.getenv("MIN_CATALOG_ITEMS", "40"))
         
         # WhatsApp API Version Override
         self.whatsapp_api_version: str = os.getenv("WHATSAPP_API_VERSION", "v21.0")
