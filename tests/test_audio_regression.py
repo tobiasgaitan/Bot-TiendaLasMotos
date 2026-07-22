@@ -3,6 +3,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import BackgroundTasks
 from app.routers.whatsapp import webhook_handler, _handle_message_background_impl
+from tests.factories import make_catalog, make_domain_item, format_cop
 
 @pytest.mark.asyncio
 async def test_audio_regression_last_bot_question_injection():
@@ -74,8 +75,9 @@ async def test_audio_regression_last_bot_question_injection():
     mock_audio = MagicMock()
     mock_audio.transcribe_audio = AsyncMock(return_value="Quiero comprar una Victory")
 
+    catalog_items = make_catalog(100)
     mock_cerebro = MagicMock()
-    mock_cerebro.pensar_respuesta = AsyncMock(return_value="Perfecto. La Victory está disponible por $6.000.000. Ficha Tecnica: http://... ![](http://victory.png)")
+    mock_cerebro.pensar_respuesta = AsyncMock(return_value=f"Perfecto. La Victory está disponible por {format_cop(catalog_items[0]['price'])}. Ficha Tecnica: http://... ![](http://victory.png)")
 
     mock_whatsapp = MagicMock()
     mock_whatsapp.mark_as_read = AsyncMock()
@@ -84,7 +86,7 @@ async def test_audio_regression_last_bot_question_injection():
 
     mock_catalog = MagicMock()
     mock_catalog.search = MagicMock(return_value=[])
-    mock_catalog.get_all_items = MagicMock(return_value=[{"name": "Victory"}] * 100)
+    mock_catalog.get_all_items = MagicMock(return_value=catalog_items)
     mock_catalog.normalize_transcription = MagicMock(side_effect=lambda x: x)
 
     mock_judge = MagicMock()
@@ -222,9 +224,10 @@ async def test_audio_lineage_post_reset_no_desertion():
     mock_audio = MagicMock()
     mock_audio.transcribe_audio = AsyncMock(return_value="Busco una moto económica para trabajo")
 
+    catalog_items = make_catalog(50)
     mock_cerebro = MagicMock()
     mock_cerebro.pensar_respuesta = AsyncMock(
-        return_value="Perfecto Carlos! La TVS Sport 100 es ideal. Precio: $3.200.000. Ficha Tecnica: specs... ![TVS](http://tvs.png)"
+        return_value=f"Perfecto Carlos! La TVS Sport 100 es ideal. Precio: {format_cop(catalog_items[0]['price'])}. Ficha Tecnica: specs... ![TVS](http://tvs.png)"
     )
 
     mock_whatsapp = MagicMock()
@@ -233,7 +236,7 @@ async def test_audio_lineage_post_reset_no_desertion():
 
     mock_catalog = MagicMock()
     mock_catalog.search = MagicMock(return_value=[])
-    mock_catalog.get_all_items = MagicMock(return_value=[{"name": "TVS Sport 100"}] * 50)
+    mock_catalog.get_all_items = MagicMock(return_value=catalog_items)
     mock_catalog._items = []
     mock_catalog.normalize_transcription = MagicMock(side_effect=lambda x: x)
 
@@ -369,24 +372,20 @@ async def test_audio_fuzzy_alignment_rader():
 
     # Instanciamos CatalogService real pero con un catálogo mockeado en memoria para aislar
     real_catalog = CatalogService()
-    # Cargamos ítems ficticios de prueba (ej. TVS Raider 125)
-    real_catalog._items = [
-        {
-            "id": "tvs_raider",
-            "name": "TVS Raider 125",
-            "price": 6000000,
-            "category": "deportiva",
-            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/tvs_raider.jpg",
-            "search_tags": ["sport", "tecnologia"],
-            "search_text": "tvs raider 125 deportiva sport tecnologia",
-            "search_tokens": ["tvs", "raider", "125", "deportiva", "sport", "tecnologia"],
-            "searchBy": ["sport", "tecnologia"],
-            "description": "Moto deportiva con tecnologia de punta y gran desempeño.",
-            "link": "https://tiendalasmotos.com/tvs-raider",
-            "active": True,
-            "cc": 125
-        }
-    ]
+    # Ítem de dominio generado por factories.py (precio dinámico, seed fija) con
+    # overrides semánticos para el matching fuzzy — cero literales de precio [HA-3].
+    raider_item = make_domain_item(
+        name="TVS Raider 125",
+        category="deportiva",
+        search_tags=["sport", "tecnologia"],
+        search_text="tvs raider 125 deportiva sport tecnologia",
+        search_tokens=["tvs", "raider", "125", "deportiva", "sport", "tecnologia"],
+        searchBy=["sport", "tecnologia"],
+        description="Moto deportiva con tecnologia de punta y gran desempeño.",
+        active=True,
+        cc=125
+    )
+    real_catalog._items = [raider_item]
     real_catalog._items_by_id = {i["id"]: i for i in real_catalog._items}
 
     mock_memory_service = MagicMock()
@@ -413,10 +412,11 @@ async def test_audio_fuzzy_alignment_rader():
     mock_audio = MagicMock()
     mock_audio.transcribe_audio = AsyncMock(return_value="Quiero cotizar una rader")
 
-    # Cerebro IA devuelve una respuesta mencionando la Raider
+    # Cerebro IA devuelve una respuesta mencionando la Raider con el precio
+    # GENERADO por la fábrica (consistencia PCC sin literales [HA-3])
     mock_cerebro = MagicMock()
     mock_cerebro.pensar_respuesta = AsyncMock(
-        return_value="Perfecto. La TVS Raider 125 está disponible por $6.000.000 (incluye SOAT, Matrícula, y tramites). Ficha Tecnica: http://... ![](http://raider.png)"
+        return_value=f"Perfecto. La TVS Raider 125 está disponible por {format_cop(raider_item['price'])} (incluye SOAT, Matrícula, y tramites). Ficha Tecnica: http://... ![](http://raider.png)"
     )
 
     mock_whatsapp = MagicMock()

@@ -23,6 +23,7 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import BackgroundTasks, HTTPException
+from tests.factories import make_catalog
 from google.api_core import exceptions as gcp_exceptions
 
 from app.routers.whatsapp import webhook_handler, task_processor
@@ -134,7 +135,7 @@ async def test_ch1_task_processor_duplicate_delivery_exactly_once():
     mock_request.headers = {"X-Task-Token": "secret_token"}
 
     mock_catalog = MagicMock()
-    mock_catalog.get_all_items = MagicMock(return_value=[MagicMock()] * 10)
+    mock_catalog.get_all_items = MagicMock(return_value=make_catalog(10))
 
     mock_ms = MagicMock()
     # Primera entrega reclama (True); la duplicada encuentra AlreadyExists (False).
@@ -181,7 +182,7 @@ async def test_rf1_claim_released_on_processing_failure_allows_retry():
     mock_request.headers = {"X-Task-Token": "secret_token"}
 
     mock_catalog = MagicMock()
-    mock_catalog.get_all_items = MagicMock(return_value=[MagicMock()] * 10)
+    mock_catalog.get_all_items = MagicMock(return_value=make_catalog(10))
 
     mock_ms = MagicMock()
     # Intento 1 reclama OK; el reintento (tras liberación) vuelve a reclamar OK.
@@ -264,7 +265,7 @@ async def test_ch2_ingress_dedup_governs_cloud_tasks_enqueue():
     mb_instance = MessageBuffer(debounce_seconds=1.0)
 
     mock_catalog = MagicMock()
-    mock_catalog.get_all_items = MagicMock(return_value=[MagicMock()] * 10)
+    mock_catalog.get_all_items = MagicMock(return_value=make_catalog(10))
 
     with patch("app.routers.whatsapp.settings") as mock_settings, \
          patch("app.routers.whatsapp._enqueue_cloud_task", new_callable=AsyncMock) as mock_enqueue, \

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import BackgroundTasks
 from app.routers.whatsapp import webhook_handler
 from app.services.message_buffer import MessageBuffer
+from tests.factories import make_catalog
 
 @pytest.mark.asyncio
 async def test_concurrent_webhook_idempotency():
@@ -52,7 +53,7 @@ async def test_concurrent_webhook_idempotency():
     mb_instance = MessageBuffer(debounce_seconds=1.0)
 
     mock_catalog = MagicMock()
-    mock_catalog.get_all_items = MagicMock(return_value=[MagicMock()] * 10) # catalog is loaded
+    mock_catalog.get_all_items = MagicMock(return_value=make_catalog(10)) # catalog is loaded
 
     with patch("app.routers.whatsapp.settings") as mock_settings, \
          patch("app.routers.whatsapp._enqueue_cloud_task", new_callable=AsyncMock) as mock_enqueue, \

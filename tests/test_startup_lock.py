@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.main import app, lifespan
 from app.routers.whatsapp import webhook_handler, task_processor
 from app.services.catalog_service import catalog_service
+from tests.factories import make_catalog
 
 
 @pytest.mark.asyncio
@@ -181,7 +182,7 @@ async def test_startup_lifespan_successful_initialization_sets_catalog_ready_tru
          patch("app.main.config_service") as mock_config_service, \
          patch("app.main.FinanceConfigLoader") as mock_finance_config_loader, \
          patch("app.main.storage_service") as mock_storage_service, \
-         patch.object(catalog_service, "get_all_items", return_value=[MagicMock()] * 60):
+         patch.object(catalog_service, "get_all_items", return_value=make_catalog(60)):
          
         mock_settings.db_timeout = 5
         mock_settings.min_catalog_items = 60
@@ -212,7 +213,7 @@ async def test_deferred_init_port_available_before_hydration():
          patch("app.main.config_service") as mock_config_service, \
          patch("app.main.FinanceConfigLoader") as mock_finance_config_loader, \
          patch("app.main.storage_service") as mock_storage_service, \
-         patch.object(catalog_service, "get_all_items", return_value=[MagicMock()] * 60), \
+         patch.object(catalog_service, "get_all_items", return_value=make_catalog(60)), \
          patch.object(main_module, "TEST_MODE", False):
          
         mock_settings.db_timeout = 5

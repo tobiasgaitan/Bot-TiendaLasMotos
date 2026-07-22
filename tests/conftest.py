@@ -56,6 +56,41 @@ def cerebro_mock():
         cerebro.privacy_policy_url = "https://tiendalasmotos.com/politica-de-privacidad"
         return cerebro
 
+@pytest.fixture
+def dynamic_catalog():
+    """Catálogo dinámico de 60 ítems (tests/factories.py) inyectado en el singleton real.
+
+    WHY (Incidente H-A · HA-3): sustituye los mocks ad-hoc `[MagicMock()] * N` y los
+    literales de precio del arnés. Determinista (seed fija) y restaurado en teardown.
+    """
+    from tests.factories import install_dynamic_catalog, restore_catalog
+    items, token = install_dynamic_catalog(60)
+    yield items
+    restore_catalog(token)
+
+
+@pytest.fixture
+def catalog_guard_ready(dynamic_catalog, monkeypatch):
+    """Satisface el STARTUP-GUARD estricto para tests que ejercitan webhook/task-processor
+    vía TestClient: catálogo dinámico instalado (60 ítems) + app.state.catalog_ready=True
+    + settings.min_catalog_items=60. Restaura app.state en teardown.
+
+    WHY (Incidente H-A · HA-2): tras la erradicación del bypass is_test_mode (04-03a),
+    el guard es incondicional — este fixture es la forma aprobada de satisfacerlo.
+    """
+    from app.main import app
+    from app.routers import whatsapp as whatsapp_router
+
+    had_flag = hasattr(app.state, "catalog_ready")
+    previous_flag = getattr(app.state, "catalog_ready", None)
+    app.state.catalog_ready = True
+    monkeypatch.setattr(whatsapp_router.settings, "min_catalog_items", 60)
+    yield dynamic_catalog
+    if had_flag:
+        app.state.catalog_ready = previous_flag
+    else:
+        delattr(app.state, "catalog_ready")
+
 class AsyncStreamMock:
     """
     Mock estandarizado para simular firestore.Query.stream().
