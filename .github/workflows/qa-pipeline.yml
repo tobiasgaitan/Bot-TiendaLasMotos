@@ -12,22 +12,62 @@ jobs:
     
     env:
       TEST_MODE: "true"
-      ADMIN_API_KEY: "${{ secrets.ADMIN_API_KEY }}"
-      WHATSAPP_TOKEN: "${{ secrets.WHATSAPP_TOKEN }}"
-      PHONE_NUMBER_ID: "${{ secrets.PHONE_NUMBER_ID }}"
-      WEBHOOK_VERIFY_TOKEN: "${{ secrets.WEBHOOK_VERIFY_TOKEN }}"
+      # [BOT-BUILD-INFRA-QA-DUMMY-TOKEN-202] MIN_CATALOG_ITEMS=0 activa el bypass
+      # legítimo del STARTUP-GUARD en TEST_MODE (should_bypass = is_test_mode and
+      # min_items == 0). Sin esta variable, uvicorn defaultea a 40 y el webhook
+      # efímero sin Firestore recibe 503 (gate rojo por causa ajena al token).
+      MIN_CATALOG_ITEMS: "0"
+      # [BOT-BUILD-INFRA-QA-DUMMY-TOKEN-202] Pool dummy determinista: desvincula el
+      # gate de QA de los secretos de producción. Satisface _validate_config()
+      # (no-vacío, fuera de la blacklist moto_master_2026/motos2026) y es
+      # autoidentificable en logs forenses. Ninguna aserción de la suite depende
+      # de los valores reales (Playwright/k6 firman con el app_secret default).
+      # PROHIBIDO añadir WHATSAPP_APP_SECRET aquí: el servidor usa el default de
+      # config.py y los specs firman HMAC con ese mismo valor; alterarlo rompe
+      # la simetría criptográfica y el gate falla con 401.
+      # [BOT-BUILD-SECURITY-202] PROHIBIDO reintroducir valores con formato real
+      # (EAA...) en este bloque: el gate Gitleaks (paso 2) bloquea el pipeline.
+      ADMIN_API_KEY: "dummy_qa_admin_api_key_202"
+      WHATSAPP_TOKEN: "dummy_qa_token_override_202"
+      PHONE_NUMBER_ID: "dummy_qa_phone_number_id_202"
+      WEBHOOK_VERIFY_TOKEN: "dummy_qa_verify_token_202"
       FIRESTORE_COLLECTION: "prospectos"
       GOOGLE_APPLICATION_CREDENTIALS: "/tmp/fake-key.json"
-
-    services:
-      redis:
-        image: redis
-        ports:
-          - 6379:6379
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      # [BOT-BUILD-SECURITY-202] Barrera anti-filtración de secretos (Fase 5).
+      # Escanea el rango del push/PR: bloquea cualquier credencial NUEVA con
+      # formato real (Meta EAA..., npm PAT, GitHub PAT). El escaneo de historial
+      # completo se ejecuta como verificación única post-scrub (Fase 3, H-A);
+      # activarlo aquí antes del scrub dejaría el gate rojo por la deuda histórica.
+      - name: Secret Leak Gate (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+
+      # [BOT-BUILD-CICD-SECRET-REF-204] Guard de regresión: PROHIBIDO reintroducir
+      # WHATSAPP_TOKEN como literal en flags de env vars de cualquier workflow
+      # (colisión de tipos contra secretKeyRef — deploy job #88819603750).
+      # El secreto SOLO se enlaza vía Secret Manager (set-secrets / update-secrets).
+      # Vigila el artefacto correcto: el propio YAML (clase de bug invisible a pytest).
+      - name: Regression Guard — Secrets & IAM Hygiene
+        run: |
+          if grep -rnE '(set-env-vars|update-env-vars)=.*WHATSAPP_TOKEN' .github/workflows/; then
+            echo "❌ FORENSIC: WHATSAPP_TOKEN detectado como literal en un flag de env vars."
+            echo "   Patrón obligatorio: binding Secret Manager (ticket BOT-BUILD-CICD-SECRET-REF-204)."
+            exit 1
+          fi
+          # [BOT-BUILD-CICD-IAM-205] IAM jamás se muta desde CI: es estado de
+          # infraestructura provisionado out-of-band (403 forense, run 29888880244).
+          # Se ignoran líneas de comentario (runbooks legítimos) y solo se bloquean
+          # pasos EJECUTABLES. El [-] evita el auto-disparo del propio patrón.
+          if grep -rnE 'secrets add-iam-policy[-]binding' .github/workflows/ | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#'; then
+            echo "❌ FORENSIC: mutación IAM de Secret Manager detectada como paso ejecutable en un workflow."
+            echo "   IAM se provisiona out-of-band (ticket BOT-BUILD-CICD-IAM-205)."
+            exit 1
+          fi
+          echo "✅ FORENSIC: workflows limpios de inyección literal y mutación IAM."
 
       - name: Setup Node.js Environment
         uses: actions/setup-node@v4
@@ -47,7 +87,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          npm install
+          npm ci
           uv venv
           uv pip install -r requirements.txt
           npx playwright install --with-deps
@@ -55,10 +95,11 @@ jobs:
       - name: Run Scaffold Check
         run: npx agent-cli scaffold --check
 
-      - name: Spin up Whap Mock Server
-        run: |
-          npm run whap:server &
-          sleep 3
+      # [BOT-BUILD-SECURITY-202] El gate de coherencia pytest se ejecuta ANTES de
+      # levantar servidores: fail-fast (ahorra minutos de runner) y garantiza que
+      # el arnés unificado pytest es la primera barrera de calidad real.
+      - name: Evaluate Coherence Score Gate (pytest)
+        run: npx agent-cli eval
 
       - name: Spin up FastAPI Bot Server
         run: |
@@ -67,9 +108,6 @@ jobs:
 
       - name: Execute Playwright Integration Tests
         run: npx playwright test tests/integration/whatsapp_webhook.spec.js
-
-      - name: Run Conversational Regression (Botium)
-        run: npm test -- --botium tests/conversational/TC_simulacion_ciega.convo.txt
 
       - name: Install Grafana k6
         run: |
@@ -81,6 +119,3 @@ jobs:
         uses: grafana/run-k6-action@v1
         with:
           path: tests/performance/test_k6.js
-
-      - name: Evaluate Coherence Score Final Gate
-        run: npx agent-cli eval

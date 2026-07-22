@@ -33,18 +33,19 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # [BOT-BUILD-INFRA-TOKEN-ROTATION-201] IAM de mínimo privilegio: la SA de runtime
-      # solo obtiene secretAccessor sobre el secreto individual. Idempotente.
-      # Si el servicio usa una SA de runtime personalizada, ajustar --member.
-      - name: Grant Secret Manager access to runtime SA
-        run: |
-          PROJECT_NUMBER=$(gcloud projects describe tiendalasmotos --format="value(projectNumber)") || {
-            echo "❌ FORENSIC: no se pudo resolver projectNumber de tiendalasmotos"; exit 1; }
-          gcloud secrets add-iam-policy-binding WHATSAPP_TOKEN \
-            --project tiendalasmotos \
-            --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-            --role="roles/secretmanager.secretAccessor" || {
-            echo "❌ FORENSIC: fallo IAM binding sobre el secreto WHATSAPP_TOKEN (bootstrap: gcloud secrets create WHATSAPP_TOKEN --replication-policy=automatic)"; exit 1; }
+      # [BOT-PLAN-CICD-IAM-205] IAM JAMÁS se muta desde este pipeline (403 forense del
+      # run 29888880244: la SA de deploy no tiene ni debe tener privilegios de admin IAM).
+      # El acceso runtime al secreto está provisionado a NIVEL PROYECTO
+      # (roles/secretmanager.secretAccessor heredado):
+      #   - runtime beta: <PROJECT_NUMBER>-compute@developer.gserviceaccount.com
+      #   - runtime prod: bot-admin@tiendalasmotos.iam.gserviceaccount.com
+      # La SA de deploy (github-actions-deploy@) solo posee secretAccessor a nivel
+      # RECURSO sobre WHATSAPP_TOKEN (bootstrap one-time ejecutado por el owner):
+      #   gcloud secrets add-iam-policy-binding WHATSAPP_TOKEN --project tiendalasmotos \
+      #     --member="serviceAccount:github-actions-deploy@tiendalasmotos.iam.gserviceaccount.com" \
+      #     --role="roles/secretmanager.secretAccessor"
+      # Reaplicar ÚNICAMENTE si el secreto se recrea. El Regression Guard de
+      # qa-pipeline.yml bloquea la reintroducción de pasos IAM en workflows.
 
       # [BOT-BUILD-INFRA-TOKEN-ROTATION-201] Resolución de la versión ENABLED más reciente
       # para binding pineado (revisiones inmutables, rollback determinista).
