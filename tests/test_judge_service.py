@@ -58,9 +58,86 @@ async def test_judge_habeas_data_accepted_violation(judge_service):
 @pytest.mark.asyncio
 async def test_judge_city_discovery_fail(judge_service):
     # Move to credit without city
+    # [BOT-BUILD-ETAPA3-POST-RESET-C9-GRACE-001] El historial incluye el turno
+    # actual; C9 exige >= 2 mensajes legítimos de usuario para disparar.
     response = "Para iniciar tu crédito necesito unos datos."
     prospect_data = {"ciudad": ""}
-    approved, reason = await judge_service.analyze_response("financiar", response, prospect_data=prospect_data)
+    history = [
+        {"role": "user", "content": "hola"},
+        {"role": "user", "content": "financiar"},
+    ]
+    approved, reason = await judge_service.analyze_response("financiar", response, prospect_data=prospect_data, history=history)
+    assert not approved
+    assert "C9_CITY_MISSING" in reason
+
+@pytest.mark.asyncio
+async def test_judge_c9_condoned_first_legitimate_turn(judge_service):
+    """
+    [BOT-BUILD-ETAPA3-POST-RESET-C9-GRACE-001] Ventana de gracia de 1 turno.
+
+    GIVEN: Un historial con exactamente 1 mensaje legítimo de usuario (el turno
+    actual, post-reset o primer contacto) y prospect_data SIN ciudad.
+    WHEN: La respuesta del bot habla de crédito (keyword de _detect_credit_advance).
+    THEN: C9_CITY_MISSING se condona y la respuesta es APROBADA (los demás
+    criterios permanecen activos y pasan).
+    """
+    response = "Claro, te cuento cómo funciona el crédito con nosotros."
+    prospect_data = {"ciudad": ""}
+    history = [
+        {"role": "user", "content": "quiero financiar una moto"},
+    ]
+    approved, reason = await judge_service.analyze_response(
+        "quiero financiar una moto", response, prospect_data=prospect_data, history=history
+    )
+    assert approved, f"C9 debió condonarse en el primer turno legítimo: {reason}"
+
+
+@pytest.mark.asyncio
+async def test_judge_c9_ignores_control_messages(judge_service):
+    """
+    [BOT-BUILD-ETAPA3-POST-RESET-C9-GRACE-001] Los mensajes de control NO cuentan
+    para el umbral de C9 (semántica BOT-206: '/reset', notas de sistema y la
+    confirmación de reinicio se excluyen; los mensajes 'model' nunca cuentan).
+
+    GIVEN: Historial post-reset con '/reset' (user), confirmación (model), una
+    nota '[System Note:' (user) y 1 solo mensaje legítimo (el turno actual).
+    THEN: El conteo legítimo es 1 → C9 condonado.
+    """
+    response = "Te explico las opciones de crédito disponibles."
+    prospect_data = {}
+    history = [
+        {"role": "user", "content": "/reset"},
+        {"role": "model", "content": "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?"},
+        {"role": "user", "content": "[System Note: contexto restaurado]"},
+        {"role": "user", "content": "cuánto es la cuota mensual"},
+    ]
+    approved, reason = await judge_service.analyze_response(
+        "cuánto es la cuota mensual", response, prospect_data=prospect_data, history=history
+    )
+    assert approved, f"C9 debió condonarse: solo 1 mensaje legítimo tras excluir control: {reason}"
+
+
+@pytest.mark.asyncio
+async def test_judge_c9_reactivates_second_turn(judge_service):
+    """
+    [BOT-BUILD-ETAPA3-POST-RESET-C9-GRACE-001] Los dientes de C9: la gracia es de
+    exactamente 1 turno.
+
+    GIVEN: Un historial con 2 mensajes legítimos de usuario (2.º turno) y
+    prospect_data SIN ciudad.
+    WHEN: La respuesta del bot intenta avanzar a crédito.
+    THEN: C9_CITY_MISSING RECHAZA — el criterio recupera plena vigencia.
+    """
+    response = "Para iniciar tu crédito necesito unos datos."
+    prospect_data = {"ciudad": ""}
+    history = [
+        {"role": "user", "content": "hola"},
+        {"role": "model", "content": "¡Hola! Soy Juan Pablo."},
+        {"role": "user", "content": "quiero crédito"},
+    ]
+    approved, reason = await judge_service.analyze_response(
+        "quiero crédito", response, prospect_data=prospect_data, history=history
+    )
     assert not approved
     assert "C9_CITY_MISSING" in reason
 

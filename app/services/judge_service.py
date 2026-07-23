@@ -103,7 +103,15 @@ class JudgeService:
         is_moving_to_credit = self._detect_credit_advance(ai_response)
         has_city = bool(prospect_data.get("ciudad") or prospect_data.get("city"))
         if is_moving_to_credit and not has_city:
-            return False, "C9_CITY_MISSING: El bot intenta avanzar a crédito sin haber preguntado la ciudad."
+            # [BOT-BUILD-ETAPA3-POST-RESET-C9-GRACE-001] Ventana de gracia de 1 turno:
+            # el historial recibido incluye el turno actual, por lo que un conteo < 2
+            # mensajes legítimos de usuario identifica el primer contacto (o el primer
+            # turno post-reset). En ese caso C9 se condona: el bucle de reintentos del
+            # router forzará al bot a capturar la ciudad en el turno siguiente, donde
+            # este criterio recupera plena vigencia (PROHIBIDO eliminarlo).
+            if self._count_legitimate_user_messages(history) >= 2:
+                return False, "C9_CITY_MISSING: El bot intenta avanzar a crédito sin haber preguntado la ciudad."
+            logger.info("✅ [JUDGE] C9_CITY_MISSING condonado: primer turno legítimo (post-reset/primer contacto). El bot debe capturar la ciudad en el siguiente turno.")
 
         # --- CRITERIO 5: Two-Question-Rule (Heuristic) ---
         # Count question marks. Max 2.
@@ -184,6 +192,34 @@ class JudgeService:
     def _detect_credit_advance(self, text: str) -> bool:
         keywords = ["crédito", "financiar", "cuotas", "mensualidad", "requisitos", "estudio de crédito"]
         return any(kw.lower() in text.lower() for kw in keywords)
+
+    def _count_legitimate_user_messages(self, history: List[Any]) -> int:
+        """
+        [BOT-BUILD-ETAPA3-POST-RESET-C9-GRACE-001] Cuenta los mensajes legítimos de
+        usuario en el historial, excluyendo comandos y mensajes de control/sistema.
+
+        Semántica IDÉNTICA a `_evaluate_skip_greeting` del router de WhatsApp
+        (alineación BOT-206): se excluyen 'reset', '/reset', '/update',
+        '/refresh_catalog', cualquier comando con prefijo '/', las notas
+        '[System Note:' y los mensajes de reinicio de sesión.
+
+        Defensivo: ignora entradas no-dict (el historial es una fuente externa).
+        """
+        count = 0
+        for msg in (history or []):
+            if not isinstance(msg, dict):
+                continue
+            if msg.get("role") != "user":
+                continue
+            content = str(msg.get("content", "")).strip()
+            content_lower = content.lower()
+            if (content_lower in ["reset", "/reset", "/update", "/refresh_catalog"] or
+                content.startswith("/") or
+                content.startswith("[System Note:") or
+                "sesión ha sido reiniciada" in content_lower):
+                continue
+            count += 1
+        return count
 
     def _is_profiling_attempt(self, text: str) -> bool:
         if not text: return False

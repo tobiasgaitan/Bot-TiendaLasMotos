@@ -291,6 +291,136 @@ async def test_audio_lineage_post_reset_no_desertion():
     assert call_count_prospect["n"] >= 2, \
         f"get_prospect_data llamado solo {call_count_prospect['n']} vez — el re-fetch post-sync no ocurrió"
 
+@pytest.mark.asyncio
+async def test_audio_post_reset_credit_intent_no_fallback():
+    """
+    [BOT-BUILD-ETAPA3-POST-RESET-C9-GRACE-001] Regresión E2E — Audio post-reset con
+    intención de crédito NO debe caer al fallback de handoff humano.
+
+    Escenario: /reset → wipe → audio preguntando por crédito/cuotas. prospect_data
+    fresco SIN 'ciudad' ni 'name'. El cerebro responde hablando de crédito (keyword
+    de _detect_credit_advance) sin mencionar modelos de moto ni URLs. El Juez es
+    REAL (auditoría semántica C4 desactivada — patrón del fixture de
+    test_judge_service.py).
+
+    CONTRATO:
+    1. C9 se condona en el primer turno legítimo: pensar_respuesta se invoca
+       exactamente 1 vez (cero reintentos por rechazo del Juez).
+    2. set_human_help_status JAMÁS se invoca con True (no hay falsa deserción).
+    3. El orquestador egresa la respuesta APROBADA del cerebro (NO el fallback
+       'Disculpa, no estoy seguro...').
+    """
+    from app.services.judge_service import JudgeService
+
+    msg_data = {
+        "from": "573199999998",
+        "id": "wamid.audio_post_reset_c9_grace_001",
+        "timestamp": "1672531200",
+        "type": "audio",
+        "media_id": "audio_media_post_reset_c9_001",
+        "mime_type": "audio/ogg; codecs=opus",
+        "phone_number_id": "555555"
+    }
+
+    # Estado fresco post-reset: SIN 'ciudad' ni 'name' (el Juez evalúa has_city=False)
+    fresh_prospect_data = {
+        "exists": True,
+        "status": "IN_PROGRESS",
+        "chatbot_status": "ACTIVE",
+        "celular": "+573199999998",
+        "human_help_requested": False,
+        "ai_summary": ""
+    }
+
+    credit_response = (
+        "¡Hola! Soy Juan Pablo de Tienda Las Motos. "
+        "Claro que sí, el crédito lo manejamos directamente y las cuotas dependen del plazo."
+    )
+
+    mock_memory_service = MagicMock()
+    mock_memory_service.create_prospect_if_missing = AsyncMock()
+    mock_memory_service.update_last_interaction = AsyncMock()
+    mock_memory_service.save_message = AsyncMock()
+    mock_memory_service.transition_to_in_progress = AsyncMock()
+    mock_memory_service.update_prospect_summary = AsyncMock()
+    mock_memory_service.set_human_help_status = AsyncMock()
+    mock_memory_service.get_prospect_data = AsyncMock(return_value=fresh_prospect_data)
+    mock_memory_service.get_or_create_prospect = AsyncMock(return_value=fresh_prospect_data)
+    mock_memory_service.generate_and_update_summary = AsyncMock()
+    # Historial post-reset REALISTA: incluye el comando /reset (excluido por el
+    # filtro BOT-206), la confirmación (model) y la transcripción del turno actual.
+    mock_memory_service.get_chat_history = AsyncMock(return_value=[
+        {"role": "user", "content": "/reset"},
+        {"role": "model", "content": "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?"},
+        {"role": "user", "content": "cuánto es la cuota para financiar una moto"},
+    ])
+
+    mock_storage = MagicMock()
+    mock_storage.download_media = AsyncMock(return_value=b"mock_audio_bytes_reset_c9")
+
+    mock_audio = MagicMock()
+    mock_audio.transcribe_audio = AsyncMock(return_value="cuánto es la cuota para financiar una moto")
+
+    mock_cerebro = MagicMock()
+    mock_cerebro.pensar_respuesta = AsyncMock(return_value=credit_response)
+
+    mock_whatsapp = MagicMock()
+    mock_whatsapp.mark_as_read = AsyncMock()
+    mock_whatsapp.send_text_message = AsyncMock()
+
+    mock_catalog = MagicMock()
+    mock_catalog.search = MagicMock(return_value=[])
+    mock_catalog.get_all_items = MagicMock(return_value=[])
+    mock_catalog._items = []
+    mock_catalog.normalize_transcription = MagicMock(side_effect=lambda x: x)
+
+    # Juez REAL con auditoría semántica (C4) desactivada.
+    real_judge = JudgeService(cerebro_ia=MagicMock())
+    real_judge._client = None
+
+    mock_config = MagicMock()
+    mock_egress = AsyncMock(return_value=True)
+
+    with patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
+         patch("app.routers.whatsapp.storage_service", mock_storage), \
+         patch("app.routers.whatsapp.AudioService", return_value=mock_audio), \
+         patch("app.routers.whatsapp.CerebroIA", return_value=mock_cerebro), \
+         patch("app.routers.whatsapp.VisionService", return_value=MagicMock()), \
+         patch("app.services.whatsapp_service.whatsapp_service", mock_whatsapp), \
+         patch("app.routers.whatsapp.whatsapp_service", mock_whatsapp, create=True), \
+         patch("app.routers.whatsapp.catalog_service", mock_catalog), \
+         patch("app.routers.whatsapp.judge_service", real_judge), \
+         patch("app.routers.whatsapp.config_loader", mock_config), \
+         patch("app.routers.whatsapp.motor_financiero", None), \
+         patch("app.routers.whatsapp._process_and_send_egress_message", mock_egress), \
+         patch("app.routers.whatsapp.message_buffer") as mock_buffer, \
+         patch("app.routers.whatsapp._ensure_services", AsyncMock()):
+
+        mock_buffer.add_message = AsyncMock(return_value=True)
+        mock_buffer.debounce_seconds = 0
+        mock_buffer.is_task_active = MagicMock(return_value=True)
+
+        background_tasks = BackgroundTasks()
+        await _handle_message_background_impl(msg_data, background_tasks)
+
+    # === ASERCIONES RÍGIDAS ===
+
+    # 1. C9 condonado → aprobación en el primer intento: UNA sola inferencia.
+    mock_cerebro.pensar_respuesta.assert_called_once()
+
+    # 2. NO hay falsa deserción: set_human_help_status(True) jamás invocado.
+    for call in mock_memory_service.set_human_help_status.call_args_list:
+        args = call[0]
+        if len(args) >= 2:
+            assert args[1] is not True, \
+                "FALLO CRÍTICO: set_human_help_status(True) invocado — el audio post-reset cayó al fallback."
+
+    # 3. El egreso consolida la respuesta APROBADA del cerebro (no el fallback).
+    mock_egress.assert_awaited_once()
+    egress_args = mock_egress.call_args
+    assert egress_args.args[1] == credit_response, \
+        f"El egreso debió enviar la respuesta aprobada del cerebro; recibió: {egress_args.args[1]!r}"
+
 
 @pytest.mark.asyncio
 async def test_audio_service_live_integration():
