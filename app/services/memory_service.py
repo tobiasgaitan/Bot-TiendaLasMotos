@@ -48,17 +48,13 @@ class MemoryService:
         # memory_service._db.collection.side_effect — the underscore is contractual.
         self._db = db
         self.collection_name = "prospectos"
+        # [BOT-BUILD-ETAPA3-WAVE02-HYGIENE-001] _pending_tasks se conserva: es leído
+        # por shutdown() (cableado en el lifespan de main.py) como punto de flush.
+        # El productor _track_task fue purgado (0 call sites verificados — Vestigio
+        # Valla de Chesterton pre-Linear-Blocking BOT-INFRA-ASYNC-094: todas las
+        # escrituras del embudo son await bloqueante, nadie registraba tareas).
         self._pending_tasks: Set[asyncio.Task] = set()
         logger.info("🧠 MemoryService v9.8.5: Refactor Exception Handling")
-
-    def _track_task(self, coro) -> asyncio.Task:
-        """
-        Register a coroutine as a tracked task to ensure visibility during shutdown.
-        """
-        task = asyncio.create_task(coro)
-        self._pending_tasks.add(task)
-        task.add_done_callback(self._pending_tasks.discard)
-        return task
 
     async def _firestore_io(self, coro, phone: str, label: str, timeout: Optional[int] = None):
         """
@@ -563,8 +559,11 @@ class MemoryService:
                 langfuse_context.update_current_observation(
                     metadata={"update_last_interaction": phone_number, "idempotent": True}
                 )
-            except Exception:
-                pass  # Langfuse no disponible — no bloquea la operación de Firestore
+            except Exception as e:
+                # [BOT-BUILD-ETAPA3-WAVE06-LATENCY-CLOSE-001] Zero-Silent-Failures:
+                # Langfuse es opcional y no bloquea la operación de Firestore, pero
+                # su ausencia queda registrada con ID de correlación (E.164).
+                logger.warning(f"⚠️ [LANGFUSE] Observación no registrada para {phone_number}: {e}")
         except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
             raise
         except Exception as e:

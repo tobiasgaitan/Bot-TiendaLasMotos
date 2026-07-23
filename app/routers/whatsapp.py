@@ -262,21 +262,27 @@ async def _ensure_services():
     """
     await asyncio.to_thread(_ensure_services_sync)
 
-def resolve_query_aliases(query: str, catalog_service) -> str:
+def resolve_query_aliases(query: str, catalog=None) -> str:
     """
-    Translates colloquial query terms or synonyms (e.g. 'señoritera') 
+    Translates colloquial query terms or synonyms (e.g. 'señoritera')
     to the canonical category name (e.g. 'semiautomatica') based on catalog aliases.
+
+    [BOT-BUILD-ETAPA3-WAVE03-DI-SEAMS-001] `catalog` opcional: None resuelve el
+    singleton global catalog_service EN TIEMPO DE LLAMADA (nunca en def-time).
+    Paridad posicional preservada: los callers heredados pasan el servicio como
+    2º argumento posicional.
     """
+    catalog = catalog or catalog_service
     if not query:
         return query
-    
+
     q_norm = query.lower().strip()
-    
+
     # Try fetching aliases from catalog service or config service
     aliases = {}
     try:
-        if catalog_service and hasattr(catalog_service, 'get_catalog_aliases'):
-            aliases = catalog_service.get_catalog_aliases()
+        if catalog and hasattr(catalog, 'get_catalog_aliases'):
+            aliases = catalog.get_catalog_aliases()
     except Exception as e:
         logger.warning(f"⚠️ Error retrieving catalog aliases: {e}")
         
@@ -710,10 +716,42 @@ async def _handle_message_background(msg_data: Dict[str, Any], background_tasks:
             await ms.release_webhook_claim(msg_id_unique, user_phone)
         raise
 
-async def _handle_message_background_impl(msg_data: Dict[str, Any], background_tasks: BackgroundTasks) -> None:
-    """Lógica principal del bot (Procesamiento Asíncrono - Implementación)"""
+async def _handle_message_background_impl(
+    msg_data: Dict[str, Any],
+    background_tasks: BackgroundTasks,
+    *,
+    catalog=None,
+    vision_factory=None,
+    db_client=None,
+    meta_sender=None,
+) -> None:
+    """Lógica principal del bot (Procesamiento Asíncrono - Implementación)
+
+    [BOT-BUILD-ETAPA3-WAVE02-HYGIENE-001] NOTA DE VESTIGIO INTENCIONAL: el parámetro
+    `background_tasks` NUNCA se usa en el cuerpo (verificado L713-1846 en arqueología
+    Etapa 3). Se conserva por estabilidad de firma — es superficie de los tests de
+    caracterización (CH/E2E/ORDER) que lo inyectan posicionalmente. PROHIBIDO usarlo
+    para delegar escrituras de estado del embudo (pin: tests/test_zero_fire_and_forget.py).
+
+    [BOT-BUILD-ETAPA3-WAVE03-DI-SEAMS-001] COSTURAS DI (sprout_method_optional_deps):
+    los 4 kwargs opcionales (keyword-only, default None) alimentan a los 5 pipelines
+    del God Node (REACTION / IMAGE / RESET / TEXT / AUDIO). `None` resuelve el
+    singleton global del módulo EN TIEMPO DE LLAMADA — NUNCA en def-time (un
+    default=global en la firma rompería el monkeypatching de los 25 patch targets).
+    Pin de integridad: tests/test_di_seams_integrity.py.
+    """
     # Ensure services are initialized before proceeding
     await _ensure_services()
+
+    # [BOT-BUILD-ETAPA3-WAVE03-DI-SEAMS-001] Resolución runtime de las costuras.
+    # Paridad de lectura verificada: los bindings `catalog_service`/`VisionService`
+    # jamás se re-vinculan durante una llamada; `db` solo puede fijarse una vez vía
+    # _ensure_services (la 2ª hidratación de la rama media es inalcanzable con
+    # db=None porque el guard de la rama exige db truthy). `meta_sender` se resuelve
+    # junto al import diferido de whatsapp_service (protocolo READ-FIRST).
+    catalog = catalog or catalog_service
+    vision_factory = vision_factory or VisionService
+    db_client = db_client or db
 
     try:
         # 1. Extracción de Datos
@@ -762,442 +800,53 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
         # Marcamos como leído ANTES de cualquier lógica para evitar el 'check gris'
         # y confirmar a Meta que el webhook fue recibido.
         from app.services.whatsapp_service import whatsapp_service
-        await whatsapp_service.mark_as_read(msg_id_unique, phone_number_id=phone_number_id)
+        # [BOT-BUILD-ETAPA3-WAVE03-DI-SEAMS-001] Resolución runtime del emisor Meta:
+        # el import diferido se preserva (parche de app.services.whatsapp_service.
+        # whatsapp_service sigue vigente); el kwarg inyectado tiene prioridad.
+        meta_sender = meta_sender or whatsapp_service
+        await meta_sender.mark_as_read(msg_id_unique, phone_number_id=phone_number_id)
         
         # DEBUG LOG for Image Troubleshooting
         logger.info(f"🕵️ DEBUG: Received message {msg_id_unique} from {user_phone} | Type: '{msg_type}'")
         
         response_text = None 
         if msg_type == "reaction":
-            # La deduplicación ya se hizo al inicio en v9.8.3
-            # Wait for debounce window (3s) para permitir agregación si llegaran otros mensajes
-            orig_body = message_body
-            await asyncio.sleep(message_buffer.debounce_seconds)
-            
-            # Check if this task is still active
-            if not message_buffer.is_task_active(user_phone, msg_id_unique):
-                logger.info(f"⏭️ Reaction task {msg_id_unique} superseded. Aggregating...")
+            # [BOT-BUILD-ETAPA3-WAVE05-FRAGMENT-TEXT-EGRESS-001] Delegación al pipeline
+            # extraído (sprout method intra-archivo; extracción estructural pura).
+            # Devuelve el cuerpo agregado post-debounce; None codifica las salidas
+            # tempranas (tarea superada / cuerpo vacío). La escritura bloqueante del
+            # intercept habeas (BOT-PONYTAIL-200) queda intacta en el pipeline.
+            message_body = await _pipeline_reaction_debounce(
+                msg_data,
+                db_client=db_client,
+                meta_sender=meta_sender,
+                user_phone=user_phone,
+                msg_id_unique=msg_id_unique,
+                message_body=message_body,
+                is_positive_reaction=is_positive_reaction,
+            )
+            if message_body is None:
                 return
-            
-            # Get aggregated message
-            aggregated_body = await message_buffer.get_aggregated_message(user_phone)
-            await message_buffer.clear_buffer(user_phone)
-            
-            message_body = aggregated_body if aggregated_body else orig_body
-            
-            if not message_body:
-                return
-            
-            # --- INTERCEPT REACTION SÍNCRONAMENTE (👍) PARA HABEAS DATA ---
-            if is_positive_reaction:
-                logger.info(f"👍 [REACTION INTERCEPT] Forzando aceptación de Habeas Data para {user_phone}")
-                if memory_service_module.memory_service:
-                    ms_instance = memory_service_module.memory_service
-                    # [BOT-PONYTAIL-200] Persist ponytail_status=PENDING in parallel to habeas_data_accepted
-                    # Blocking await — no create_task/add_task
-                    fut = ms_instance.update_prospect_summary(user_phone, "", {
-                        "habeas_data_accepted": True,
-                        "ponytail_status": "PENDING"
-                    })
-                    if hasattr(fut, "__await__"):
-                        await fut
             
             msg_type = "text"
 
             # --- DEBOUNCE LOGIC END ---
             
         elif msg_type in ["image", "document", "sticker"]:
-            logger.info(f"📸 Media detected from {user_phone} (Type: {msg_type}). Processing immediately...")
-            
-            # Initialize Vision Service locally if needed
-            if db:
-                try:
-                    vision_service = VisionService(db)
-                    
-                    # Robust extraction for Image, Document OR Sticker
-                    media_data = {}
-                    if msg_type == "image":
-                        media_data = msg_data.get("image", {})
-                    elif msg_type == "document":
-                        media_data = msg_data.get("document", {})
-                    elif msg_type == "sticker":
-                        media_data = msg_data.get("sticker", {})
-                    
-                    # Fallback to root keys
-                    media_id = media_data.get("id") or msg_data.get("media_id")
-                    mime_type = media_data.get("mime_type") or msg_data.get("mime_type")
-                    caption = media_data.get("caption", "")
-                    
-                    # FILTER: If it's a document, ensure it's an image
-                    if msg_type == "document" and not mime_type.startswith("image/"):
-                        logger.info(f"📄 Document ignored (MIME: {mime_type}). Not an image.")
-                        return 
-                    
-                    if not media_id:
-                        logger.error("❌ Failed to extract media_id from message")
-                        await _send_whatsapp_message(user_phone, "No pude procesar el archivo. 😢", phone_number_id=phone_number_id)
-                        return
-
-                    t_download_start = time.perf_counter()
-                    image_bytes = await storage_service.download_media(media_id)
-                    t_download = time.perf_counter() - t_download_start
-                    if image_bytes:
-                        await _ensure_services()
-                        catalog_items = catalog_service.get_vision_catalog_projection()
-                        
-                        logger.info(
-                            f"📸 Vision AI request for user {user_phone}. MIME: {mime_type}, media_id: {media_id}, catalog_items_count: {len(catalog_items)}"
-                        )
-                        
-                        try:
-                            vision_response = await vision_service.analyze_image(
-                                image_bytes, mime_type, user_phone, 
-                                caption=caption, catalog_items=catalog_items
-                            )
-                        except Exception as vision_err:
-                            logger.error(
-                                f"❌ [VISION_API_EXCEPTION] Vision service analyze_image failed: {vision_err}",
-                                extra={
-                                    "user_phone": user_phone,
-                                    "mime_type": mime_type,
-                                    "media_id": media_id,
-                                    "raw_meta_payload": str(msg_data)
-                                },
-                                exc_info=True
-                            )
-                            raise vision_err
-
-                        logger.info(f"🧠 Raw Vision response: {vision_response}")
-                        
-                        if not vision_response:
-                            logger.error(
-                                "❌ [VISION_API_ERROR] La respuesta de Vision AI llegó vacía o nula. Forzando flujo de excepción controlada.",
-                                extra={
-                                    "user_phone": user_phone,
-                                    "msg_type": msg_type,
-                                    "media_id": media_id,
-                                    "caption": caption
-                                }
-                            )
-                            raise ValueError("Vision AI response is empty or None (Google API issue)")
-
-                        try:
-                            # Check if the response contains financial document tags
-                            is_financial_doc = "CEDULA" in vision_response.upper() or "RECIBO" in vision_response.upper()
-
-                            if is_financial_doc:
-                                # 0. Handle Document Quality & Classification (v6.7.x)
-                                if "QUALITY_CHECK:" in vision_response:
-                                    if "QUALITY_CHECK: FAILED" in vision_response:
-                                        motivo = "borrosa o ilegible"
-                                        if "|" in vision_response:
-                                            parts = vision_response.split("|")
-                                            for p in parts:
-                                                if "Motivo:" in p:
-                                                    motivo = p.replace("Motivo:", "").strip().lower()
-                                        
-                                        p_name = "amigo"
-                                        if memory_service_module.memory_service:
-                                            pd = await memory_service_module.memory_service.get_prospect_data(user_phone)
-                                            p_name = pd.get("name") or "amigo"
-                                        
-                                        await _send_whatsapp_message(user_phone, f"¡Uy {p_name}! 📸 La foto parece {motivo}. ¿Podrías enviarla de nuevo que se vea bien clarita? Así el banco no nos la rechaza.", phone_number_id=phone_number_id)
-                                        return
-                                    elif "QUALITY_CHECK: PASSED" in vision_response:
-                                        tipo = "CEDULA" # Default
-                                        if "DOCUMENTO_DETECTADO:" in vision_response:
-                                            tipo_raw = vision_response.split("DOCUMENTO_DETECTADO:")[1].strip().upper()
-                                            if "CEDULA" in tipo_raw: tipo = "CEDULA"
-                                            elif "RECIBO" in tipo_raw or "GAS" in tipo_raw: tipo = "RECIBO_GAS"
-                                        
-                                        logger.info(f"✅ Document quality passed: {tipo}. Uploading to Storage...")
-                                        
-                                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                        filename = f"prospectos/{user_phone}/{tipo.lower()}_{timestamp}.jpg"
-                                        
-                                        try:
-                                            public_url = await asyncio.to_thread(
-                                                storage_service.upload_document, 
-                                                image_bytes, 
-                                                filename, 
-                                                mime_type
-                                            )
-                                            
-                                            if memory_service_module.memory_service:
-                                                ms = memory_service_module.memory_service
-                                                field_url = "doc_cedula_url" if tipo == "CEDULA" else "doc_recibo_gas_url"
-                                                field_flag = "doc_cedula" if tipo == "CEDULA" else "doc_recibo_gas"
-                                                
-                                                await ms.update_prospect_summary(user_phone, "", {
-                                                    field_url: public_url,
-                                                    field_flag: True
-                                                })
-                                                
-                                                prospect = await ms.get_prospect_data(user_phone)
-                                                if prospect.get("doc_cedula") and prospect.get("doc_recibo_gas"):
-                                                    await _send_whatsapp_message(user_phone, "¡Excelente! Ya tengo todo tu expediente completo. ✅ Un asesor lo revisará en breve.", phone_number_id=phone_number_id)
-                                                else:
-                                                    faltante = "el recibo de gas" if tipo == "CEDULA" else "tu cédula"
-                                                    nombre_doc = "cédula" if tipo == "CEDULA" else "recibo de gas"
-                                                    await _send_whatsapp_message(user_phone, f"¡Recibida tu {nombre_doc}! ✅ Ya solo me falta {faltante} para terminar.", phone_number_id=phone_number_id)
-                                            return
-                                        except Exception as e:
-                                            logger.exception(f"❌ Error uploading document: {e}")
-                                            await _send_whatsapp_message(user_phone, "Tuve un problemita guardando tu documento. ¿Podrías intentarlo de nuevo?", phone_number_id=phone_number_id)
-                                            return
-                                else:
-                                    logger.warning(f"⚠️ Documento financiero detectado pero sin formato de QUALITY_CHECK: {vision_response}")
-                                    response_text = f"🏍️ **Documento Recibido**\n\n{vision_response}"
-                                    await _send_whatsapp_message(user_phone, response_text, phone_number_id=phone_number_id)
-                                    return
-
-                            # 1. Handle Sentiment / Memes / Stickers
-                            # Interceptor for affirmative stickers mapping to positive emojis
-                            is_affirmative_sticker = False
-                            if msg_type == "sticker":
-                                sticker_obj = msg_data.get("sticker", {})
-                                sticker_emoji = sticker_obj.get("emoji", "") if isinstance(sticker_obj, dict) else ""
-                                metadata_str = str(sticker_obj).lower() if sticker_obj else ""
-                                vision_str = vision_response.lower() if vision_response else ""
-                                affirmative_terms = ["thumbs_up", "thumbsup", "pulgar arriba", "thumbs-up", "👍", "si", "sí", "ok", "✅", "👌"]
-                                if any(term in vision_str for term in affirmative_terms) or any(term in metadata_str for term in affirmative_terms):
-                                    is_affirmative_sticker = True
-
-                            if vision_response.startswith("[System Note:") or (msg_type == "sticker" and is_affirmative_sticker):
-                                logger.info("🧠 General image/meme/sticker detected.")
-                                await _ensure_services()
-                                cerebro_ia = CerebroIA(config_loader, catalog_service)
-                                cerebro_ia.motor_financiero = motor_financiero
-                                
-                                input_text = "Sí" if (msg_type == "sticker" and is_affirmative_sticker) else vision_response
-                                
-                                if memory_service_module.memory_service:
-                                    ms = memory_service_module.memory_service
-                                    await ms.create_prospect_if_missing(user_phone)
-                                    await ms.generate_and_update_summary(user_phone, f"User sent media: {input_text}", cerebro_ia)
-                                    
-                                    prospect_data = await ms.get_prospect_data(user_phone)
-                                    current_history = await ms.get_chat_history(user_phone, limit=10)
-                                    
-                                    if prospect_data and prospect_data.get('human_help_requested', False):
-                                        return
-                                    
-                                    if prospect_data: prospect_data["phone"] = user_phone
-                                    
-                                    try:
-                                        skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=False)
-                                        final_response = await cerebro_ia.pensar_respuesta(
-                                            input_text,
-                                            context="", 
-                                            prospect_data=prospect_data,
-                                            history=current_history,
-                                            skip_greeting=skip_greeting
-                                        )
-                                    except HabeasDataBypassInterrupt as hdbi:
-                                        logger.info("🛡️ [HABEAS-BYPASS-STICKER] Cortocircuito limpio capturado en el router de WhatsApp (Sticker). Aprobación inmediata.")
-                                        final_response = str(hdbi.args[0])
-
-                                    if not final_response:
-                                        final_response = "¡Estuvo bueno! 😅 Pero cuéntame, ¿en qué moto estabas pensando?"
-                                    
-                                    await _send_whatsapp_message(user_phone, final_response, phone_number_id=phone_number_id)
-                                    await ms.save_message(user_phone, "user", input_text)
-                                    await ms.save_message(user_phone, "model", final_response)
-                                    return
-
-                            # 2. Default: Handle Moto Detection (Legacy / Main Vision Logic)
-                            else:
-                                # Use the catalog similarity adapter to align the image/description with a canonical catalog item
-                                t_match_start = time.perf_counter()
-                                matched_item = catalog_service.match_catalog_item_by_image(vision_response)
-                                t_match = time.perf_counter() - t_match_start
-
-                                # [BOT-BUILD-VISION-TELEMETRY-201] Callsite telemetry
-                                telemetry_enabled = os.getenv("VISION_TELEMETRY_ONLY", "").lower() in ("1", "true")
-                                if telemetry_enabled:
-                                    logger.info(
-                                        "📊 [VISION_TELEMETRY_CALLSITE] t_download_s=%.4f t_match_s=%.4f "
-                                        "download_bytes=%d match_path=%s moto=%s",
-                                        t_download, t_match,
-                                        len(image_bytes) if image_bytes else 0,
-                                        "exact" if (matched_item and isinstance(matched_item, dict)) else "none",
-                                        matched_item.get("name") if matched_item and isinstance(matched_item, dict) else "N/A",
-                                    )
-                                
-                                if matched_item and isinstance(matched_item, dict):
-                                    vision_description = matched_item["name"]
-                                    canonical_image_url = matched_item["image_url"]
-
-                                    # [BOT-BUILD-PRICE-REGRESSION-195] Always rehydrate via SSOT builder
-                                    # to ensure canonical_formatted_price = base_price + registration + anchor.
-                                    canonical_formatted_price = catalog_service._rehydrate_formatted_price(matched_item)
-                                    if canonical_formatted_price:
-                                        logger.info(
-                                            f"🔒 Visual Lock rehydrated formatted_price for "
-                                            f"{matched_item['name']}: {canonical_formatted_price}"
-                                        )
-                                    else:
-                                        logger.warning(
-                                            f"⚠️ [VISUAL_LOCK_DEGRADED] matched_item '{matched_item['name']}' "
-                                            f"lacks price. Visual Lock will skip canonical injection. "
-                                            "Item: %s", matched_item
-                                        )
-
-                                    logger.info(f"🎯 Multimodal similarity aligned to catalog item '{vision_description}' with URL '{canonical_image_url}'")
-                                else:
-                                    # Fallback to legacy string cleanup if no match found
-                                    vision_description = vision_response
-                                    for token in ["[MOTO_DETECTADA]", "MOTO_DETECTADA:", "MOTO_DETECTADA"]:
-                                        vision_description = vision_description.replace(token, "")
-                                    vision_description = vision_description.strip(" []\n\r\t:")
-                                    canonical_image_url = None
-                                    canonical_formatted_price = ""
-                                    logger.warning(f"⚠️ Multimodal similarity could not align '{vision_response}' to any catalog item. Using raw: '{vision_description}'")
-
-                                logger.info(f"🏍️ Procesando imagen como consulta de catálogo de moto: '{vision_description}'")
-                                await _ensure_services()
-                                cerebro_ia = CerebroIA(config_loader, catalog_service)
-                                cerebro_ia.motor_financiero = motor_financiero
-                                
-                                if memory_service_module.memory_service:
-                                    ms = memory_service_module.memory_service
-                                    await ms.create_prospect_if_missing(user_phone)
-                                    
-                                    # [MANDATE]: Update prospect_summary with the aligned moto_interest in Firestore synchronously
-                                    if matched_item and isinstance(matched_item, dict):
-                                        logger.info(f"💾 Persisting aligned moto_interest '{vision_description}' to Firestore for {user_phone}")
-                                        # [BOT-PONYTAIL-200] Persist ponytail_status=PENDING in parallel to moto_interest
-                                        # Blocking await — no create_task/add_task
-                                        fut = ms.update_prospect_summary(user_phone, "", {
-                                            "moto_interest": vision_description,
-                                            "ponytail_status": "PENDING"
-                                        })
-                                        if hasattr(fut, "__await__"):
-                                            await fut
-                                    
-                                    # Memory Sync for context
-                                    await ms.generate_and_update_summary(user_phone, f"User sent image of: {vision_description}", cerebro_ia)
-                                    
-                                    prospect_data = await ms.get_prospect_data(user_phone)
-                                    current_history = await ms.get_chat_history(user_phone, limit=10)
-                                    
-                                    if prospect_data and prospect_data.get('human_help_requested', False):
-                                        logger.info(f"🛑 Human Help Requested active for {user_phone}. Silencing bot.")
-                                        return
-                                    
-                                    if matched_item and isinstance(matched_item, dict) and prospect_data:
-                                        prospect_data["moto_interest"] = vision_description
-
-                                    # [BOT-PLAN-MULTIMODAL-HARDENING-201] Visual Lock: inject canonical data into prompt
-                                    if matched_item and canonical_image_url and canonical_formatted_price:
-                                        simulated_user_msg = (
-                                            f"El usuario acaba de enviar una foto de esta moto: {vision_description}. "
-                                            f"La moto coincide exactamente en nuestro catálogo como {matched_item['name']} "
-                                            f"con precio oficial {canonical_formatted_price}. "
-                                            f"Usa OBLIGATORIAMENTE la imagen exacta: {canonical_image_url} y el precio exacto: {canonical_formatted_price} "
-                                            f"en tu respuesta. No inventes URLs ni precios."
-                                        )
-                                    else:
-                                        simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
-                                    
-                                    # [BOT-207] Propagate user caption and Ficha Tecnica hint
-                                    caption_is_tech = False
-                                    if caption and caption.strip():
-                                        simulated_user_msg += f" El usuario también escribió: \"{caption.strip()}\"."
-                                        from app.services.agentic_loop_service import is_tech_spec_query
-                                        caption_is_tech = is_tech_spec_query(caption.strip())
-                                        if caption_is_tech:
-                                            # [BOT-BUILD-BUGFIX-MULTIMODAL-CAPTION-01] Inyección determinista:
-                                            # el dato canónico viaja en el prompt, no solo la obligación retórica.
-                                            matched_summary = matched_item.get("summary") if matched_item and isinstance(matched_item, dict) else None
-                                            if matched_summary:
-                                                simulated_user_msg += (
-                                                    f" OBLIGATORIO: incluye el prefijo literal 'Ficha Tecnica:' seguido de "
-                                                    f"estas especificaciones canónicas del catálogo: {matched_summary}"
-                                                )
-                                            else:
-                                                if matched_item and isinstance(matched_item, dict):
-                                                    logger.warning(
-                                                        f"⚠️ [CAPTION-01] matched_item '{matched_item.get('name', 'unknown')}' sin "
-                                                        f"'summary' canónico para {user_phone}. Conservando hint retórico (R9)."
-                                                    )
-                                                simulated_user_msg += " OBLIGATORIO: incluye el prefijo literal 'Ficha Tecnica:' con las especificaciones del catálogo en tu respuesta."
-                                    if prospect_data: prospect_data["phone"] = user_phone
-                                    skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=False)
-                                    final_response = await cerebro_ia.pensar_respuesta(
-                                        simulated_user_msg, 
-                                        context="", 
-                                        prospect_data=prospect_data,
-                                        history=current_history,
-                                        skip_greeting=skip_greeting
-                                    )
-                                    
-                                    if not final_response:
-                                        final_response = "Lo siento, tuve un problema procesando esa información. ¿Podrías repetirme qué buscas?"
-                                    
-                                    # [BOT-PLAN-MULTIMODAL-HARDENING-201] Visual Lock post-egress: force canonical image if missing
-                                    if matched_item and canonical_image_url and canonical_formatted_price:
-                                        from app.services.catalog_service import _ensure_price_anchor
-                                        canonical_formatted_price = _ensure_price_anchor(canonical_formatted_price)
-                                        if canonical_image_url not in final_response:
-                                            canonical_markdown = f"\n\n![{matched_item['name']}]({canonical_image_url})"
-                                            final_response = final_response + canonical_markdown
-                                            logger.info(f"🔒 Visual Lock enforced: injected canonical image_url into response for {user_phone}")
-                                        if canonical_formatted_price not in final_response:
-                                            final_response = final_response.rstrip() + f"\n\nPrecio: {canonical_formatted_price}"
-                                            logger.info(f"🔒 Visual Lock enforced: injected canonical formatted_price into response for {user_phone}")
-                                    
-                                    # [BOT-BUILD-BUGFIX-MULTIMODAL-CAPTION-01] Backstop PCC post-generación:
-                                    # si el caption era técnico y el LLM omitió el prefijo obligatorio, inyectar
-                                    # el bloque canónico (espejo determinista del Visual Lock de precio/imagen).
-                                    if caption_is_tech:
-                                        backstop_summary = matched_item.get("summary") if matched_item and isinstance(matched_item, dict) else None
-                                        if backstop_summary and "Ficha Tecnica:" not in final_response:
-                                            final_response = final_response.rstrip() + f"\n\nFicha Tecnica: {backstop_summary}"
-                                            logger.info(f"🔒 [CAPTION-01] Backstop enforced: injected canonical 'Ficha Tecnica:' block into response for {user_phone}")
-                                    
-                                    await ms.save_message(user_phone, "user", simulated_user_msg)
-                                    await _process_and_send_egress_message(user_phone, final_response, phone_number_id=phone_number_id)
-                                    return
-
-                        except Exception as inner_e:
-                            logger.error(
-                                "❌ Fallo catastrófico procesando respuesta de Vision AI",
-                                extra={
-                                    "user_phone": user_phone,
-                                    "msg_type": msg_type,
-                                    "vision_response_raw": vision_response if 'vision_response' in locals() else None,
-                                    "error_details": str(inner_e)
-                                },
-                                exc_info=True
-                            )
-                            await _send_whatsapp_message(user_phone, "Tuve un problema viendo el archivo. ¿Me cuentas qué es? 😅", phone_number_id=phone_number_id)
-                            return
-                    else:
-                        await _send_whatsapp_message(user_phone, "No pude descargar el archivo. Intenta de nuevo.", phone_number_id=phone_number_id)
-                except Exception as e:
-                    logger.error(
-                        f"❌ Error processing media: {e}",
-                        extra={
-                            "user_phone": user_phone,
-                            "msg_type": msg_type,
-                            "vision_response_raw": vision_response if 'vision_response' in locals() else None,
-                            "error_details": str(e)
-                        },
-                        exc_info=True
-                    )
-                    await _send_whatsapp_message(user_phone, "Tuve un problema viendo el archivo. ¿Me cuentas qué es? 😅", phone_number_id=phone_number_id)
-            else:
-                # Zero-Silent-Failures (BOT-BUILD-REGRESSION-MULTIMODAL-01):
-                # db=None (deferred init incomplete or Firestore down) used to skip
-                # the entire media branch SILENTLY — no forensic log, no user feedback.
-                logger.critical(
-                    f"🔥 [MEDIA-DB-UNAVAILABLE] Media recibida de {user_phone} (Type: {msg_type}) "
-                    f"pero el cliente Firestore (db) es None. Ingesta multimodal imposible. "
-                    f"Revisar deferred-init / salud de Firestore."
-                )
-                await _send_whatsapp_message(user_phone, "No pude descargar el archivo. Intenta de nuevo.", phone_number_id=phone_number_id)
-
+            # [BOT-BUILD-ETAPA3-WAVE04-FRAGMENT-MEDIA-AUDIO-001] Delegación al pipeline
+            # extraído (sprout method intra-archivo; extracción estructural pura — cero
+            # cambio semántico). Las costuras DI del orquestador se propagan; el pipeline
+            # resuelve en tiempo de llamada cualquier costura ausente (None→global).
+            await _pipeline_media_vision(
+                msg_data,
+                catalog=catalog,
+                vision_factory=vision_factory,
+                db_client=db_client,
+                meta_sender=meta_sender,
+                user_phone=user_phone,
+                msg_type=msg_type,
+                phone_number_id=phone_number_id,
+            )
             return  # EARLY EXIT: Stop processing here
             
         # 1.5 Save User Message to History (PERSISTENCE FIX)
@@ -1226,9 +875,9 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
         
         # Initialize Services Locally
         logger.info("🧠 Initializing CerebroIA...")
-        cerebro_ia = CerebroIA(config_loader, catalog_service)
+        cerebro_ia = CerebroIA(config_loader, catalog)
         cerebro_ia.motor_financiero = motor_financiero # Inject Financial Motor
-        vision_service = VisionService(db)
+        vision_service = vision_factory(db_client)
         # Lazy deferred import via Ponytail plan
         
         if memory_service_module.memory_service:
@@ -1260,7 +909,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                             await message_buffer.clear_buffer(user_phone)
                             
                             # Sincronía de Feedback: Garantía de respuesta determinista
-                            await whatsapp_service.send_text_message(
+                            await meta_sender.send_text_message(
                                 user_phone, 
                                 "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?", 
                                 phone_number_id=phone_number_id
@@ -1277,9 +926,9 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                         logger.warning(f"🔄 CATALOG REFRESH TRIGGERED by {user_phone}")
                         try:
                             await _ensure_services()
-                            if catalog_service:
+                            if catalog:
                                 # BOT-INFRA-ASYNC-094: Delegate sync .stream() to thread pool
-                                await asyncio.to_thread(catalog_service.refresh)
+                                await asyncio.to_thread(catalog.refresh)
                                 confirm_msg = "✅ Catálogo actualizado en memoria exitosamente."
                             else:
                                 confirm_msg = "❌ Error: Catalog Service no inicializado."
@@ -1287,7 +936,7 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
                             logger.exception(f"❌ Error refreshing catalog: {e}")
                             confirm_msg = f"❌ Error al actualizar el catálogo: {str(e)}"
                             
-                        await whatsapp_service.send_text_message(user_phone, confirm_msg, phone_number_id=phone_number_id)
+                        await meta_sender.send_text_message(user_phone, confirm_msg, phone_number_id=phone_number_id)
                         return
     
                 # --- BLINDAJE DE CONCURRENCIA PARA PROSPECTOS ZOMBIS (v10.12.6) ---
@@ -1340,486 +989,55 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
 
         # 3. Generar Respuesta (CerebroIA - Rama Finance)
         if msg_type == "text":
-            # --- LINEAR BLOCKING: Memory Update (Wait for Firestore) ---
-            if memory_service_module.memory_service:
-                try:
-                    # Identify last bot question for anchoring
-                    last_bot_q = ""
-                    for m in reversed(current_history or []):
-                        if m.get("role") == "model":
-                            last_bot_q = m.get("content", "")
-                            break
-                    
-                    # Full Context for Extraction
-                    history_context = ""
-                    context_messages = (current_history or [])[-6:]
-                    for m in context_messages:
-                        role = "User" if m.get("role") == "user" else "Bot"
-                        history_context += f"{role}: {m.get('content', '')}\n"
-                    
-                    conversation = f"{history_context}User: {message_body}"
-    
-                    # 1. Generate & Update Summary (BLOCKING)
-                    logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync for {user_phone}")
-                    await ms.generate_and_update_summary(
-                        user_phone, 
-                        conversation, 
-                        cerebro_ia, 
-                        last_bot_question=last_bot_q
-                    )
-                    
-                    # 2. GESTIÓN DE VERDAD: Re-fetch fresh prospect data from Firestore
-                    prospect_data = await ms.get_prospect_data(user_phone)
-                    logger.info(f"✅ [LINEAR BLOCKING] Memory Synced. Identity: {prospect_data.get('name')}")
-    
-                except Exception as e:
-                    logger.exception(f"❌ Error in Linear Blocking flow: {e}")
-                    # Fallback to local data if sync fails
-                    if not prospect_data:
-                        prospect_data = await ms.get_prospect_data(user_phone)
-
-            # 3. Inferencia de la IA con Auditoría de Vida o Muerte (v9.8.0)
-            max_retries = 2
-            attempts = 0
-
-            # --- INITIALIZATION GUARD (BOT-BACKEND-HOTFIX-ROUTER-INFERENCE-GUARD-174) ---
-            if memory_service_module.memory_service:
-                ms = memory_service_module.memory_service
-                from app.services.memory_service import MemoryService
-                from unittest.mock import Mock
-                if isinstance(ms, MemoryService):
-                    prospect_data = await ms.get_or_create_prospect(user_phone)
-                else:
-                    # En entornos de testing con mocks (MagicMock o AsyncMock):
-                    # Si get_or_create_prospect ha sido mockeado con un valor explícito (no un Mock por defecto)
-                    if not isinstance(ms.get_or_create_prospect.return_value, Mock):
-                        prospect_data = await ms.get_or_create_prospect(user_phone)
-                    else:
-                        # Fallback al mock de get_prospect_data configurado en tests heredados
-                        # Si ya tenemos prospect_data y existe, lo reutilizamos para evitar agotar el side_effect del mock
-                        if not prospect_data or not prospect_data.get("exists", False):
-                            fut = ms.get_prospect_data(user_phone)
-                            if hasattr(fut, "__await__"):
-                                prospect_data = await fut
-                            else:
-                                prospect_data = fut
-
-            is_approved = False
-            rejection_reason = ""
-            last_criteria_id = "UNKNOWN"
-            
-            try:
-                # Contexto para el Juez (Catalog Lock)
-                translated_query = resolve_query_aliases(message_body, catalog_service)
-                catalog_results = catalog_service.search(translated_query)
-                catalog_context = ""
-                for item in catalog_results[:3]:
-                    tags_str = ", ".join(item.get('searchBy', []))
-                    net_price_str = ""
-                    if catalog_service and hasattr(catalog_service, '_items'):
-                        for raw_item in catalog_service._items:
-                            if raw_item.get("name") == item["name"]:
-                                net_price_str = raw_item.get("formatted_price")
-                                break
-                    if not net_price_str:
-                        net_price_str = item.get("formatted_price", "")
-                    catalog_context += f"- {item['name']}: Neto: {net_price_str} / Con SOAT: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
-
-                while attempts <= max_retries and not is_approved:
-                    attempts += 1
-                    logger.info(f"🧠 [JUDGE] Calling CerebroIA.pensar_respuesta (Attempt {attempts}/{max_retries+1})...")
-                    
-                    current_context = context
-                    if attempts > 1:
-                        current_context += f"\n\n[SISTEMA - ERROR DE CALIDAD]: Tu respuesta anterior fue RECHAZADA por el Juez. Motivo: {rejection_reason}. Por favor, corrige este punto y genera una nueva respuesta válida."
-
-                    if prospect_data is not None:
-                        prospect_data["phone"] = user_phone 
-
-                    try:
-                        response_text = await cerebro_ia.pensar_respuesta(
-                            message_body,
-                            context=current_context,
-                            prospect_data=prospect_data,
-                            history=current_history,
-                            skip_greeting=skip_greeting
-                        )
-                    except HabeasDataBypassInterrupt as hdbi:
-                        logger.info("🛡️ [HABEAS-BYPASS] Cortocircuito limpio capturado en el router de WhatsApp. Aprobación inmediata.")
-                        response_text = str(hdbi.args[0])
-                        is_approved = True
-                        break
-
-                    # 4. Evaluación FAQ Bypass (BOT-BRAIN-FAQ-ROOT-CAUSE-HUNT-147)
-                    # run_checker determina semánticamente si la respuesta es FAQ pura
-                    # para propagar el flag is_faq_bypass al Juez y evitar falsos positivos
-                    # en C1_VISUAL_LOCK ("soporte"→"Sport") y C9_CITY_MISSING ("requisitos"→crédito).
-                    from app.services.agentic_loop_service import is_tech_spec_query
-                    _pcc_result = _get_router_orchestrator().run_checker(
-                        response_text or "",
-                        is_catalog_query=is_tech_spec_query(message_body),
-                        prospect_data=prospect_data,
-                        user_prompt=message_body
-                    )
-                    _is_faq_bypass = bool(_pcc_result.get("bypass_strict", False))
-                    if _is_faq_bypass:
-                        logger.info(f"✅ [ROUTER-PCC] FAQ bypass detectado. Propagando is_faq_bypass=True al Juez para {user_phone}.")
-
-                    # 5. Auditoría del Juez de Fundamentación
-                    is_approved, rejection_reason = await judge_service.analyze_response(
-                        user_input=message_body,
-                        ai_response=response_text,
-                        catalog_context=catalog_context,
-                        prospect_data=prospect_data,
-                        history=current_history,
-                        is_faq_bypass=_is_faq_bypass
-                    )
-
-                    if not is_approved:
-                        logger.warning(f"⚖️ [JUDGE] Response REJECTED (Attempt {attempts}): {rejection_reason}")
-                        # Extraer ID del criterio (ej: C1 de C1_VISUAL_LOCK)
-                        match = re.match(r'(C\d)', rejection_reason)
-                        last_criteria_id = match.group(1) if match else "UNKNOWN"
-                    else:
-                        logger.info(f"⚖️ [JUDGE] Response APPROVED (Attempt {attempts}).")
-
-                # Fallback if all attempts fail
-                if not is_approved:
-                    logger.error(f"❌ [JUDGE] Max retries reached. Forcing official fallback response. Criteria: {last_criteria_id}. Rejection Reason: {rejection_reason}")
-                    fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
-                    
-                    # [MANDATO v9.8.3] Marcar estado PRIMERO, luego enviar mensaje
-                    # Esto asegura que el CRM se actualice incluso si Meta falla temporalmente.
-                    try:
-                        if memory_service_module.memory_service:
-                            logger.warning(f"🚨 [JUDGE_FALLBACK] Max retries hit for {user_phone}. Marking human_help_requested=True")
-                            await memory_service_module.memory_service.set_human_help_status(user_phone, True)
-                            # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
-                            await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
-                            await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
-                    except Exception as e_ms:
-                        logger.error(f"⚠️ [JUDGE_FALLBACK] Error persistencia fallback: {e_ms}")
-
-                    # Envío INCONDICIONAL del mensaje de fallback
-                    try:
-                        logger.info(f"📤 [JUDGE_FALLBACK] Sending supervisor fallback to {user_phone}...")
-                        sent_ok = await _send_whatsapp_message(user_phone, fallback_msg, phone_number_id=phone_number_id)
-                        if sent_ok:
-                            logger.info(f"✅ [JUDGE_FALLBACK] Supervisor message delivered to {user_phone}")
-                        else:
-                            logger.error(f"❌ [JUDGE_FALLBACK] _send_whatsapp_message returned False for {user_phone}")
-                    except Exception as e_wa:
-                        logger.error(f"❌ [JUDGE_FALLBACK] Error fatal enviando mensaje de fallback a Meta: {e_wa}")
-                    
-                    # Actualizar Langfuse antes de retornar
-                    try:
-                        langfuse_context.update_current_trace(
-                            tags=["JUDGE_CRITICAL_FALLBACK"],
-                            metadata={
-                                "rejection_criteria": last_criteria_id,
-                                "final_rejection_reason": rejection_reason,
-                                "attempts": attempts
-                            }
-                        )
-                    except Exception as e:
-                        logger.warning(f"⚠️ [JUDGE_FALLBACK] Failed to update Langfuse trace: {e}")
-
-                    return # Stop processing
-
-            except Exception as e:
-                # MANDATO Zero-Silent-Failures: exc_info=True garantiza stack trace forense.
-                # Capturar el cuerpo nativo del error antes de activar human_help_requested.
-                logger.exception(f"🔥 [JUDGE_CRITICAL_ERROR] AI Inference failed for {user_phone}: {e}")
-                fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
-                if memory_service_module.memory_service:
-                    await memory_service_module.memory_service.set_human_help_status(user_phone, True)
-                    # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
-                    await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
-                    await _send_whatsapp_message(user_phone, fallback_msg, phone_number_id=phone_number_id)
-                    await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
-                return
-            
-            # Observabilidad: Langfuse Tag y Metadata
-            if not is_approved or attempts > 1:
-                try:
-                    langfuse_context.update_current_trace(
-                        tags=["JUDGE_CRITICAL_FALLBACK"] if not is_approved else ["JUDGE_RETRIED"],
-                        metadata={
-                            "rejection_criteria": last_criteria_id,
-                            "final_rejection_reason": rejection_reason,
-                            "attempts": attempts
-                        }
-                    )
-                except Exception as e:
-                    logger.warning(f"⚠️ Failed to update Langfuse trace: {e}")
-
-            # Persistencia de la respuesta final (sea aprobada o fallback)
-            if memory_service_module.memory_service:
-                await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
-
-            # TRIGGER_SURVEY interception REMOVED — 2026-03-12
-            # WHY: This block replaced the LLM's natural response with hardcoded survey
-            # text whenever start_credit_survey was called. The LLM now handles all
-            # Phase 3 credit questions organically via the Firestore prompt.
-
-            logger.info(f"🧠 Response determined: '{str(response_text)[:50]}...'")
-            
-            # LATENCY SIMULATION (Natural Typing Delay)
-            # Rule: First response to a new session (or after long pause) must be instant (0s).
-            # Rule: Subsequent responses need natural delay (Calculated).
-            if not skip_greeting:
-                logger.info("🚀 Smart Latency: New session detected. Skipping typing delay (0s).")
-                typing_delay = 0
-            else:
-                import random
-                
-                # 1. Simulación y Naturalidad
-                base_delay = len(str(response_text)) / 35.0
-                jitter = random.uniform(0.5, 1.5)
-                calculated_delay = base_delay + jitter
-                
-                # 2. Límite de seguridad
-                typing_delay = min(1.5, calculated_delay)
-                logger.info(f"⏳ Human Latency: len={len(str(response_text))}, delay={typing_delay:.2f}s")
-
-            if typing_delay > 0:
-                await asyncio.sleep(typing_delay)
+            # [BOT-BUILD-ETAPA3-WAVE05-FRAGMENT-TEXT-EGRESS-001] Delegación al pipeline
+            # cognitivo de texto (LINEAR BLOCKING + Juez + fallback supervisado).
+            # Devuelve (response_text, prospect_data): response_text=None codifica
+            # las salidas tempranas (fallback del Juez / error crítico ya enviados).
+            response_text, prospect_data = await _pipeline_text_cognitive(
+                msg_data,
+                catalog=catalog,
+                db_client=db_client,
+                meta_sender=meta_sender,
+                user_phone=user_phone,
+                phone_number_id=phone_number_id,
+                message_body=message_body,
+                cerebro_ia=cerebro_ia,
+                context=context,
+                prospect_data=prospect_data,
+                current_history=current_history,
+                skip_greeting=skip_greeting,
+            )
             
         elif msg_type == "audio":
-            media_id = msg_data.get("media_id")
-            mime_type = msg_data.get("mime_type")
-            audio_bytes = await storage_service.download_media(media_id)
-            
-            # GET HISTORY BEFORE AI
-            # [BOT-ROUTER-AUDIO-LINEAGE-123] NOTA DE ARQUITECTURA:
-            # El check de human_help_requested se realiza DESPUÉS del LINEAR BLOCKING
-            # (generate_and_update_summary + re-fetch), NO aquí.
-            # WHY: Un payload de audio post-reset puede encontrar un documento de Firestore
-            # recién recreado con un flag human_help_requested=True residual de la sesión
-            # anterior. Si verificamos aquí (pre-sync), silenciamos el bot con datos obsoletos.
-            # El re-fetch post-LINEAR-BLOCKING es la única fuente de verdad autoritativa.
-            current_history = []
-            if memory_service_module.memory_service:
-                ms = memory_service_module.memory_service
-                await ms.create_prospect_if_missing(user_phone) # Good practice
-                await ms.update_last_interaction(user_phone)
-                
-                # Pre-fetch inicial: solo para cargar current_history pre-transcripción.
-                # NO usamos este prospect_data para el check de human_help_requested.
-                prospect_data = await ms.get_prospect_data(user_phone)
-                
-                current_history = await ms.get_chat_history(user_phone, limit=10)
-                
-            if audio_bytes:
-                audio_service = AudioService()
-                transcription = await audio_service.transcribe_audio(audio_bytes, mime_type)
-                
-                if transcription:
-                    logger.info(f"🎤 Audio Transcribed: '{transcription}'")
-                    
-                    # [BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124] Sanitización y alineación fonética fuzzy
-                    if catalog_service and hasattr(catalog_service, 'normalize_transcription'):
-                        aligned = catalog_service.normalize_transcription(transcription)
-                        logger.info(f"🔮 Transcription Phonetic Alignment: '{transcription}' -> '{aligned}'")
-                        transcription = aligned
-                    
-                    # 1. Save actual transcription to history (blinding fix)
-                    if memory_service_module.memory_service:
-                        await ms.save_message(user_phone, "user", transcription)
-                    
-                    # Identify last bot question for anchoring
-                    last_bot_q = ""
-                    for m in reversed(current_history or []):
-                        if m.get("role") == "model":
-                            last_bot_q = m.get("content", "")
-                            break
-
-                    # 1. LINEAR BLOCKING: Memory Sync (Wait for Firestore)
-                    logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync (Audio) for {user_phone}")
-                    await ms.generate_and_update_summary(
-                        user_phone, 
-                        f"User sent audio. Transcription: {transcription}", 
-                        cerebro_ia, 
-                        last_bot_question=last_bot_q
-                    )
-                    
-                    # 2. GESTIÓN DE VERDAD: Re-fetch autoritativo post-sync (Espeja patrón TEXT)
-                    # [BOT-ROUTER-AUDIO-LINEAGE-123] Este es el único prospect_data confiable.
-                    # El pre-fetch (arriba) puede contener flags residuales de sesiones anteriores.
-                    prospect_data = await ms.get_prospect_data(user_phone)
-                    current_history = await ms.get_chat_history(user_phone, limit=10)
-                    logger.info(f"✅ [LINEAR BLOCKING AUDIO] Memory Synced. Identity: {prospect_data.get('name') if prospect_data else 'None'}")
-
-                    # 3. HUMAN HANDOFF CHECK (post-sync, datos autorizativos)
-                    # [BOT-ROUTER-AUDIO-LINEAGE-123] MANDATO: Esta verificación DEBE ejecutarse
-                    # después del re-fetch, no antes. Un flag human_help_requested=True en el
-                    # pre-fetch puede ser un residuo de una sesión pre-reset. Solo el dato
-                    # post-generate_and_update_summary refleja el estado real de Firestore.
-                    if prospect_data and prospect_data.get("human_help_requested", False):
-                        logger.info(f"🛑 [AUDIO-POST-SYNC] Human Help Requested activo para {user_phone} (dato post-sync). Silenziando bot.")
-                        return
-
-                    # 3. AI Inference with Judge Audit (v9.8.0)
-                    max_retries = 2
-                    attempts = 0
-                    is_approved = False
-                    rejection_reason = ""
-                    last_criteria_id = "UNKNOWN"
-                    
-                    # Contexto para el Juez (Catalog Lock)
-                    translated_query = resolve_query_aliases(transcription, catalog_service)
-                    catalog_results = catalog_service.search(translated_query)
-                    catalog_context = ""
-                    for item in catalog_results[:3]:
-                        tags_str = ", ".join(item.get('searchBy', []))
-                        net_price_str = ""
-                        if catalog_service and hasattr(catalog_service, '_items'):
-                            for raw_item in catalog_service._items:
-                                if raw_item.get("name") == item["name"]:
-                                    net_price_str = raw_item.get("formatted_price")
-                                    break
-                        if not net_price_str:
-                            net_price_str = item.get("formatted_price", "")
-                        catalog_context += f"- {item['name']}: Neto: {net_price_str} / Con SOAT: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
-
-                    while attempts <= max_retries and not is_approved:
-                        attempts += 1
-                        logger.info(f"🧠 [JUDGE] Audio Inference (Attempt {attempts}/{max_retries+1})...")
-                        
-                        current_context = context
-                        if attempts > 1:
-                            current_context += f"\n\n[SISTEMA - ERROR DE CALIDAD]: Tu respuesta anterior fue RECHAZADA por el Juez. Motivo: {rejection_reason}. Por favor, corrige este punto y genera una nueva respuesta válida."
-
-                        try:
-                            skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=True)
-                            response_text = await cerebro_ia.pensar_respuesta(
-                                transcription,
-                                context=current_context, 
-                                prospect_data=prospect_data,
-                                history=current_history,
-                                skip_greeting=skip_greeting
-                            )
-                        except HabeasDataBypassInterrupt as hdbi:
-                            logger.info("🛡️ [HABEAS-BYPASS-AUDIO] Cortocircuito limpio capturado en el router de WhatsApp (Audio). Aprobación inmediata.")
-                            response_text = str(hdbi.args[0])
-                            is_approved = True
-                            break
-
-                        # 4. Auditoría del Juez
-                        is_approved, rejection_reason = await judge_service.analyze_response(
-                            user_input=transcription,
-                            ai_response=response_text,
-                            catalog_context=catalog_context,
-                            prospect_data=prospect_data,
-                            history=current_history
-                        )
-
-                        if not is_approved:
-                            logger.warning(f"⚖️ [JUDGE] Audio REJECTED (Attempt {attempts}): {rejection_reason}")
-                            match = re.match(r'(C\d)', rejection_reason)
-                            last_criteria_id = match.group(1) if match else "UNKNOWN"
-                        else:
-                            logger.info(f"⚖️ [JUDGE] Audio APPROVED (Attempt {attempts}).")
-
-                    # Fallback if all attempts fail
-                    if not is_approved:
-                        logger.error(f"❌ [JUDGE] Audio Max retries reached. Forcing fallback. Criteria: {last_criteria_id}")
-                        fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
-                        
-                        # [MANDATO v9.8.3] Marcar estado PRIMERO, luego enviar mensaje
-                        try:
-                            if memory_service_module.memory_service:
-                                await memory_service_module.memory_service.set_human_help_status(user_phone, True)
-                                # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
-                                await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
-                                await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
-                        except Exception as e_ms:
-                            logger.error(f"⚠️ [JUDGE_FALLBACK_AUDIO] Error persistencia fallback: {e_ms}")
-
-                        # Envío INCONDICIONAL
-                        try:
-                            await _send_whatsapp_message(user_phone, fallback_msg, phone_number_id=phone_number_id)
-                        except Exception as e_wa:
-                            logger.error(f"❌ [JUDGE_FALLBACK_AUDIO] Error enviando fallback: {e_wa}")
-
-                        # Actualizar Langfuse antes de retornar
-                        try:
-                            langfuse_context.update_current_trace(
-                                tags=["JUDGE_CRITICAL_FALLBACK"],
-                                metadata={
-                                    "rejection_criteria": last_criteria_id,
-                                    "final_rejection_reason": rejection_reason,
-                                    "attempts": attempts,
-                                    "msg_type": "audio"
-                                }
-                            )
-                        except Exception as e:
-                            logger.warning(f"⚠️ [JUDGE_FALLBACK_AUDIO] Failed to update Langfuse trace: {e}")
-                        
-                        return 
-                else:
-                    response_text = "Escuché el audio pero no entendí bien. ¿Me repites? 😅"
-            else:
-                response_text = "No pude descargar el audio. 😢"
+            # [BOT-BUILD-ETAPA3-WAVE04-FRAGMENT-MEDIA-AUDIO-001] Delegación al pipeline
+            # extraído (sprout method intra-archivo; extracción estructural pura — cero
+            # cambio semántico). Devuelve (response_text, prospect_data): response_text
+            # =None codifica las salidas tempranas (human-handoff post-sync o fallback
+            # del Juez ya enviado); prospect_data post-sync alimenta el PHASE_GATE.
+            response_text, prospect_data = await _pipeline_audio(
+                msg_data,
+                catalog=catalog,
+                db_client=db_client,
+                meta_sender=meta_sender,
+                user_phone=user_phone,
+                phone_number_id=phone_number_id,
+                cerebro_ia=cerebro_ia,
+                context=context,
+                prospect_data=prospect_data,
+            )
             
         if response_text:
-            # Check for AI Handoff
-            if response_text.startswith("HANDOFF_TRIGGERED"):
-                if memory_service_module.memory_service:
-                    await memory_service_module.memory_service.set_human_help_status(user_phone, True)
-                    # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
-                    await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
-                await _send_whatsapp_message(user_phone, "Te voy a transferir con un compañero para que te ayude con esto. Dame un momento...", phone_number_id=phone_number_id)
-                try:
-                    from app.services.notification_service import notification_service
-                    await notification_service.notify_human_handoff(user_phone, "ai_trigger")
-                except ImportError: pass
-            else:
-                # --- PHASE-GATE IMAGE INJECTION (Update v6.3.1) ---
-                if response_text.startswith("PHASE_GATE_TRIGGERED:"):
-                    logger.info("🛡️ PHASE-GATE TRIGGERED detected.")
-                    response_text = response_text.replace("PHASE_GATE_TRIGGERED:", "").strip()
-                    
-                    # 🚀 [BYPASS OPTIMIZATION] (v6.6.1)
-                    moto_confirmada = prospect_data.get("moto_confirmada", False) if prospect_data else False
-                    
-                    if not moto_confirmada:
-                        logger.info("📸 Injecting dynamic image (moto not confirmed).")
-                        # Logica v6.3.1: Priorizar interes, sino Raider 125
-                        moto_interest = prospect_data.get("moto_interest") if prospect_data else None
-                        moto_to_search = moto_interest if moto_interest else "RAIDER 125"
-                        
-                        if catalog_service:
-                            try:
-                                # Search for interested bike or default
-                                moto_results = catalog_service.search_catalog(moto_to_search)
-                                
-                                # Fallback if interest search failed (Competitor or not found)
-                                if not moto_results and moto_interest:
-                                    logger.info(f"🔄 No results for '{moto_interest}' (Competitor?). Falling back to Raider 125.")
-                                    moto_results = catalog_service.search_catalog("RAIDER 125")
-                                
-                                if moto_results:
-                                    moto = moto_results[0]
-                                    image_url = moto.get("image_url")
-                                    moto_name = moto.get("name")
-                                    
-                                    if image_url:
-                                        # Caption v6.3.1: "Mira esta [Moto]"
-                                        caption = f"Mira esta {moto_name}\n\n{response_text}"
-                                        logger.info(f"📸 Sending Phase-Gate dynamic image: {image_url} for {moto_name}")
-                                        await _send_whatsapp_image(user_phone, image_url, caption=caption, phone_number_id=phone_number_id)
-                                        
-                                        # Save to history and stop
-                                        if memory_service_module.memory_service:
-                                            await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
-                                        return 
-                            except Exception as e:
-                                logger.exception(f"⚠️ Error injecting dynamic Phase-Gate image: {e}")
-                    else:
-                        logger.info("⏩ [BYPASS] Skipping image injection: moto already confirmed.")
-
-                await _process_and_send_egress_message(user_phone, response_text, phone_number_id=phone_number_id)
+            # [BOT-BUILD-ETAPA3-WAVE05-FRAGMENT-TEXT-EGRESS-001] Delegación al egreso
+            # consolidado (HANDOFF + PHASE_GATE + envío unificado BOT-125). La firma
+            # exacta de _process_and_send_egress_message se preserva dentro (pin CH-5).
+            await _pipeline_egress(
+                response_text,
+                meta_sender=meta_sender,
+                user_phone=user_phone,
+                phone_number_id=phone_number_id,
+                prospect_data=prospect_data,
+                catalog=catalog,
+            )
 
     except Exception as e:
         import traceback
@@ -1843,6 +1061,1102 @@ async def _handle_message_background_impl(msg_data: Dict[str, Any], background_t
         }
         logger.error(payload)
         raise
+
+
+async def _pipeline_media_vision(
+    payload: Dict[str, Any],
+    catalog=None,
+    vision_factory=None,
+    db_client=None,
+    meta_sender=None,
+    **ctx,
+) -> None:
+    """
+    [BOT-BUILD-ETAPA3-WAVE04-FRAGMENT-MEDIA-AUDIO-001] Pipeline media/visión
+    (sprout method intra-archivo — extracción estructural pura del bloque media del
+    God Node, cero cambio semántico; el cuerpo se conserva VERBATIM).
+
+    Responsabilidad: procesamiento de payloads image/document/sticker, instanciación
+    de VisionService POR LLAMADA (no singleton), match canónico de catálogo e
+    inyección Visual-Lock PCC Pro (prefijo 'Ficha Tecnica:' + Markdown ![Nombre](URL)).
+
+    Costuras DI (sprout_method_optional_deps, Wave 05-03): None resuelve el global
+    del módulo EN TIEMPO DE LLAMADA — nunca en def-time. `meta_sender` es costura
+    RESERVADA en este pipeline: el egreso usa `_send_whatsapp_message`, que resuelve
+    su propia costura (propagar kwargs en call-sites rompería los pins
+    assert_called_with exactos heredados).
+
+    ctx requerido: user_phone (str), msg_type (str), phone_number_id (Optional[str]).
+    Invariante CH-5: la escritura Firestore (moto_interest + ponytail PENDING)
+    precede al egreso Meta. Pin: tests/test_pipeline_media_vision_integrity.py.
+    """
+    # Resolución runtime de costuras (patrón Wave 05-03).
+    catalog = catalog or catalog_service
+    vision_factory = vision_factory or VisionService
+    db_client = db_client or db
+    user_phone = ctx["user_phone"]
+    msg_type = ctx["msg_type"]
+    phone_number_id = ctx.get("phone_number_id")
+    # Alias de paridad: el cuerpo extraído conserva el nombre heredado del orquestador.
+    msg_data = payload
+
+    logger.info(f"📸 Media detected from {user_phone} (Type: {msg_type}). Processing immediately...")
+
+    # Initialize Vision Service locally if needed
+    if db_client:
+        try:
+            vision_service = vision_factory(db_client)
+
+            # Robust extraction for Image, Document OR Sticker
+            media_data = {}
+            if msg_type == "image":
+                media_data = msg_data.get("image", {})
+            elif msg_type == "document":
+                media_data = msg_data.get("document", {})
+            elif msg_type == "sticker":
+                media_data = msg_data.get("sticker", {})
+
+            # Fallback to root keys
+            media_id = media_data.get("id") or msg_data.get("media_id")
+            mime_type = media_data.get("mime_type") or msg_data.get("mime_type")
+            caption = media_data.get("caption", "")
+
+            # FILTER: If it's a document, ensure it's an image
+            if msg_type == "document" and not mime_type.startswith("image/"):
+                logger.info(f"📄 Document ignored (MIME: {mime_type}). Not an image.")
+                return 
+
+            if not media_id:
+                logger.error("❌ Failed to extract media_id from message")
+                await _send_whatsapp_message(user_phone, "No pude procesar el archivo. 😢", phone_number_id=phone_number_id)
+                return
+
+            t_download_start = time.perf_counter()
+            image_bytes = await storage_service.download_media(media_id)
+            t_download = time.perf_counter() - t_download_start
+            if image_bytes:
+                await _ensure_services()
+                catalog_items = catalog.get_vision_catalog_projection()
+
+                logger.info(
+                    f"📸 Vision AI request for user {user_phone}. MIME: {mime_type}, media_id: {media_id}, catalog_items_count: {len(catalog_items)}"
+                )
+
+                try:
+                    vision_response = await vision_service.analyze_image(
+                        image_bytes, mime_type, user_phone, 
+                        caption=caption, catalog_items=catalog_items
+                    )
+                except Exception as vision_err:
+                    logger.error(
+                        f"❌ [VISION_API_EXCEPTION] Vision service analyze_image failed: {vision_err}",
+                        extra={
+                            "user_phone": user_phone,
+                            "mime_type": mime_type,
+                            "media_id": media_id,
+                            "raw_meta_payload": str(msg_data)
+                        },
+                        exc_info=True
+                    )
+                    raise vision_err
+
+                logger.info(f"🧠 Raw Vision response: {vision_response}")
+
+                if not vision_response:
+                    logger.error(
+                        "❌ [VISION_API_ERROR] La respuesta de Vision AI llegó vacía o nula. Forzando flujo de excepción controlada.",
+                        extra={
+                            "user_phone": user_phone,
+                            "msg_type": msg_type,
+                            "media_id": media_id,
+                            "caption": caption
+                        }
+                    )
+                    raise ValueError("Vision AI response is empty or None (Google API issue)")
+
+                try:
+                    # Check if the response contains financial document tags
+                    is_financial_doc = "CEDULA" in vision_response.upper() or "RECIBO" in vision_response.upper()
+
+                    if is_financial_doc:
+                        # 0. Handle Document Quality & Classification (v6.7.x)
+                        if "QUALITY_CHECK:" in vision_response:
+                            if "QUALITY_CHECK: FAILED" in vision_response:
+                                motivo = "borrosa o ilegible"
+                                if "|" in vision_response:
+                                    parts = vision_response.split("|")
+                                    for p in parts:
+                                        if "Motivo:" in p:
+                                            motivo = p.replace("Motivo:", "").strip().lower()
+
+                                p_name = "amigo"
+                                if memory_service_module.memory_service:
+                                    pd = await memory_service_module.memory_service.get_prospect_data(user_phone)
+                                    p_name = pd.get("name") or "amigo"
+
+                                await _send_whatsapp_message(user_phone, f"¡Uy {p_name}! 📸 La foto parece {motivo}. ¿Podrías enviarla de nuevo que se vea bien clarita? Así el banco no nos la rechaza.", phone_number_id=phone_number_id)
+                                return
+                            elif "QUALITY_CHECK: PASSED" in vision_response:
+                                tipo = "CEDULA" # Default
+                                if "DOCUMENTO_DETECTADO:" in vision_response:
+                                    tipo_raw = vision_response.split("DOCUMENTO_DETECTADO:")[1].strip().upper()
+                                    if "CEDULA" in tipo_raw: tipo = "CEDULA"
+                                    elif "RECIBO" in tipo_raw or "GAS" in tipo_raw: tipo = "RECIBO_GAS"
+
+                                logger.info(f"✅ Document quality passed: {tipo}. Uploading to Storage...")
+
+                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                filename = f"prospectos/{user_phone}/{tipo.lower()}_{timestamp}.jpg"
+
+                                try:
+                                    public_url = await asyncio.to_thread(
+                                        storage_service.upload_document, 
+                                        image_bytes, 
+                                        filename, 
+                                        mime_type
+                                    )
+
+                                    if memory_service_module.memory_service:
+                                        ms = memory_service_module.memory_service
+                                        field_url = "doc_cedula_url" if tipo == "CEDULA" else "doc_recibo_gas_url"
+                                        field_flag = "doc_cedula" if tipo == "CEDULA" else "doc_recibo_gas"
+
+                                        await ms.update_prospect_summary(user_phone, "", {
+                                            field_url: public_url,
+                                            field_flag: True
+                                        })
+
+                                        prospect = await ms.get_prospect_data(user_phone)
+                                        if prospect.get("doc_cedula") and prospect.get("doc_recibo_gas"):
+                                            await _send_whatsapp_message(user_phone, "¡Excelente! Ya tengo todo tu expediente completo. ✅ Un asesor lo revisará en breve.", phone_number_id=phone_number_id)
+                                        else:
+                                            faltante = "el recibo de gas" if tipo == "CEDULA" else "tu cédula"
+                                            nombre_doc = "cédula" if tipo == "CEDULA" else "recibo de gas"
+                                            await _send_whatsapp_message(user_phone, f"¡Recibida tu {nombre_doc}! ✅ Ya solo me falta {faltante} para terminar.", phone_number_id=phone_number_id)
+                                    return
+                                except Exception as e:
+                                    logger.exception(f"❌ Error uploading document: {e}")
+                                    await _send_whatsapp_message(user_phone, "Tuve un problemita guardando tu documento. ¿Podrías intentarlo de nuevo?", phone_number_id=phone_number_id)
+                                    return
+                        else:
+                            logger.warning(f"⚠️ Documento financiero detectado pero sin formato de QUALITY_CHECK: {vision_response}")
+                            response_text = f"🏍️ **Documento Recibido**\n\n{vision_response}"
+                            await _send_whatsapp_message(user_phone, response_text, phone_number_id=phone_number_id)
+                            return
+
+                    # 1. Handle Sentiment / Memes / Stickers
+                    # Interceptor for affirmative stickers mapping to positive emojis
+                    is_affirmative_sticker = False
+                    if msg_type == "sticker":
+                        sticker_obj = msg_data.get("sticker", {})
+                        sticker_emoji = sticker_obj.get("emoji", "") if isinstance(sticker_obj, dict) else ""
+                        metadata_str = str(sticker_obj).lower() if sticker_obj else ""
+                        vision_str = vision_response.lower() if vision_response else ""
+                        affirmative_terms = ["thumbs_up", "thumbsup", "pulgar arriba", "thumbs-up", "👍", "si", "sí", "ok", "✅", "👌"]
+                        if any(term in vision_str for term in affirmative_terms) or any(term in metadata_str for term in affirmative_terms):
+                            is_affirmative_sticker = True
+
+                    if vision_response.startswith("[System Note:") or (msg_type == "sticker" and is_affirmative_sticker):
+                        logger.info("🧠 General image/meme/sticker detected.")
+                        await _ensure_services()
+                        cerebro_ia = CerebroIA(config_loader, catalog)
+                        cerebro_ia.motor_financiero = motor_financiero
+
+                        input_text = "Sí" if (msg_type == "sticker" and is_affirmative_sticker) else vision_response
+
+                        if memory_service_module.memory_service:
+                            ms = memory_service_module.memory_service
+                            await ms.create_prospect_if_missing(user_phone)
+                            await ms.generate_and_update_summary(user_phone, f"User sent media: {input_text}", cerebro_ia)
+
+                            prospect_data = await ms.get_prospect_data(user_phone)
+                            current_history = await ms.get_chat_history(user_phone, limit=10)
+
+                            if prospect_data and prospect_data.get('human_help_requested', False):
+                                return
+
+                            if prospect_data: prospect_data["phone"] = user_phone
+
+                            try:
+                                skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=False)
+                                final_response = await cerebro_ia.pensar_respuesta(
+                                    input_text,
+                                    context="", 
+                                    prospect_data=prospect_data,
+                                    history=current_history,
+                                    skip_greeting=skip_greeting
+                                )
+                            except HabeasDataBypassInterrupt as hdbi:
+                                logger.info("🛡️ [HABEAS-BYPASS-STICKER] Cortocircuito limpio capturado en el router de WhatsApp (Sticker). Aprobación inmediata.")
+                                final_response = str(hdbi.args[0])
+
+                            if not final_response:
+                                final_response = "¡Estuvo bueno! 😅 Pero cuéntame, ¿en qué moto estabas pensando?"
+
+                            await _send_whatsapp_message(user_phone, final_response, phone_number_id=phone_number_id)
+                            await ms.save_message(user_phone, "user", input_text)
+                            await ms.save_message(user_phone, "model", final_response)
+                            return
+
+                    # 2. Default: Handle Moto Detection (Legacy / Main Vision Logic)
+                    else:
+                        # Use the catalog similarity adapter to align the image/description with a canonical catalog item
+                        t_match_start = time.perf_counter()
+                        matched_item = catalog.match_catalog_item_by_image(vision_response)
+                        t_match = time.perf_counter() - t_match_start
+
+                        # [BOT-BUILD-VISION-TELEMETRY-201] Callsite telemetry
+                        telemetry_enabled = os.getenv("VISION_TELEMETRY_ONLY", "").lower() in ("1", "true")
+                        if telemetry_enabled:
+                            logger.info(
+                                "📊 [VISION_TELEMETRY_CALLSITE] t_download_s=%.4f t_match_s=%.4f "
+                                "download_bytes=%d match_path=%s moto=%s",
+                                t_download, t_match,
+                                len(image_bytes) if image_bytes else 0,
+                                "exact" if (matched_item and isinstance(matched_item, dict)) else "none",
+                                matched_item.get("name") if matched_item and isinstance(matched_item, dict) else "N/A",
+                            )
+
+                        if matched_item and isinstance(matched_item, dict):
+                            vision_description = matched_item["name"]
+                            canonical_image_url = matched_item["image_url"]
+
+                            # [BOT-BUILD-PRICE-REGRESSION-195] Always rehydrate via SSOT builder
+                            # to ensure canonical_formatted_price = base_price + registration + anchor.
+                            canonical_formatted_price = catalog._rehydrate_formatted_price(matched_item)
+                            if canonical_formatted_price:
+                                logger.info(
+                                    f"🔒 Visual Lock rehydrated formatted_price for "
+                                    f"{matched_item['name']}: {canonical_formatted_price}"
+                                )
+                            else:
+                                logger.warning(
+                                    f"⚠️ [VISUAL_LOCK_DEGRADED] matched_item '{matched_item['name']}' "
+                                    f"lacks price. Visual Lock will skip canonical injection. "
+                                    "Item: %s", matched_item
+                                )
+
+                            logger.info(f"🎯 Multimodal similarity aligned to catalog item '{vision_description}' with URL '{canonical_image_url}'")
+                        else:
+                            # Fallback to legacy string cleanup if no match found
+                            vision_description = vision_response
+                            for token in ["[MOTO_DETECTADA]", "MOTO_DETECTADA:", "MOTO_DETECTADA"]:
+                                vision_description = vision_description.replace(token, "")
+                            vision_description = vision_description.strip(" []\n\r\t:")
+                            canonical_image_url = None
+                            canonical_formatted_price = ""
+                            logger.warning(f"⚠️ Multimodal similarity could not align '{vision_response}' to any catalog item. Using raw: '{vision_description}'")
+
+                        logger.info(f"🏍️ Procesando imagen como consulta de catálogo de moto: '{vision_description}'")
+                        await _ensure_services()
+                        cerebro_ia = CerebroIA(config_loader, catalog)
+                        cerebro_ia.motor_financiero = motor_financiero
+
+                        if memory_service_module.memory_service:
+                            ms = memory_service_module.memory_service
+                            await ms.create_prospect_if_missing(user_phone)
+
+                            # [MANDATE]: Update prospect_summary with the aligned moto_interest in Firestore synchronously
+                            if matched_item and isinstance(matched_item, dict):
+                                logger.info(f"💾 Persisting aligned moto_interest '{vision_description}' to Firestore for {user_phone}")
+                                # [BOT-PONYTAIL-200] Persist ponytail_status=PENDING in parallel to moto_interest
+                                # Blocking await — no create_task/add_task
+                                fut = ms.update_prospect_summary(user_phone, "", {
+                                    "moto_interest": vision_description,
+                                    "ponytail_status": "PENDING"
+                                })
+                                if hasattr(fut, "__await__"):
+                                    await fut
+
+                            # Memory Sync for context
+                            await ms.generate_and_update_summary(user_phone, f"User sent image of: {vision_description}", cerebro_ia)
+
+                            prospect_data = await ms.get_prospect_data(user_phone)
+                            current_history = await ms.get_chat_history(user_phone, limit=10)
+
+                            if prospect_data and prospect_data.get('human_help_requested', False):
+                                logger.info(f"🛑 Human Help Requested active for {user_phone}. Silencing bot.")
+                                return
+
+                            if matched_item and isinstance(matched_item, dict) and prospect_data:
+                                prospect_data["moto_interest"] = vision_description
+
+                            # [BOT-PLAN-MULTIMODAL-HARDENING-201] Visual Lock: inject canonical data into prompt
+                            if matched_item and canonical_image_url and canonical_formatted_price:
+                                simulated_user_msg = (
+                                    f"El usuario acaba de enviar una foto de esta moto: {vision_description}. "
+                                    f"La moto coincide exactamente en nuestro catálogo como {matched_item['name']} "
+                                    f"con precio oficial {canonical_formatted_price}. "
+                                    f"Usa OBLIGATORIAMENTE la imagen exacta: {canonical_image_url} y el precio exacto: {canonical_formatted_price} "
+                                    f"en tu respuesta. No inventes URLs ni precios."
+                                )
+                            else:
+                                simulated_user_msg = f"El usuario acaba de enviar una foto de esta moto: {vision_description}. Usa el catálogo para ofrecerle nuestra mejor equivalente."
+
+                            # [BOT-207] Propagate user caption and Ficha Tecnica hint
+                            caption_is_tech = False
+                            if caption and caption.strip():
+                                simulated_user_msg += f" El usuario también escribió: \"{caption.strip()}\"."
+                                from app.services.agentic_loop_service import is_tech_spec_query
+                                caption_is_tech = is_tech_spec_query(caption.strip())
+                                if caption_is_tech:
+                                    # [BOT-BUILD-BUGFIX-MULTIMODAL-CAPTION-01] Inyección determinista:
+                                    # el dato canónico viaja en el prompt, no solo la obligación retórica.
+                                    matched_summary = matched_item.get("summary") if matched_item and isinstance(matched_item, dict) else None
+                                    if matched_summary:
+                                        simulated_user_msg += (
+                                            f" OBLIGATORIO: incluye el prefijo literal 'Ficha Tecnica:' seguido de "
+                                            f"estas especificaciones canónicas del catálogo: {matched_summary}"
+                                        )
+                                    else:
+                                        if matched_item and isinstance(matched_item, dict):
+                                            logger.warning(
+                                                f"⚠️ [CAPTION-01] matched_item '{matched_item.get('name', 'unknown')}' sin "
+                                                f"'summary' canónico para {user_phone}. Conservando hint retórico (R9)."
+                                            )
+                                        simulated_user_msg += " OBLIGATORIO: incluye el prefijo literal 'Ficha Tecnica:' con las especificaciones del catálogo en tu respuesta."
+                            if prospect_data: prospect_data["phone"] = user_phone
+                            skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=False)
+                            final_response = await cerebro_ia.pensar_respuesta(
+                                simulated_user_msg, 
+                                context="", 
+                                prospect_data=prospect_data,
+                                history=current_history,
+                                skip_greeting=skip_greeting
+                            )
+
+                            if not final_response:
+                                final_response = "Lo siento, tuve un problema procesando esa información. ¿Podrías repetirme qué buscas?"
+
+                            # [BOT-PLAN-MULTIMODAL-HARDENING-201] Visual Lock post-egress: force canonical image if missing
+                            if matched_item and canonical_image_url and canonical_formatted_price:
+                                from app.services.catalog_service import _ensure_price_anchor
+                                canonical_formatted_price = _ensure_price_anchor(canonical_formatted_price)
+                                if canonical_image_url not in final_response:
+                                    canonical_markdown = f"\n\n![{matched_item['name']}]({canonical_image_url})"
+                                    final_response = final_response + canonical_markdown
+                                    logger.info(f"🔒 Visual Lock enforced: injected canonical image_url into response for {user_phone}")
+                                if canonical_formatted_price not in final_response:
+                                    final_response = final_response.rstrip() + f"\n\nPrecio: {canonical_formatted_price}"
+                                    logger.info(f"🔒 Visual Lock enforced: injected canonical formatted_price into response for {user_phone}")
+
+                            # [BOT-BUILD-BUGFIX-MULTIMODAL-CAPTION-01] Backstop PCC post-generación:
+                            # si el caption era técnico y el LLM omitió el prefijo obligatorio, inyectar
+                            # el bloque canónico (espejo determinista del Visual Lock de precio/imagen).
+                            if caption_is_tech:
+                                backstop_summary = matched_item.get("summary") if matched_item and isinstance(matched_item, dict) else None
+                                if backstop_summary and "Ficha Tecnica:" not in final_response:
+                                    final_response = final_response.rstrip() + f"\n\nFicha Tecnica: {backstop_summary}"
+                                    logger.info(f"🔒 [CAPTION-01] Backstop enforced: injected canonical 'Ficha Tecnica:' block into response for {user_phone}")
+
+                            await ms.save_message(user_phone, "user", simulated_user_msg)
+                            await _process_and_send_egress_message(user_phone, final_response, phone_number_id=phone_number_id)
+                            return
+
+                except Exception as inner_e:
+                    logger.error(
+                        "❌ Fallo catastrófico procesando respuesta de Vision AI",
+                        extra={
+                            "user_phone": user_phone,
+                            "msg_type": msg_type,
+                            "vision_response_raw": vision_response if 'vision_response' in locals() else None,
+                            "error_details": str(inner_e)
+                        },
+                        exc_info=True
+                    )
+                    await _send_whatsapp_message(user_phone, "Tuve un problema viendo el archivo. ¿Me cuentas qué es? 😅", phone_number_id=phone_number_id)
+                    return
+            else:
+                await _send_whatsapp_message(user_phone, "No pude descargar el archivo. Intenta de nuevo.", phone_number_id=phone_number_id)
+        except Exception as e:
+            logger.error(
+                f"❌ Error processing media: {e}",
+                extra={
+                    "user_phone": user_phone,
+                    "msg_type": msg_type,
+                    "vision_response_raw": vision_response if 'vision_response' in locals() else None,
+                    "error_details": str(e)
+                },
+                exc_info=True
+            )
+            await _send_whatsapp_message(user_phone, "Tuve un problema viendo el archivo. ¿Me cuentas qué es? 😅", phone_number_id=phone_number_id)
+    else:
+        # Zero-Silent-Failures (BOT-BUILD-REGRESSION-MULTIMODAL-01):
+        # db=None (deferred init incomplete or Firestore down) used to skip
+        # the entire media branch SILENTLY — no forensic log, no user feedback.
+        logger.critical(
+            f"🔥 [MEDIA-DB-UNAVAILABLE] Media recibida de {user_phone} (Type: {msg_type}) "
+            f"pero el cliente Firestore (db) es None. Ingesta multimodal imposible. "
+            f"Revisar deferred-init / salud de Firestore."
+        )
+        await _send_whatsapp_message(user_phone, "No pude descargar el archivo. Intenta de nuevo.", phone_number_id=phone_number_id)
+
+
+
+async def _pipeline_audio(
+    payload: Dict[str, Any],
+    catalog=None,
+    db_client=None,
+    meta_sender=None,
+    **ctx,
+) -> tuple:
+    """
+    [BOT-BUILD-ETAPA3-WAVE04-FRAGMENT-MEDIA-AUDIO-001] Pipeline de audio (sprout
+    method intra-archivo — extracción estructural pura del bloque audio del God
+    Node, cero cambio semántico; el cuerpo se conserva VERBATIM).
+
+    Responsabilidad: descarga y transcripción (AudioService), sanitización fonética
+    fuzzy (normalize_transcription), LINEAR BLOCKING de memoria
+    (generate_and_update_summary BLOQUEANTE — jamás fire-and-forget), inferencia con
+    auditoría del Juez y fallback supervisado.
+
+    Costuras DI (Wave 05-03): None resuelve el global EN TIEMPO DE LLAMADA.
+    `db_client`/`meta_sender` son costuras RESERVADAS por simetría de firma (el
+    cuerpo heredado no las consume directamente).
+
+    ctx requerido: user_phone (str), cerebro_ia (instancia de sesión);
+    ctx opcional: phone_number_id, context (default ""), prospect_data.
+
+    Contrato de retorno: (response_text, prospect_data). response_text=None codifica
+    las salidas tempranas (human-handoff post-sync detectado con dato autoritativo,
+    o fallback del Juez ya enviado); el orquestador omite el egreso en ese caso.
+    prospect_data es el re-fetch post-LINEAR-BLOCKING (alimenta PHASE_GATE).
+    Pin: tests/test_pipeline_audio_integrity.py.
+    """
+    # Resolución runtime de costuras (patrón Wave 05-03).
+    catalog = catalog or catalog_service
+    user_phone = ctx["user_phone"]
+    phone_number_id = ctx.get("phone_number_id")
+    cerebro_ia = ctx["cerebro_ia"]
+    context = ctx.get("context", "")
+    prospect_data = ctx.get("prospect_data")
+    # Alias de paridad: el cuerpo extraído conserva el nombre heredado del orquestador.
+    msg_data = payload
+
+    media_id = msg_data.get("media_id")
+    mime_type = msg_data.get("mime_type")
+    audio_bytes = await storage_service.download_media(media_id)
+
+    # GET HISTORY BEFORE AI
+    # [BOT-ROUTER-AUDIO-LINEAGE-123] NOTA DE ARQUITECTURA:
+    # El check de human_help_requested se realiza DESPUÉS del LINEAR BLOCKING
+    # (generate_and_update_summary + re-fetch), NO aquí.
+    # WHY: Un payload de audio post-reset puede encontrar un documento de Firestore
+    # recién recreado con un flag human_help_requested=True residual de la sesión
+    # anterior. Si verificamos aquí (pre-sync), silenciamos el bot con datos obsoletos.
+    # El re-fetch post-LINEAR-BLOCKING es la única fuente de verdad autoritativa.
+    current_history = []
+    if memory_service_module.memory_service:
+        ms = memory_service_module.memory_service
+        await ms.create_prospect_if_missing(user_phone) # Good practice
+        await ms.update_last_interaction(user_phone)
+
+        # Pre-fetch inicial: solo para cargar current_history pre-transcripción.
+        # NO usamos este prospect_data para el check de human_help_requested.
+        prospect_data = await ms.get_prospect_data(user_phone)
+
+        current_history = await ms.get_chat_history(user_phone, limit=10)
+
+    if audio_bytes:
+        audio_service = AudioService()
+        transcription = await audio_service.transcribe_audio(audio_bytes, mime_type)
+
+        if transcription:
+            logger.info(f"🎤 Audio Transcribed: '{transcription}'")
+
+            # [BOT-ROUTER-AUDIO-FUZZY-ALIGNMENT-124] Sanitización y alineación fonética fuzzy
+            if catalog and hasattr(catalog, 'normalize_transcription'):
+                aligned = catalog.normalize_transcription(transcription)
+                logger.info(f"🔮 Transcription Phonetic Alignment: '{transcription}' -> '{aligned}'")
+                transcription = aligned
+
+            # 1. Save actual transcription to history (blinding fix)
+            if memory_service_module.memory_service:
+                await ms.save_message(user_phone, "user", transcription)
+
+            # Identify last bot question for anchoring
+            last_bot_q = ""
+            for m in reversed(current_history or []):
+                if m.get("role") == "model":
+                    last_bot_q = m.get("content", "")
+                    break
+
+            # 1. LINEAR BLOCKING: Memory Sync (Wait for Firestore)
+            logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync (Audio) for {user_phone}")
+            await ms.generate_and_update_summary(
+                user_phone, 
+                f"User sent audio. Transcription: {transcription}", 
+                cerebro_ia, 
+                last_bot_question=last_bot_q
+            )
+
+            # 2. GESTIÓN DE VERDAD: Re-fetch autoritativo post-sync (Espeja patrón TEXT)
+            # [BOT-ROUTER-AUDIO-LINEAGE-123] Este es el único prospect_data confiable.
+            # El pre-fetch (arriba) puede contener flags residuales de sesiones anteriores.
+            prospect_data = await ms.get_prospect_data(user_phone)
+            current_history = await ms.get_chat_history(user_phone, limit=10)
+            logger.info(f"✅ [LINEAR BLOCKING AUDIO] Memory Synced. Identity: {prospect_data.get('name') if prospect_data else 'None'}")
+
+            # 3. HUMAN HANDOFF CHECK (post-sync, datos autorizativos)
+            # [BOT-ROUTER-AUDIO-LINEAGE-123] MANDATO: Esta verificación DEBE ejecutarse
+            # después del re-fetch, no antes. Un flag human_help_requested=True en el
+            # pre-fetch puede ser un residuo de una sesión pre-reset. Solo el dato
+            # post-generate_and_update_summary refleja el estado real de Firestore.
+            if prospect_data and prospect_data.get("human_help_requested", False):
+                logger.info(f"🛑 [AUDIO-POST-SYNC] Human Help Requested activo para {user_phone} (dato post-sync). Silenziando bot.")
+                return None, prospect_data
+
+            # 3. AI Inference with Judge Audit (v9.8.0)
+            max_retries = 2
+            attempts = 0
+            is_approved = False
+            rejection_reason = ""
+            last_criteria_id = "UNKNOWN"
+
+            # Contexto para el Juez (Catalog Lock)
+            translated_query = resolve_query_aliases(transcription, catalog)
+            catalog_results = catalog.search(translated_query)
+            catalog_context = ""
+            for item in catalog_results[:3]:
+                tags_str = ", ".join(item.get('searchBy', []))
+                net_price_str = ""
+                if catalog and hasattr(catalog, '_items'):
+                    for raw_item in catalog._items:
+                        if raw_item.get("name") == item["name"]:
+                            net_price_str = raw_item.get("formatted_price")
+                            break
+                if not net_price_str:
+                    net_price_str = item.get("formatted_price", "")
+                catalog_context += f"- {item['name']}: Neto: {net_price_str} / Con SOAT: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
+
+            while attempts <= max_retries and not is_approved:
+                attempts += 1
+                logger.info(f"🧠 [JUDGE] Audio Inference (Attempt {attempts}/{max_retries+1})...")
+
+                current_context = context
+                if attempts > 1:
+                    current_context += f"\n\n[SISTEMA - ERROR DE CALIDAD]: Tu respuesta anterior fue RECHAZADA por el Juez. Motivo: {rejection_reason}. Por favor, corrige este punto y genera una nueva respuesta válida."
+
+                try:
+                    skip_greeting = _evaluate_skip_greeting(current_history, prospect_data, current_message_saved=True)
+                    response_text = await cerebro_ia.pensar_respuesta(
+                        transcription,
+                        context=current_context, 
+                        prospect_data=prospect_data,
+                        history=current_history,
+                        skip_greeting=skip_greeting
+                    )
+                except HabeasDataBypassInterrupt as hdbi:
+                    logger.info("🛡️ [HABEAS-BYPASS-AUDIO] Cortocircuito limpio capturado en el router de WhatsApp (Audio). Aprobación inmediata.")
+                    response_text = str(hdbi.args[0])
+                    is_approved = True
+                    break
+
+                # 4. Auditoría del Juez
+                is_approved, rejection_reason = await judge_service.analyze_response(
+                    user_input=transcription,
+                    ai_response=response_text,
+                    catalog_context=catalog_context,
+                    prospect_data=prospect_data,
+                    history=current_history
+                )
+
+                if not is_approved:
+                    logger.warning(f"⚖️ [JUDGE] Audio REJECTED (Attempt {attempts}): {rejection_reason}")
+                    match = re.match(r'(C\d)', rejection_reason)
+                    last_criteria_id = match.group(1) if match else "UNKNOWN"
+                else:
+                    logger.info(f"⚖️ [JUDGE] Audio APPROVED (Attempt {attempts}).")
+
+            # Fallback if all attempts fail
+            if not is_approved:
+                logger.error(f"❌ [JUDGE] Audio Max retries reached. Forcing fallback. Criteria: {last_criteria_id}")
+                fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
+
+                # [MANDATO v9.8.3] Marcar estado PRIMERO, luego enviar mensaje
+                try:
+                    if memory_service_module.memory_service:
+                        await memory_service_module.memory_service.set_human_help_status(user_phone, True)
+                        # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
+                        await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
+                        await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
+                except Exception as e_ms:
+                    logger.error(f"⚠️ [JUDGE_FALLBACK_AUDIO] Error persistencia fallback: {e_ms}")
+
+                # Envío INCONDICIONAL
+                try:
+                    await _send_whatsapp_message(user_phone, fallback_msg, phone_number_id=phone_number_id)
+                except Exception as e_wa:
+                    logger.error(f"❌ [JUDGE_FALLBACK_AUDIO] Error enviando fallback: {e_wa}")
+
+                # Actualizar Langfuse antes de retornar
+                try:
+                    langfuse_context.update_current_trace(
+                        tags=["JUDGE_CRITICAL_FALLBACK"],
+                        metadata={
+                            "rejection_criteria": last_criteria_id,
+                            "final_rejection_reason": rejection_reason,
+                            "attempts": attempts,
+                            "msg_type": "audio"
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ [JUDGE_FALLBACK_AUDIO] Failed to update Langfuse trace: {e}")
+
+                return None, prospect_data
+        else:
+            response_text = "Escuché el audio pero no entendí bien. ¿Me repites? 😅"
+    else:
+        response_text = "No pude descargar el audio. 😢"
+    return response_text, prospect_data
+
+
+async def _pipeline_reaction_debounce(
+    payload: Dict[str, Any],
+    db_client=None,
+    meta_sender=None,
+    **ctx,
+) -> Optional[str]:
+    """
+    [BOT-BUILD-ETAPA3-WAVE05-FRAGMENT-TEXT-EGRESS-001] Pipeline de reacciones
+    (sprout method intra-archivo — extracción estructural pura del bloque de
+    debounce de reacciones del God Node; cuerpo VERBATIM).
+
+    Responsabilidad: ventana de debounce (agregación), superseding de tareas y el
+    intercept síncrono 👍 de Habeas Data (persistencia BLOQUEANTE de
+    habeas_data_accepted + ponytail_status=PENDING, BOT-PONYTAIL-200).
+
+    `db_client`/`meta_sender`/`payload`: costuras RESERVADAS por simetría de firma
+    (el cuerpo heredado no las consume; el guardrail register_wamid vive en la
+    frontera webhook_handler y NO forma parte de este pipeline).
+
+    ctx requerido: user_phone, msg_id_unique, message_body, is_positive_reaction.
+    Retorno: el cuerpo agregado post-debounce; None codifica las salidas tempranas
+    (tarea superada / cuerpo vacío) — el orquestador aborta el turno.
+    Pin: tests/test_pipeline_reaction_integrity.py.
+    """
+    user_phone = ctx["user_phone"]
+    msg_id_unique = ctx["msg_id_unique"]
+    message_body = ctx["message_body"]
+    is_positive_reaction = ctx["is_positive_reaction"]
+
+    # La deduplicación ya se hizo al inicio en v9.8.3
+    # Wait for debounce window (3s) para permitir agregación si llegaran otros mensajes
+    orig_body = message_body
+    await asyncio.sleep(message_buffer.debounce_seconds)
+
+    # Check if this task is still active
+    if not message_buffer.is_task_active(user_phone, msg_id_unique):
+        logger.info(f"⏭️ Reaction task {msg_id_unique} superseded. Aggregating...")
+        return None
+
+    # Get aggregated message
+    aggregated_body = await message_buffer.get_aggregated_message(user_phone)
+    await message_buffer.clear_buffer(user_phone)
+
+    message_body = aggregated_body if aggregated_body else orig_body
+
+    if not message_body:
+        return None
+
+    # --- INTERCEPT REACTION SÍNCRONAMENTE (👍) PARA HABEAS DATA ---
+    if is_positive_reaction:
+        logger.info(f"👍 [REACTION INTERCEPT] Forzando aceptación de Habeas Data para {user_phone}")
+        if memory_service_module.memory_service:
+            ms_instance = memory_service_module.memory_service
+            # [BOT-PONYTAIL-200] Persist ponytail_status=PENDING in parallel to habeas_data_accepted
+            # Blocking await — no create_task/add_task
+            fut = ms_instance.update_prospect_summary(user_phone, "", {
+                "habeas_data_accepted": True,
+                "ponytail_status": "PENDING"
+            })
+            if hasattr(fut, "__await__"):
+                await fut
+    return message_body
+
+
+async def _pipeline_text_cognitive(
+    payload: Dict[str, Any],
+    catalog=None,
+    db_client=None,
+    meta_sender=None,
+    **ctx,
+) -> tuple:
+    """
+    [BOT-BUILD-ETAPA3-WAVE05-FRAGMENT-TEXT-EGRESS-001] Pipeline cognitivo de texto
+    (sprout method intra-archivo — extracción estructural pura de la rama TEXT del
+    God Node; cuerpo VERBATIM).
+
+    Responsabilidad: LINEAR BLOCKING de memoria (generate_and_update_summary
+    BLOQUEANTE con anclaje last_bot_question), guard BOT-174, bucle de inferencia
+    pensar_respuesta con auditoría del Juez (max 3 intentos), fallback supervisado
+    (mandato v9.8.3: estado antes que red), persistencia del modelo y latencia
+    humana simulada.
+
+    Costuras DI (Wave 05-03): catalog=None → global en tiempo de llamada.
+    `db_client`/`meta_sender`/`payload`: costuras RESERVADAS por simetría de firma
+    (el cuerpo heredado no las consume; el egreso usa los helpers, que resuelven
+    su propia costura).
+
+    ctx requerido: user_phone, message_body, cerebro_ia; ctx opcional:
+    phone_number_id, context (""), prospect_data, current_history, skip_greeting
+    (False). Retorno: (response_text, prospect_data); response_text=None codifica
+    las salidas tempranas (fallback del Juez / error crítico ya notificados).
+    Pin: tests/test_pipeline_text_cognitive_integrity.py.
+    """
+    # Resolución runtime de costuras (patrón Wave 05-03).
+    catalog = catalog or catalog_service
+    user_phone = ctx["user_phone"]
+    phone_number_id = ctx.get("phone_number_id")
+    message_body = ctx["message_body"]
+    cerebro_ia = ctx["cerebro_ia"]
+    context = ctx.get("context", "")
+    prospect_data = ctx.get("prospect_data")
+    current_history = ctx.get("current_history")
+    skip_greeting = ctx.get("skip_greeting", False)
+    # Receptor de persistencia: la rama heredada lo lee del singleton (el guard
+    # BOT-174 lo re-vincula dentro). Mismo objeto que el `ms` de sesión.
+    ms = memory_service_module.memory_service
+
+    # --- LINEAR BLOCKING: Memory Update (Wait for Firestore) ---
+    if memory_service_module.memory_service:
+        try:
+            # Identify last bot question for anchoring
+            last_bot_q = ""
+            for m in reversed(current_history or []):
+                if m.get("role") == "model":
+                    last_bot_q = m.get("content", "")
+                    break
+
+            # Full Context for Extraction
+            history_context = ""
+            context_messages = (current_history or [])[-6:]
+            for m in context_messages:
+                role = "User" if m.get("role") == "user" else "Bot"
+                history_context += f"{role}: {m.get('content', '')}\n"
+
+            conversation = f"{history_context}User: {message_body}"
+
+            # 1. Generate & Update Summary (BLOCKING)
+            logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync for {user_phone}")
+            await ms.generate_and_update_summary(
+                user_phone, 
+                conversation, 
+                cerebro_ia, 
+                last_bot_question=last_bot_q
+            )
+
+            # 2. GESTIÓN DE VERDAD: Re-fetch fresh prospect data from Firestore
+            prospect_data = await ms.get_prospect_data(user_phone)
+            logger.info(f"✅ [LINEAR BLOCKING] Memory Synced. Identity: {prospect_data.get('name')}")
+
+        except Exception as e:
+            logger.exception(f"❌ Error in Linear Blocking flow: {e}")
+            # Fallback to local data if sync fails
+            if not prospect_data:
+                prospect_data = await ms.get_prospect_data(user_phone)
+
+    # 3. Inferencia de la IA con Auditoría de Vida o Muerte (v9.8.0)
+    max_retries = 2
+    attempts = 0
+
+    # --- INITIALIZATION GUARD (BOT-BACKEND-HOTFIX-ROUTER-INFERENCE-GUARD-174) ---
+    if memory_service_module.memory_service:
+        ms = memory_service_module.memory_service
+        from app.services.memory_service import MemoryService
+        from unittest.mock import Mock
+        if isinstance(ms, MemoryService):
+            prospect_data = await ms.get_or_create_prospect(user_phone)
+        else:
+            # En entornos de testing con mocks (MagicMock o AsyncMock):
+            # Si get_or_create_prospect ha sido mockeado con un valor explícito (no un Mock por defecto)
+            if not isinstance(ms.get_or_create_prospect.return_value, Mock):
+                prospect_data = await ms.get_or_create_prospect(user_phone)
+            else:
+                # Fallback al mock de get_prospect_data configurado en tests heredados
+                # Si ya tenemos prospect_data y existe, lo reutilizamos para evitar agotar el side_effect del mock
+                if not prospect_data or not prospect_data.get("exists", False):
+                    fut = ms.get_prospect_data(user_phone)
+                    if hasattr(fut, "__await__"):
+                        prospect_data = await fut
+                    else:
+                        prospect_data = fut
+
+    is_approved = False
+    rejection_reason = ""
+    last_criteria_id = "UNKNOWN"
+
+    try:
+        # Contexto para el Juez (Catalog Lock)
+        translated_query = resolve_query_aliases(message_body, catalog)
+        catalog_results = catalog.search(translated_query)
+        catalog_context = ""
+        for item in catalog_results[:3]:
+            tags_str = ", ".join(item.get('searchBy', []))
+            net_price_str = ""
+            if catalog and hasattr(catalog, '_items'):
+                for raw_item in catalog._items:
+                    if raw_item.get("name") == item["name"]:
+                        net_price_str = raw_item.get("formatted_price")
+                        break
+            if not net_price_str:
+                net_price_str = item.get("formatted_price", "")
+            catalog_context += f"- {item['name']}: Neto: {net_price_str} / Con SOAT: {item['formatted_price']}. Tags: [{tags_str}]. Specs: {item.get('summary')}\n"
+
+        while attempts <= max_retries and not is_approved:
+            attempts += 1
+            logger.info(f"🧠 [JUDGE] Calling CerebroIA.pensar_respuesta (Attempt {attempts}/{max_retries+1})...")
+
+            current_context = context
+            if attempts > 1:
+                current_context += f"\n\n[SISTEMA - ERROR DE CALIDAD]: Tu respuesta anterior fue RECHAZADA por el Juez. Motivo: {rejection_reason}. Por favor, corrige este punto y genera una nueva respuesta válida."
+
+            if prospect_data is not None:
+                prospect_data["phone"] = user_phone 
+
+            try:
+                response_text = await cerebro_ia.pensar_respuesta(
+                    message_body,
+                    context=current_context,
+                    prospect_data=prospect_data,
+                    history=current_history,
+                    skip_greeting=skip_greeting
+                )
+            except HabeasDataBypassInterrupt as hdbi:
+                logger.info("🛡️ [HABEAS-BYPASS] Cortocircuito limpio capturado en el router de WhatsApp. Aprobación inmediata.")
+                response_text = str(hdbi.args[0])
+                is_approved = True
+                break
+
+            # 4. Evaluación FAQ Bypass (BOT-BRAIN-FAQ-ROOT-CAUSE-HUNT-147)
+            # run_checker determina semánticamente si la respuesta es FAQ pura
+            # para propagar el flag is_faq_bypass al Juez y evitar falsos positivos
+            # en C1_VISUAL_LOCK ("soporte"→"Sport") y C9_CITY_MISSING ("requisitos"→crédito).
+            from app.services.agentic_loop_service import is_tech_spec_query
+            _pcc_result = _get_router_orchestrator().run_checker(
+                response_text or "",
+                is_catalog_query=is_tech_spec_query(message_body),
+                prospect_data=prospect_data,
+                user_prompt=message_body
+            )
+            _is_faq_bypass = bool(_pcc_result.get("bypass_strict", False))
+            if _is_faq_bypass:
+                logger.info(f"✅ [ROUTER-PCC] FAQ bypass detectado. Propagando is_faq_bypass=True al Juez para {user_phone}.")
+
+            # 5. Auditoría del Juez de Fundamentación
+            is_approved, rejection_reason = await judge_service.analyze_response(
+                user_input=message_body,
+                ai_response=response_text,
+                catalog_context=catalog_context,
+                prospect_data=prospect_data,
+                history=current_history,
+                is_faq_bypass=_is_faq_bypass
+            )
+
+            if not is_approved:
+                logger.warning(f"⚖️ [JUDGE] Response REJECTED (Attempt {attempts}): {rejection_reason}")
+                # Extraer ID del criterio (ej: C1 de C1_VISUAL_LOCK)
+                match = re.match(r'(C\d)', rejection_reason)
+                last_criteria_id = match.group(1) if match else "UNKNOWN"
+            else:
+                logger.info(f"⚖️ [JUDGE] Response APPROVED (Attempt {attempts}).")
+
+        # Fallback if all attempts fail
+        if not is_approved:
+            logger.error(f"❌ [JUDGE] Max retries reached. Forcing official fallback response. Criteria: {last_criteria_id}. Rejection Reason: {rejection_reason}")
+            fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
+
+            # [MANDATO v9.8.3] Marcar estado PRIMERO, luego enviar mensaje
+            # Esto asegura que el CRM se actualice incluso si Meta falla temporalmente.
+            try:
+                if memory_service_module.memory_service:
+                    logger.warning(f"🚨 [JUDGE_FALLBACK] Max retries hit for {user_phone}. Marking human_help_requested=True")
+                    await memory_service_module.memory_service.set_human_help_status(user_phone, True)
+                    # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
+                    await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
+                    await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
+            except Exception as e_ms:
+                logger.error(f"⚠️ [JUDGE_FALLBACK] Error persistencia fallback: {e_ms}")
+
+            # Envío INCONDICIONAL del mensaje de fallback
+            try:
+                logger.info(f"📤 [JUDGE_FALLBACK] Sending supervisor fallback to {user_phone}...")
+                sent_ok = await _send_whatsapp_message(user_phone, fallback_msg, phone_number_id=phone_number_id)
+                if sent_ok:
+                    logger.info(f"✅ [JUDGE_FALLBACK] Supervisor message delivered to {user_phone}")
+                else:
+                    logger.error(f"❌ [JUDGE_FALLBACK] _send_whatsapp_message returned False for {user_phone}")
+            except Exception as e_wa:
+                logger.error(f"❌ [JUDGE_FALLBACK] Error fatal enviando mensaje de fallback a Meta: {e_wa}")
+
+            # Actualizar Langfuse antes de retornar
+            try:
+                langfuse_context.update_current_trace(
+                    tags=["JUDGE_CRITICAL_FALLBACK"],
+                    metadata={
+                        "rejection_criteria": last_criteria_id,
+                        "final_rejection_reason": rejection_reason,
+                        "attempts": attempts
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ [JUDGE_FALLBACK] Failed to update Langfuse trace: {e}")
+
+            return None, prospect_data
+
+    except Exception as e:
+        # MANDATO Zero-Silent-Failures: exc_info=True garantiza stack trace forense.
+        # Capturar el cuerpo nativo del error antes de activar human_help_requested.
+        logger.exception(f"🔥 [JUDGE_CRITICAL_ERROR] AI Inference failed for {user_phone}: {e}")
+        fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
+        if memory_service_module.memory_service:
+            await memory_service_module.memory_service.set_human_help_status(user_phone, True)
+            # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
+            await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
+            await _send_whatsapp_message(user_phone, fallback_msg, phone_number_id=phone_number_id)
+            await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
+        return None, prospect_data
+
+    # Observabilidad: Langfuse Tag y Metadata
+    if not is_approved or attempts > 1:
+        try:
+            langfuse_context.update_current_trace(
+                tags=["JUDGE_CRITICAL_FALLBACK"] if not is_approved else ["JUDGE_RETRIED"],
+                metadata={
+                    "rejection_criteria": last_criteria_id,
+                    "final_rejection_reason": rejection_reason,
+                    "attempts": attempts
+                }
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to update Langfuse trace: {e}")
+
+    # Persistencia de la respuesta final (sea aprobada o fallback)
+    if memory_service_module.memory_service:
+        await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
+
+    # TRIGGER_SURVEY interception REMOVED — 2026-03-12
+    # WHY: This block replaced the LLM's natural response with hardcoded survey
+    # text whenever start_credit_survey was called. The LLM now handles all
+    # Phase 3 credit questions organically via the Firestore prompt.
+
+    logger.info(f"🧠 Response determined: '{str(response_text)[:50]}...'")
+
+    # LATENCY SIMULATION (Natural Typing Delay)
+    # Rule: First response to a new session (or after long pause) must be instant (0s).
+    # Rule: Subsequent responses need natural delay (Calculated).
+    if not skip_greeting:
+        logger.info("🚀 Smart Latency: New session detected. Skipping typing delay (0s).")
+        typing_delay = 0
+    else:
+        import random
+
+        # 1. Simulación y Naturalidad
+        base_delay = len(str(response_text)) / 35.0
+        jitter = random.uniform(0.5, 1.5)
+        calculated_delay = base_delay + jitter
+
+        # 2. Límite de seguridad
+        typing_delay = min(1.5, calculated_delay)
+        logger.info(f"⏳ Human Latency: len={len(str(response_text))}, delay={typing_delay:.2f}s")
+
+    if typing_delay > 0:
+        await asyncio.sleep(typing_delay)
+    return response_text, prospect_data
+
+
+async def _pipeline_egress(
+    response_text: str,
+    image_url=None,
+    meta_sender=None,
+    **ctx,
+) -> None:
+    """
+    [BOT-BUILD-ETAPA3-WAVE05-FRAGMENT-TEXT-EGRESS-001] Egreso consolidado (sprout
+    method intra-archivo — extracción estructural pura del bloque post-rama del God
+    Node; cuerpo VERBATIM). Único punto de egreso del orquestador.
+
+    Responsabilidad: HANDOFF_TRIGGERED (set_human_help + ponytail DEPRIORITIZED +
+    aviso de transferencia + notificación), PHASE_GATE_TRIGGERED (inyección de
+    imagen dinámica v6.3.1 con bypass por moto confirmada) y delegación al envío
+    unificado `_process_and_send_egress_message` (BOT-BUGFIX-UNIFIED-EGRESS-125;
+    su firma exacta se preserva — pin CH-5 — y su lógica Markdown/Visual-Lock y el
+    eco save(model) quedan intactos).
+
+    `image_url`/`meta_sender`: costuras RESERVADAS por simetría de firma (los
+    helpers de envío resuelven su propia costura meta_sender; `image_url` es
+    sombreada por la variable local del PHASE_GATE heredado).
+
+    ctx requerido: user_phone; ctx opcional: phone_number_id, prospect_data,
+    catalog (None → global del módulo en tiempo de llamada).
+    Pin: tests/test_pipeline_egress_integrity.py.
+    """
+    user_phone = ctx["user_phone"]
+    phone_number_id = ctx.get("phone_number_id")
+    prospect_data = ctx.get("prospect_data")
+    catalog = ctx.get("catalog") or catalog_service
+
+    # Check for AI Handoff
+    if response_text.startswith("HANDOFF_TRIGGERED"):
+        if memory_service_module.memory_service:
+            await memory_service_module.memory_service.set_human_help_status(user_phone, True)
+            # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
+            await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
+        await _send_whatsapp_message(user_phone, "Te voy a transferir con un compañero para que te ayude con esto. Dame un momento...", phone_number_id=phone_number_id)
+        try:
+            from app.services.notification_service import notification_service
+            await notification_service.notify_human_handoff(user_phone, "ai_trigger")
+        except ImportError as e:
+            # [BOT-BUILD-ETAPA3-WAVE06-LATENCY-CLOSE-001] Zero-Silent-Failures:
+            # el canal de notificación es opcional (no aborta el handoff), pero
+            # su ausencia queda registrada con ID de correlación (E.164).
+            logger.warning(f"⚠️ [HANDOFF] notification_service no disponible para {user_phone}: {e}")
+    else:
+        # --- PHASE-GATE IMAGE INJECTION (Update v6.3.1) ---
+        if response_text.startswith("PHASE_GATE_TRIGGERED:"):
+            logger.info("🛡️ PHASE-GATE TRIGGERED detected.")
+            response_text = response_text.replace("PHASE_GATE_TRIGGERED:", "").strip()
+
+            # 🚀 [BYPASS OPTIMIZATION] (v6.6.1)
+            moto_confirmada = prospect_data.get("moto_confirmada", False) if prospect_data else False
+
+            if not moto_confirmada:
+                logger.info("📸 Injecting dynamic image (moto not confirmed).")
+                # Logica v6.3.1: Priorizar interes, sino Raider 125
+                moto_interest = prospect_data.get("moto_interest") if prospect_data else None
+                moto_to_search = moto_interest if moto_interest else "RAIDER 125"
+
+                if catalog:
+                    try:
+                        # Search for interested bike or default
+                        moto_results = catalog.search_catalog(moto_to_search)
+
+                        # Fallback if interest search failed (Competitor or not found)
+                        if not moto_results and moto_interest:
+                            logger.info(f"🔄 No results for '{moto_interest}' (Competitor?). Falling back to Raider 125.")
+                            moto_results = catalog.search_catalog("RAIDER 125")
+
+                        if moto_results:
+                            moto = moto_results[0]
+                            image_url = moto.get("image_url")
+                            moto_name = moto.get("name")
+
+                            if image_url:
+                                # Caption v6.3.1: "Mira esta [Moto]"
+                                caption = f"Mira esta {moto_name}\n\n{response_text}"
+                                logger.info(f"📸 Sending Phase-Gate dynamic image: {image_url} for {moto_name}")
+                                await _send_whatsapp_image(user_phone, image_url, caption=caption, phone_number_id=phone_number_id)
+
+                                # Save to history and stop
+                                if memory_service_module.memory_service:
+                                    await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
+                                return 
+                    except Exception as e:
+                        logger.exception(f"⚠️ Error injecting dynamic Phase-Gate image: {e}")
+            else:
+                logger.info("⏩ [BYPASS] Skipping image injection: moto already confirmed.")
+
+        await _process_and_send_egress_message(user_phone, response_text, phone_number_id=phone_number_id)
 
 
 # ============================================================================
@@ -2047,15 +2361,20 @@ def _extract_message_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     except:
         return None
 
-async def _send_whatsapp_message(to_phone: str, message_text: str, phone_number_id: Optional[str] = None) -> bool:
+async def _send_whatsapp_message(to_phone: str, message_text: str, phone_number_id: Optional[str] = None, *, meta_sender=None) -> bool:
     """
     Send WhatsApp message via WhatsAppService.
-    
+
     [BOT-BUILD-205] Added retry logic with degraded payload on HTTP 400 errors.
+
+    [BOT-BUILD-ETAPA3-WAVE03-DI-SEAMS-001] `meta_sender` opcional (keyword-only):
+    None resuelve el singleton whatsapp_service EN TIEMPO DE LLAMADA vía el import
+    diferido (nunca default=global en firma — rompería el monkeypatching).
     """
     from app.services.whatsapp_service import whatsapp_service
+    meta_sender = meta_sender or whatsapp_service
     try:
-        await whatsapp_service.send_text_message(to_phone, message_text, phone_number_id=phone_number_id)
+        await meta_sender.send_text_message(to_phone, message_text, phone_number_id=phone_number_id)
         return True
     except httpx.HTTPStatusError as e:
         error_code = e.response.status_code
@@ -2075,7 +2394,7 @@ async def _send_whatsapp_message(to_phone: str, message_text: str, phone_number_
                 degraded_text = re.sub(r'!\[.*?\]\(.*?\)', '[Imagen]', degraded_text)
                 degraded_text = degraded_text.strip()
                 
-                await whatsapp_service.send_text_message(to_phone, degraded_text, phone_number_id=phone_number_id)
+                await meta_sender.send_text_message(to_phone, degraded_text, phone_number_id=phone_number_id)
                 logger.info(f"✅ [RETRY DEGRADED] Success with truncated payload ({len(degraded_text)} chars)")
                 return True
             except Exception as retry_error:
@@ -2092,11 +2411,17 @@ async def _send_whatsapp_message(to_phone: str, message_text: str, phone_number_
         logger.exception(f"❌ Error Genérico: El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e}")
         return False
 
-async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "", phone_number_id: Optional[str] = None) -> bool:
-    """Send Image via WhatsAppService."""
+async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "", phone_number_id: Optional[str] = None, *, meta_sender=None) -> bool:
+    """Send Image via WhatsAppService.
+
+    [BOT-BUILD-ETAPA3-WAVE03-DI-SEAMS-001] `meta_sender` opcional (keyword-only):
+    None resuelve el singleton whatsapp_service EN TIEMPO DE LLAMADA vía el import
+    diferido (nunca default=global en firma — rompería el monkeypatching).
+    """
     from app.services.whatsapp_service import whatsapp_service
+    meta_sender = meta_sender or whatsapp_service
     try:
-        await whatsapp_service.send_image_message(to_phone, image_url, caption, phone_number_id=phone_number_id)
+        await meta_sender.send_image_message(to_phone, image_url, caption, phone_number_id=phone_number_id)
         return True
     except httpx.HTTPStatusError as e:
         logger.error(f"❌ Error HTTP ({e.response.status_code}): El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e.response.text}")
@@ -2104,14 +2429,3 @@ async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "",
     except Exception as e:
         logger.error(f"❌ Error Genérico: El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e}")
         return False
-
-async def _get_session(db_client, phone) -> Dict[str, Any]:
-    try:
-        if not db_client: return {}
-        ref = db_client.collection("prospectos").document(phone)
-        doc = ref.get()
-        if doc.exists:
-            return doc.to_dict()
-        return {"status": "IDLE", "answers": {}}
-    except:
-        return {"status": "IDLE"}
