@@ -16,6 +16,7 @@ from datetime import datetime
 from app.utils.json_processor import clean_json_voorhees
 from app.core.exceptions import HabeasDataBypassInterrupt
 from app.services.credit_faq_taxonomy import is_abstract_credit_faq, classify_credit_turn, TurnIntent
+from app.services.faq_service import get_faq_answer, get_location_info
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,20 @@ class _LangfuseContextShim:
 
 
 
+# ---------------------------------------------------------------------------
+# [BOT-BUILD-COHERENCE-WAVE07-03] NOMENCLATURA TÉCNICA FIRESTORE (migrada al backend).
+# Esta constante es la ÚNICA AUTORIDAD de mapeo dato-del-prospecto → campo Firestore.
+# La extracción se ejecuta en generate_summary() con structured output
+# (response_mime_type="application/json" + response_schema=EXTRACTION_SCHEMA),
+# por lo que la nomenclatura NO necesita vivir en el prompt conversacional.
+# Campos obligatorios del prospecto (NO eliminar — constraint del ticket):
+#   nombre, ciudad, moto_interest, habeas_data_accepted.
+# Persistencia: memory_service._merge_extracted_data() mapea `extracted` 1:1
+# con validación de código (latch/CRM-protected/sentinels).
+# Nota: la colección interna `sys_admin_users` (administradores del Dashboard)
+# NO forma parte del schema del prospecto y no tiene uso en la conversación
+# comercial; se documenta aquí únicamente como referencia técnica de backend.
+# ---------------------------------------------------------------------------
 EXTRACTION_SCHEMA = {
     "type": "OBJECT",
     "properties": {
@@ -112,6 +127,69 @@ EXTRACTION_SCHEMA = {
     },
     "required": ["summary", "extracted"]
 }
+
+
+# ---------------------------------------------------------------------------
+# [BOT-BUILD-COHERENCE-WAVE07-02-BLIND-CREDIT-001] Crédito Ciego determinista.
+# Fallback de infraestructura para 'calculate_credit_score': si el LLM omite
+# parámetros (o los envía nulos/vacíos), el backend inyecta estos defaults
+# ANTES de la ejecución de la herramienta. El prompt XML ya no necesita forzar
+# estos valores fijos (menos tokens, cero contradicción prompt/código).
+# ---------------------------------------------------------------------------
+BLIND_CREDIT_DEFAULTS: Dict[str, str] = {
+    "entidad": "Brilla de Gases",
+    "ocupacion_y_contrato": "Empleado",
+    "ingresos_demostrables": "SMLV",
+    "historial_datacredito": "Sin experiencia",
+    "plan_celular": "Sí",
+    "reportes": "No",
+    "inicial": "10%",
+}
+
+# Aliases consultados (además de la llave canónica) antes de inyectar un default,
+# para no pisar valores ya presentes en f_args (variantes del LLM) o en el CRM.
+_BLIND_CREDIT_ALIASES: Dict[str, tuple] = {
+    "ocupacion_y_contrato": ("ocupacion",),
+    "historial_datacredito": ("datacredito",),
+}
+
+
+def _is_filled(value: Any) -> bool:
+    """True si el valor no es None ni cadena vacía/espacios."""
+    return value is not None and str(value).strip() != ""
+
+
+def _apply_blind_credit_defaults(f_args: Any, prospect_data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    [BOT-BUILD-COHERENCE-WAVE07-02] Inyección determinista de Crédito Ciego.
+
+    Intercepta los argumentos de 'calculate_credit_score' antes de su ejecución
+    final: para cada parámetro canonico ausente en f_args (incluyendo aliases)
+    Y ausente en el CRM (prospect_data), inyecta el default de BLIND_CREDIT_DEFAULTS.
+
+    Prioridad de resolución preservada: f_args (+aliases) > prospect_data > default.
+
+    Zero-Silent-Failures: cualquier fallo de inyección se reporta vía
+    logger.exception y devuelve los args originales sin mutar (fail-open).
+    """
+    try:
+        args = dict(f_args or {})
+        crm = prospect_data or {}
+        injected: List[str] = []
+        for key, default in BLIND_CREDIT_DEFAULTS.items():
+            aliases = _BLIND_CREDIT_ALIASES.get(key, ())
+            candidate_keys = (key, *aliases)
+            provided = any(_is_filled(args.get(k)) for k in candidate_keys) or \
+                       any(_is_filled(crm.get(k)) for k in candidate_keys)
+            if not provided:
+                args[key] = default
+                injected.append(key)
+        if injected:
+            logger.info(f"🛡️ [BLIND-CREDIT] Defaults de Crédito Ciego inyectados (omitidos por el LLM): {injected}")
+        return args
+    except Exception as e:
+        logger.exception(f"❌ [BLIND-CREDIT] Fallo inyectando defaults de Crédito Ciego: {e}")
+        return f_args
 
 
 class CerebroIA:
@@ -1167,7 +1245,40 @@ REGLAS ESTRICTAS DE USO:
                 }
             )
 
-            function_declarations = [handoff_function, catalog_function]
+            # [BOT-BUILD-COHERENCE-WAVE07-01] Knowledge tools — reemplazan el bloque
+            # <KNOWLEDGE_BASE> del prompt. La base de requisitos de crédito y las
+            # sedes viven ahora en app/services/faq_service.py (backend determinista).
+            faq_function = types.FunctionDeclaration(
+                name="query_faq",
+                description="""Consulta la base oficial de requisitos de crédito (Empleados, Reportados, Extranjeros, Brilla). REGLA DE ORO: Úsala SIEMPRE que el usuario pregunte por requisitos, documentos, codeudor, fiador, historial o Datacrédito. PROHIBIDO responder estas preguntas desde tu memoria.""",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Tema o pregunta del usuario (ej. 'requisitos para reportados', 'codeudor', 'extranjero con PPT', 'recibos de gas')."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            )
+
+            locations_function = types.FunctionDeclaration(
+                name="query_locations",
+                description="""Consulta las direcciones y links de Google Maps de las sedes físicas de la tienda. REGLA DE ORO: Úsala SIEMPRE que el usuario pregunte por sedes, tiendas, direcciones, ubicación o puntos de venta. PROHIBIDO inventar direcciones.""",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Ciudad, barrio o zona consultada (ej. 'Santa Marta', 'Gaira', 'Riohacha', 'Zona Bananera')."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            )
+
+            function_declarations = [handoff_function, catalog_function, faq_function, locations_function]
             
             # Stop-Gate Logic (Audit P2 1.1)
             # [BOT-BUILD-REGRESSION-FAQ-FALLBACK-201]
@@ -1178,9 +1289,9 @@ REGLAS ESTRICTAS DE USO:
             
             if not omit_credit:
                 function_declarations.append(credit_function)
-                logger.info(f"🛠️ Toolset: [handoff, catalog, credit] (Phase: {phase})")
+                logger.info(f"🛠️ Toolset: [handoff, catalog, faq, locations, credit] (Phase: {phase})")
             else:
-                logger.info(f"🛠️ Toolset: [handoff, catalog] — credit OMITIDO (FAQ abstracta) (Phase: {phase})")
+                logger.info(f"🛠️ Toolset: [handoff, catalog, faq, locations] — credit OMITIDO (FAQ abstracta) (Phase: {phase})")
 
             return [types.Tool(function_declarations=function_declarations)]
         except Exception as e:
@@ -1952,6 +2063,13 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 ))
                                 continue
 
+                            # [BOT-BUILD-COHERENCE-WAVE07-02] Crédito Ciego determinista:
+                            # intercepta la invocación ANTES de la ejecución final e inyecta
+                            # los defaults (Brilla de Gases / Empleado / SMLV / Sin experiencia /
+                            # plan Sí / sin reportes / inicial 10%) si el LLM omitió parámetros.
+                            # No pisa valores del LLM ni del CRM (f_args > prospect_data > default).
+                            f_args = _apply_blind_credit_defaults(f_args, prospect_data)
+
                             credit_res = "No disponible."
                             try:
                                 # [BOT-BRAIN-FINANCE-086] Bifurcación lineal: consentimiento Habeas Data
@@ -2294,6 +2412,26 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             response_parts.append(types.Part.from_function_response(
                                 name=f_name,
                                 response={"result": credit_res}
+                            ))
+
+                        elif f_name in ("query_faq", "query_locations"):
+                            # [BOT-BUILD-COHERENCE-WAVE07-01] Knowledge tools (FAQ requisitos / sedes).
+                            # Datos deterministas desde faq_service; reemplazan el <KNOWLEDGE_BASE> del prompt.
+                            knowledge_query = f_args.get("query", "")
+                            logger.info(f"📚 AI invoking knowledge tool '{f_name}' with query: '{knowledge_query}'")
+                            try:
+                                if f_name == "query_faq":
+                                    knowledge_res = get_faq_answer(knowledge_query)
+                                else:
+                                    knowledge_res = get_location_info(knowledge_query)
+                            except Exception as e:
+                                # Zero-Silent-Failures: log forense antes del degradado controlado.
+                                logger.exception(f"❌ Knowledge tool '{f_name}' failed for query '{knowledge_query}': {e}")
+                                knowledge_res = "[SISTEMA: Error temporal consultando la base de conocimiento. Informa al usuario que un asesor confirmará el dato y continúa el embudo.]"
+                            knowledge_res += f"\n\n{funnel_instruction}"
+                            response_parts.append(types.Part.from_function_response(
+                                name=f_name,
+                                response={"result": knowledge_res}
                             ))
 
                     if response_parts:

@@ -1682,7 +1682,9 @@ def test_create_tools_omits_credit_when_faq_abstract():
     """
     [BOT-BUILD-REGRESSION-FAQ-FALLBACK-201]
     _create_tools(omit_credit=True) NO debe incluir calculate_credit_score.
-    Verifica que el numero de tool declarations sea 3 sin omitir y 2 omitiendo.
+    Verifica que el numero de tool declarations sea 5 sin omitir y 4 omitiendo.
+    [BOT-BUILD-COHERENCE-WAVE07-01] El toolset base ahora incluye query_faq y
+    query_locations (migración del <KNOWLEDGE_BASE> al backend): 3→5 y 2→4.
     """
     from unittest.mock import patch, MagicMock
     import app.services.ai_brain as brain_module
@@ -1694,13 +1696,13 @@ def test_create_tools_omits_credit_when_faq_abstract():
         tools_with = cerebro._create_tools(omit_credit=False)
         assert tools_with is not None
         num_with = len(tools_with[0].function_declarations)
-        assert num_with == 3, f"Expected 3 tools (handoff, catalog, credit), got {num_with}"
+        assert num_with == 5, f"Expected 5 tools (handoff, catalog, faq, locations, credit), got {num_with}"
 
         tools_without = cerebro._create_tools(omit_credit=True)
         assert tools_without is not None
         num_without = len(tools_without[0].function_declarations)
-        assert num_without == 2, \
-            f"FAQ abstracta: expected 2 tools (sin credit), got {num_without}"
+        assert num_without == 4, \
+            f"FAQ abstracta: expected 4 tools (sin credit), got {num_without}"
 
 
 def test_run_checker_fiador_bypass_with_moto_interest():
