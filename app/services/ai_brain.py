@@ -123,7 +123,13 @@ EXTRACTION_SCHEMA = {
                 },
                 "ingresos_mensuales": {
                     "type": "STRING",
-                    "description": "Ingresos mensuales del usuario si se mencionaron (solo dígitos, ej. '1705905'; acepta 'SMLV' si el usuario dijo 'el mínimo'). Bias negativo estricto: si no está presente, dejar vacío."
+                    # [BOT-BUILD-FIX-MATRIX-RESTART-001 / FIX-1]
+                    # Causa raíz del reinicio de matriz: la descripción anterior
+                    # ('solo dígitos' + solo mapeo 'el mínimo') hacía que el extractor
+                    # desechara 'Dos mínimos' cada turno (bias negativo estricto) →
+                    # el campo jamás persistía → checklist PENDIENTE → re-pregunta.
+                    # Cambio ADITIVO: solo se enmienda la guía de mapeo semántico.
+                    "description": "Ingresos mensuales del usuario si se mencionaron. Devuelve SOLO dígitos (ej. '1705905'). MAPEO OBLIGATORIO: si el usuario expresa sus ingresos en salarios mínimos, multiplica por el SMLV vigente (1.705.905 COP): 'el mínimo'/'un mínimo'/'SMLV' → '1705905'; 'dos mínimos'/'2 mínimos' → '3411810'; 'tres mínimos'/'3 mínimos' → '5117715'; aplica la misma regla para cualquier múltiplo N × 1705905. Expresiones de monto: '2 palos'/'2 millones' → '2000000', '500 mil' → '500000'. Bias negativo estricto: si el usuario NO mencionó ingresos, dejar vacío; pero si los mencionó en CUALQUIER forma (números, mínimos, 'palos', 'millones'), NUNCA dejar vacío — mapea al valor numérico."
                 },
                 "gastos_mensuales": {
                     "type": "STRING",
