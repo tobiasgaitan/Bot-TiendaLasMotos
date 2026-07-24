@@ -2743,7 +2743,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             2. moto_interest:
                - La moto o estilo (TVS/Victory del catálogo de Tienda Las Motos) por la que preguntó el usuario o en la que mostró interés.
                - Este campo es INMUTABLE contra la competencia. Solo guarda modelos de Tienda Las Motos.
-               - PROHIBIDO guardar marcas de la competencia como Bajaj, Yamaha, Honda, Suzuki, AKT. Si el usuario menciona una marca de la competencia, déjalo vacío o no la extraigas.
+               - REGLA DE PIVOTE: Si el usuario menciona una marca de la competencia (ej. Boxer, NKD) pero el bot ofreció un equivalente del catálogo (ej. TVS Sport 100), DEBES extraer el modelo del catálogo ofrecido (TVS Sport 100), NO la marca de competencia. Solo déjalo vacío si no hay NINGUNA moto del catálogo mencionada o recomendada en la conversación.
             3. Resumen: Un resumen ejecutivo de la situación del cliente enfocado en su perfil crediticio y moto de interés.
             4. moto_confirmada: 
                - Solo marca como `true` si el usuario da una respuesta de aceptación o interés EXPLÍCITO hacia la moto del catálogo (ej: "me interesa", "me gusta esa", "esa es", "sí/si", "👍").
