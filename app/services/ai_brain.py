@@ -1343,7 +1343,11 @@ REGLAS ESTRICTAS DE USO:
             # Define credit calculation function
             credit_function = types.FunctionDeclaration(
                 name="calculate_credit_score",
-                description="ÚNICA herramienta autorizada para calcular el perfil crediticio. ¡DETENTE AQUÍ! No generes respuesta. Espera el resultado interno. Úsala inmediatamente después del Paso 9. Proporciona el score, la entidad asignada y el link de aplicación. Requisitos: ser mayor de edad y contar con ingresos demostrables.",
+                # [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO-v2 / FIX-C]
+                # Descripción obsoleta erradicada: referenciaba un 'Paso 9' inexistente
+                # (el flujo vigente tiene PASOS 1-5 + MATRIZ + CIERRE) y su 'DETENTE
+                # AQUÍ / No generes respuesta' era co-causante del bucle sin texto final.
+                description="ÚNICA herramienta autorizada para calcular el perfil crediticio. Úsala SOLO en dos momentos: (1) cuando el cliente pida por primera vez el valor de cuotas o simulación de crédito (el backend completa datos faltantes con valores por defecto), y (2) en el CIERRE DE FASE, una vez completados los 8 datos de la matriz de perfilamiento. PROHIBIDO ejecutarla en cada turno de la matriz. Proporciona el score, la entidad asignada y el link de aplicación. Requisitos: ser mayor de edad y contar con ingresos demostrables.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -1613,13 +1617,17 @@ REGLAS ESTRICTAS DE USO:
                 funnel_instruction = "EL USUARIO ESTÁ LISTO PARA EL CRÉDITO. Debes presentar el script legal de Habeas Data y pedir su aceptación explícita (Sí/No)."
         
         elif phase == "PHASE_3_CREDIT_PROFILING":
+            # [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO-v2 / FIX-A]
+            # Instrucción obsoleta erradicada: la anterior ordenaba ejecutar
+            # calculate_credit_score en CADA turno de la matriz (¡DETENTE AQUÍ!),
+            # lo que generaba bucle de herramientas → max_turns → fallback.
+            # Al entrar a PHASE_3 la herramienta YA se ejecutó (simulación ciega
+            # pre-Habeas) y la cuota YA se entregó. PHASE_3 = MATRIZ → CIERRE.
             funnel_instruction = (
-                "Habeas Data Aceptado. Procede con el perfilamiento crediticio. "
-                "Ejecuta la herramienta calculate_credit_score. ¡DETENTE AQUÍ! "
-                "No generes texto de respuesta con valores monetarios inventados. "
-                "Espera el resultado interno de la herramienta antes de responder al usuario. "
-                "Si el resultado es Brilla, solicita de inmediato fotos de cédula "
-                "y recibos de gas para que el asesor humano pueda cerrar el trámite."
+                "Habeas Data Aceptado. Procede con la MATRIZ DE PERFILAMIENTO (8 datos). "
+                "Haz SOLO UNA PREGUNTA A LA VEZ. NO repitas saludos. "
+                "NO repreguntes datos CAPTURADOS. "
+                "Cuando los 8 datos estén completados, ejecuta el CIERRE DE FASE según el puntaje."
             )
 
         # --- DOBLE GATE PREVENTIVO: FAQ abstracta de crédito (INTERCEPCIÓN_Y_RETORNO) ---
@@ -1776,9 +1784,18 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 full_prompt += f"[SISTEMA: Recuerda la ONE-SHOT RULE. Tu respuesta debe terminar con UNA (1) sola pregunta. Tienes prohibido repreguntar por los datos que ya están en <datos_ya_capturados>.]\n\n"
                 
                 # --- REFUERZO DE IDENTIDAD v8.3 (Ventana de Atención Final) ---
+                # [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO-v2 / FIX-B]
+                # En PHASE_3 la CRITICAL IDENTITY RULE ordenaba un saludo personalizado
+                # CADA turno, contradiciendo 'PROHIBIDO REPETIR SALUDOS' de la MATRIZ
+                # (prompt Firestore) — causa del Problema 3 ('¡Hola Carlos!' repetido).
+                # Se condiciona: en PHASE_3 se inyecta el mandato anti-saludos; en el
+                # resto de fases la regla original se conserva VERBATIM.
                 if prospect_data and prospect_data.get("nombre"):
                     p_name = prospect_data.get("nombre")
-                    full_prompt += f"\n[CRITICAL IDENTITY RULE: Estás hablando con {p_name}. Tu respuesta DEBE empezar con un saludo personalizado hacia él. Ignorar esto es un fallo de seguridad.]\n"
+                    if phase == "PHASE_3_CREDIT_PROFILING":
+                        full_prompt += "\n[PROHIBIDO repetir saludos ni el nombre del cliente al inicio durante la MATRIZ DE PERFILAMIENTO. Ve directo al punto con la siguiente pregunta pendiente.]\n"
+                    else:
+                        full_prompt += f"\n[CRITICAL IDENTITY RULE: Estás hablando con {p_name}. Tu respuesta DEBE empezar con un saludo personalizado hacia él. Ignorar esto es un fallo de seguridad.]\n"
                 
                 # --- FRENO COGNITIVO FAQ-CRÉDITO (máxima recencia) ---
                 if faq_brake_block:
