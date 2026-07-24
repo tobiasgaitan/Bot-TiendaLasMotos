@@ -2323,8 +2323,16 @@ async def test_perimeter_short_tokens_and_greeting_bypass():
                     history=history_with_time,
                     skip_greeting=skip_eval
                 )
-            
-            assert len(calls_made) == 1
+
+            # [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO] Ajuste aprobado por el Auditor:
+            # 'ninja' vive SOLO en searchBy del ítem inyectado. Con FIX-1 la compuerta
+            # de herramienta forzada incluye los alias searchBy dinámicos, por lo que
+            # la respuesta mock sin function_call dispara el turno de validación
+            # (2 llamadas: prompt normal + instrucción forzada). Antes: 1 llamada
+            # (camino propenso a alucinación: el mock inventa 'Kawasaki' + precio sin
+            # grounding de catálogo). El propósito del pin (perímetro + greeting
+            # bypass) se preserva íntegro en las aserciones siguientes.
+            assert len(calls_made) == 2
             assert "INSTRUCCIÓN INQUEBRANTABLE: skip_greeting es True" in calls_made[0]
             assert prospect_data_transition["moto_interest"] == "Kawasaki Ninja 500"
 

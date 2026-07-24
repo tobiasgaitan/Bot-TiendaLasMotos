@@ -1,0 +1,444 @@
+"""
+[BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO] Pins de certificación (5 fixes).
+
+Milestone 3 - Etapa 4: Corrección de Flujo Post-Reset.
+
+FIX-1  Compuerta de herramienta forzada extendida con alias searchBy dinámicos
+       (_load_searchby_aliases): cualquier referencia indexada SOLO en searchBy
+       (competencia o modelos tipo 'eco deluxe 100', 'CR4 150', 'FZ 150') ahora
+       dispara el turno de validación forzada si el LLM evade search_catalog.
+FIX-2A Timeout de cliente (GEMINI_CALL_TIMEOUT_S) en _call_gemini_with_retry_async
+       vía asyncio.wait_for; asyncio.TimeoutError entra al conjunto reintentable.
+FIX-2B Los fallos transitorios (5xx/internal, candidatos vacíos/safety filter)
+       consumen el presupuesto max_retries=3 antes de degradar al fallback
+       "colgado". RuntimeError genérico conserva el retorno inmediato heredado.
+FIX-4A EXTRACTION_SCHEMA: 5 campos nuevos de perfilamiento (STRING, no required)
+       persisten vía memory_service._merge_extracted_data.
+FIX-4B _build_profiling_checklist: checklist determinista de la MATRIZ_DE
+       PERFILAMIENTO (8 datos) inyectado SOLO en PHASE_3_CREDIT_PROFILING.
+"""
+
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+import app.services.ai_brain as ai_brain_module
+from app.services.ai_brain import CerebroIA, EXTRACTION_SCHEMA
+from app.services.catalog_service import CatalogService
+from app.services.memory_service import MemoryService
+
+
+# ---------------------------------------------------------------------------
+# Mock helpers (patrón establecido en tests/test_agentic_loop_async.py)
+# ---------------------------------------------------------------------------
+class MockPart:
+    def __init__(self, function_call=None, text=None):
+        self.function_call = function_call
+        self.text = text
+
+
+class MockContent:
+    def __init__(self, parts):
+        self.parts = parts
+
+
+class MockCandidate:
+    def __init__(self, content):
+        self.content = content
+
+
+class MockResponse:
+    def __init__(self, candidates):
+        self.candidates = candidates
+
+
+def _text_response(text: str) -> MockResponse:
+    return MockResponse(candidates=[MockCandidate(content=MockContent(parts=[MockPart(text=text)]))])
+
+
+def _tool_response(name: str, args: dict) -> MockResponse:
+    fc = MagicMock()
+    fc.name = name
+    fc.args = args
+    return MockResponse(candidates=[MockCandidate(content=MockContent(parts=[MockPart(function_call=fc)]))])
+
+
+def _empty_response() -> MockResponse:
+    return MockResponse(candidates=[])
+
+
+# ===========================================================================
+# FIX-1 — Compuerta forzada con alias searchBy dinámicos
+# ===========================================================================
+def test_fix1_load_searchby_aliases_filters_and_collects():
+    """El helper carga valores únicos de searchBy (lowercase, sorted) y filtra
+    tokens peligrosos bajo matching por substring: numéricos puros, len<3 y
+    stopwords funcionales ('sin' colisiona con 'sin cuota inicial')."""
+    catalog = CatalogService()
+    catalog._items = [
+        {"searchBy": ["Eco", "deluxe", "125", "sin", "ab", "Boxer"]},
+        {"searchBy": "not-a-list"},      # tipo corrupto → ignorado
+        {"searchBy": ["eco"]},           # duplicado → dedup
+        "not-a-dict",                    # ítem corrupto → ignorado
+        {"no_searchBy": True},           # llave ausente → ignorado
+    ]
+    cerebro = CerebroIA(catalog_service=catalog)
+    assert cerebro._searchBy_aliases == ["boxer", "deluxe", "eco"]
+
+    # Degradación fail-open sin catálogo inyectado
+    cerebro_sin_catalogo = CerebroIA()
+    assert cerebro_sin_catalogo._searchBy_aliases == []
+
+
+@pytest.mark.asyncio
+async def test_fix1_forced_turn_fires_for_searchby_only_reference():
+    """Usuario pregunta por 'Eco Deluxe 100' (referencia que SOLO existe en
+    searchBy; no está en base_keywords ni en alias de categoría). Si el LLM
+    responde sin llamar search_catalog, la compuerta DEBE forzar el turno de
+    validación y el flujo termina en la alternativa verificada del catálogo."""
+    catalog = CatalogService()
+    catalog._items = [
+        {
+            "id": "eco_deluxe_100",
+            "name": "ECO DELUXE 100",
+            "price": "$5.000.000",
+            "category": "trabajo",
+            "image_url": "http://img/eco.png",
+            "summary": "Moto de trabajo económica.",
+            "searchBy": ["eco", "deluxe", "eco deluxe"],
+            "search_tokens": ["eco", "deluxe", "100", "trabajo"],
+            "search_text": "eco deluxe 100 trabajo",
+        }
+    ]
+    cerebro = CerebroIA(catalog_service=catalog)
+
+    # Precondición: la referencia solo-searchBy quedó indexada en el helper.
+    assert "eco" in cerebro._searchBy_aliases
+    assert "deluxe" in cerebro._searchBy_aliases
+
+    responses = [
+        # Turno 1: el LLM evade la herramienta y responde texto puro.
+        _text_response("No manejo esa referencia, ¿te interesa otra moto?"),
+        # Turno 2 (forzado por la compuerta): el LLM ejecuta search_catalog.
+        _tool_response("search_catalog", {"query": "eco deluxe"}),
+        # Turno 3: respuesta final con la alternativa verificada.
+        _text_response("La ECO DELUXE 100 es nuestra equivalente verificada. ¿Desde qué ciudad me escribes?"),
+    ]
+    gemini_calls = []
+
+    async def mock_call(*args, **kwargs):
+        gemini_calls.append(args)
+        return responses[min(len(gemini_calls) - 1, len(responses) - 1)]
+
+    prospect_data = {"exists": True, "nombre": "Test", "habeas_data_accepted": True}
+
+    with patch("app.services.config_service.config_service.get_catalog_aliases", return_value={}), \
+         patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call), \
+         patch.object(catalog, "search_items", return_value=[{
+             "name": "ECO DELUXE 100",
+             "price": "$5.000.000",
+             "category": "trabajo",
+             "image_url": "http://img/eco.png",
+             "summary": "Moto de trabajo económica.",
+         }]), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+        res = await cerebro.pensar_respuesta("Tienen la Eco Deluxe 100?", prospect_data=prospect_data)
+
+    assert len(gemini_calls) >= 2, (
+        "La compuerta NO forzó el turno de validación para una referencia "
+        "presente únicamente en searchBy ('eco'/'deluxe')."
+    )
+    forced_msg = str(gemini_calls[1][1]) if len(gemini_calls[1]) > 1 else str(gemini_calls[1])
+    assert "search_catalog" in forced_msg and "OBLIGADO" in forced_msg, (
+        f"El segundo turno no es la instrucción forzada de catálogo: {forced_msg[:200]}"
+    )
+    assert "ECO DELUXE 100" in res
+
+
+# ===========================================================================
+# FIX-2A — Timeout de cliente en _call_gemini_with_retry_async
+# ===========================================================================
+@pytest.mark.asyncio
+async def test_fix2a_timeout_retries_and_propagates():
+    """Un hang de Gemini (la corutina nunca completa) dispara asyncio.wait_for;
+    el wrapper reintenta con backoff (max_retries=3 → 4 llamadas) y propaga
+    TimeoutError tras agotar el presupuesto."""
+    cerebro = CerebroIA()
+    calls = {"n": 0}
+
+    async def slow_func(*args, **kwargs):
+        calls["n"] += 1
+        await asyncio.Event().wait()  # nunca completa → wait_for dispara timeout
+
+    with patch("app.services.ai_brain.GEMINI_CALL_TIMEOUT_S", 0.05), \
+         patch.object(ai_brain_module.asyncio, "sleep", new_callable=AsyncMock) as mock_sleep:
+        with pytest.raises(asyncio.TimeoutError):
+            await cerebro._call_gemini_with_retry_async(slow_func)
+
+    assert calls["n"] == 4, f"Esperaba 1 intento + 3 reintentos, hubo {calls['n']}"
+    assert mock_sleep.await_count == 3, "El backoff exponencial no se ejecutó entre reintentos"
+
+
+@pytest.mark.asyncio
+async def test_fix2a_success_within_timeout_returns_value():
+    """Una llamada que completa dentro del timeout retorna su valor intacto
+    en el primer intento (sin reintentos)."""
+    cerebro = CerebroIA()
+    calls = {"n": 0}
+
+    async def fast_func(*args, **kwargs):
+        calls["n"] += 1
+        return "ok"
+
+    with patch("app.services.ai_brain.GEMINI_CALL_TIMEOUT_S", 1.0):
+        assert await cerebro._call_gemini_with_retry_async(fast_func) == "ok"
+    assert calls["n"] == 1
+
+
+# ===========================================================================
+# FIX-2B — Presupuesto de reintentos para fallos transitorios
+# ===========================================================================
+@pytest.mark.asyncio
+async def test_fix2b_empty_candidates_retried_then_success():
+    """Candidatos vacíos (safety filter) en intento 1 + respuesta válida en
+    intento 2 → retorna el texto, NO el fallback 'colgado'."""
+    cerebro = CerebroIA()
+    responses = [_empty_response(), _text_response("Entendido, sigamos con tu solicitud.")]
+    gemini_calls = []
+
+    async def mock_call(*args, **kwargs):
+        gemini_calls.append(args)
+        return responses[min(len(gemini_calls) - 1, len(responses) - 1)]
+
+    with patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call), \
+         patch.object(ai_brain_module.asyncio, "sleep", new_callable=AsyncMock), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+        res = await cerebro.pensar_respuesta("hola", prospect_data=None, history=[])
+
+    # Nota: clean_parrot_phrases sanea preámbulos ("Entendido, ..." → "Sigamos...").
+    assert "igamos con tu solicitud" in res
+    assert "colgado" not in res
+    assert len(gemini_calls) == 2, f"El transitorio no consumió el presupuesto de reintentos: {len(gemini_calls)} llamadas"
+
+
+@pytest.mark.asyncio
+async def test_fix2b_empty_candidates_persistent_falls_back_after_budget():
+    """Candidatos vacíos persistentes → fallback SOLO tras agotar max_retries=3
+    (exactamente 3 llamadas a Gemini)."""
+    cerebro = CerebroIA()
+    gemini_calls = []
+
+    async def mock_call(*args, **kwargs):
+        gemini_calls.append(args)
+        return _empty_response()
+
+    with patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call), \
+         patch.object(ai_brain_module.asyncio, "sleep", new_callable=AsyncMock), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+        res = await cerebro.pensar_respuesta("hola", prospect_data=None, history=[])
+
+    assert "colgado" in res
+    assert len(gemini_calls) == 3, f"El fallback debió esperar 3 intentos, hubo {len(gemini_calls)}"
+
+
+@pytest.mark.asyncio
+async def test_fix2b_transient_5xx_retried_then_success():
+    """Excepción con firma 5xx/internal en intento 1 + éxito en intento 2 →
+    retorna texto válido (los errores transitorios de Vertex sí reintentan)."""
+    cerebro = CerebroIA()
+    plan = [Exception("500 Internal Server Error (simulated)"), _text_response("Entendido, sigamos con tu solicitud.")]
+    gemini_calls = []
+
+    async def mock_call(*args, **kwargs):
+        gemini_calls.append(args)
+        item = plan[min(len(gemini_calls) - 1, len(plan) - 1)]
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    with patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call), \
+         patch.object(ai_brain_module.asyncio, "sleep", new_callable=AsyncMock), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+        res = await cerebro.pensar_respuesta("hola", prospect_data=None, history=[])
+
+    assert "igamos con tu solicitud" in res
+    assert len(gemini_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_fix2b_generic_runtime_error_falls_back_immediately():
+    """RuntimeError genérico (sin firma 5xx) → fallback inmediato en 1 llamada.
+    Comportamiento heredado CONSERVADO (protege pins previos con side_effect)."""
+    cerebro = CerebroIA()
+    gemini_calls = []
+
+    async def mock_call(*args, **kwargs):
+        gemini_calls.append(args)
+        raise RuntimeError("boom genérico (simulated)")
+
+    with patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call), \
+         patch.object(ai_brain_module.asyncio, "sleep", new_callable=AsyncMock), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+        res = await cerebro.pensar_respuesta("hola", prospect_data=None, history=[])
+
+    assert "colgado" in res
+    assert len(gemini_calls) == 1, f"RuntimeError genérico debió caer al fallback sin reintentar: {len(gemini_calls)} llamadas"
+
+
+# ===========================================================================
+# FIX-4A — EXTRACTION_SCHEMA: nuevos campos de perfilamiento persistibles
+# ===========================================================================
+NEW_PROFILE_FIELDS = [
+    "ingresos_mensuales",
+    "gastos_mensuales",
+    "plan_celular",
+    "tiene_gas_natural",
+    "mora_y_paz_salvo",
+]
+
+
+def test_fix4a_schema_contains_new_fields_not_required():
+    """Los 5 campos de la MATRIZ_PERFILAMIENTO ausentes del schema ahora existen
+    como STRING y NINGUNO entra al array required (constraint duro del ticket)."""
+    props = EXTRACTION_SCHEMA["properties"]["extracted"]["properties"]
+    required = EXTRACTION_SCHEMA["properties"]["extracted"]["required"]
+    for field in NEW_PROFILE_FIELDS:
+        assert field in props, f"Campo {field} ausente del EXTRACTION_SCHEMA"
+        assert props[field]["type"] == "STRING", f"Campo {field} debe ser STRING"
+        assert field not in required, f"Campo {field} no debe ser required"
+
+
+def test_fix4a_merge_persists_new_fields():
+    """_merge_extracted_data acepta los nuevos campos (ninguno es CRM-protected
+    ni latch) y los deja fluir 1:1 hacia Firestore."""
+    ms = MemoryService.__new__(MemoryService)
+    current = {"nombre": "Ana"}
+    incoming = {
+        "ingresos_mensuales": "1705905",
+        "gastos_mensuales": "800000",
+        "plan_celular": "Sí",
+        "tiene_gas_natural": "No",
+        "mora_y_paz_salvo": "Sin reportes",
+    }
+    merged = ms._merge_extracted_data(current, incoming)
+    for k, v in incoming.items():
+        assert merged.get(k) == v, f"Campo {k} no persistió en el merge: {merged}"
+
+
+def test_fix4a_merge_rejects_empty_values_for_new_fields():
+    """Valores vacíos/'null'/None en los nuevos campos son rechazados por la
+    compuerta _is_field_valid: NO entran al merge (protege el histórico válido)."""
+    ms = MemoryService.__new__(MemoryService)
+    current = {"ingresos_mensuales": "1705905"}
+    incoming = {
+        "ingresos_mensuales": "",
+        "gastos_mensuales": "null",
+        "plan_celular": None,
+        "tiene_gas_natural": "   ",
+    }
+    merged = ms._merge_extracted_data(current, incoming)
+    for k in incoming:
+        assert k not in merged, f"Valor inválido para {k} no debió entrar al merge: {merged}"
+
+
+# ===========================================================================
+# FIX-4B — Checklist determinista de perfilamiento (render + inyección por fase)
+# ===========================================================================
+def test_fix4b_checklist_render_partial():
+    """Render con datos parciales: marca CAPTURADO(valor) los datos presentes
+    (Ocupación y Contrato leen 'ocupacion'; Gas lee servicios_publicos) y
+    PENDIENTE los ausentes; siguiente_pendiente = primer PENDIENTE."""
+    cerebro = CerebroIA()
+    block = cerebro._build_profiling_checklist({
+        "ocupacion": "Independiente",
+        "datacredito": "Al día",
+        "servicios_publicos": "Gas natural a su nombre",
+    })
+    assert '<item nombre="Ocupación" estado="CAPTURADO">Independiente</item>' in block
+    assert '<item nombre="Contrato" estado="CAPTURADO">Independiente</item>' in block
+    assert '<item nombre="Reportes Datacrédito" estado="CAPTURADO">Al día</item>' in block
+    assert '<item nombre="Gas natural (Brilla)" estado="CAPTURADO">' in block
+    assert '<item nombre="Ingresos" estado="PENDIENTE"/>' in block
+    assert '<item nombre="Gastos mensuales" estado="PENDIENTE"/>' in block
+    assert '<item nombre="Vivienda" estado="PENDIENTE"/>' in block
+    assert '<item nombre="Plan celular" estado="PENDIENTE"/>' in block
+    assert "<siguiente_pendiente>Ingresos</siguiente_pendiente>" in block
+
+
+def test_fix4b_checklist_render_complete_and_empty():
+    """Render completo → siguiente_pendiente=COMPLETO. Render vacío (None) →
+    las 8 filas PENDIENTE y siguiente_pendiente=Ocupación (primera de la matriz)."""
+    cerebro = CerebroIA()
+    full = cerebro._build_profiling_checklist({
+        "ocupacion": "Empleado",
+        "ingresos_mensuales": "1705905",
+        "datacredito": "Al día",
+        "gastos_mensuales": "800000",
+        "tiene_gas_natural": "Sí",
+        "vivienda": "Propia",
+        "plan_celular": "Sí",
+    })
+    assert "<siguiente_pendiente>COMPLETO</siguiente_pendiente>" in full
+    assert 'estado="PENDIENTE"' not in full
+
+    empty = cerebro._build_profiling_checklist(None)
+    assert empty.count('estado="PENDIENTE"') == 8
+    assert "<siguiente_pendiente>Ocupación</siguiente_pendiente>" in empty
+
+
+@pytest.mark.asyncio
+async def test_fix4b_checklist_injected_only_in_phase3():
+    """El bloque <estado_perfilamiento> se inyecta en el prompt SOLO cuando la
+    fase determinista es PHASE_3_CREDIT_PROFILING (ausente en PHASE_1)."""
+    # --- Caso PHASE_3_CREDIT_PROFILING ---
+    cerebro = CerebroIA()
+    prospect_phase3 = {
+        "exists": True,
+        "nombre": "Ana",
+        "ciudad": "Cali",
+        "forma_pago": "credito",
+        "moto_interest": "TVS SPORT 100 ELS",
+        "habeas_data_accepted": True,
+        "habeas_data_accepted_sent": True,
+        "ocupacion": "Independiente",
+    }
+    history = [{"role": "model", "content": "Política: https://tiendalasmotos.com/politica-de-privacidad"}]
+
+    prompts = []
+
+    async def mock_call(*args, **kwargs):
+        prompts.append(str(args[1]) if len(args) > 1 else "")
+        return _text_response("Entendido, continuamos.")
+
+    with patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+        await cerebro.pensar_respuesta("soy independiente", prospect_data=prospect_phase3, history=history)
+
+    assert prompts, "No se capturó el prompt enviado a Gemini"
+    assert "<estado_perfilamiento>" in prompts[0], "El checklist no se inyectó en PHASE_3_CREDIT_PROFILING"
+    assert "Independiente" in prompts[0]
+    assert "<siguiente_pendiente>" in prompts[0]
+
+    # --- Caso PHASE_1_PROFILING (sin checklist) ---
+    cerebro2 = CerebroIA()
+    prospect_phase1 = {"exists": True, "nombre": "Ana"}
+    prompts2 = []
+
+    async def mock_call2(*args, **kwargs):
+        prompts2.append(str(args[1]) if len(args) > 1 else "")
+        return _text_response("Entendido, continuamos.")
+
+    with patch.object(cerebro2, "_call_gemini_with_retry_async", side_effect=mock_call2), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+        await cerebro2.pensar_respuesta("hola", prospect_data=prospect_phase1, history=[])
+
+    assert prompts2, "No se capturó el prompt enviado a Gemini (fase 1)"
+    assert "<estado_perfilamiento>" not in prompts2[0], "El checklist se filtró fuera de PHASE_3_CREDIT_PROFILING"

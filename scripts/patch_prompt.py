@@ -1,62 +1,42 @@
 #!/usr/bin/env python3
 """
-Admin Maintenance Script: Patch Live System Prompt in Firestore (v2.1.0)
+Admin Maintenance Script: Sync Live System Prompt to Firestore (v3.0.0)
 ========================================================================
-Surgically updates <phase_1_profiling> and <phase_2_habeas_data_accepted> blocks.
+Sincroniza el prompt desde app/core/prompts.py (fuente de verdad) hacia
+Firestore: configuracion/juan_pablo_personality.system_instruction.
+No depende de regex ni de etiquetas específicas.
 """
 
 import sys
-import re
+import os
+from datetime import datetime
+
+# Añadir el proyecto al path para importar prompts
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from google.cloud import firestore
+from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
 
 PROJECT_ID = "tiendalasmotos"
 COLLECTION = "configuracion"
 DOCUMENT = "juan_pablo_personality"
 FIELD = "system_instruction"
 
-# ========================================================
-# CONTRATO JSON v2.1.0 - MODIFICACIONES APROBADAS
-# ========================================================
-
-PHASE_1_REPLACEMENT = """  <phase_1_profiling>
-    Objetivo: Obtener Nombre, Ciudad, Moto de Interés y Forma de Pago (Crédito/Contado).
-    - Un dato a la vez.
-    - Si ya recomendaste una moto, no preguntes "¿Qué moto buscas?", sino "¿Te gustaría saber más de la [Moto]?".
-    - BLOQUEO: Bajo ninguna circunstancia inicies el protocolo de Habeas Data si las variables Ciudad y Forma de Pago son desconocidas.
-  </phase_1_profiling>"""
-
-PHASE_2_REPLACEMENT = """  <phase_2_habeas_data_accepted>
-    Objetivo: Obtener autorización legal.
-    - SCRIPT OBLIGATORIO: Solicita autorización de datos de forma natural y entrega el link de la política solo si el usuario acepta y ha confirmado previamente su interés en una moto.
-    - Si dicen "No", respeta su decisión y responde dudas generales.
-  </phase_2_habeas_data_accepted>"""
-
-def surgical_patch(current_text: str) -> str:
-    """
-    Finds and replaces <phase_1_profiling> and <phase_2_habeas_data_accepted> blocks.
-    Ensures that other parts of the prompt (Rules, Persona, Phase 3) are untouched.
-    """
-    # Patch Phase 1
-    p1_pattern = r'<phase_1_profiling>.*?</phase_1_profiling>'
-    if not re.search(p1_pattern, current_text, re.DOTALL):
-        raise ValueError("❌ Error: <phase_1_profiling> tag NO encontrado en Firestore.")
-    
-    patched = re.sub(p1_pattern, PHASE_1_REPLACEMENT, current_text, flags=re.DOTALL)
-    
-    # Patch Phase 2
-    p2_pattern = r'<phase_2_habeas_data_accepted>.*?</phase_2_habeas_data_accepted>'
-    if not re.search(p2_pattern, patched, re.DOTALL):
-        raise ValueError("❌ Error: <phase_2_habeas_data_accepted> tag NO encontrado en Firestore.")
-    
-    patched = re.sub(p2_pattern, PHASE_2_REPLACEMENT, patched, flags=re.DOTALL)
-    
-    return patched
 
 def main():
     print("=" * 60)
-    print("Firestore System Prompt Patch Tool (JSON Voorhees v2.1.0)")
+    print("Firestore System Prompt Sync Tool (v3.0.0)")
     print("=" * 60)
 
+    # 1. Validar que el prompt fuente no esté vacío
+    if not JUAN_PABLO_SYSTEM_INSTRUCTION or len(JUAN_PABLO_SYSTEM_INSTRUCTION.strip()) < 100:
+        print("❌ Error: JUAN_PABLO_SYSTEM_INSTRUCTION está vacío o es demasiado corto.")
+        print(f"   Longitud actual: {len(JUAN_PABLO_SYSTEM_INSTRUCTION or '')} caracteres.")
+        sys.exit(1)
+
+    print(f"✅ Prompt fuente cargado: {len(JUAN_PABLO_SYSTEM_INSTRUCTION)} caracteres.")
+
+    # 2. Conectar a Firestore
     print(f"🔌 Conectando a Firestore: {PROJECT_ID}/{COLLECTION}/{DOCUMENT}...")
     try:
         db = firestore.Client(project=PROJECT_ID)
@@ -68,33 +48,41 @@ def main():
         sys.exit(1)
 
     if not doc.exists:
-        print(f"❌ Documento no encontrado.")
-        sys.exit(1)
+        print(f"❌ Documento no encontrado. Creando nuevo...")
 
-    current_prompt = doc.to_dict().get(FIELD, "")
-    if not current_prompt:
-        print(f"❌ Campo '{FIELD}' vacío o no existe.")
-        sys.exit(1)
+    # 3. Mostrar resumen de cambios
+    current_prompt = doc.to_dict().get(FIELD, "") if doc.exists else ""
+    if current_prompt:
+        diff_size = len(JUAN_PABLO_SYSTEM_INSTRUCTION) - len(current_prompt)
+        diff_symbol = "+" if diff_size >= 0 else ""
+        print(f"📊 Tamaño actual en Firestore: {len(current_prompt)} caracteres")
+        print(f"📊 Nuevo tamaño: {len(JUAN_PABLO_SYSTEM_INSTRUCTION)} caracteres ({diff_symbol}{diff_size})")
+    else:
+        print("📊 Documento nuevo (no existía antes).")
 
-    print(f"✅ Documento cargado exitosamente ({len(current_prompt)} caracteres).")
-
+    # 4. Subir el prompt
     try:
-        patched_prompt = surgical_patch(current_prompt)
-        print("✅ Parche quirúrgico aplicado exitosamente en memoria.")
-    except ValueError as ve:
-        print(ve)
+        doc_ref.set({
+            FIELD: JUAN_PABLO_SYSTEM_INSTRUCTION,
+            "synced_by": "patch_prompt_v3",
+            "synced_at": datetime.utcnow().isoformat() + "Z"
+        })
+        print(f"🚀 Firestore ACTUALIZADO: {COLLECTION}/{DOCUMENT}")
+        print("✅ Prompt sincronizado exitosamente.")
+    except Exception as e:
+        print(f"❌ Error al actualizar Firestore: {e}")
         sys.exit(1)
 
-    # Mostrar cambios (diff manual simple)
-    print("\n--- RESUMEN DE CAMBIOS ---")
-    print("Inyectado: BLOQUEO de Fase 1 (Ciudad/Pago)")
-    print("Inyectado: SCRIPT OBLIGATORIO de Fase 2 (Autorización)")
-    print("--------------------------\n")
+    # 5. Verificación
+    verify_doc = doc_ref.get()
+    verify_text = verify_doc.to_dict().get(FIELD, "")
+    if verify_text == JUAN_PABLO_SYSTEM_INSTRUCTION:
+        print("✅ Verificación: el prompt en Firestore coincide con el fuente.")
+    else:
+        print(f"⚠️  Verificación: discrepancia detectada.")
+        print(f"   Fuente: {len(JUAN_PABLO_SYSTEM_INSTRUCTION)} chars")
+        print(f"   Firestore: {len(verify_text)} chars")
 
-    # Guardar cambios
-    doc_ref.update({FIELD: patched_prompt})
-    print(f"🚀 Firestore ACTUALIZADO: {COLLECTION}/{DOCUMENT}")
-    print("Puntos de control de seguridad validados.")
 
 if __name__ == "__main__":
     main()

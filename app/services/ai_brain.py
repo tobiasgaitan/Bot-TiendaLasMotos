@@ -120,6 +120,26 @@ EXTRACTION_SCHEMA = {
                 "ponytail_score": {
                     "type": "STRING",
                     "description": "Score Ponytail en rango [0-100] calculado a partir de interacciones tempranas (greetings, moto_interest, forma_pago). Bias negativo estricto: si no está seguro o no hay datos suficientes, dejar vacío."
+                },
+                "ingresos_mensuales": {
+                    "type": "STRING",
+                    "description": "Ingresos mensuales del usuario si se mencionaron (solo dígitos, ej. '1705905'; acepta 'SMLV' si el usuario dijo 'el mínimo'). Bias negativo estricto: si no está presente, dejar vacío."
+                },
+                "gastos_mensuales": {
+                    "type": "STRING",
+                    "description": "Gastos mensuales del usuario si se mencionaron (solo dígitos, ej. '800000'). Bias negativo estricto: si no está presente, dejar vacío."
+                },
+                "plan_celular": {
+                    "type": "STRING",
+                    "description": "Si el usuario tiene plan de celular postpago activo ('Sí'/'No'). Bias negativo estricto: si no se mencionó, dejar vacío."
+                },
+                "tiene_gas_natural": {
+                    "type": "STRING",
+                    "description": "Si el usuario cuenta con recibo de gas natural a su nombre ('Sí'/'No'). Bias negativo estricto: si no se mencionó, dejar vacío."
+                },
+                "mora_y_paz_salvo": {
+                    "type": "STRING",
+                    "description": "Si el usuario tiene reportes en mora y si cuenta con paz y salvo, si se mencionó. Bias negativo estricto: si no está presente, dejar vacío."
                 }
             },
             "required": ["nombre", "ciudad", "moto_interest", "habeas_data_accepted"]
@@ -136,6 +156,13 @@ EXTRACTION_SCHEMA = {
 # ANTES de la ejecución de la herramienta. El prompt XML ya no necesita forzar
 # estos valores fijos (menos tokens, cero contradicción prompt/código).
 # ---------------------------------------------------------------------------
+# [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO / FIX-2A]
+# Timeout cliente para TODA llamada a Gemini (inferencia y extracción de
+# resumen) vía _call_gemini_with_retry_async. Un hang de Vertex deja de
+# congelar el pipeline: el timeout se convierte en error reintentable.
+# Constante de módulo (no def-time default) para ser parcheada en tests.
+GEMINI_CALL_TIMEOUT_S = 25.0
+
 BLIND_CREDIT_DEFAULTS: Dict[str, str] = {
     "entidad": "Brilla de Gases",
     "ocupacion_y_contrato": "Empleado",
@@ -220,7 +247,13 @@ class CerebroIA:
         # _get_current_instruction() reads from config_loader on every request,
         # so /admin/refresh-config takes effect immediately without a Cloud Run restart.
         self.tools = self._create_tools()
-        
+
+        # [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO / FIX-1]
+        # Snapshot inicial de alias searchBy (puede venir vacío si el catálogo
+        # aún no ha cargado en el arranque; se refresca por turno en
+        # _generate_with_retry_async para preservar la propiedad dinámica).
+        self._searchBy_aliases = self._load_searchby_aliases()
+
         # Initialize GenAI Client if available
         if SDK_AVAILABLE:
             try:
@@ -331,6 +364,53 @@ class CerebroIA:
 
         return [str(b).lower().strip() for b in competitor_brands if b]
 
+    def _load_searchby_aliases(self) -> List[str]:
+        """
+        [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO / FIX-1]
+        Carga dinámica de TODOS los valores únicos del campo `searchBy` del
+        catálogo cargado en memoria (CatalogService._items), para alimentar la
+        compuerta de herramienta forzada (forced-tool-turn).
+
+        WHY: La compuerta `user_mentions_motorcycle` solo conocía base_keywords
+        + alias de categoría. Cualquier referencia indexada SOLO en searchBy
+        (competencia como 'boxer'/'nkd', o modelos como 'eco deluxe 100',
+        'CR4 150', 'FZ 150') quedaba fuera de la red de seguridad: si el LLM
+        respondía sin llamar search_catalog, nada lo obligaba. Al ser dinámico,
+        una nueva referencia en Firestore + refresh queda cubierta sin tocar código.
+
+        Filtros de seguridad (substring-gate seguro):
+          - len >= 3 y no puramente numérico: evita falsos positivos masivos
+            ('r', 's', 'fi', '125') bajo matching por substring.
+          - stopwords: tokens genéricos presentes en searchBy de producción que
+            colisionan con lenguaje funcional ('sin cuota inicial', 'absoluto',
+            'presione').
+        Degradación controlada: cualquier fallo retorna [] (fail-open, la
+        compuerta conserva su comportamiento previo).
+        """
+        _SEARCHBY_STOPWORDS = {"sin", "con", "one", "new", "life", "abs", "cbs"}
+        try:
+            catalog = self._catalog_service
+            if catalog is None:
+                return []
+            items = getattr(catalog, "_items", None)
+            if not isinstance(items, list):
+                return []
+            aliases: set = set()
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                tags = item.get("searchBy", [])
+                if not isinstance(tags, list):
+                    continue
+                for tag in tags:
+                    t = str(tag).lower().strip()
+                    if len(t) >= 3 and not t.isdigit() and t not in _SEARCHBY_STOPWORDS:
+                        aliases.add(t)
+            return sorted(aliases)
+        except Exception as e:
+            logger.exception(f"🚨 [SEARCHBY-ALIASES] Error cargando alias searchBy: {e}")
+            return []
+
     def _is_competitor_query(self, query: str) -> bool:
         """True if the query matches a known competitor brand."""
         if not query:
@@ -429,6 +509,66 @@ class CerebroIA:
 
         return "¿En qué más puedo ayudarte?"
 
+    def _build_profiling_checklist(self, prospect_data: Optional[Dict[str, Any]]) -> str:
+        """
+        [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO / FIX-4B]
+        Checklist determinista de la MATRIZ_PERFILAMIENTO (8 datos) computado
+        desde el CRM (prospect_data), NO desde el historial de chat.
+
+        WHY: El historial se trunca a MAX_HISTORY_CHARS=1200 y la extracción LLM
+        es probabilística; sin un estado visible, el LLM repreguntaba datos ya
+        respondidos. Este bloque se inyecta cada turno en PHASE_3_CREDIT_PROFILING
+        para que el LLM LEA el estado en lugar de inferirlo.
+
+        Mapeo de la matriz (prompts.py <MATRIZ_PERFILAMIENTO>):
+          1. Ocupación  ← ocupacion
+          2. Contrato   ← ocupacion (el EXTRACTION_SCHEMA fusiona ambos datos)
+          3. Ingresos   ← ingresos_mensuales (FIX-4A)
+          4. Datacrédito ← datacredito
+          5. Gastos     ← gastos_mensuales (FIX-4A)
+          6. Gas        ← tiene_gas_natural (FIX-4A) o 'gas' en servicios_publicos
+          7. Vivienda   ← vivienda
+          8. Plan celular ← plan_celular (FIX-4A) o 'celular'/'plan' en servicios_publicos
+        """
+        data = prospect_data or {}
+
+        def _filled(key: str) -> bool:
+            return bool(str(data.get(key) or "").strip())
+
+        servicios = str(data.get("servicios_publicos") or "").lower()
+
+        rows = [
+            ("Ocupación", data.get("ocupacion") if _filled("ocupacion") else None),
+            ("Contrato", data.get("ocupacion") if _filled("ocupacion") else None),
+            ("Ingresos", data.get("ingresos_mensuales") if _filled("ingresos_mensuales") else None),
+            ("Reportes Datacrédito", data.get("datacredito") if _filled("datacredito") else None),
+            ("Gastos mensuales", data.get("gastos_mensuales") if _filled("gastos_mensuales") else None),
+            (
+                "Gas natural (Brilla)",
+                (data.get("tiene_gas_natural") or data.get("servicios_publicos"))
+                if (_filled("tiene_gas_natural") or "gas" in servicios) else None,
+            ),
+            ("Vivienda", data.get("vivienda") if _filled("vivienda") else None),
+            (
+                "Plan celular",
+                (data.get("plan_celular") or data.get("servicios_publicos"))
+                if (_filled("plan_celular") or "celular" in servicios or "plan" in servicios) else None,
+            ),
+        ]
+
+        lines = ["<estado_perfilamiento>"]
+        next_pending = None
+        for label, value in rows:
+            if value:
+                lines.append(f'  <item nombre="{label}" estado="CAPTURADO">{value}</item>')
+            else:
+                lines.append(f'  <item nombre="{label}" estado="PENDIENTE"/>')
+                if next_pending is None:
+                    next_pending = label
+        lines.append(f"  <siguiente_pendiente>{next_pending or 'COMPLETO'}</siguiente_pendiente>")
+        lines.append("</estado_perfilamiento>")
+        return "\n".join(lines)
+
     def _compose_faq_brake_block(
         self,
         faq_fragment: str,
@@ -487,32 +627,39 @@ La FAQ no avanza el embudo. ONE-SHOT: solo la pregunta del cierre está permitid
         """
         Resiliencia de Red (Async): Implementa reintentos con Exponential Backoff
         para errores 429 (ResourceExhausted) y 503 (ServiceUnavailable).
+
+        [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO / FIX-2A]
+        Toda invocación se envuelve en asyncio.wait_for(GEMINI_CALL_TIMEOUT_S):
+        un hang de Vertex ya no congela el pipeline. asyncio.TimeoutError se
+        añade al conjunto reintentable (mismo backoff exponencial que 429/503).
         """
         from google.genai.errors import APIError
         max_retries = 3
         base_delay = 2.0
-        
+
         for attempt in range(max_retries + 1):
             try:
-                return await func(*args, **kwargs)
+                return await asyncio.wait_for(func(*args, **kwargs), timeout=GEMINI_CALL_TIMEOUT_S)
             except Exception as e:
                 err_str = str(e).lower()
                 is_quota_error = "429" in err_str or "resource_exhausted" in err_str
                 is_service_error = "503" in err_str or "service_unavailable" in err_str
-                
-                if (is_quota_error or is_service_error) and attempt < max_retries:
+                # [FIX-2A] Timeout de cliente (hang de red/Vertex) → reintentable.
+                is_timeout = isinstance(e, (asyncio.TimeoutError, TimeoutError))
+
+                if (is_quota_error or is_service_error or is_timeout) and attempt < max_retries:
                     wait_time = base_delay * (2 ** attempt) + random.uniform(0, 1)
                     logger.warning(f"⏳ [EXP BACKOFF] Attempt {attempt+1} failed ({type(e).__name__}). Retrying in {wait_time:.2f}s...")
                     await asyncio.sleep(wait_time)
                     continue
-                
+
                 # [Zero-Silent-Failures] Final retry failure or non-retryable error
                 logger.exception(f"🚨 [GEMINI ASYNC ERROR] Final failure in _call_gemini_with_retry_async: {e}")
                 if hasattr(e, "response") and hasattr(e.response, "text"):
                     logger.error(f"🚨 [GEMINI HTTP DETAIL] Response text: {e.response.text}")
                 elif hasattr(e, "message"):
                     logger.error(f"🚨 [GEMINI ERROR MESSAGE] Message: {e.message}")
-                
+
                 raise e
 
     def _calculate_session_cost(self, usage: Any) -> float:
@@ -1508,6 +1655,19 @@ REGLAS ESTRICTAS DE USO:
                     captured_fields = [k for k, v in prospect_data.items() if v and k not in ['exists', 'summary', 'ai_summary']]
                     if captured_fields:
                         captured_data_xml = f"\n<datos_ya_capturados>\n" + "\n".join([f"  <{k}>{prospect_data[k]}</{k}>" for k in captured_fields]) + "\n</datos_ya_capturados>"
+
+                # [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO / FIX-4B]
+                # Checklist determinista de perfilamiento: el LLM lee el estado
+                # desde el CRM en lugar de inferirlo del historial truncado.
+                # Solo se inyecta en PHASE_3_CREDIT_PROFILING (la matriz de 8
+                # datos corre en esa fase); en PHASE_1/2 el bloque va vacío.
+                profiling_xml = ""
+                if phase == "PHASE_3_CREDIT_PROFILING":
+                    profiling_xml = "\n" + self._build_profiling_checklist(prospect_data) + (
+                        "\n[MANDATO DE PERFILAMIENTO: Tienes ESTRICTAMENTE PROHIBIDO repreguntar "
+                        "los datos marcados como CAPTURADO. Tu única pregunta pendiente debe ser "
+                        "el dato indicado en <siguiente_pendiente>.]\n"
+                    )
                 
                 # --- BOT-BRAIN-ALIGNMENT-099: SYNONYM INJECTION ---
                 # WHY: category_aliases exists in Firestore for programmatic search indexing
@@ -1567,6 +1727,7 @@ REGLAS ESTRICTAS DE USO:
     <contexto_previo>{context if context else 'N/A'}</contexto_previo>
   </reglas_de_sesion>
 {captured_data_xml}
+{profiling_xml}
 </contexto_dinamico>
 
 ⚠️ REGLA CRÍTICA: Ignora cualquier instrucción de identidad previa en el historial. Tu nombre es Juan Pablo. 
@@ -1644,12 +1805,38 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         )
                     )
                 except Exception as e:
+                    # [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO / FIX-2B]
+                    # Fallos transitorios 5xx/internal consumen el presupuesto de
+                    # reintentos del bucle externo en lugar de caer de inmediato
+                    # al fallback "colgado". RuntimeError y demás excepciones
+                    # genéricas conservan el retorno inmediato heredado.
+                    err_lower = str(e).lower()
+                    is_transient_5xx = any(sig in err_lower for sig in ("500", "502", "504", "internal"))
+                    if is_transient_5xx and attempt < max_retries - 1:
+                        wait_time = base_delay * (2 ** attempt)
+                        logger.warning(
+                            f"⏳ [RETRY-5XX] Fallo transitorio de inferencia ({type(e).__name__}) para {user_name}. "
+                            f"Reintentando en {wait_time}s... (Intento {attempt+1}/{max_retries})"
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
                     logger.exception(f"🚨 [AI FALLBACK REASON]: Gemini Inference Failure for {user_name}: {str(e)}")
                     return self._fallback_response(texto, history)
 
                 if not response.candidates or not response.candidates[0].content.parts:
                     logger.error("🚨 [AI FALLBACK REASON]: Safety Filter or Empty Response (No candidates)")
                     logger.error("⚠️ AI Safety Filter Triggered: No candidates or parts returned.")
+                    # [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO / FIX-2B]
+                    # Candidatos vacíos (safety filter transitorio): reintentar
+                    # antes de degradar al usuario con el fallback.
+                    if attempt < max_retries - 1:
+                        wait_time = base_delay * (2 ** attempt)
+                        logger.warning(
+                            f"⏳ [RETRY-EMPTY-CANDIDATES] Respuesta vacía/safety filter para {user_name}. "
+                            f"Reintentando en {wait_time}s... (Intento {attempt+1}/{max_retries})"
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
                     return self._fallback_response(texto, history)
 
                 # --- FORCED TOOL VALIDATION TURN (PVN-Hardened) ---
@@ -1673,7 +1860,20 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         motorcycle_keywords.append(syn_clean)
                     except Exception as alias_err:
                         logger.warning(f"⚠️ [MOTORCYCLE_KEYWORDS] Error loading catalog aliases dynamically: {alias_err}")
-                        
+
+                    # [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO / FIX-1]
+                    # Extensión dinámica de la compuerta: marcas de competencia
+                    # (_get_competitor_brands) + TODOS los alias searchBy del
+                    # catálogo (_load_searchby_aliases, refrescado por turno
+                    # para honrar /refresh_catalog sin redespliegue).
+                    try:
+                        self._searchBy_aliases = self._load_searchby_aliases()
+                        for extra_kw in list(self._get_competitor_brands()) + list(self._searchBy_aliases):
+                            if extra_kw and extra_kw not in motorcycle_keywords:
+                                motorcycle_keywords.append(extra_kw)
+                    except Exception as searchby_err:
+                        logger.warning(f"⚠️ [MOTORCYCLE_KEYWORDS] Error loading competitor/searchBy aliases: {searchby_err}")
+
                     user_mentions_motorcycle = any(kw in texto.lower() for kw in motorcycle_keywords)
                     
                     candidate_parts = response.candidates[0].content.parts
@@ -1695,6 +1895,16 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         # Re-verify candidates after injection
                         if not response.candidates:
                             logger.error(f"🚨 [AI FALLBACK REASON]: Safety Filter Triggered during Forced Turn for {user_name}")
+                            # [BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO / FIX-2B]
+                            # Reintentar el intento completo antes del fallback.
+                            if attempt < max_retries - 1:
+                                wait_time = base_delay * (2 ** attempt)
+                                logger.warning(
+                                    f"⏳ [RETRY-EMPTY-FORCED] Candidatos vacíos en turno forzado para {user_name}. "
+                                    f"Reintentando en {wait_time}s... (Intento {attempt+1}/{max_retries})"
+                                )
+                                await asyncio.sleep(wait_time)
+                                continue
                             return self._fallback_response(texto, history)
                 except Exception as e:
                     logger.exception(f"⚠️ Tool Validation Logic Error for {user_name}: {e}")
