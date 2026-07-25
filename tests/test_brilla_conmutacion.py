@@ -78,8 +78,12 @@ def test_crediorbe_eradicated_from_source():
 
 def test_personality_json_synced_to_brilla():
     """
-    [FIX-E] personality.json (fallback #2) debe estar sincronizado a Brilla de
-    Gases en el PASO 2 del protocolo comercial, sin residuos de Crediorbe.
+    [FIX-E + PROMPT-RESTORE-EXACT-003] personality.json (fallback #2) debe
+    estar sincronizado a Brilla de Gases como entidad inyectada en la
+    simulación ciega del PASO 2 del protocolo comercial, sin residuos de
+    Crediorbe. (El texto definitivo reemplazó la mención narrativa
+    'mediante nuestro sistema de Brilla de Gases' por la inyección
+    explícita de entidad en la herramienta.)
     """
     import json
     import pathlib
@@ -87,7 +91,7 @@ def test_personality_json_synced_to_brilla():
     data = json.loads((root / "app/core/personality.json").read_text(encoding="utf-8"))
     si = data["system_instruction"]
     assert "Crediorbe" not in si and "crediorbe" not in si
-    assert "mediante nuestro sistema de Brilla de Gases" in si
+    assert 'entidad="Brilla de Gases"' in si
 
 
 def test_financial_service_default_entity_is_brilla():

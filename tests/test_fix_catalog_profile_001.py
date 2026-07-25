@@ -445,31 +445,52 @@ async def test_fix4b_checklist_injected_only_in_phase3():
 
 
 # ===========================================================================
-# BOT-BUILD-FIX-CIERRE-4-RUTAS-002 — Cierre de Fase JSON-driven
+# BOT-BUILD-FIX-PROMPT-RESTORE-EXACT-003 — Armonización total con texto fuente
 # ===========================================================================
-def test_cierre4rutas002_prompt_erradica_simulacion_interna_y_preserva_4_rutas():
-    """T1 (guard estático): la alucinación arquitectónica 'evalúa el puntaje
-    crediticio simulado internamente' queda erradicada de AMBAS fuentes de prompt
-    (personality.json y prompts.py), el disparo coercitivo hacia la herramienta
-    queda insertado, y las 4 rutas del Documento Maestro (inmutables) se
-    preservan como acciones ciegas del JSON."""
+def test_promptrestore003_fuentes_armonizadas_texto_definitivo():
+    """T1 (guard estático): AMBAS fuentes de prompt (personality.json y
+    prompts.py) contienen el texto fuente definitivo carácter por carácter:
+    la alucinación arquitectónica 'simulado internamente' queda erradicada, el
+    disparo coercitivo 'INVOCA INMEDIATAMENTE' y la cláusula 'PRIORIDAD
+    ABSOLUTA' están presentes, las 4 rutas JSON-driven se preservan con su
+    redacción exacta, el PASO 4 es neutral ('nuestro sistema'), el Visual-Lock
+    Markdown es explícito en la sección de competencia, y ambas fuentes son
+    idénticas (armonización total)."""
     import json as _json
     import pathlib
 
+    from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION
+
     root = pathlib.Path(__file__).resolve().parents[1]
     pj = _json.loads((root / "app/core/personality.json").read_text(encoding="utf-8"))["system_instruction"]
-    py = (root / "app/core/prompts.py").read_text(encoding="utf-8")
+    py = JUAN_PABLO_SYSTEM_INSTRUCTION
 
     for name, src in (("personality.json", pj), ("prompts.py", py)):
+        # Erradicación de la alucinación arquitectónica (texto viejo)
         assert "simulado internamente" not in src, f"Alucinación arquitectónica persiste en {name}"
+        assert "evalúa el puntaje crediticio simulado internamente" not in src, \
+            f"Frase vieja completa persiste en {name}"
+        # Disparo coercitivo + cláusula de precedencia
         assert "INVOCA INMEDIATAMENTE" in src, f"Disparo coercitivo de herramienta ausente en {name}"
         assert "calculate_credit_score" in src, f"Referencia a herramienta ausente en {name}"
         assert "PRIORIDAD ABSOLUTA" in src, f"Cláusula de precedencia de las 4 rutas ausente en {name}"
-        # Las 4 rutas del Documento Maestro (inmutables) — condicionadas al JSON
+        # Las 4 rutas del cierre de fase (redacción exacta del texto definitivo)
         assert "Si el JSON indica score igual o mayor a 750 puntos" in src, f"Ruta 1 (Banco >=750) ausente en {name}"
-        assert "Un compañero revisará" in src, f"Ruta 2 (Revisión Humana 500-749) ausente en {name}"
+        assert "Un compañero revisará estos datos y se contactará contigo" in src, f"Ruta 2 (Revisión Humana 500-749) ausente en {name}"
         assert "Si el JSON indica score menor a 499 puntos" in src, f"Ruta 3 (Brilla <499) ausente en {name}"
         assert "no es posible aprobar el crédito" in src, f"Ruta 4 (Rechazo sin Brilla) ausente en {name}"
+        # Invariante (b): PASO 4 neutral ('nuestro sistema')
+        assert "validar tu cupo exacto con nuestro sistema" in src, \
+            f"PASO 4 neutral ('nuestro sistema') ausente en {name}"
+        # Invariante (c): Visual-Lock Markdown explícito en sección de competencia
+        assert "incluye OBLIGATORIAMENTE la imagen en formato Markdown `![Nombre_Moto](URL_devuelta_por_search_catalog)`" in src, \
+            f"Visual-Lock Markdown explícito ausente en la sección de competencia de {name}"
+
+    # Pin de armonización total: identidad byte-exacta entre ambas fuentes
+    assert pj == py, (
+        "personality.json y JUAN_PABLO_SYSTEM_INSTRUCTION divergen: "
+        "la armonización total se rompió"
+    )
 
 
 @pytest.mark.asyncio
