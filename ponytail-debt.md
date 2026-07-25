@@ -55,3 +55,17 @@ dejados fuera de scope por decisión explícita del owner.
 | 8 | `tests/test_pcc_ficha_tecnica.py:294-295` | Mock evaluate_profile entity Crediorbe (aserciones L271/L623 exigen AUSENCIA — alineadas con FIX-E) | PENDIENTE |
 | 9 | `scripts/init_v6_config.py:182-197` | Config legacy "CrediOrbe" (script one-shot histórico) | PENDIENTE |
 | 10 | `attic/tmp/*` | Scratch files con referencias | IGNORADO (attic) |
+
+## Deuda de Entorno Local (No bloqueante para producción)
+- **Archivo:** `app/core/security.py:57`
+- **Error:** `ImportError: cannot import name 'secretmanager' from 'google.cloud'`
+- **Tests afectados (6):** 
+  - `test_brilla_gases_real_firestore_cuotas`
+  - `test_agility_fusion_exact_parity`
+  - `test_apache_160_brilla_golden_parity`
+  - `test_cc_zero_does_not_assume_125_cc_regression`
+  - `test_raider_125_brilla_post_fix_414444`
+  - `test_raider_125_anti_regression_416086`
+- **Causa:** Paquete `google-cloud-secret-manager` ausente en el venv local de Python del sistema.
+- **Impacto:** Solo afecta ejecución local con `python3 -m pytest`. Bajo `npx agent-cli eval` (entorno oficial con venv completo) la suite pasa 527/527 verde.
+- **Fix trivial:** `pip install google-cloud-secret-manager` en el entorno local.
