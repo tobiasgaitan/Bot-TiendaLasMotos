@@ -1,7 +1,16 @@
-Versión: v10.46.0 | Hito: Milestone 3 Etapa 3 - Concurrencia y Fragmentación RF-5 COMPLETED | Coherence Score: 1.000 (436/436 Tests PASSED vía `npx agent-cli eval`)
+# Estado del Proyecto - Bot-TiendaLasMotos
+
+Versión: v10.47.5 | Hito: Milestone 3 Etapa 4 - Cierre de Fase Operativo COMPLETED | Coherence Score: 1.000 (516/516 Tests PASSED vía `npx agent-cli eval`)
 
 ### Current Position
-**Phase:** Milestone 3 - Etapa 3: Concurrencia y Fragmentación RF-5 (God Node whatsapp.py) — CERRADA [BOT-BUILD-ETAPA3-WAVE01…WAVE06] (Success)
-**Status:** Complete — 6 waves certificadas. (05-01) Red de caracterización: 12 pins E2E/ORDER sobre las 5 ramas del embudo. (05-02) Higiene: cero fire-and-forget certificado vía escaneo AST (`_track_task` y `_get_session` purgados; `background_tasks` documentado como vestigio intencional). (05-03) Costuras DI: 4 kwargs keyword-only (catalog/vision_factory/db_client/meta_sender) con resolución runtime en el God Node + senders + resolve_query_aliases; 25 patch targets intactos. (05-04) Fragmentación media+audio: `_pipeline_media_vision` y `_pipeline_audio` extraídos VERBATIM. (05-05) Fragmentación texto+reacción y egreso consolidado: `_pipeline_text_cognitive`, `_pipeline_reaction_debounce`, `_pipeline_egress`; orquestador switch lineal puro en 231 líneas de código efectivo (<300). (05-06) Latencia forense: 3 escenarios de caos (Meta API ≥10s vía httpx.AsyncClient.send compuertado, timeout Firestore 10s>db_timeout=5, fallo intermitente calculate_credit_score con Freno Cognitivo intacto) + auditoría Zero-Silent-Failures (2 except:pass remediados con logger; e.response.text y Correlation ID E.164+wamid pineados). RF-5 = Done. Suite: 431/431 + 2 subtests, 0 RuntimeWarnings; arnés eval 436, Coherence 1.000. Autopsias: `.planning/phases/05-etapa3-concurrencia/PYTEST-AUTOPSY-WAVE01…WAVE06.md`.
-**Previous:** Milestone 3 - Etapa 2: Incidente H-A (Saneamiento Historial Git y Reestructuración de Pruebas) — Cerrada [BOT-BUILD-INCIDENT-HA-201] (Success)
-**Next:** Despliegue a beta (F5) — en espera de certificación del Auditor.
+**Phase:** Milestone 3 - Etapa 4: Cierre de Fase Operativo & Certified — CERRADA [BOT-BUILD-FIX-SUMMARY-MOTO-INTEREST-001, BOT-BUILD-FIX-MATRIX-RESTART-001, BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO-v2, BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO] (Success)
+**Status:** Complete — Flujo E2E completo certificado: PASO 1 (Enganche con pivote de competencia) → PASO 2 (Simulación Ciega) → PASO 3 (Entrega de Cuota) → PASO 4 (Habeas Data) → PASO 5 (Identidad) → MATRIZ 8/8 → CIERRE DE FASE sin timeouts ni reinicios. Persistencia garantizada de los 8 datos de la matriz de perfilamiento en Firestore. Suite: 516/516 tests PASSED, Coherence 1.000.
+**Deuda Técnica Residual Documentada:**
+- Saludo repetitivo en matriz (cosmético/UX, no funcional) — Ticket: BOT-BUILD-FIX-SALUDO-RESIDUAL-001
+- Entidad "Crediorbe" obsoleta en personality.json (fallback #2) — Ticket: FIX-E (re-sync Firestore + personality.json)
+- Pregunta genérica en FAQ brake (L508) — Ticket: FIX-D (v2.1)
+**Previous:** Milestone 3 - Etapa 3: Concurrencia y Fragmentación RF-5 (God Node whatsapp.py) — Cerrada [BOT-BUILD-ETAPA3-WAVE01…WAVE06] (Success)
+**Next:** Milestone 3 - Etapa 5: Resolución de la Concurrencia y Aislamiento de Código Legado (fragmentación de _handle_message_background_impl, Algoritmo de Feathers, erradicación de background tasks en ejes prioritarios).
+
+---
+*Last updated: 2026-07-25*
