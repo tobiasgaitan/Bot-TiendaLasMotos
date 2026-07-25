@@ -251,3 +251,90 @@ async def test_whatsapp_handle_message_habeas_data_bypass_interrupt():
         # 3. Asegurar que no se llamó a set_human_help_status (que es parte del fallback)
         mock_ms.set_human_help_status.assert_not_called()
 
+
+# ============================================================================
+# BOT-AUDIT-ETAPA5-ZSF-001 — Tests de caracterización: helpers de parsing Meta
+# Certifican: (a) fallback intacto (False/None), (b) logger.exception invocado
+# ante payloads malformados, (c) happy path sin logging de excepción.
+# ============================================================================
+
+from app.routers.whatsapp import (
+    _is_valid_statuses,
+    _is_valid_message,
+    _extract_message_data,
+)
+
+
+def test_is_valid_statuses_fallback_on_malformed_payload():
+    """entry no-dict → AttributeError interno → False + log forense (antes: silencio)."""
+    with patch("app.routers.whatsapp.logger") as mock_logger:
+        assert _is_valid_statuses({"entry": ["no-es-un-dict"]}) is False
+        mock_logger.exception.assert_called_once()
+
+
+def test_is_valid_statuses_happy_path_untouched():
+    """INVARIANTE: payload statuses válido → True y CERO logging de excepción."""
+    payload = {"entry": [{"changes": [{"value": {"statuses": [{"id": "wamid.1"}]}}]}]}
+    with patch("app.routers.whatsapp.logger") as mock_logger:
+        assert _is_valid_statuses(payload) is True
+        mock_logger.exception.assert_not_called()
+
+
+def test_is_valid_message_fallback_on_malformed_payload():
+    """entry no-dict → AttributeError interno → False + log forense."""
+    with patch("app.routers.whatsapp.logger") as mock_logger:
+        assert _is_valid_message({"entry": ["no-es-un-dict"]}) is False
+        mock_logger.exception.assert_called_once()
+
+
+def test_is_valid_message_happy_path_untouched():
+    """INVARIANTE: payload messages válido → True y CERO logging de excepción."""
+    payload = {"entry": [{"changes": [{"value": {"messages": [{"id": "wamid.1"}]}}]}]}
+    with patch("app.routers.whatsapp.logger") as mock_logger:
+        assert _is_valid_message(payload) is True
+        mock_logger.exception.assert_not_called()
+
+
+def test_extract_message_data_fallback_none_on_keyerror():
+    """messages[0] sin 'from' → KeyError interno → None + log forense."""
+    payload = {"entry": [{"changes": [{"value": {"messages": [{"type": "text"}]}}]}]}
+    with patch("app.routers.whatsapp.logger") as mock_logger:
+        assert _extract_message_data(payload) is None
+        mock_logger.exception.assert_called_once()
+
+
+def test_extract_message_data_happy_path_untouched():
+    """INVARIANTE: extracción completa de mensaje text permanece intacta."""
+    payload = {
+        "entry": [{
+            "changes": [{
+                "value": {
+                    "metadata": {"phone_number_id": "123"},
+                    "messages": [{
+                        "from": "573000000000",
+                        "id": "wamid.abc",
+                        "timestamp": "1622548800",
+                        "type": "text",
+                        "text": {"body": "hola"},
+                    }],
+                }
+            }]
+        }]
+    }
+    with patch("app.routers.whatsapp.logger") as mock_logger:
+        data = _extract_message_data(payload)
+        assert data is not None
+        assert data["from"] == "573000000000"
+        assert data["id"] == "wamid.abc"
+        assert data["type"] == "text"
+        assert data["text"] == "hola"
+        assert data["phone_number_id"] == "123"
+        mock_logger.exception.assert_not_called()
+
+
+def test_is_valid_statuses_non_dict_payload_guard():
+    """REGRESIÓN del guard PII: payload top-level no-dict → False sin romper el handler."""
+    with patch("app.routers.whatsapp.logger") as mock_logger:
+        assert _is_valid_statuses(["no", "soy", "dict"]) is False
+        mock_logger.exception.assert_called_once()
+

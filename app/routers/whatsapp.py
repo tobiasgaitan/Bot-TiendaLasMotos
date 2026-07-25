@@ -2244,7 +2244,14 @@ def _is_valid_statuses(payload: Dict[str, Any]) -> bool:
         value = changes.get("value", {})
         statuses = value.get("statuses", [])
         return len(statuses) > 0
-    except:
+    except Exception as e:
+        # [BOT-AUDIT-ETAPA5-ZSF-001] Zero-Silent-Failures: payload_keys en lugar
+        # de snippet crudo (blindaje PII: no exponer teléfonos en logs).
+        # Guard isinstance: payload puede ser no-dict (JSON top-level arbitrario).
+        logger.exception(
+            f"⚠️ [ZSF-PARSE] Payload malformado en _is_valid_statuses: {e} | "
+            f"payload_keys={list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__}"
+        )
         return False
 
 
@@ -2313,7 +2320,14 @@ def _is_valid_message(payload: Dict[str, Any]) -> bool:
         value = changes.get("value", {})
         messages = value.get("messages", [])
         return len(messages) > 0
-    except:
+    except Exception as e:
+        # [BOT-AUDIT-ETAPA5-ZSF-001] Zero-Silent-Failures: payload_keys en lugar
+        # de snippet crudo (blindaje PII: no exponer teléfonos en logs).
+        # Guard isinstance: payload puede ser no-dict (JSON top-level arbitrario).
+        logger.exception(
+            f"⚠️ [ZSF-PARSE] Payload malformado en _is_valid_message: {e} | "
+            f"payload_keys={list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__}"
+        )
         return False
 
 def _extract_message_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -2358,7 +2372,14 @@ def _extract_message_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             data["message_id"] = reaction_obj.get("message_id")
             data["emoji"] = reaction_obj.get("emoji")
         return data
-    except:
+    except Exception as e:
+        # [BOT-AUDIT-ETAPA5-ZSF-001] Zero-Silent-Failures: payload_keys en lugar
+        # de snippet crudo (blindaje PII: no exponer teléfonos en logs).
+        # Guard isinstance: payload puede ser no-dict (JSON top-level arbitrario).
+        logger.exception(
+            f"⚠️ [ZSF-PARSE] Payload malformado en _extract_message_data: {e} | "
+            f"payload_keys={list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__}"
+        )
         return None
 
 async def _send_whatsapp_message(to_phone: str, message_text: str, phone_number_id: Optional[str] = None, *, meta_sender=None) -> bool:
