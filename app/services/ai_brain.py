@@ -1677,11 +1677,24 @@ REGLAS ESTRICTAS DE USO:
                 # datos corre en esa fase); en PHASE_1/2 el bloque va vacío.
                 profiling_xml = ""
                 if phase == "PHASE_3_CREDIT_PROFILING":
-                    profiling_xml = "\n" + self._build_profiling_checklist(prospect_data) + (
-                        "\n[MANDATO DE PERFILAMIENTO: Tienes ESTRICTAMENTE PROHIBIDO repreguntar "
-                        "los datos marcados como CAPTURADO. Tu única pregunta pendiente debe ser "
-                        "el dato indicado en <siguiente_pendiente>.]\n"
-                    )
+                    _checklist_str = self._build_profiling_checklist(prospect_data)
+                    if "<siguiente_pendiente>COMPLETO</siguiente_pendiente>" in _checklist_str:
+                        # [BOT-BUILD-FIX-CIERRE-4-RUTAS-002] Rama COMPLETO: sin esta
+                        # coerción, el mandato genérico ordenaba preguntar "COMPLETO"
+                        # y el LLM se estancaba sin invocar la herramienta de cierre.
+                        profiling_xml = "\n" + _checklist_str + (
+                            "\n[MANDATO DE CIERRE DE FASE: <siguiente_pendiente> indica COMPLETO. "
+                            "Tu ÚNICA acción permitida en este turno es INVOCAR la herramienta "
+                            "calculate_credit_score con los datos del perfil. PROHIBIDO hacer más "
+                            "preguntas de perfilamiento. PROHIBIDO generar texto libre antes de "
+                            "tener el JSON del score.]\n"
+                        )
+                    else:
+                        profiling_xml = "\n" + _checklist_str + (
+                            "\n[MANDATO DE PERFILAMIENTO: Tienes ESTRICTAMENTE PROHIBIDO repreguntar "
+                            "los datos marcados como CAPTURADO. Tu única pregunta pendiente debe ser "
+                            "el dato indicado en <siguiente_pendiente>.]\n"
+                        )
                 
                 # --- BOT-BRAIN-ALIGNMENT-099: SYNONYM INJECTION ---
                 # WHY: category_aliases exists in Firestore for programmatic search indexing
@@ -1860,6 +1873,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         )
                         await asyncio.sleep(wait_time)
                         continue
+                    logger.error(f"🚨 [AI FALLBACK REASON]: Empty candidates persisted after {max_retries} retries for {user_name}")
                     return self._fallback_response(texto, history)
 
                 # --- FORCED TOOL VALIDATION TURN (PVN-Hardened) ---
@@ -1928,6 +1942,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 )
                                 await asyncio.sleep(wait_time)
                                 continue
+                            logger.error(f"🚨 [AI FALLBACK REASON]: Empty candidates in forced turn persisted after {max_retries} retries for {user_name}")
                             return self._fallback_response(texto, history)
                 except Exception as e:
                     logger.exception(f"⚠️ Tool Validation Logic Error for {user_name}: {e}")

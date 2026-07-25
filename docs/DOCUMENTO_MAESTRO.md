@@ -62,7 +62,7 @@ Coherence Score: 1.000 (Certificado vía GSD Framework - 516/516 Tests PASSED, 0
 
 **MATRIZ (8 datos):** Ocupación → Contrato → Ingresos (mapeo semántico) → Datacrédito → Gastos → Gas Natural → Vivienda → Plan Celular. Checklist determinista (_build_profiling_checklist).
 
-**CIERRE DE FASE:** Evaluación de puntaje → 4 rutas (Banco de Bogotá ≥750, Revisión humana 500-749, Brilla <499, Rechazo <499 sin Brilla).
+**CIERRE DE FASE:** Evaluación de puntaje → 4 rutas (Banco de Bogotá ≥750, Revisión humana 500-749, Brilla <499, Rechazo <499 sin Brilla). **(BOT-BUILD-FIX-CIERRE-4-RUTAS-002: reexpresión doctrinal — disparo JSON-driven: el LLM INVOCA calculate_credit_score y lee el score numérico del JSON; erradicada la alucinación "evalúa el puntaje crediticio simulado internamente" de personality.json y prompts.py. Las 4 rutas son inmutables y tienen PRIORIDAD ABSOLUTA sobre el function response. Backend: mandato coercitivo [MANDATO DE CIERRE DE FASE] cuando el checklist alcanza COMPLETO + logs terminales [AI FALLBACK REASON] en agotamiento de reintentos.)**
 
 ⚠️ Deuda Técnica Residual Documentada
 

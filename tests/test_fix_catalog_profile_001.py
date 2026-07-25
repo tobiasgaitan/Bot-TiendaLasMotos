@@ -442,3 +442,130 @@ async def test_fix4b_checklist_injected_only_in_phase3():
 
     assert prompts2, "No se capturó el prompt enviado a Gemini (fase 1)"
     assert "<estado_perfilamiento>" not in prompts2[0], "El checklist se filtró fuera de PHASE_3_CREDIT_PROFILING"
+
+
+# ===========================================================================
+# BOT-BUILD-FIX-CIERRE-4-RUTAS-002 — Cierre de Fase JSON-driven
+# ===========================================================================
+def test_cierre4rutas002_prompt_erradica_simulacion_interna_y_preserva_4_rutas():
+    """T1 (guard estático): la alucinación arquitectónica 'evalúa el puntaje
+    crediticio simulado internamente' queda erradicada de AMBAS fuentes de prompt
+    (personality.json y prompts.py), el disparo coercitivo hacia la herramienta
+    queda insertado, y las 4 rutas del Documento Maestro (inmutables) se
+    preservan como acciones ciegas del JSON."""
+    import json as _json
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    pj = _json.loads((root / "app/core/personality.json").read_text(encoding="utf-8"))["system_instruction"]
+    py = (root / "app/core/prompts.py").read_text(encoding="utf-8")
+
+    for name, src in (("personality.json", pj), ("prompts.py", py)):
+        assert "simulado internamente" not in src, f"Alucinación arquitectónica persiste en {name}"
+        assert "INVOCA INMEDIATAMENTE" in src, f"Disparo coercitivo de herramienta ausente en {name}"
+        assert "calculate_credit_score" in src, f"Referencia a herramienta ausente en {name}"
+        assert "PRIORIDAD ABSOLUTA" in src, f"Cláusula de precedencia de las 4 rutas ausente en {name}"
+        # Las 4 rutas del Documento Maestro (inmutables) — condicionadas al JSON
+        assert "Si el JSON indica score igual o mayor a 750 puntos" in src, f"Ruta 1 (Banco >=750) ausente en {name}"
+        assert "Un compañero revisará" in src, f"Ruta 2 (Revisión Humana 500-749) ausente en {name}"
+        assert "Si el JSON indica score menor a 499 puntos" in src, f"Ruta 3 (Brilla <499) ausente en {name}"
+        assert "no es posible aprobar el crédito" in src, f"Ruta 4 (Rechazo sin Brilla) ausente en {name}"
+
+
+@pytest.mark.asyncio
+async def test_cierre4rutas002_matriz_completa_coerce_invocacion_sin_texto_previo():
+    """T2 (invocación): con los 8/8 datos de la matriz capturados, el prompt del
+    turno contiene el MANDATO DE CIERRE DE FASE (coerción COMPLETO) y la prohibición
+    de texto libre; el bucle procesa la function call de calculate_credit_score
+    (sin partes de texto previas) y solo genera respuesta tras el JSON."""
+    cerebro = CerebroIA()
+
+    mock_financial = MagicMock()
+    mock_financial.evaluate_profile.return_value = {
+        "score": 450,
+        "strategy": "BRILLA",
+        "entity": "Brilla de Gases",
+        "rate_key": None,
+        "link_url": None,
+        "requires_aval": False,
+        "is_fallback": True,
+    }
+    cerebro.motor_financiero = mock_financial
+
+    prospect_completo = {
+        "exists": True,
+        "nombre": "Ana",
+        "ciudad": "Cali",
+        "forma_pago": "credito",
+        "moto_interest": "TVS SPORT 100 ELS",
+        "habeas_data_accepted": True,
+        "habeas_data_accepted_sent": True,
+        # Los 8 datos de la matriz (Contrato se fusiona en 'ocupacion'):
+        "ocupacion": "Empleada término fijo",
+        "ingresos_mensuales": "1705905",
+        "datacredito": "Al día",
+        "gastos_mensuales": "800000",
+        "tiene_gas_natural": "Sí",
+        "vivienda": "Propia",
+        "plan_celular": "Sí",
+    }
+    history = [{"role": "model", "content": "Política: https://tiendalasmotos.com/politica-de-privacidad"}]
+
+    captured_prompts = []
+    call_count = 0
+
+    async def mock_call(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if len(args) > 1:
+            captured_prompts.append(str(args[1]))
+        if call_count == 1:
+            # El LLM obedece la coerción: function call SIN partes de texto previas.
+            return _tool_response("calculate_credit_score", {})
+        return _text_response("Tu estudio va por Brilla: necesito foto de tu cédula y los dos recibos del gas.")
+
+    with patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+        res = await cerebro.pensar_respuesta("ya respondí todo", prospect_data=prospect_completo, history=history)
+
+    # 1. La coerción COMPLETO se inyectó en el prompt del turno
+    assert captured_prompts, "No se capturó el prompt enviado a Gemini"
+    assert "<siguiente_pendiente>COMPLETO</siguiente_pendiente>" in captured_prompts[0], \
+        "El checklist no alcanzó estado COMPLETO con los 8/8 datos"
+    assert "MANDATO DE CIERRE DE FASE" in captured_prompts[0], \
+        "La rama COMPLETO no inyectó el mandato coercitivo de cierre"
+    assert "PROHIBIDO generar texto libre antes de tener el JSON del score" in captured_prompts[0], \
+        "El freno cognitivo de texto libre no se inyectó"
+    assert "Tu única pregunta pendiente debe ser" not in captured_prompts[0], \
+        "El mandato genérico (absurdo en COMPLETO) no debió inyectarse"
+
+    # 2. La herramienta se ejecutó exactamente una vez (rama legacy evaluate_profile)
+    mock_financial.evaluate_profile.assert_called_once()
+
+    # 3. El texto final llega SOLO tras el JSON (nunca el fallback prematuro)
+    assert "colgado" not in res
+    assert "cédula" in res
+
+
+@pytest.mark.asyncio
+async def test_cierre4rutas002_fallback_logs_reason_on_budget_exhaustion():
+    """T3 (Zero-Silent-Failures): al agotar max_retries por candidatos vacíos,
+    el fallback 'colgado' queda precedido de un logger.error terminal con la
+    firma [AI FALLBACK REASON] (sitios L1863/L1931 instrumentados)."""
+    cerebro = CerebroIA()
+
+    async def mock_call(*args, **kwargs):
+        return _empty_response()
+
+    with patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call), \
+         patch.object(ai_brain_module.asyncio, "sleep", new_callable=AsyncMock), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True), \
+         patch("app.services.ai_brain.logger") as mock_logger:
+        res = await cerebro.pensar_respuesta("hola", prospect_data=None, history=[])
+
+    assert "colgado" in res
+    error_msgs = [str(c) for c in mock_logger.error.call_args_list]
+    assert any("AI FALLBACK REASON" in m and "Empty candidates" in m for m in error_msgs), \
+        f"El agotamiento de reintentos no dejó rastro forense terminal: {error_msgs}"
