@@ -79,7 +79,7 @@ EXTRACTION_SCHEMA = {
                 },
                 "habeas_data_accepted": {
                     "type": "BOOLEAN",
-                    "description": "Indica si el usuario aceptó el tratamiento de datos (mapeado de afirmaciones o emojis)."
+                    "description": "Indica si el usuario aceptó el tratamiento de datos. STRICT POSITIVE BIAS: si el script legal fue presentado y el usuario respondió con una afirmación (ej: 'Sí', 'Acepto', 'Dale', 'Listo', 'Ok', '👍'), mapea a `true`. Solo deja `false` ante una negación explícita del usuario o si el script legal jamás fue presentado."
                 },
                 "habeas_data_accepted_sent": {
                     "type": "BOOLEAN",
@@ -1613,6 +1613,7 @@ REGLAS ESTRICTAS DE USO:
                 interruption_directive = (
                     " El consentimiento ya ha sido firmado en este turno. Tienes ESTRICTAMENTE PROHIBIDO "
                     "incluir enlaces de imágenes (![]) o precios ($) en tu respuesta. "
+                    "Tienes PROHIBIDO saludar o presentarte de nuevo; ve directo a la solicitud de identidad. "
                     "Limítate exclusivamente a solicitar el nombre completo y la ciudad de forma concisa."
                 )
                 if not p_name:
@@ -2698,10 +2699,10 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             y devolverla en un JSON válido según el esquema proporcionado.
 
             REGLAS DE EXTRACCIÓN CRÍTICAS:
-            1. habeas_data_accepted (STRICT NEGATIVE BIAS): 
-               - Solo mapea a `true` si el usuario da una respuesta afirmativa DIRECTA y EXPLÍCITA (ej: "Sí", "Acepto", "Dale", "Listo", "👍") tras el script legal.
-               - Si el usuario responde con otra pregunta (ej: "¿qué requisitos hay?") o ambigüedad, DEBE ser `false`.
-               - NUNCA asumas aceptación por el simple hecho de continuar la charla.
+            1. habeas_data_accepted (STRICT POSITIVE BIAS): 
+               - Si el script legal fue presentado y el usuario responde con una afirmación (ej: "Sí", "Acepto", "Dale", "Listo", "Ok", "Claro", "👍"), DEBE ser `true`.
+               - Asume aceptación cuando el usuario avanza en el flujo de crédito tras el script legal sin negar el consentimiento.
+               - Solo mapea a `false` si el usuario NIEGA explícitamente el tratamiento de datos o si el script legal NUNCA fue presentado.
             2. moto_interest:
                - La moto o estilo (TVS/Victory del catálogo de Tienda Las Motos) por la que preguntó el usuario o en la que mostró interés.
                - Este campo es INMUTABLE contra la competencia. Solo guarda modelos de Tienda Las Motos.
@@ -2768,7 +2769,19 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 result["extracted"]["habeas_data_accepted_sent"] = True
             else:
                 result["extracted"]["habeas_data_accepted_sent"] = False
-            
+
+            # ------------------------------------------------------------------
+            # [BOT-BUILD-FIX-HABEAS-DATA-EXTRACTION-004] GUARD DETERMINISTA BACKEND (C2)
+            # Backstop de código sobre el extractor LLM: si el turno actual es una
+            # aceptación de Habeas Data (script legal presentado + último mensaje
+            # del usuario afirmativo), se FUERZA habeas_data_accepted=True.
+            # Rompe el bucle de re-pregunta cuando el LLM no mapea el consentimiento.
+            # ------------------------------------------------------------------
+            if self._is_habeas_consent_turn(conversation_text, last_bot_question):
+                if result["extracted"].get("habeas_data_accepted") is not True:
+                    logger.info("✅ [HABEAS GUARD] Consentimiento detectado por guard determinista → habeas_data_accepted=True (override extractor LLM)")
+                result["extracted"]["habeas_data_accepted"] = True
+
             logger.info(f"📝 Generated summary (Voorhees Cleaned) with {len(result.get('extracted', {}))} fields | Valid: {is_valid}")
             
             # --- ROI TELEMETRY ---
@@ -2789,6 +2802,60 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 "summary": conversation_text[:200] + "..." if len(conversation_text) > 200 else conversation_text,
                 "extracted": {}
             }
+
+    # ---------------------------------------------------------------------------
+    # [BOT-BUILD-FIX-HABEAS-DATA-EXTRACTION-004] GUARD DETERMINISTA DE CONSENTIMIENTO
+    # ---------------------------------------------------------------------------
+    def _is_habeas_consent_turn(self, conversation_text: str, last_bot_question: str = "") -> bool:
+        """
+        Guard determinista (sin LLM) de aceptación de Habeas Data.
+
+        Devuelve True SOLO si AMBAS condiciones se cumplen:
+          1. Script legal presentado: link físico de la política en el historial,
+             o la última pregunta del bot pide la autorización de datos.
+          2. El ÚLTIMO mensaje del usuario es una afirmación directa y corta
+             ("Sí", "Acepto", "Dale", "Listo", "Ok", "👍", ...): sin signos de
+             pregunta, sin negaciones y <= 60 caracteres.
+
+        STRICT POSITIVE BIAS en backend: ante una afirmación clara tras el script
+        legal el consentimiento se asume; jamás se fuerza sobre una negación,
+        una pregunta o la ausencia del script.
+        """
+        history = conversation_text or ""
+        history_lower = history.lower()
+        bot_question = (last_bot_question or "").lower()
+
+        script_presented = (
+            "tiendalasmotos.com/politica-de-privacidad" in history_lower
+            or "politica-de-privacidad" in bot_question
+            or "autorizas el tratamiento" in bot_question
+            or "tratamiento de tus datos" in bot_question
+            or "tratamiento de datos" in bot_question
+        )
+        if not script_presented:
+            return False
+
+        user_segments = re.findall(
+            r"(?:^|\n)\s*(?:user|usuario)\s*:\s*(.*?)(?=(?:\n\s*(?:bot|juan pablo)\s*:)|$)",
+            history,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        last_user = user_segments[-1].strip() if user_segments else ""
+        if not last_user or len(last_user) > 60:
+            return False
+        if "?" in last_user or "¿" in last_user:
+            return False
+
+        text = last_user.lower()
+        if re.search(r"\b(no|nel|nunca|jam[aá]s|tampoco|todav[ií]a|negativo)\b|[👎❌]", text):
+            return False
+
+        return bool(re.match(
+            r"^(s[ií]+p?o?|sim[oó]n|aj[aá]+|acepto|autorizo|dale|listos?|o+k+a*y*|okey|"
+            r"claro|bueno|va(le)?|venga|perfecto|de una|por supuesto|correcto|seguro|"
+            r"de acuerdo|est[aá] bien|[👍✅👌🆗✔☑💯])",
+            text,
+        ))
 
     def _fallback_response(self, texto: str, history: list = []) -> str:
         """
