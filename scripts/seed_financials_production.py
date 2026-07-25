@@ -4,7 +4,7 @@ from google.cloud import firestore
 
 # Configuration for Seeding (Marzo 2026)
 PROJECT_ID = "tiendalasmotos"
-ENTITIES = ["crediorbe", "brilla", "banco_bogota"]
+ENTITIES = ["brilla", "banco_bogota"]
 MASTER_FACTOR_24 = 0.0523336
 UNIFIED_RATE = 1.91
 INSURANCE_FIXED = 15000
@@ -27,9 +27,10 @@ def seed_financials():
         print(f"📋 Processing entity: {entity}...")
         
         # Entity-level config
-        is_crediorbe = entity == "crediorbe"
-        fng_rate = 20.66 if is_crediorbe else 0.0
-        finance_docs = False if is_crediorbe else True
+        # [BOT-BUILD-FIX-E-CREDIORBE-ERADICATION-001] Crediorbe erradicada del dominio:
+        # fng_rate=0.0 y finance_docs=True aplican uniformemente a todas las entidades.
+        fng_rate = 0.0
+        finance_docs = True
         
         # Define Rows
         rows = []
@@ -39,7 +40,7 @@ def seed_financials():
             "id": "0-99",
             "minCC": 0,
             "maxCC": 99,
-            "registrationCreditGeneral": 0 if is_crediorbe else SANTA_MARTA_REGISTRATION["0-99"],
+            "registrationCreditGeneral": SANTA_MARTA_REGISTRATION["0-99"],
             "factors": {
                 "24": MASTER_FACTOR_24,
                 "36": 0.041234,  # Fallback/Current
@@ -52,7 +53,7 @@ def seed_financials():
             "id": "100-124",
             "minCC": 100,
             "maxCC": 124,
-            "registrationCreditGeneral": 0 if is_crediorbe else SANTA_MARTA_REGISTRATION["100-124"],
+            "registrationCreditGeneral": SANTA_MARTA_REGISTRATION["100-124"],
             "factors": {
                 "24": MASTER_FACTOR_24,
                 "36": 0.041234,
@@ -66,7 +67,7 @@ def seed_financials():
             "minCC": 125,
             "maxCC": 200,
             "category": "URBANA Y/O TRABAJO",
-            "registrationCreditGeneral": 0 if is_crediorbe else SANTA_MARTA_REGISTRATION["125-200"],
+            "registrationCreditGeneral": SANTA_MARTA_REGISTRATION["125-200"],
             "factors": {
                 "24": MASTER_FACTOR_24,
                 "36": 0.041234,
@@ -79,7 +80,7 @@ def seed_financials():
             "id": "gt-200",
             "minCC": 201,
             "maxCC": 9999,
-            "registrationCreditGeneral": 0 if is_crediorbe else SANTA_MARTA_REGISTRATION["gt-200"],
+            "registrationCreditGeneral": SANTA_MARTA_REGISTRATION["gt-200"],
             "factors": {
                 "24": MASTER_FACTOR_24,
                 "36": 0.041234,
@@ -91,7 +92,7 @@ def seed_financials():
         rows.append({
             "id": "electrical",
             "category": "ELECTRICA",
-            "registrationCreditGeneral": 0 if is_crediorbe else SANTA_MARTA_REGISTRATION["electrical"],
+            "registrationCreditGeneral": SANTA_MARTA_REGISTRATION["electrical"],
             "factors": {
                 "24": MASTER_FACTOR_24,
                 "36": 0.041234,
@@ -103,7 +104,7 @@ def seed_financials():
         rows.append({
             "id": "motocarro",
             "category": "MOTOCARRO Y/O MOTOCARGUERO",
-            "registrationCreditGeneral": 0 if is_crediorbe else SANTA_MARTA_REGISTRATION["motocarro"],
+            "registrationCreditGeneral": SANTA_MARTA_REGISTRATION["motocarro"],
             "factors": {
                 "24": MASTER_FACTOR_24,
                 "36": 0.041234,

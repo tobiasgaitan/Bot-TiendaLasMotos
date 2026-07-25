@@ -200,7 +200,7 @@ def test_config_service_routing_dynamic_partners():
     mock_docs = [
         MockDoc("banco_bogota", {"link_url": "https://bogota.com"}),
         MockDoc("brilla", {"link": "https://brilla.com"}),
-        MockDoc("crediorbe", {"url": "https://crediorbe.com"})
+        MockDoc("fintech_partner", {"url": "https://fintech-partner.com"})
     ]
     
     mock_db = MagicMock()
@@ -217,5 +217,5 @@ def test_config_service_routing_dynamic_partners():
     assert len(partners) > 0, "get_partners_config() retornó un diccionario vacío"
     assert partners.get("link_banco_bogota") == "https://bogota.com", "Fallo mapeo link_url"
     assert partners.get("link_brilla") == "https://brilla.com", "Fallo mapeo link"
-    assert partners.get("link_crediorbe") == "https://crediorbe.com", "Fallo mapeo url"
+    assert partners.get("link_fintech_partner") == "https://fintech-partner.com", "Fallo mapeo url"
 

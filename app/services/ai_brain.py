@@ -2409,62 +2409,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             f"mensaje las FOTOS de: 1. Cédula original y 2. Los dos últimos "
                                             f"recibos del gas natural. No cierres la sesión sin pedir esto.]"
                                         )
-                                    elif res.get('entity') == "Crediorbe":
-                                        # [INTERCEPCIÓN CREDIORBE — BOT-FIN-104]
-                                        res['link_url'] = None
-                                        
-                                        moto_name = (prospect_data or {}).get("moto_interest", "")
-                                        cuota_line = ""
-                                        
-                                        if moto_name and self.motor_financiero:
-                                            # We attempt a quick lookup to get the price
-                                            m_price = 0
-                                            moto_cc = 0.0
-                                            category = "motos"
-                                            if self._catalog_service:
-                                                m_results = self._catalog_service.search_items(moto_name)
-                                                if m_results: 
-                                                    first_match = m_results[0]
-                                                    m_price = self._parse_raw_price(
-                                                        first_match.get('raw_price'),
-                                                        first_match.get('price')
-                                                    )
-                                                    moto_cc = float(first_match.get("cc", 0.0) or 0.0)
-                                                    category = first_match.get("category", "motos") or "motos"
-                                            
-                                            if m_price <= 0:
-                                                import traceback
-                                                stack = "".join(traceback.format_stack())
-                                                logger.warning(
-                                                    f"⚠️ [NULL MASKING DETECTED] Ambos campos raw_price y price están ausentes o vacíos para '{moto_name}'.\nTraceback:\n{stack}"
-                                                )
-                                                raise ValueError(f"Precio no disponible para la simulación financiera de la moto '{moto_name}'.")
-
-                                            # Use 0 initial as baseline for Crediorbe if not specified
-                                            sim = self._calculate_payment_helper(
-                                                precio=m_price,
-                                                inicial=0,
-                                                plazo_meses=24,
-                                                entidad="Crediorbe",
-                                                moto_cc=moto_cc,
-                                                category=category,
-                                                moto_name=moto_name
-                                            )
-                                            cuota_val = sim.get('cuota_mensual', 0)
-                                            if cuota_val > 0:
-                                                cuota_line = f"Cuota Mensual Total: ${cuota_val:,.0f} (Incluye SOAT, Matrícula, Seguros y FNG a 24 meses con Crediorbe)\n"
-                                            else:
-                                                logger.warning(f"⚠️ [COGNITIVE BRAKE] cuota_val=0 for {moto_name}. Omitting cuota line.")
-
-                                        credit_res = (
-                                            f"✅ Score: {res['score']} | {res['strategy']}\n"
-                                            f"{cuota_line}"
-                                            f"\n[SISTEMA: MANDATO DE CONTINGENCIA DE CREDIORBE: "
-                                            f"El link digital de Crediorbe ha sido bloqueado. ESTÁS OBLIGADO a "
-                                            f"solicitar una foto de la cédula del usuario y coordinar el agendamiento "
-                                            f"de una cita presencial en nuestras sedes físicas de Riohacha, Santa Marta o Zona Bananera. "
-                                            f"No envíes ningún enlace digital.]"
-                                        )
+                                    # [FIX-E] Rama de intercepción de la fintech obsoleta (ex BOT-FIN-104)
+                                    # purgada: la entidad fue erradicada del dominio y scoring_service
+                                    # ya no la emite. El else genérico cubre todas las entidades restantes.
                                     else:
                                         # [COGNITIVE BRAKES v1.2 — BOT-LOGIC-1.2]
                                         # Consolidating output. PROHIBIDO emitir placeholders ($X.XXX).
@@ -2498,7 +2445,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                 )
                                                 raise ValueError(f"Precio no disponible para la simulación financiera de la moto '{moto_name}'.")
 
-                                            # Use 0 initial as baseline for Crediorbe if not specified
+                                            # Use 0 initial as baseline if not specified
                                             sim = self._calculate_payment_helper(
                                                 precio=m_price,
                                                 inicial=0,

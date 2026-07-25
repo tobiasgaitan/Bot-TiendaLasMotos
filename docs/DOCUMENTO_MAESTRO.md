@@ -68,7 +68,7 @@ Coherence Score: 1.000 (Certificado vía GSD Framework - 516/516 Tests PASSED, 0
 
 1.  **Saludo repetitivo en matriz (cosmético):** El bot continúa diciendo "¡Hola, Carlos!" en cada turno de la matriz. FIX-B no está funcionando completamente. Impacto: UX, no funcional. Ticket pendiente: BOT-BUILD-FIX-SALUDO-RESIDUAL-001.
 
-2.  **Entidad "Crediorbe" obsoleta:** personality.json (fallback #2) aún contiene "Crediorbe" en PASO 2. Firestore/prompts.py ya dicen "Brilla de Gases". Ticket pendiente: FIX-E (re-sync Firestore + personality.json).
+2.  ~~**Entidad "Crediorbe" obsoleta**~~ **RESUELTO (BOT-BUILD-FIX-E-CREDIORBE-ERADICATION-001):** personality.json PASO 2 re-sincronizado a "Brilla de Gases"; rama FINTECH purgada de scoring_service (score 400-699 → fallback Brilla); intercepción Crediorbe (BOT-FIN-104) purgada de ai_brain.py; defaults y fallbacks de config_service/config_loaders unificados; seed script actualizado. Pendiente paso operativo manual: borrar doc `financial_config/general/financieras/crediorbe` en Firestore prod.
 
 3.  **Pregunta genérica en FAQ brake (L508):** _get_pending_funnel_question PHASE_3 retorna pregunta genérica en lugar de <siguiente_pendiente> del checklist. Ticket pendiente: FIX-D (v2.1).
 

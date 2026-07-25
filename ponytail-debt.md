@@ -28,3 +28,30 @@ helpers de parsing en `app/routers/whatsapp.py`).
 
 **Nota de auditoría:** `app/services/ai_brain.py` fue verificado y NO contiene
 bare `except:` — la hipótesis de extensión del patrón a ese módulo quedó descartada.
+
+---
+
+## BOT-BUILD-FIX-E-CREDIORBE-ERADICATION-001 — Registrado 2026-07-25
+
+Residuos de nomenclatura 'Crediorbe' detectados durante la erradicación FIX-E y
+dejados fuera de scope por decisión explícita del owner.
+
+### Código muerto no cableado (purga NO autorizada en FIX-E — ticket aparte)
+
+| # | Ubicación | Hallazgo | Estado |
+|---|-----------|----------|--------|
+| 1 | `app/services/survey_service.py:261` | Texto user-facing `"CrediOrbe"` en rama REDIRECT. El servicio no tiene callers en `app/` y su contrato con `evaluate_profile` está roto (espera `action_type`/`payload` inexistentes → KeyError → HANDOFF). Candidato a purga de módulo completo. | PENDIENTE |
+
+### Fixtures cosméticos sin impacto funcional (nomenclatura en tests/scripts legacy)
+
+| # | Ubicación | Patrón | Estado |
+|---|-----------|--------|--------|
+| 2 | `tests/test_judge_service.py:197,231,256` | Strings de ejemplo "con Crediorbe" | PENDIENTE |
+| 3 | `tests/test_identity_legal_gate.py:106` | String de simulación | PENDIENTE |
+| 4 | `tests/test_read_asymmetry.py:138` | Payload fixture | PENDIENTE |
+| 5 | `tests/test_agentic_loop_async.py:192-199,292-297,776` | Mocks entity/link Crediorbe (aserciones entidad-agnósticas, verde post-FIX-E) | PENDIENTE |
+| 6 | `tests/test_financial_fallback.py:24` | `ENTIDAD = "Crediorbe"` (tests de fallback entidad-agnósticos) | PENDIENTE |
+| 7 | `tests/test_perf_45.py:65-66,110,145-146` | Mocks Crediorbe (verde post-FIX-E vía rama else) | PENDIENTE |
+| 8 | `tests/test_pcc_ficha_tecnica.py:294-295` | Mock evaluate_profile entity Crediorbe (aserciones L271/L623 exigen AUSENCIA — alineadas con FIX-E) | PENDIENTE |
+| 9 | `scripts/init_v6_config.py:182-197` | Config legacy "CrediOrbe" (script one-shot histórico) | PENDIENTE |
+| 10 | `attic/tmp/*` | Scratch files con referencias | IGNORADO (attic) |

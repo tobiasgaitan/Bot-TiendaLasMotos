@@ -38,7 +38,6 @@ class FinanceConfigLoader:
     
     DEFAULT_PARTNERS = {
         "link_banco_bogota": "https://digital.bancodebogota.com/",
-        "link_crediorbe": "https://crediorbe.com/",
         "link_brilla": "https://brilladegasesdeoccidente.com/"
     }
 

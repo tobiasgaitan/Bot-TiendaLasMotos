@@ -36,231 +36,58 @@ def test_extraction_schema_contains_cedula_usuario():
     assert "bias negativo" in properties["cedula_usuario"]["description"].lower()
 
 
-@pytest.mark.asyncio
-async def test_crediorbe_interception_blocks_link_and_injects_contingency():
+def test_scoring_never_routes_to_crediorbe():
     """
-    Verifica que la intercepción de la herramienta calculate_credit_score para Crediorbe
-    bloquee la URL digital e inyecte la instrucción de pedir la cédula y agendar en sedes físicas.
+    [BOT-BUILD-FIX-E-CREDIORBE-ERADICATION-001] Certificación de erradicación:
+    determine_strategy NUNCA enruta a 'Crediorbe' para ningún score, y el rango
+    400-699 (ex-FINTECH) converge al fallback Brilla de Gases.
     """
-    cerebro = CerebroIA()
-    cerebro.client = MagicMock()
-    cerebro._model_id = "gemini-2.0-flash"
-    
-    # Mock catalog service
-    mock_catalog = MagicMock()
-    mock_catalog.search_items.return_value = [
-        {
-            "name": "TVS Sport 100",
-            "price": "$ 6.200.000",
-            "raw_price": 6200000.0,
-            "category": "Urban",
-            "image_url": "https://img.url",
-            "summary": "Excelente moto"
-        }
-    ]
-    cerebro._catalog_service = mock_catalog
-    
-    # Mock financial motor returning Crediorbe
-    mock_financial = MagicMock()
-    mock_financial.evaluate_profile.return_value = {
-        "score": 710,
-        "strategy": "Aprobado",
-        "entity": "Crediorbe",
-        "link_url": "https://crediorbe.digital.link/auth"
-    }
-    mock_financial.calculate_payment.return_value = {
-        "cuota_mensual": 280000
-    }
-    cerebro.motor_financiero = mock_financial
-    
-    # Mock LLM calls
-    fc = MockFunctionCall(name="calculate_credit_score", args={})
-    candidate1 = MockCandidate(content=MockContent(parts=[MockPart(function_call=fc)]))
-    response1 = MockResponse(candidates=[candidate1])
-    
-    # Second LLM call returns the final text response
-    candidate2 = MockCandidate(content=MockContent(parts=[MockPart(text="Interception processed successfully.")]))
-    response2 = MockResponse(candidates=[candidate2])
-    
-    call_count = 0
-    captured_function_response = None
-    
-    async def mock_call(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return response1
-        
-        # En la segunda llamada, capturamos el historial / partes enviadas a Gemini para verificar
-        # qué respuesta de la función (function response) le mandamos.
-        nonlocal captured_function_response
-        if "contents" in kwargs:
-            contents = kwargs["contents"]
-            for content in contents:
-                for part in content.parts:
-                    # En la API de Google GenAI, la parte de respuesta de función puede ser verificada
-                    if hasattr(part, "function_response") or (isinstance(part, dict) and "function_response" in part):
-                        captured_function_response = part
-                    elif hasattr(part, "text") and "MANDATO DE CONTINGENCIA DE CREDIORBE" in part.text:
-                        captured_function_response = part
-        elif len(args) > 0:
-            # Si se pasa como argumento posicional
-            for part in args[0]:
-                if hasattr(part, "text") and "MANDATO DE CONTINGENCIA DE CREDIORBE" in part.text:
-                    captured_function_response = part
-        return response2
+    from app.services.scoring_service import ScoringService
+    svc = ScoringService()
+    for score in [0, 200, 399, 400, 500, 699, 700, 850, 1000]:
+        for gas in (False, True):
+            for hist in ("", "Al dia", "Reportado"):
+                res = svc.determine_strategy(
+                    score=score, tiene_gas_natural=gas, historial_datacredito=hist
+                )
+                assert res["entity"] != "Crediorbe", \
+                    f"Crediorbe resurgió con score={score}, gas={gas}, hist={hist!r}"
+    # Rango ex-FINTECH → Brilla de Gases (unificación doctrinal FIX-E)
+    for score in (400, 500, 699):
+        res = svc.determine_strategy(
+            score=score, tiene_gas_natural=False, historial_datacredito="Al dia"
+        )
+        assert res["entity"] == "Brilla de Gases", \
+            f"score={score} debía caer al fallback Brilla, obtuvo {res['entity']}"
+        assert res["strategy"] == "BRILLA"
+        assert res["requires_aval"] is False
 
-    from app.services.config_service import config_service
-    with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
-         patch('app.services.ai_brain.SDK_AVAILABLE', True), \
-         patch.object(config_service, 'get_registration_cost', return_value=0.0):
-         
-        prospect = {
-            "nombre": "Carlos",
-            "moto_interest": "TVS Sport 100",
-            "ciudad": "Santa Marta",
-            "forma_pago": "Crédito",
-            "habeas_data_accepted": True
-        }
-        await cerebro.pensar_respuesta("Quiero mi crédito ciego", prospect_data=prospect)
-        
-    # Ahora, verifiquemos los argumentos pasados a evaluate_profile
-    mock_financial.evaluate_profile.assert_called_once()
-    
-    # Verifiquemos que se llamó a calculate_payment
-    mock_financial.calculate_payment.assert_called_once_with(
-        precio=6200000.0,
-        inicial=0,
-        plazo_meses=24,
-        entidad="Crediorbe",
-        moto_cc=0.0,
-        category="Urban"
-    )
-    
-    # Verifiquemos que la respuesta de evaluate_profile tuvo su link_url bloqueada
-    # (Ya que la modificamos in-place o bloqueamos en el diccionario)
-    assert mock_financial.evaluate_profile.return_value["link_url"] is None
-    
-    # Verifiquemos que las instrucciones específicas e inyección comercial estén presentes en el flujo.
-    # We can inspect the logger calls or the mock_call's captured contents.
-    # En nuestro mock_call capturamos las partes de la conversación.
-    # Dado que pasamos la respuesta de la función a response_parts, busquemos en cerebro._call_gemini_with_retry_async o similar.
-    # Hagamos un test directo sobre la lógica del método de ai_brain.
-    # En ai_brain.py, el resultado del bloque calculate_credit_score se almacena en response_parts.
-    # Modifiquemos mock_call para capturar `response_parts` o `contents` pasados al LLM.
-    # Let's inspect the mock_call's contents argument to assert it contains the contingency text:
-    # "foto de la cédula", "sedes", "Riohacha", "Santa Marta", "Zona Bananera".
-    
-    # Si capturamos contents en la segunda llamada (cuando call_count == 2):
-    # En la API de Google GenAI, la llamada contiene los turnos anteriores.
-    # Busquemos el texto de contingencia de Crediorbe.
-    # Alternativamente, podemos instanciar e invocar una simulación controlada del bloque.
-    # Pero el mock_call con kwargs['contents'] o similar nos sirve.
-    # Vamos a verificar que el texto de contingencia se generó.
-    # Como la variable local `credit_res` se inyecta en `types.Part.from_function_response`,
-    # revisemos si se llamó con el string correcto.
-    # Podemos mockear `types.Part.from_function_response` para ver qué recibió.
-    
-@pytest.mark.asyncio
-async def test_crediorbe_interception_direct_value():
-    """
-    Verificación directa de la lógica de negocio de intercepción de Crediorbe
-    inyectando un mock controlado en el flujo interno de pensar_respuesta.
-    """
-    cerebro = CerebroIA()
-    cerebro.client = MagicMock()
-    cerebro._model_id = "gemini-2.0-flash"
-    
-    mock_catalog = MagicMock()
-    mock_catalog.search_items.return_value = [
-        {
-            "name": "TVS Sport 100",
-            "price": "$ 6.200.000",
-            "raw_price": 6200000.0,
-            "category": "Urban",
-            "image_url": "https://img.url",
-            "summary": "Excelente"
-        }
-    ]
-    cerebro._catalog_service = mock_catalog
-    
-    mock_financial = MagicMock()
-    mock_financial.evaluate_profile.return_value = {
-        "score": 720,
-        "strategy": "Aprobado",
-        "entity": "Crediorbe",
-        "link_url": "https://crediorbe.digital.link/auth"
-    }
-    mock_financial.calculate_payment.return_value = {
-        "cuota_mensual": 280000
-    }
-    cerebro.motor_financiero = mock_financial
-    
-    fc = MockFunctionCall(name="calculate_credit_score", args={})
-    candidate1 = MockCandidate(content=MockContent(parts=[MockPart(function_call=fc)]))
-    response1 = MockResponse(candidates=[candidate1])
-    
-    candidate2 = MockCandidate(content=MockContent(parts=[MockPart(text="Ok")]))
-    response2 = MockResponse(candidates=[candidate2])
-    
-    call_count = 0
-    captured_contents = []
-    
-    async def mock_call(*args, **kwargs):
-        nonlocal call_count, captured_contents
-        call_count += 1
-        if "contents" in kwargs:
-            captured_contents.append(kwargs["contents"])
-        elif len(args) > 1:
-            captured_contents.append(args[1])
-        elif len(args) > 0:
-            captured_contents.append(args[0])
-        if call_count == 1:
-            return response1
-        return response2
 
-    with patch.object(cerebro, '_call_gemini_with_retry_async', new=mock_call), \
-         patch('app.services.ai_brain.SDK_AVAILABLE', True):
-         
-        prospect = {
-            "nombre": "Carlos",
-            "moto_interest": "TVS Sport 100",
-            "ciudad": "Santa Marta",
-            "forma_pago": "Crédito",
-            "habeas_data_accepted": True
-        }
-        await cerebro.pensar_respuesta("Quiero mi crédito ciego", prospect_data=prospect)
-        
-        # Verify that we captured the second call contents
-        assert len(captured_contents) >= 2
-        second_call_contents = captured_contents[1]
-        
-        # Find the function response part
-        result_text = ""
-        # second_call_contents is the list of response_parts (types.Part objects)
-        for part in second_call_contents:
-            fun_res = getattr(part, "function_response", None)
-            if fun_res is not None:
-                resp = getattr(fun_res, "response", {})
-                if isinstance(resp, dict):
-                    result_text = resp.get("result", "")
-                else:
-                    result_text = getattr(resp, "result", "")
-                    if not result_text and hasattr(resp, "get"):
-                        result_text = resp.get("result", "")
-                break
-        
-        # Guardrail 1: El link digital NO debe estar presente en el resultado final (o debe estar bloqueado)
-        assert "https://crediorbe.digital.link/auth" not in result_text
-        assert "Link de Pre-aprobación" not in result_text
-        
-        # Guardrail 2: Instrucciones comerciales de contingencia exigidas
-        assert "cédula" in result_text.lower() or "cedula" in result_text.lower()
-        assert "foto" in result_text.lower()
-        assert "sedes" in result_text.lower()
-        assert "Riohacha" in result_text
-        assert "Santa Marta" in result_text
-        assert "Zona Bananera" in result_text
+def test_crediorbe_eradicated_from_source():
+    """
+    [FIX-E] Guard estático anti-regresión: la nomenclatura 'Crediorbe' no debe
+    reaparecer en la fuente de scoring_service.py ni ai_brain.py.
+    """
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    for rel in ("app/services/scoring_service.py", "app/services/ai_brain.py"):
+        src = (root / rel).read_text(encoding="utf-8")
+        assert "Crediorbe" not in src, f"'Crediorbe' reapareció en {rel}"
+        assert "crediorbe" not in src, f"'crediorbe' reapareció en {rel}"
+
+
+def test_personality_json_synced_to_brilla():
+    """
+    [FIX-E] personality.json (fallback #2) debe estar sincronizado a Brilla de
+    Gases en el PASO 2 del protocolo comercial, sin residuos de Crediorbe.
+    """
+    import json
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    data = json.loads((root / "app/core/personality.json").read_text(encoding="utf-8"))
+    si = data["system_instruction"]
+    assert "Crediorbe" not in si and "crediorbe" not in si
+    assert "mediante nuestro sistema de Brilla de Gases" in si
 
 
 def test_financial_service_default_entity_is_brilla():

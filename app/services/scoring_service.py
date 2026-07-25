@@ -176,14 +176,8 @@ class ScoringService:
                 "link_key": "link_banco_bogota",
                 "requires_aval": False
             }
-        elif score >= 400:
-            return {
-                "strategy": "FINTECH",
-                "entity": "Crediorbe",
-                "rate_key": "tasa_nmv_fintech",
-                "link_key": "link_crediorbe",
-                "requires_aval": True
-            }
+        # [FIX-E] Rama FINTECH de la entidad obsoleta purgada:
+        # score 400-699 converge al fallback BRILLA (unificación doctrinal).
         else:
             return {
                 "strategy": "BRILLA",

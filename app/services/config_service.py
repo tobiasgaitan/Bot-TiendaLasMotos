@@ -133,7 +133,8 @@ class ConfigService:
         Normalize entity ID to match Firestore document IDs.
         """
         if not entity_id:
-            return "crediorbe"
+            # [FIX-E] Default unificado bajo Brilla (entidad fintech obsoleta erradicada).
+            return "brilla"
             
         normalized = str(entity_id).lower().replace("banco_de_bogotá", "banco_bogota").replace("brilla_de_gases", "brilla").replace(" ", "_")
         
@@ -141,9 +142,9 @@ class ConfigService:
             return "brilla"
         elif "bogota" in normalized:
             return "banco_bogota"
-        elif "crediorbe" in normalized:
-            return "crediorbe"
-            
+        # [FIX-E] La entidad fintech obsoleta cae al fallthrough: normalized ya
+        # retorna el mismo valor para ese input; la rama explícita era redundante.
+
         return normalized
 
     def get_financial_matrix(self, entity_id: str) -> List[Dict[str, Any]]:
