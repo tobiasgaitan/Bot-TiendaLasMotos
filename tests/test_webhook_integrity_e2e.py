@@ -126,10 +126,9 @@ async def test_e2e_text_branch_full_funnel():
     Pin PCC Pro: la respuesta egresada conserva precio canónico, imagen markdown
     y ficha técnica (validadores regex, valores referenciados al ítem de fábrica).
     Pin de comportamiento vigente (Feathers): save_message("model") ocurre DOS veces
-    — una pre-egreso (L1558, texto crudo con markdown) y una intra-egreso (texto RAW
-    con markdown, D-HISTORY de [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008]). CH-5 no lo
-    observa porque mockea el egreso completo. La wave 05-05 podrá normalizar esta
-    duplicidad SOLO con aprobación del Auditor.
+    — una pre-egreso (L1558, texto crudo con markdown) y una intra-egreso (L1906,
+    texto limpio). CH-5 no lo observa porque mockea el egreso completo. La wave
+    05-05 podrá normalizar esta duplicidad SOLO con aprobación del Auditor.
     """
     item = _factory_item()
     canonical_price = format_cop(item["price"])
@@ -181,15 +180,12 @@ async def test_e2e_text_branch_full_funnel():
     # Juez de fundamentación: exactamente 1 auditoría (aprobada al primer intento).
     mock_judge.analyze_response.assert_awaited_once()
 
-    # Egreso [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008]: CERO Media API. Msg1 = token
-    # Markdown byte-idéntico con la URL canónica; Msg2 = texto con precio + ficha (PCC Pro).
-    send_image.assert_not_called()
-    text_calls = send_text.await_args_list
-    assert len(text_calls) == 2, f"Debían enviarse 2 mensajes de texto (markdown + texto): {text_calls!r}"
-    assert text_calls[0].args[1] == f"![{item['name']}]({item['image_url']})", (
-        f"Msg1 debía ser el Markdown byte-idéntico: {text_calls[0].args[1]!r}"
-    )
-    validators.assert_price_consistency(text_calls[1].args[1], item["price"])
+    # Egreso: imagen con URL canónica y caption que conserva precio + ficha (PCC Pro).
+    send_image.assert_awaited_once()
+    _, image_url, *rest = send_image.call_args.args
+    caption = send_image.call_args.kwargs.get("caption", "")
+    assert image_url == item["image_url"]
+    validators.assert_price_consistency(caption, item["price"])
     validators.assert_ficha_explicit(llm_response)
     validators.assert_image_reference(llm_response)
 
@@ -209,8 +205,7 @@ async def test_e2e_image_branch_moto_match_visual_lock():
     Rama imagen (moto detectada): match canónico → persistencia bloqueante de
     moto_interest + ponytail_status=PENDING [BOT-PONYTAIL-200] → cerebro con prompt
     canónico → Visual Lock post-generación (inyección de imagen y precio si el LLM
-    los omite) → egreso Visual-Lock Markdown [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008]:
-    Msg1 token byte-idéntico con URL canónica, Msg2 texto con precio canónico.
+    los omite) → egreso imagen con URL canónica y precio en caption.
     Pin de comportamiento vigente: el Juez NO audita esta rama.
     """
     item = _factory_item(idx=1)
@@ -280,17 +275,13 @@ async def test_e2e_image_branch_moto_match_visual_lock():
     # El Juez NO interviene en la rama imagen (comportamiento vigente pineado).
     mock_judge.analyze_response.assert_not_called()
 
-    # Visual Lock [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008]: CERO Media API. El
-    # egreso envía Msg1 = Markdown byte-idéntico con la URL canónica (aunque el
-    # LLM la omitió, el Visual Lock la inyecta) y Msg2 = texto con el precio
-    # canónico (PCC Pro, valor referenciado al ítem).
-    send_image.assert_not_called()
-    text_calls = send_text.await_args_list
-    assert len(text_calls) == 2, f"Debían enviarse 2 mensajes de texto (markdown + texto): {text_calls!r}"
-    assert text_calls[0].args[1] == f"![{item['name']}]({item['image_url']})", (
-        f"Msg1 debía ser el Markdown byte-idéntico con la URL canónica: {text_calls[0].args[1]!r}"
-    )
-    validators.assert_price_consistency(text_calls[1].args[1], item["price"])
+    # Visual Lock: el egreso usa la URL canónica aunque el LLM la omitió, y el
+    # caption porta el precio canónico (PCC Pro, valor referenciado al ítem).
+    send_image.assert_awaited_once()
+    _, image_url, *rest = send_image.call_args.args
+    caption = send_image.call_args.kwargs.get("caption", "")
+    assert image_url == item["image_url"]
+    validators.assert_price_consistency(caption, item["price"])
 
 
 # ── E2E-AUDIO ─────────────────────────────────────────────────────────────────

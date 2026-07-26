@@ -10,17 +10,15 @@ en `_process_and_send_egress_message`, BOT-BUGFIX-UNIFIED-EGRESS-PIPELINE-125).
          por CH-5 (phone, text, phone_number_id=…); cero efectos colaterales.
   PEI-2  HANDOFF_TRIGGERED: set_human_help(True) + ponytail DEPRIORITIZED +
          transferencia + notificación — sin pasar por el envío unificado.
-  PEI-3  PHASE_GATE_TRIGGERED (moto no confirmada): inyección de Visual-Lock
-         Markdown [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008] en el texto
-         ("Mira esta {Nombre}" + ![Nombre](URL)) y fall-through al envío
-         unificado; CERO Media API. Costura catalog: kwarg prioritario /
-         fallback al global.
+  PEI-3  PHASE_GATE_TRIGGERED (moto no confirmada): inyección de imagen dinámica
+         con caption "Mira esta {Nombre}\n\n{texto}" + save(model); sin envío
+         unificado. Costura catalog: kwarg prioritario / fallback al global.
   PEI-4  PHASE_GATE con moto confirmada: bypass de imagen y delegación al envío
          unificado con el texto despojado del prefijo.
-  PEI-5  Visual-Lock Markdown [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008]: texto con
-         Markdown ![alt](url) → DOS mensajes de texto (Msg1: token Markdown
-         byte-idéntico; Msg2: texto limpio), CERO Media API, y eco save(model)
-         POSTERIOR al envío con el texto RAW (Markdown incluido).
+  PEI-5  Unificación BOT-125 + Visual-Lock: texto con Markdown ![alt](url) →
+         _send_whatsapp_image con caption limpio (estrategia A) y eco
+         save(model) POSTERIOR al envío; patch targets de whatsapp_service
+         vigentes (resolución meta_sender en tiempo de llamada).
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -118,17 +116,15 @@ async def test_pei2_handoff_triggered_full_flow_without_unified_egress():
     mock_unified.assert_not_called()
 
 
-# ── PEI-3: PHASE_GATE (moto no confirmada) — Visual-Lock Markdown ────────────
+# ── PEI-3: PHASE_GATE (moto no confirmada) — imagen dinámica ─────────────────
 
 @pytest.mark.asyncio
 async def test_pei3_phase_gate_dynamic_image_injection_and_catalog_seam():
     """
-    [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008] PHASE_GATE sin moto confirmada:
-    búsqueda en catálogo del interés (o RAIDER 125 por defecto), inyección de
-    Visual-Lock Markdown ("Mira esta {Nombre}" + ![Nombre](URL)) en el texto y
-    FALL-THROUGH al envío unificado. CERO Media API (_send_whatsapp_image).
-    La costura catalog usa el kwarg inyectado (centinela global intacto) y, sin
-    kwarg, el global parcheado.
+    PHASE_GATE sin moto confirmada: búsqueda en catálogo del interés (o RAIDER 125
+    por defecto), envío de imagen con caption "Mira esta {Nombre}\\n\\n{texto}" y
+    save(model) — sin envío unificado. La costura catalog usa el kwarg inyectado
+    (centinela global intacto) y, sin kwarg, el global parcheado.
     """
     injected_catalog = _build_catalog_with_moto()
     sentinel_catalog = MagicMock(name="global_catalog_sentinel")
@@ -150,23 +146,20 @@ async def test_pei3_phase_gate_dynamic_image_injection_and_catalog_seam():
 
     injected_catalog.search_catalog.assert_called_once_with(MOTO_NAME)
     sentinel_catalog.search_catalog.assert_not_called()
-    # CERO Media API: la imagen viaja como Markdown en texto plano
-    mock_image_sender.assert_not_called()
-    # Fall-through al envío unificado con el Markdown inyectado (byte-idéntico)
-    mock_unified.assert_awaited_once_with(
-        PHONE_E164,
-        f"Mira esta {MOTO_NAME}\n\n![{MOTO_NAME}]({MOTO_URL})\n\nTenemos la Raider lista para ti.",
+    mock_image_sender.assert_awaited_once_with(
+        PHONE_E164, MOTO_URL,
+        caption=f"Mira esta {MOTO_NAME}\n\nTenemos la Raider lista para ti.",
         phone_number_id=PHONE_NUMBER_ID,
     )
-    # La persistencia la hereda el envío unificado (sin save directo en la rama)
-    mock_ms.save_message.assert_not_called()
+    mock_ms.save_message.assert_awaited_once_with(PHONE_E164, "model", "Tenemos la Raider lista para ti.")
+    mock_unified.assert_not_called()
 
     # Escenario b: sin kwarg catalog, el global parcheado dirige la búsqueda.
     global_catalog = _build_catalog_with_moto()
-    mock_unified2 = AsyncMock(return_value=True)
+    mock_ms2 = _build_ms_mock()
     mock_image_sender2 = AsyncMock(return_value=True)
-    with patch("app.routers.whatsapp.memory_service_module.memory_service", _build_ms_mock()), \
-         patch("app.routers.whatsapp._process_and_send_egress_message", mock_unified2), \
+    with patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms2), \
+         patch("app.routers.whatsapp._process_and_send_egress_message", AsyncMock(return_value=True)), \
          patch("app.routers.whatsapp._send_whatsapp_image", mock_image_sender2), \
          patch("app.routers.whatsapp.catalog_service", global_catalog):
         await _pipeline_egress(
@@ -177,9 +170,7 @@ async def test_pei3_phase_gate_dynamic_image_injection_and_catalog_seam():
         )
 
     global_catalog.search_catalog.assert_called_once_with("RAIDER 125")
-    mock_image_sender2.assert_not_called()
-    assert mock_unified2.await_count == 1
-    assert f"![{MOTO_NAME}]({MOTO_URL})" in mock_unified2.await_args.args[1]
+    mock_image_sender2.assert_awaited_once()
 
 
 # ── PEI-4: PHASE_GATE con moto confirmada (bypass) ───────────────────────────
@@ -211,16 +202,15 @@ async def test_pei4_phase_gate_bypass_when_moto_confirmed():
     )
 
 
-# ── PEI-5: Visual-Lock Markdown (markdown → 2 mensajes de texto, CERO Media API) ─
+# ── PEI-5: Unificación BOT-125 + Visual-Lock (markdown → imagen estrategia A) ─
 
 @pytest.mark.asyncio
 async def test_pei5_unified_egress_markdown_visual_lock_and_echo_save():
     """
-    [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008] Doctrina nueva de egreso: texto con
-    Markdown ![alt](url) → DOS mensajes de texto (Msg1: token Markdown
-    BYTE-IDÉNTICO; Msg2: texto limpio con precio), CERO Media API
-    (_send_whatsapp_image), y eco save(model) POSTERIOR al envío con el texto
-    RAW (Markdown incluido, fiel a lo que el usuario recibió).
+    El egreso consolidado preserva la unificación BOT-125: texto con Markdown
+    ![alt](url) → `_send_whatsapp_image` (estrategia A, caption limpio sin tags)
+    y eco save(model) POSTERIOR al envío con el texto limpio. Los patch targets
+    de los senders resuelven en tiempo de llamada.
     """
     timeline = []
     mock_ms = _build_ms_mock()
@@ -231,16 +221,12 @@ async def test_pei5_unified_egress_markdown_visual_lock_and_echo_save():
 
     mock_ms.save_message = AsyncMock(side_effect=_save)
 
-    async def _send_text(phone, text, phone_number_id=None, **kwargs):
-        timeline.append(("send_text", text))
-        return True
-
     async def _send_image(phone, url, caption="", phone_number_id=None, **kwargs):
         timeline.append(("send_image", url, caption))
         return True
 
     mock_image_sender = AsyncMock(side_effect=_send_image)
-    mock_text_sender = AsyncMock(side_effect=_send_text)
+    mock_text_sender = AsyncMock(return_value=True)
     markdown_text = f"Mira esta {MOTO_NAME}\n\n![{MOTO_NAME}]({MOTO_URL})\n\nPrecio: $9.000.000"
 
     with patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
@@ -254,24 +240,19 @@ async def test_pei5_unified_egress_markdown_visual_lock_and_echo_save():
             catalog=MagicMock(name="catalog"),
         )
 
-    # CERO Media API en el path de catálogo
-    mock_image_sender.assert_not_called()
-
-    # Msg1: token Markdown BYTE-IDÉNTICO (ancla visual, preview_url lo renderiza)
-    assert timeline[0] == ("send_text", f"![{MOTO_NAME}]({MOTO_URL})"), (
-        f"El primer mensaje debía ser el Markdown byte-idéntico: {timeline!r}"
+    mock_image_sender.assert_awaited_once()
+    _, url, caption = timeline[0]
+    assert url == MOTO_URL, f"URL canónica alterada en el egreso: {url!r}"
+    assert "![" not in caption and "](" not in caption, (
+        f"El caption debía quedar limpio de Markdown (PCC Pro): {caption!r}"
     )
-    # Msg2: texto limpio con el precio (Visual-Lock en el mismo turno)
-    assert timeline[1][0] == "send_text"
-    assert "![" not in timeline[1][1] and "](" not in timeline[1][1]
-    assert f"Mira esta {MOTO_NAME}" in timeline[1][1] and "Precio: $9.000.000" in timeline[1][1]
+    assert f"Mira esta {MOTO_NAME}" in caption and "Precio: $9.000.000" in caption
 
-    # Eco save(model): POSTERIOR al envío y con el texto RAW (Markdown incluido)
-    assert [e[0] for e in timeline] == ["send_text", "send_text", "save"], (
-        f"Secuencia esperada: markdown, texto, save: {timeline!r}"
+    # Eco save(model) intra-egreso: POSTERIOR al envío y con el texto limpio.
+    assert [e[0] for e in timeline] == ["send_image", "save"], (
+        f"El eco save(model) debía ser posterior al envío: {timeline!r}"
     )
-    _, role, saved_text = timeline[2]
+    _, role, saved_text = timeline[1]
     assert role == "model"
-    assert saved_text == markdown_text, (
-        f"La historia debe persistir el texto RAW con Markdown: {saved_text!r}"
-    )
+    assert "![" not in saved_text and "](" not in saved_text
+    mock_text_sender.assert_not_called()

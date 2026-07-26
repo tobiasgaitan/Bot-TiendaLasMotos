@@ -2078,11 +2078,10 @@ async def _pipeline_egress(
 
     Responsabilidad: HANDOFF_TRIGGERED (set_human_help + ponytail DEPRIORITIZED +
     aviso de transferencia + notificación), PHASE_GATE_TRIGGERED (inyección de
-    Visual-Lock Markdown [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008] con bypass por
-    moto confirmada) y delegación al envío unificado
-    `_process_and_send_egress_message` (BOT-BUGFIX-UNIFIED-EGRESS-125; su firma
-    exacta se preserva — pin CH-5 — y su lógica Markdown/Visual-Lock y el eco
-    save(model) quedan intactos).
+    imagen dinámica v6.3.1 con bypass por moto confirmada) y delegación al envío
+    unificado `_process_and_send_egress_message` (BOT-BUGFIX-UNIFIED-EGRESS-125;
+    su firma exacta se preserva — pin CH-5 — y su lógica Markdown/Visual-Lock y el
+    eco save(model) quedan intactos).
 
     `image_url`/`meta_sender`: costuras RESERVADAS por simetría de firma (los
     helpers de envío resuelven su propia costura meta_sender; `image_url` es
@@ -2143,12 +2142,15 @@ async def _pipeline_egress(
                             moto_name = moto.get("name")
 
                             if image_url:
-                                # [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008] Visual-Lock en
-                                # Markdown texto (Media API erradicada del path de catálogo).
-                                # Fall-through: el envío unificado entrega Markdown + texto
-                                # y persiste la historia (sin early return).
-                                logger.info(f"📸 Phase-Gate Visual-Lock Markdown: {moto_name}")
-                                response_text = f"Mira esta {moto_name}\n\n![{moto_name}]({image_url})\n\n{response_text}"
+                                # Caption v6.3.1: "Mira esta [Moto]"
+                                caption = f"Mira esta {moto_name}\n\n{response_text}"
+                                logger.info(f"📸 Sending Phase-Gate dynamic image: {image_url} for {moto_name}")
+                                await _send_whatsapp_image(user_phone, image_url, caption=caption, phone_number_id=phone_number_id)
+
+                                # Save to history and stop
+                                if memory_service_module.memory_service:
+                                    await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
+                                return 
                     except Exception as e:
                         logger.exception(f"⚠️ Error injecting dynamic Phase-Gate image: {e}")
             else:
@@ -2169,38 +2171,51 @@ async def _process_and_send_egress_message(user_phone: str, response_text: str, 
     persiste el resultado en Firestore a través de memory_service.
     """
     try:
-        # --- VISUAL-LOCK MARKDOWN EGRESS [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008] ---
-        # Media API erradicada del path de catálogo: el 131053 de Meta (crawler 404
-        # al descargar el weblink) mataba la entrega COMPLETA — imagen y caption —
-        # vía status webhook asíncrono. El Markdown viaja como TEXTO (preview_url=True
-        # en send_text_message renderiza thumbnail sin descarga server-side de Meta),
-        # cumpliendo REGLA_DE_VISUALES (![Nombre_Moto](URL)) de forma byte-idéntica.
-        # El patrón exige '!' — los links planos [texto](url) quedan como texto clicable.
-        markdown_token_pattern = r'(!\[[\s\S]*?\]\s*\(https?://[^\s\)]+\))'
+        # --- NATIVE IMAGE INTEGRATION ---
+        # Support both Markdown ![alt](url) and legacy [IMAGE: url]
+        markdown_pattern = r'!?\[[\s\S]*?\]\s*\((https?://[^\s\)]+)\)'
         legacy_pattern = r'\[IMAGE:\s*(https?://[^\s\]]+)\]'
-
-        markdown_tokens = re.findall(markdown_token_pattern, response_text)
-        legacy_urls = re.findall(legacy_pattern, response_text)
-
-        if markdown_tokens or legacy_urls:
-            # Texto principal sin tags (precio + pregunta), idéntico al caption de hoy
-            cleaned_response_text = re.sub(markdown_token_pattern, '', response_text)
-            cleaned_response_text = re.sub(legacy_pattern, '', cleaned_response_text).strip()
-
-            # Msg 1 (D-ORDER: Markdown primero) — Visual-Lock BYTE-IDÉNTICO.
-            # 1 línea por token → ≤350 chars garantizado (REGLAS_DE_LONGITUD).
-            image_lines = markdown_tokens + [f"![Moto]({u})" for u in legacy_urls]
-            logger.info(f"📸 Visual-Lock Markdown egress: {len(image_lines)} imagen(es) como texto plano")
-            await _send_whatsapp_message(user_phone, "\n".join(image_lines), phone_number_id=phone_number_id)
-
-            # Msg 2 — Texto (precio + pregunta de cierre)
-            if cleaned_response_text:
-                await _send_whatsapp_message(user_phone, cleaned_response_text, phone_number_id=phone_number_id)
+        
+        markdown_matches = re.findall(markdown_pattern, response_text)
+        legacy_matches = re.findall(legacy_pattern, response_text)
+        images_found = markdown_matches + legacy_matches
+        
+        # Remove all image tags from the text to avoid showing raw markdown/tags to the user
+        cleaned_response_text = re.sub(markdown_pattern, '', response_text)
+        cleaned_response_text = re.sub(legacy_pattern, '', cleaned_response_text).strip()
+        
+        # If images found, send them using Strategy A (Caption) for better .webp compatibility
+        if images_found:
+            image_url = images_found[0] # Take the first image
+            
+            # STRATEGY A (Caption): Single payload for better .webp compatibility
+            # WhatsApp Caption Limit: 1024 characters
+            MAX_CAPTION = 1024
+            
+            caption = cleaned_response_text
+            overflow_text = ""
+            
+            if len(caption) > MAX_CAPTION:
+                logger.warning(f"⚠️ Caption too long ({len(caption)} chars). Splitting...")
+                # Find last space within limit to avoid cutting words
+                split_idx = caption.rfind(' ', 0, MAX_CAPTION)
+                if split_idx == -1: split_idx = MAX_CAPTION
+                overflow_text = caption[split_idx:].strip()
+                caption = caption[:split_idx].strip()
+            
+            logger.info(f"📸 Strategy A (Caption): url={image_url}")
+            await _send_whatsapp_image(user_phone, image_url, caption=caption, phone_number_id=phone_number_id)
+            
+            if overflow_text:
+                logger.info(f"📤 Sending overflow text ({len(overflow_text)} chars)")
+                await _send_whatsapp_message(user_phone, overflow_text, phone_number_id=phone_number_id)
+            
+            # Store the cleaned text for history to avoid raw markdown clutter
+            response_text = cleaned_response_text 
         else:
             await _send_whatsapp_message(user_phone, response_text, phone_number_id=phone_number_id)
-
-        # Save Bot Response to History (D-HISTORY: RAW con Markdown — fiel a lo que
-        # el usuario recibió; conserva los artefactos Visual-Lock para auditoría).
+        
+        # Save Bot Response to History (PERSISTENCE FIX)
         if memory_service_module.memory_service:
             await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
             
