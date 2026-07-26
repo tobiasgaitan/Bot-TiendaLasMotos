@@ -1959,7 +1959,18 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 while turns < max_turns:
                     if not response.candidates or not response.candidates[0].content.parts:
                         logger.error(f"🚨 [AI FALLBACK REASON]: Empty Candidate in Turn {turns+1} for {user_name}")
-                        return self._fallback_response(texto, history)
+                        # [BOT-BUILD-FIX-CATALOG-SEARCH-REGRESSION-005] Retry inline antes de degradar:
+                        # un empty-candidate transitorio (safety filter espurio) NO debe sacrificar
+                        # resultados de herramientas ya obtenidos (catálogo/crédito). Patrón FIX-2B.
+                        response = await self._call_gemini_with_retry_async(
+                            chat.send_message,
+                            "[SYSTEM: Tu respuesta anterior llegó vacía. Genera AHORA la respuesta final "
+                            "al usuario usando ÚNICAMENTE los resultados de las herramientas ya ejecutadas.]",
+                            config=types.GenerateContentConfig(temperature=0.1)
+                        )
+                        if not response.candidates or not response.candidates[0].content.parts:
+                            return self._fallback_response(texto, history)
+                        continue
 
                     candidate = response.candidates[0]
                     function_calls = [part.function_call for part in candidate.content.parts if part.function_call]
