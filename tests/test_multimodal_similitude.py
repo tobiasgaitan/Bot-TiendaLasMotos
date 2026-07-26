@@ -1,3 +1,4 @@
+import re
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from app.services.catalog_service import CatalogService, PRICE_PACKAGE_ANCHOR
@@ -690,22 +691,30 @@ async def test_incoming_image_webhook_multimodal_similitude_flow():
                 }
             )
 
-            assert mock_http_post.call_count == 1
-            meta_payload = mock_http_post.call_args.kwargs.get("json")
-            assert meta_payload is not None
-            assert meta_payload.get("type") == "image"
+            # [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008] Doctrina Markdown:
+            # 2 POSTs de TEXTO (Msg1 token byte-idéntico, Msg2 texto), CERO 'image'.
+            assert mock_http_post.call_count == 2
+            payloads = [c.kwargs.get("json") for c in mock_http_post.call_args_list]
+            assert all(p and p.get("type") == "text" for p in payloads), \
+                f"Media API erradicada del path de catálogo: {payloads!r}"
 
-            # AF-13: canonical image link
-            assert meta_payload["image"]["link"] == "https://img.url/tvs_sport.jpg"
+            # AF-13: canonical image URL en Markdown byte-idéntico (Msg1, primer
+            # token). Si el Visual Lock añade el token canónico (URL del LLM no
+            # canónica), viaja como línea adicional — robusto ante el estado del
+            # singleton de catálogo en sesión de tests.
+            img_lines = payloads[0]["text"]["body"].split("\n")
+            assert img_lines[0] == "![TVS Sport 100](https://img.url/tvs_sport.jpg)"
+            for line in img_lines:
+                assert re.fullmatch(r"!\[[^\]]+\]\(https?://[^\s\)]+\)", line)
 
-            # AF-11: canonical price in caption
-            caption = meta_payload["image"]["caption"]
-            assert "TVS Sport 100" in caption
-            assert "$6.200.000" in caption
+            # AF-11: canonical price en el texto (Msg2)
+            body_text = payloads[1]["text"]["body"]
+            assert "TVS Sport 100" in body_text
+            assert "$6.200.000" in body_text
 
             # AF-12: Ficha Tecnica: prefix present (was missing in v10.45)
-            assert "Ficha Tecnica:" in caption, (
-                "AF-12 FAIL: caption must contain literal 'Ficha Tecnica:' prefix"
+            assert "Ficha Tecnica:" in body_text, (
+                "AF-12 FAIL: el texto debe contener el prefijo literal 'Ficha Tecnica:'"
             )
 
     finally:
@@ -866,10 +875,13 @@ async def test_image_tech_caption_injects_canonical_ficha_hint():
     assert "OBLIGATORIO: incluye el prefijo literal 'Ficha Tecnica:'" in simulated_user_msg
     assert summary in simulated_user_msg
 
-    assert mock_http_post.call_count == 1
-    meta_payload = mock_http_post.call_args.kwargs.get("json")
-    assert meta_payload.get("type") == "image"
-    assert "Ficha Tecnica:" in meta_payload["image"]["caption"]
+    # [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008] 2 POSTs de texto: Msg1 markdown
+    # byte-idéntico, Msg2 con el prefijo literal 'Ficha Tecnica:'.
+    assert mock_http_post.call_count == 2
+    payloads = [c.kwargs.get("json") for c in mock_http_post.call_args_list]
+    assert all(p and p.get("type") == "text" for p in payloads)
+    assert payloads[0]["text"]["body"] == "![TVS Sport 100](https://img.url/tvs_sport.jpg)"
+    assert "Ficha Tecnica:" in payloads[1]["text"]["body"]
 
 
 @pytest.mark.asyncio
@@ -887,10 +899,14 @@ async def test_image_tech_caption_backstop_injects_ficha_when_llm_omits():
         caption="que tipo de encendido maneja?", summary=summary, llm_text=llm_text
     )
 
-    assert mock_http_post.call_count == 1
-    caption_out = mock_http_post.call_args.kwargs["json"]["image"]["caption"]
-    assert "Ficha Tecnica:" in caption_out
-    assert summary in caption_out
+    # [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008] El backstop inyecta la ficha en el
+    # texto (Msg2); Msg1 queda reservado al Markdown byte-idéntico.
+    assert mock_http_post.call_count == 2
+    payloads = [c.kwargs.get("json") for c in mock_http_post.call_args_list]
+    assert all(p and p.get("type") == "text" for p in payloads)
+    body_text = payloads[1]["text"]["body"]
+    assert "Ficha Tecnica:" in body_text
+    assert summary in body_text
 
 
 @pytest.mark.asyncio
@@ -913,6 +929,10 @@ async def test_image_nontech_caption_no_ficha_injection():
     assert len(user_saves) == 1
     assert "OBLIGATORIO" not in user_saves[0].args[2]
 
-    assert mock_http_post.call_count == 1
-    caption_out = mock_http_post.call_args.kwargs["json"]["image"]["caption"]
-    assert "Ficha Tecnica:" not in caption_out
+    # [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008] Caption no técnico: el texto (Msg2)
+    # queda libre de bloques 'Ficha Tecnica:' añadidos por la costura visual.
+    assert mock_http_post.call_count == 2
+    payloads = [c.kwargs.get("json") for c in mock_http_post.call_args_list]
+    assert all(p and p.get("type") == "text" for p in payloads)
+    body_text = payloads[1]["text"]["body"]
+    assert "Ficha Tecnica:" not in body_text

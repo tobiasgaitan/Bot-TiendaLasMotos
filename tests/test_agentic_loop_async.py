@@ -1,5 +1,6 @@
 import pytest
 import asyncio
+import re
 import subprocess
 from unittest.mock import AsyncMock, patch, MagicMock
 from app.services.agentic_loop_service import AgenticOrchestrator
@@ -1502,27 +1503,26 @@ async def test_whatsapp_image_url_with_complex_query_params_regression():
             background_tasks = BackgroundTasks()
             await _handle_message_background(msg_data, background_tasks)
 
-            # 5. Verificaciones
-            assert mock_http_post.call_count == 1, "Debe haber enviado exactamente 1 petición POST a Meta."
-            call_args = mock_http_post.call_args
-            assert call_args is not None, "La llamada a Meta API no se realizó."
-            meta_payload = call_args.kwargs.get("json")
-            assert meta_payload is not None, "El payload JSON enviado a Meta está vacío."
-            
-            # Aserción rígida sobre el objeto de payload saliente simulado para Meta:
-            assert meta_payload.get("type") == "image", "El tipo de mensaje debe mutar estrictamente a 'image'."
-            assert "image" in meta_payload, "El payload debe contener el objeto de imagen."
-            
-            image_data = meta_payload["image"]
-            assert image_data.get("link") == complex_image_url, "La URL de la imagen en el link debe ser la URL compleja."
-            
-            sent_caption = image_data.get("caption", "")
-            # - El texto limpio del caption no debe contener ningún Markdown crudo o remanente del tag ![alt](url)
-            assert "[" not in sent_caption, f"El caption retiene corchetes de apertura: '{sent_caption}'"
-            assert "]" not in sent_caption, f"El caption retiene corchetes de cierre: '{sent_caption}'"
-            assert "https://firebasestorage.googleapis.com" not in sent_caption, "El caption retiene la URL de la imagen."
-            
-            # - El caption debe contener la información comercial y la ficha técnica
+            # 5. Verificaciones [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008]:
+            # Doctrina Markdown — 2 POSTs de TEXTO, CERO payload type='image'.
+            assert mock_http_post.call_count == 2, "Deben enviarse exactamente 2 POST a Meta (markdown + texto)."
+
+            payloads = [c.kwargs.get("json") for c in mock_http_post.call_args_list]
+            assert all(p and p.get("type") == "text" for p in payloads), \
+                f"Todos los mensajes deben ser type='text' (Media API erradicada): {payloads!r}"
+
+            # Msg1: Markdown BYTE-IDÉNTICO (la URL compleja con query params sobrevive íntegra)
+            body_img = payloads[0]["text"]["body"]
+            assert body_img == f"![Victory Advance R 125]({complex_image_url})", \
+                f"Msg1 debía ser el Markdown byte-idéntico: {body_img!r}"
+
+            # Msg2: texto limpio — sin tags Markdown ni URL cruda
+            sent_caption = payloads[1]["text"]["body"]
+            assert "[" not in sent_caption, f"El texto retiene corchetes de apertura: '{sent_caption}'"
+            assert "]" not in sent_caption, f"El texto retiene corchetes de cierre: '{sent_caption}'"
+            assert "https://firebasestorage.googleapis.com" not in sent_caption, "El texto retiene la URL de la imagen."
+
+            # - El texto debe contener la información comercial y la ficha técnica
             assert "Victory Advance R 125" in sent_caption
             assert "$8.900.000" in sent_caption
             assert "Ficha Tecnica:" in sent_caption
@@ -1655,27 +1655,36 @@ async def test_incoming_image_webhook_egress_unification():
             background_tasks = BackgroundTasks()
             await _handle_message_background(msg_data, background_tasks)
 
-            # 5. Verificaciones
-            assert mock_http_post.call_count == 1, "Debe haber enviado exactamente 1 petición POST a Meta."
-            call_args = mock_http_post.call_args
-            assert call_args is not None, "La llamada a Meta API no se realizó."
-            meta_payload = call_args.kwargs.get("json")
-            assert meta_payload is not None, "El payload JSON enviado a Meta está vacío."
-            
-            # Aserción rígida sobre el objeto de payload saliente simulado para Meta:
-            assert meta_payload.get("type") == "image", "El tipo de mensaje debe mutar estrictamente a 'image'."
-            assert "image" in meta_payload, "El payload debe contener el objeto de imagen."
-            
-            image_data = meta_payload["image"]
-            assert image_data.get("link") == complex_image_url, "La URL de la imagen en el link debe ser la URL compleja."
-            
-            sent_caption = image_data.get("caption", "")
-            # - El texto limpio del caption no debe contener ningún Markdown crudo o remanente del tag ![alt](url)
-            assert "[" not in sent_caption, f"El caption retiene corchetes de apertura: '{sent_caption}'"
-            assert "]" not in sent_caption, f"El caption retiene corchetes de cierre: '{sent_caption}'"
-            assert "https://firebasestorage.googleapis.com" not in sent_caption, "El caption retiene la URL de la imagen."
-            
-            # - El caption debe contener la información comercial y la ficha técnica
+            # 5. Verificaciones [BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008]:
+            # Doctrina Markdown — 2 POSTs de TEXTO (Msg1 token byte-idéntico,
+            # Msg2 texto limpio), CERO payload type='image' (Media API erradicada).
+            assert mock_http_post.call_count == 2, "Deben enviarse exactamente 2 POST a Meta (markdown + texto)."
+
+            payloads = [c.kwargs.get("json") for c in mock_http_post.call_args_list]
+            assert all(p and p.get("type") == "text" for p in payloads), \
+                f"Todos los mensajes deben ser type='text' (Media API erradicada del path de catálogo): {payloads!r}"
+
+            # Msg1: Markdown(s) BYTE-IDÉNTICO(s) con preview_url para el thumbnail.
+            # El PRIMER token es el del LLM; si el Visual Lock post-generación añade
+            # el token canónico (URL del LLM no canónica), viaja como línea adicional
+            # — robusto ante el estado del singleton de catálogo en sesión de tests.
+            # El URL-lock (ponytail-debt, FIX-008) colapsará duplicados no canónicos.
+            body_img = payloads[0]["text"]["body"]
+            img_lines = body_img.split("\n")
+            assert img_lines[0] == f"![TVS Sport 100]({complex_image_url})", \
+                f"El primer token debía ser el Markdown byte-idéntico del LLM: {img_lines[0]!r}"
+            for line in img_lines:
+                assert re.fullmatch(r"!\[[^\]]+\]\(https?://[^\s\)]+\)", line), \
+                    f"Línea de Msg1 no es un token Markdown válido: {line!r}"
+            assert payloads[0]["text"].get("preview_url") is True
+
+            # Msg2: texto limpio — sin tags Markdown ni URL cruda
+            sent_caption = payloads[1]["text"]["body"]
+            assert "[" not in sent_caption, f"El texto retiene corchetes de apertura: '{sent_caption}'"
+            assert "]" not in sent_caption, f"El texto retiene corchetes de cierre: '{sent_caption}'"
+            assert "https://firebasestorage.googleapis.com" not in sent_caption, "El texto retiene la URL de la imagen."
+
+            # - El texto debe contener la información comercial y la ficha técnica
             assert "TVS Sport 100" in sent_caption
             assert "$6.200.000" in sent_caption
             assert "Ficha Tecnica:" in sent_caption

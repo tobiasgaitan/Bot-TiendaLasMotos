@@ -84,3 +84,22 @@ Candidato a purga de módulo completo junto con `survey_service.py`.
 | # | Ubicación | Hallazgo | Estado |
 |---|-----------|----------|--------|
 | 1 | `app/services/financial_service.py:437-451` (`_generate_generic_response`) | String user-facing "🏍️ Simulación de Crédito" con `Banco de Bogotá` y `Crédito Brilla` hardcoded (viola neutralidad PASO 3/4). Alcanzable solo vía `simulate_credit` (L380) / alias `simular_credito` (L546), ambos SIN callers en `app/`. | PENDIENTE |
+
+---
+
+## BOT-PLAN-FIX-VISUAL-LOCK-MARKDOWN-008 — Registrado 2026-07-26
+
+Raíz forense de los errores 131053/404 de Media API detectada durante el
+análisis del ticket: el LLM **fabrica URLs de imagen inexistentes** (ej.
+`auteco.com.co/wp-content/uploads/*.webp` — verificado: ausentes de los 59
+docs de Firestore y del código) en lugar de copiar el Image URL canónico del
+catálogo (Firebase). El fix de transporte (Markdown en texto plano) eliminó el
+impacto fatal (texto+link siempre llegan), pero una URL alucinada aún impide
+el thumbnail del preview. Decisión del Auditor (D-URL-LOCK): la validación de
+URLs queda como ticket SEPARADO.
+
+### URL-lock anti-alucinación (ticket separado, NO implementado en FIX-008)
+
+| # | Ubicación | Diseño propuesto | Estado |
+|---|-----------|------------------|--------|
+| 1 | `app/routers/whatsapp.py` (`_process_and_send_egress_message`) | Validar el Markdown URL contra los `image_url` canónicos del catálogo (índice `_items_by_image_url_norm` o búsqueda por nombre de moto en alt-text) y sustituirlo por el canónico antes de enviar. Complemento: guardarraíl en ai_brain.py (hallucinated_model) que hoy valida nombres pero NO URLs. | PENDIENTE |
