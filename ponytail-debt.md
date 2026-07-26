@@ -84,3 +84,33 @@ Candidato a purga de módulo completo junto con `survey_service.py`.
 | # | Ubicación | Hallazgo | Estado |
 |---|-----------|----------|--------|
 | 1 | `app/services/financial_service.py:437-451` (`_generate_generic_response`) | String user-facing "🏍️ Simulación de Crédito" con `Banco de Bogotá` y `Crédito Brilla` hardcoded (viola neutralidad PASO 3/4). Alcanzable solo vía `simulate_credit` (L380) / alias `simular_credito` (L546), ambos SIN callers en `app/`. | PENDIENTE |
+
+---
+
+## BOT-BUILD-REVERT-VISUAL-LOCK-009 — Registrado 2026-07-26
+
+REVERSIÓN de FIX-008 (commit `0e53ce6`): el envío de imágenes de catálogo como
+Markdown en texto plano mostraba al usuario el string literal `![Nombre](URL)`
+— WhatsApp NO renderiza Markdown como imagen embebida. Restaurada la doctrina
+Media API (`send_image_message`, payload `type='image'` + `link` + `caption`),
+blindada por `tests/test_media_api_catalog_images_009.py`.
+
+### Causa raíz del error 131053 (investigación, paso 6 del ticket)
+
+Evidencia Cloud Logging (2026-07-25/26): el 131053 llega vía **STATUS webhook**
+(entrega asíncrona) con `Downloading media from weblink failed with http code
+404`. Los 2 incidentes capturados fueron precedidos por Strategy A con URLs
+`auteco.com.co/wp-content/uploads/*.webp` — URLs **ausentes** de los 59 docs
+de Firestore (4 campos URL verificados) y del código → **alucinación del LLM**
+(fabrica URLs del CDN de auteco en lugar de copiar el Image URL canónico
+Firebase del tool output). Las entregas con URL Firebase canónica no muestran
+131053 adyacente en la ventana analizada. El Auditor determinó además un fallo
+transitorio de Firebase Storage/CORS (7:34 a.m.) como factor del incidente
+original. **Conclusión: el formato de envío (Media API) siempre fue correcto;
+el vector residual son las URLs no canónicas.**
+
+### Deuda viva (CRÍTICA post-reversión): URL-lock anti-alucinación
+
+| # | Ubicación | Diseño propuesto | Estado |
+|---|-----------|------------------|--------|
+| 1 | `app/routers/whatsapp.py` (`_process_and_send_egress_message`) + `app/services/ai_brain.py` | Con Media API restaurada, una URL alucinada vuelve a poder matar la entrega COMPLETA (imagen+caption) vía 131053 silencioso. Diseñar URL-lock: validar el Markdown URL contra los `image_url` canónicos (`_items_by_image_url_norm` o búsqueda por nombre en alt-text) y sustituir por el canónico ANTES de enviar. Complemento: el guardarraíl `hallucinated_model` de ai_brain.py valida nombres de moto pero NO URLs. | PENDIENTE — ticket separado |
