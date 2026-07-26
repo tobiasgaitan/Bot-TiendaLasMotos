@@ -2080,7 +2080,9 @@ async def test_pensar_respuesta_faq_only_brake_block_e2e():
         # [BOT-BUILD-205] Updated assertions to match condensed brake block format
         assert "[FRENO FAQ — MÁXIMA PRIORIDAD]" in prompt, "Falta bloque de freno cognitivo"
         assert "<intercepcion_faq>faq_only</intercepcion_faq>" in prompt, "Falta tag intercepcion_faq=faq_only"
-        assert "Para darte el valor exacto de las cuotas" in prompt, "Falta pregunta pendiente textual de Habeas Data"
+        # [BOT-PLAN-FIX-HARDCODE-ENTITY-LEAK-007] Pin actualizado al script neutral
+        # verbatim del PASO 4 (la aserción anterior pineaba la fuga "sistema de Brilla").
+        assert "Para hacer el estudio formal y validar tu cupo exacto con nuestro sistema" in prompt, "Falta pregunta pendiente textual de Habeas Data"
         assert "PROHIBIDO:" in prompt, "Falta prohibición en FAQ brake block"
 
         # Verificar que calculate_credit_score no está en las tools

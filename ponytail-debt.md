@@ -69,3 +69,18 @@ dejados fuera de scope por decisión explícita del owner.
 - **Causa:** Paquete `google-cloud-secret-manager` ausente en el venv local de Python del sistema.
 - **Impacto:** Solo afecta ejecución local con `python3 -m pytest`. Bajo `npx agent-cli eval` (entorno oficial con venv completo) la suite pasa 527/527 verde.
 - **Fix trivial:** `pip install google-cloud-secret-manager` en el entorno local.
+
+---
+
+## BOT-PLAN-FIX-HARDCODE-ENTITY-LEAK-007 — Registrado 2026-07-25
+
+String user-facing con entidades hardcoded detectado durante el inventario
+forense del ticket. Es código muerto (0 callers en `app/`), por lo que quedó
+FUERA del hotfix por decisión explícita del Auditor (riesgo runtime cero).
+Candidato a purga de módulo completo junto con `survey_service.py`.
+
+### Código muerto no cableado (purga NO autorizada en este ticket)
+
+| # | Ubicación | Hallazgo | Estado |
+|---|-----------|----------|--------|
+| 1 | `app/services/financial_service.py:437-451` (`_generate_generic_response`) | String user-facing "🏍️ Simulación de Crédito" con `Banco de Bogotá` y `Crédito Brilla` hardcoded (viola neutralidad PASO 3/4). Alcanzable solo vía `simulate_credit` (L380) / alias `simular_credito` (L546), ambos SIN callers en `app/`. | PENDIENTE |

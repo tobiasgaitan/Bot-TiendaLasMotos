@@ -499,10 +499,15 @@ class CerebroIA:
         if phase == "PHASE_2_HABEAS_DATA":
             is_accepted = data.get("habeas_data_accepted") is True
             if not is_accepted:
+                # [BOT-PLAN-FIX-HARDCODE-ENTITY-LEAK-007] Script verbatim del PASO 4
+                # del prompt (neutralidad de entidad: "nuestro sistema"). Erradica el
+                # residuo stale "mediante nuestro sistema de Brilla de Gases" que el
+                # prompt ya había saneado en PROMPT-RESTORE-EXACT-003. Conserva el link
+                # físico (disparador de habeas_data_accepted_sent y del guard FIX-004).
                 return (
-                    "Para darte el valor exacto de las cuotas mediante nuestro sistema de Brilla de Gases, "
+                    "Para hacer el estudio formal y validar tu cupo exacto con nuestro sistema, "
                     "¿me autorizas el tratamiento de tus datos? (Política: https://tiendalasmotos.com/politica-de-privacidad). "
-                    "Solo confírmame con un 'Sí'."
+                    "Solo confírmame con un 'Sí' o con un emoji de pulgar arriba (👍)."
                 )
             if not p_name:
                 return "¿Podrías indicarme tu nombre completo?"
