@@ -347,22 +347,22 @@ async def test_meta_sender_kwarg_in_sender_helpers_and_global_fallback():
             PHONE_E164, "hola", phone_number_id=PHONE_NUMBER_ID, meta_sender=mock_meta
         )
         ok_image = await _send_whatsapp_image(
-            PHONE_E164, "http://img.test/x.png", caption="cap", phone_number_id=PHONE_NUMBER_ID,
+            PHONE_E164, "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/x.png?alt=media", caption="cap", phone_number_id=PHONE_NUMBER_ID,
             meta_sender=mock_meta,
         )
 
     assert ok_text is True and ok_image is True
     mock_meta.send_text_message.assert_awaited_once_with(PHONE_E164, "hola", phone_number_id=PHONE_NUMBER_ID)
-    mock_meta.send_image_message.assert_awaited_once_with(PHONE_E164, "http://img.test/x.png", "cap", phone_number_id=PHONE_NUMBER_ID)
+    mock_meta.send_image_message.assert_awaited_once_with(PHONE_E164, "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/x.png?alt=media", "cap", phone_number_id=PHONE_NUMBER_ID)
     sentinel_wa.send_text_message.assert_not_called()
     sentinel_wa.send_image_message.assert_not_called()
 
     # Fallback: sin kwarg, el singleton diferido (parcheado) resuelve en tiempo de llamada.
     with patch("app.services.whatsapp_service.whatsapp_service", sentinel_wa):
         await _send_whatsapp_message(PHONE_E164, "hola2", phone_number_id=PHONE_NUMBER_ID)
-        await _send_whatsapp_image(PHONE_E164, "http://img.test/y.png", caption="cap2", phone_number_id=PHONE_NUMBER_ID)
+        await _send_whatsapp_image(PHONE_E164, "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/y.png?alt=media", caption="cap2", phone_number_id=PHONE_NUMBER_ID)
     sentinel_wa.send_text_message.assert_awaited_once_with(PHONE_E164, "hola2", phone_number_id=PHONE_NUMBER_ID)
-    sentinel_wa.send_image_message.assert_awaited_once_with(PHONE_E164, "http://img.test/y.png", "cap2", phone_number_id=PHONE_NUMBER_ID)
+    sentinel_wa.send_image_message.assert_awaited_once_with(PHONE_E164, "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/y.png?alt=media", "cap2", phone_number_id=PHONE_NUMBER_ID)
 
 
 # ── DI-7: resolve_query_aliases (kwarg + fallback global) ─────────────────────

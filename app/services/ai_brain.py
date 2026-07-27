@@ -10,7 +10,7 @@ import json
 import time
 import asyncio
 import random
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List, Union, Tuple
 from datetime import datetime
 
 from app.utils.json_processor import clean_json_voorhees
@@ -477,6 +477,64 @@ class CerebroIA:
         """
         return is_abstract_credit_faq(text)
 
+    # [BOT-BUILD-FIX-D-DYNAMIC-PENDING-QUESTION] Mapa canónico label → pregunta
+    # exacta del embudo (SSOT único). Alineado con el ORDEN OBLIGATORIO de la
+    # MATRIZ_DE_PERFILAMIENTO_ESTRICTA del prompt (prompts.py) y con los labels
+    # de _evaluate_profiling_matrix. Erradica la pregunta genérica hardcoded.
+    _PROFILING_QUESTION_MAP = {
+        "Ocupación": "¿A qué te dedicas actualmente?",
+        "Contrato": "¿Qué tipo de contrato tienes?",
+        "Ingresos": "¿Cuáles son tus ingresos mensuales?",
+        "Reportes Datacrédito": "¿Has tenido reportes en Datacrédito?",
+        "Gastos mensuales": "¿Cuánto son tus gastos mensuales aproximadamente?",
+        "Gas natural (Brilla)": "¿Cuentas con servicio de gas natural domiciliario?",
+        "Vivienda": "¿Cuál es tu tipo de vivienda?",
+        "Plan celular": "¿Tienes plan celular a tu nombre?",
+    }
+
+    def _evaluate_profiling_matrix(self, prospect_data: Optional[Dict[str, Any]]) -> Tuple[List[Tuple[str, Optional[Any]]], Optional[str]]:
+        """
+        [BOT-BUILD-FIX-D-DYNAMIC-PENDING-QUESTION] SSOT compartido del estado de
+        la MATRIZ_PERFILAMIENTO (8 datos), computado desde el CRM (prospect_data).
+
+        WHY: `_build_profiling_checklist` (inyección prompt) y
+        `_get_pending_funnel_question` (freno FAQ) deben leer UNA sola verdad
+        sobre qué dato falta; la duplicación de la lógica de filas generaba la
+        divergencia "checklist dice X, freno pregunta genérica".
+
+        Retorna (rows, siguiente_pendiente) donde rows es la lista ordenada de
+        (label, valor|None) y siguiente_pendiente es el primer label sin valor
+        (None si la matriz está COMPLETA).
+        """
+        data = prospect_data or {}
+
+        def _filled(key: str) -> bool:
+            return bool(str(data.get(key) or "").strip())
+
+        servicios = str(data.get("servicios_publicos") or "").lower()
+
+        rows = [
+            ("Ocupación", data.get("ocupacion") if _filled("ocupacion") else None),
+            ("Contrato", data.get("ocupacion") if _filled("ocupacion") else None),
+            ("Ingresos", data.get("ingresos_mensuales") if _filled("ingresos_mensuales") else None),
+            ("Reportes Datacrédito", data.get("datacredito") if _filled("datacredito") else None),
+            ("Gastos mensuales", data.get("gastos_mensuales") if _filled("gastos_mensuales") else None),
+            (
+                "Gas natural (Brilla)",
+                (data.get("tiene_gas_natural") or data.get("servicios_publicos"))
+                if (_filled("tiene_gas_natural") or "gas" in servicios) else None,
+            ),
+            ("Vivienda", data.get("vivienda") if _filled("vivienda") else None),
+            (
+                "Plan celular",
+                (data.get("plan_celular") or data.get("servicios_publicos"))
+                if (_filled("plan_celular") or "celular" in servicios or "plan" in servicios) else None,
+            ),
+        ]
+
+        next_pending = next((label for label, value in rows if not value), None)
+        return rows, next_pending
+
     def _get_pending_funnel_question(self, phase: str, prospect_data: Optional[Dict[str, Any]]) -> str:
         """
         [BOT-BUILD-204] Retorna textualmente la última pregunta pendiente del embudo
@@ -516,7 +574,15 @@ class CerebroIA:
             return "¿Me confirmas para continuar con el estudio de crédito?"
 
         if phase == "PHASE_3_CREDIT_PROFILING":
-            return "Continuemos con el perfilamiento para tu estudio de crédito. ¿Me indicas el dato que falta?"
+            # [BOT-BUILD-FIX-D-DYNAMIC-PENDING-QUESTION] Dinámico: evalúa el estado
+            # actual de la matriz y retorna el texto exacto del <siguiente_pendiente>
+            # del checklist determinista (mapa canónico). Erradica la pregunta
+            # genérica hardcoded. Contrato COMPLETO: retorna "" → el freno FAQ
+            # emite el mandato de cierre de fase (invocar calculate_credit_score).
+            _, next_pending = self._evaluate_profiling_matrix(prospect_data)
+            if next_pending is None:
+                return ""
+            return self._PROFILING_QUESTION_MAP[next_pending]
 
         return "¿En qué más puedo ayudarte?"
 
@@ -540,42 +606,18 @@ class CerebroIA:
           6. Gas        ← tiene_gas_natural (FIX-4A) o 'gas' en servicios_publicos
           7. Vivienda   ← vivienda
           8. Plan celular ← plan_celular (FIX-4A) o 'celular'/'plan' en servicios_publicos
+
+        [BOT-BUILD-FIX-D-DYNAMIC-PENDING-QUESTION] La evaluación de filas vive en
+        `_evaluate_profiling_matrix` (SSOT compartido con el freno FAQ).
         """
-        data = prospect_data or {}
-
-        def _filled(key: str) -> bool:
-            return bool(str(data.get(key) or "").strip())
-
-        servicios = str(data.get("servicios_publicos") or "").lower()
-
-        rows = [
-            ("Ocupación", data.get("ocupacion") if _filled("ocupacion") else None),
-            ("Contrato", data.get("ocupacion") if _filled("ocupacion") else None),
-            ("Ingresos", data.get("ingresos_mensuales") if _filled("ingresos_mensuales") else None),
-            ("Reportes Datacrédito", data.get("datacredito") if _filled("datacredito") else None),
-            ("Gastos mensuales", data.get("gastos_mensuales") if _filled("gastos_mensuales") else None),
-            (
-                "Gas natural (Brilla)",
-                (data.get("tiene_gas_natural") or data.get("servicios_publicos"))
-                if (_filled("tiene_gas_natural") or "gas" in servicios) else None,
-            ),
-            ("Vivienda", data.get("vivienda") if _filled("vivienda") else None),
-            (
-                "Plan celular",
-                (data.get("plan_celular") or data.get("servicios_publicos"))
-                if (_filled("plan_celular") or "celular" in servicios or "plan" in servicios) else None,
-            ),
-        ]
+        rows, next_pending = self._evaluate_profiling_matrix(prospect_data)
 
         lines = ["<estado_perfilamiento>"]
-        next_pending = None
         for label, value in rows:
             if value:
                 lines.append(f'  <item nombre="{label}" estado="CAPTURADO">{value}</item>')
             else:
                 lines.append(f'  <item nombre="{label}" estado="PENDIENTE"/>')
-                if next_pending is None:
-                    next_pending = label
         lines.append(f"  <siguiente_pendiente>{next_pending or 'COMPLETO'}</siguiente_pendiente>")
         lines.append("</estado_perfilamiento>")
         return "\n".join(lines)
@@ -591,20 +633,38 @@ class CerebroIA:
         Bloque de máxima recencia para responder la FAQ sin perder el hilo comercial.
         
         [BOT-BUILD-205] Condensed to < 500 chars to reduce LLM confusion.
+
+        [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001 / Fase 3 — Capa B]
+        Referencia muerta <credit_matrix_rules> (bloque extirpado del prompt en
+        WAVE07-01) corregida a la herramienta query_faq. Rama COMPLETO (FIX-D):
+        pending_question == "" → mandato de cierre de fase en lugar de
+        "Repite TEXTUALMENTE" (que citaría una cadena vacía al usuario).
         """
         simulacion_instruccion = ""
         if turn_intent == TurnIntent.MIXED:
             simulacion_instruccion = (
                 "Simulación permitida: ejecuta calculate_credit_score DESPUÉS de responder la FAQ. "
             )
-        
+
         prohibitions = "" if turn_intent == TurnIntent.MIXED else ", pedir Habeas Data"
-        
+
+        if pending_question:
+            cierre_directive = f'CIERRE OBLIGATORIO: Repite TEXTUALMENTE: "{pending_question}"'
+            one_shot = "ONE-SHOT: solo la pregunta del cierre está permitida."
+        else:
+            # Rama COMPLETO (FIX-D): la matriz terminó; el cierre es la herramienta.
+            cierre_directive = (
+                "CIERRE OBLIGATORIO: la matriz de perfilamiento está COMPLETA. Tras responder la FAQ, "
+                "tu única acción permitida es INVOCAR calculate_credit_score con los datos del perfil. "
+                "PROHIBIDO hacer más preguntas de perfilamiento."
+            )
+            one_shot = "PROHIBIDO generar texto libre antes de tener el JSON del score."
+
         return f"""[FRENO FAQ — MÁXIMA PRIORIDAD]
 FAQ: "{faq_fragment}"
-Responde en ≤2 líneas usando <credit_matrix_rules>. PROHIBIDO: pedir datos{prohibitions}, calcular cuotas, mencionar política de privacidad.
-{simulacion_instruccion}CIERRE OBLIGATORIO: Repite TEXTUALMENTE: "{pending_question}"
-La FAQ no avanza el embudo. ONE-SHOT: solo la pregunta del cierre está permitida.
+Responde en ≤2 líneas usando la respuesta de la herramienta query_faq. PROHIBIDO: pedir datos{prohibitions}, calcular cuotas, mencionar política de privacidad.
+{simulacion_instruccion}{cierre_directive}
+La FAQ no avanza el embudo. {one_shot}
 [FIN FRENO]
 """
 
@@ -1095,7 +1155,15 @@ La FAQ no avanza el embudo. ONE-SHOT: solo la pregunta del cierre está permitid
                 # FINAL SANITIZATION: Hardcoded Parrot Effect Killer
                 if final_text and not final_text.startswith("HANDOFF_TRIGGERED:"):
                     final_text = self.clean_parrot_phrases(final_text)
-                    
+
+                    # [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001 / FIX-B AMPLIADO — capa coercitiva]
+                    # Guard estático post-generación: con `ocupacion` truthy, cualquier
+                    # saludo de apertura residual se suprime determinísticamente,
+                    # INDEPENDIENTE de la fase-string (defensa en profundidad sobre
+                    # el guard de prompt L1882-1895).
+                    if prospect_data and str(prospect_data.get("ocupacion") or "").strip():
+                        final_text = CerebroIA._strip_leading_greeting(final_text, prospect_data.get("nombre"))
+
                     # --- COGNITIVE BRAKE GUARDRAIL (BOT-LOGIC-1.2) ---
                     # Detecta y reemplaza placeholders financieros que hayan filtrado
                     # a través del pipeline de generación (ej. $X.XXX, $X.XXX.XXX).
@@ -1287,6 +1355,43 @@ La FAQ no avanza el embudo. ONE-SHOT: solo la pregunta del cierre está permitid
             cleaned = cleaned[0].upper() + cleaned[1:]
             
         return cleaned
+
+    @staticmethod
+    def _strip_leading_greeting(text: str, name: Optional[str] = None) -> str:
+        """
+        [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001 / FIX-B AMPLIADO — capa coercitiva]
+        Supresor estático del saludo de apertura ("¡Hola, [Nombre]!") en el texto
+        YA generado. Se invoca solo cuando `ocupacion` es truthy (prospecto dentro
+        de la matriz real), independientemente de la fase-string.
+
+        Función pura: solo actúa sobre un prefijo que sea inequívocamente saludo
+        (hola / buenos días / buenas tardes / buenas noches / buenas, con nombre
+        opcional y puntuación/emoji de cortesía). Si el resultado quedara vacío,
+        devuelve el texto original (jamás vacía un mensaje). No reescribe el
+        cuerpo ni la pregunta de cierre.
+        """
+        if not text:
+            return text
+        first_name = str(name).strip().split()[0] if name and str(name).strip() else None
+        name_part = rf"(?:\s*,?\s*{re.escape(first_name)})?" if first_name else ""
+        pattern = re.compile(
+            r"^\s*(?:¡?\s*(?:hola|buenos días|buenas tardes|buenas noches|buenas)\b"
+            + name_part
+            + r"\s*[,!?.]*[ \t]*)+",
+            re.IGNORECASE,
+        )
+        stripped = pattern.sub("", text, count=1)
+        if stripped == text:
+            return text
+        # Puntuación/emoji de cortesía residual inmediatamente tras el saludo.
+        stripped = re.sub(r"^[\s👋🙂😊✨🙌🔥💪🤝]+", "", stripped)
+        if not stripped:
+            logger.warning("⚠️ [FIX-B] Supresor de saludo dejaría el mensaje vacío; se conserva el original.")
+            return text
+        if stripped[0].islower():
+            stripped = stripped[0].upper() + stripped[1:]
+        logger.info("🛡️ [FIX-B] Saludo de apertura suprimido coercitivamente (ocupacion truthy).")
+        return stripped
 
     def _create_tools(self, prospect_data: Optional[Dict[str, Any]] = None, omit_credit: bool = False) -> Optional[List[types.Tool]]:
         """
@@ -1652,6 +1757,10 @@ REGLAS ESTRICTAS DE USO:
         is_faq_intercept = turn_intent in (TurnIntent.FAQ_ONLY, TurnIntent.MIXED)
         omit_credit_this_turn = (turn_intent == TurnIntent.FAQ_ONLY)
         faq_brake_block = ""
+        # [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001 / Fase 3] Inicialización explícita:
+        # el anclaje (Capas A y C) consume pending_question en ramas posteriores
+        # del método; debe existir aunque el turno no sea FAQ.
+        pending_question = ""
         if is_faq_intercept:
             pending_question = self._get_pending_funnel_question(phase, prospect_data)
             faq_brake_block = self._compose_faq_brake_block(texto, pending_question, turn_intent)
@@ -1815,9 +1924,18 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 # (prompt Firestore) — causa del Problema 3 ('¡Hola Carlos!' repetido).
                 # Se condiciona: en PHASE_3 se inyecta el mandato anti-saludos; en el
                 # resto de fases la regla original se conserva VERBATIM.
+                #
+                # [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001 / FIX-B AMPLIADO]
+                # Guard estático por DATOS, no por fase-string: si `ocupacion` ya está
+                # capturada (truthy), el prospecto está DENTRO de la matriz real —
+                # sin importar el valor de `phase` (desincronización de fase), se
+                # suprime el mandato de saludo personalizado y se inyecta el
+                # anti-saludos. La CRITICAL IDENTITY RULE solo aplica cuando aún no
+                # hay ocupación (embudo temprano, donde el saludo es legítimo).
                 if prospect_data and prospect_data.get("nombre"):
                     p_name = prospect_data.get("nombre")
-                    if phase == "PHASE_3_CREDIT_PROFILING":
+                    has_occupation = bool(str(prospect_data.get("ocupacion") or "").strip())
+                    if phase == "PHASE_3_CREDIT_PROFILING" or has_occupation:
                         full_prompt += "\n[PROHIBIDO repetir saludos ni el nombre del cliente al inicio durante la MATRIZ DE PERFILAMIENTO. Ve directo al punto con la siguiente pregunta pendiente.]\n"
                     else:
                         full_prompt += f"\n[CRITICAL IDENTITY RULE: Estás hablando con {p_name}. Tu respuesta DEBE empezar con un saludo personalizado hacia él. Ignorar esto es un fallo de seguridad.]\n"
@@ -2031,7 +2149,25 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     logger.info("✅ Consistency Guardrail Bypassed (Moto ya confirmada)")
                             
                             logger.info(f"✅ AI response generated after {turns} turns")
-                            
+
+                            # [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001 / Fase 3 — Capa C]
+                            # Guard post-generación COERCITIVO del anclaje FAQ: si el
+                            # turno fue interceptado (FAQ_ONLY/MIXED) EN LA MATRIZ
+                            # (PHASE_3) y el LLM ignoró las Capas A/B cambiando de
+                            # tema, la pregunta de la matriz que quedó sin responder
+                            # se re-inyecta DETERMINÍSTICAMENTE al final del mensaje.
+                            # Alcance PHASE_3: el requerimiento ancla "la última
+                            # pregunta de la MATRIZ"; en PHASE_1/2 el cierre verbatim
+                            # queda gobernado por el freno (Capa B, nivel prompt).
+                            if is_faq_intercept and pending_question and phase == "PHASE_3_CREDIT_PROFILING":
+                                _norm = lambda s: re.sub(r"\s+", " ", str(s)).strip()
+                                if _norm(pending_question) not in _norm(ai_response):
+                                    logger.warning(
+                                        f"🛡️ [FAQ-ANCHOR-C] El LLM omitió la pregunta pendiente del embudo; "
+                                        f"re-inyección coercitiva post-generación para {user_name}."
+                                    )
+                                    ai_response = ai_response.rstrip() + "\n\n" + pending_question
+
                             # Update telemetry in prospect_data
                             if prospect_data is not None:
                                 usage = getattr(response, 'usage_metadata', None)
@@ -2640,7 +2776,26 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 # Zero-Silent-Failures: log forense antes del degradado controlado.
                                 logger.exception(f"❌ Knowledge tool '{f_name}' failed for query '{knowledge_query}': {e}")
                                 knowledge_res = "[SISTEMA: Error temporal consultando la base de conocimiento. Informa al usuario que un asesor confirmará el dato y continúa el embudo.]"
-                            knowledge_res += f"\n\n{funnel_instruction}"
+                            # [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001 / Fase 3 — Capa A]
+                            # Ancla de contexto DETERMINISTA en el function_response:
+                            # cuando el turno es FAQ, el cierre lleva la pregunta
+                            # pendiente VERBATIM (no el funnel_instruction genérico),
+                            # forzando el retorno al embudo en la segunda inferencia.
+                            if is_faq_intercept and pending_question:
+                                knowledge_res += (
+                                    f"\n\n[ANCLA DE EMBUDO — MÁXIMA PRIORIDAD: Tu respuesta al usuario DEBE "
+                                    f"terminar repitiendo TEXTUALMENTE esta pregunta: \"{pending_question}\". "
+                                    f"La FAQ no avanza el embudo. Está PROHIBIDO cambiar de tema o cerrar con otra pregunta.]"
+                                )
+                            elif is_faq_intercept:
+                                # Rama COMPLETO (FIX-D): sin pregunta pendiente → mandato de cierre de fase.
+                                knowledge_res += (
+                                    "\n\n[ANCLA DE EMBUDO: la matriz de perfilamiento está COMPLETA. Tras responder "
+                                    "la FAQ, tu única acción permitida es INVOCAR calculate_credit_score. "
+                                    "PROHIBIDO hacer más preguntas de perfilamiento.]"
+                                )
+                            else:
+                                knowledge_res += f"\n\n{funnel_instruction}"
                             response_parts.append(types.Part.from_function_response(
                                 name=f_name,
                                 response={"result": knowledge_res}

@@ -1,11 +1,13 @@
-🛡️ Documento Maestro: Estado de Desarrollo Core (v10.47.5)
-Versión: v10.47.5 (Milestone 3 Etapa 4 — CIERRE DE FASE OPERATIVO & CERTIFIED)
+🛡️ Documento Maestro: Estado de Desarrollo Core (v10.48.0)
+Versión: v10.48.0 (Milestone 3 Etapa 6 — BLINDAJE CONDUCTUAL DEL AGENTE & CERTIFIED)
 Estado: PRODUCTION READY / GCP LIVE
-Coherence Score: 1.000 (Certificado vía GSD Framework - 516/516 Tests PASSED, 0 failed)
+Coherence Score: 1.000 (Certificado vía GSD Framework - 638/638 Tests PASSED, 0 failed)
 
 🚀 Últimos Hitos Consolidados (Línea de Producción)
 
-1.  Cierre Certificado Milestone 3 - Etapa 4 (v10.47.5):  Operatividad completa del flujo E2E desde el enganche inicial hasta el CIERRE DE FASE sin timeouts ni reinicios. Persistencia garantizada de los 8 datos de la matriz de perfilamiento en Firestore. Deuda técnica residual documentada (saludo repetitivo cosmético en matriz, entidad "Crediorbe" obsoleta en fallback). Certificación: 516 tests PASSED, Coherence 1.000 — DEPLOY AUTHORIZED.
+1.  Blindaje Conductual del Agente e Integridad del Embudo - Etapa 6 (v10.48.0) [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001 / #M3-ETAPA6-001]:  Cuatro blindajes certificados. (a) URL-Lock anti-alucinación en la capa de egreso (egress_guard_service.py): whitelist default-deny (firebasestorage.googleapis.com / tiendalasmotos.com / slm.bancodebogota.com), sustitución automática contra el SSOT del catálogo (match normalizado → stem único → tokens únicos) y extirpación sin candidato; degradado imagen→texto; integrado en los 3 puntos de egreso pre-Meta. (b) Validadores coercitivos de longitud <REGLAS_DE_LONGITUD_Y_CONCISION_WHATSAPP>: truncado por \n (máx 4 líneas) y luego por caracteres (máx 350), con preservación de la pregunta de cierre y exención de anclas legales protegidas (script cuota PASO 3/4). (c) Deuda residual erradicada: FIX-B Ampliado (guard anti-saludo por dato `ocupacion` truthy, independiente de la fase-string, + supresor coercitivo de prefijo post-generación), FIX-D (_evaluate_profiling_matrix como SSOT único + mapa canónico de 8 preguntas; genérico hardcoded eliminado), FIX-E (sync_full_prompt.py como CANAL ÚNICO con read-back forense: triple aserción sobre Firestore prod archivada en scripts/evidence/ — paridad byte-exacta SHA-256 verificada, 0 "Crediorbe", "Brilla de Gases"/"nuestro sistema" presentes; guard continuo en suite). (d) Intercepción semántica FAQ vs. Embudo con anclaje de contexto en 3 capas: Capa A (function_response de query_faq con pregunta pendiente VERBATIM), Capa B (freno FAQ saneado, sin referencia muerta <credit_matrix_rules>, rama COMPLETO), Capa C (guard coercitivo post-generación en PHASE_3: re-inyección determinista de la pregunta de la matriz si el LLM cambia de tema). Certificación: 638 tests PASSED, Coherence 1.000 — DEPLOY AUTHORIZED.
+
+2.  Cierre Certificado Milestone 3 - Etapa 4 (v10.47.5):  Operatividad completa del flujo E2E desde el enganche inicial hasta el CIERRE DE FASE sin timeouts ni reinicios. Persistencia garantizada de los 8 datos de la matriz de perfilamiento en Firestore. Certificación: 516 tests PASSED, Coherence 1.000 — DEPLOY AUTHORIZED.
 
 2.  FIX-SUMMARY-MOTO-INTEREST-001 (v10.47.4):  REGLA DE PIVOTE en generate_summary (L2746 ai_brain.py). Si el usuario menciona marca de competencia (ej. Boxer) pero el bot ofrece equivalente del catálogo (TVS Sport 100), el extractor DEBE persistir el modelo del catálogo, NO dejar vacío. Erradicación de instrucción obsoleta "déjalo vacío o no la extraigas". Preservación de contexto tras primer turno de competencia.
 
@@ -21,6 +23,7 @@ Coherence Score: 1.000 (Certificado vía GSD Framework - 516/516 Tests PASSED, 0
 
 | Versión / Ticket | Componente Afectado | Descripción del Ajuste Quirúrgico y Protección Core |
 |------------------|---------------------|-----------------------------------------------------|
+| BOT-PLAN-HARDENING-EGRESS-FUNNEL-001 (v10.48.0) | egress_guard_service.py (nuevo); whatsapp.py (3 puntos de egreso); ai_brain.py (anclas certificadas); scripts/sync_full_prompt.py | URL-Lock default-deny + sustitución SSOT catálogo + extirpación; coerción 4 líneas/350 chars con preservación de pregunta; FIX-B Ampliado (guard por `ocupacion` + supresor prefijo); FIX-D (_evaluate_profiling_matrix SSOT + mapa 8 preguntas); FIX-E (canal único de sync + read-back forense Firestore prod); anclaje FAQ 3 capas. |
 | BOT-BUILD-FIX-SUMMARY-MOTO-INTEREST-001 (v10.47.4) | ai_brain.py (L2746) | REGLA DE PIVOTE en generate_summary: extraer modelo de catálogo ofrecido (TVS Sport 100), NO marca de competencia (Boxer). Preservación de contexto en primer turno. |
 | BOT-BUILD-FIX-MATRIX-RESTART-001 (v10.47.3) | ai_brain.py (L124-127) | Mapeo semántico de ingresos_mensuales: "Dos mínimos" → "3411810", "Tres mínimos" → "5117715", "2 palos" → "2000000". Persistencia garantizada en Firestore. |
 | BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO-v2 (v10.47.2) | ai_brain.py (L1616-1623, L1779-1790, L1346) | Erradicación de instrucciones obsoletas: PHASE_3 instruction (anti-bloqueo 3min), CRITICAL IDENTITY RULE condicionada por fase, descripción de herramienta actualizada (sin "Paso 9"). |
@@ -48,6 +51,8 @@ Coherence Score: 1.000 (Certificado vía GSD Framework - 516/516 Tests PASSED, 0
 
 5.  **Mapeo Semántico de Ingresos (v10.47.3):** El extractor DEBE mapear expresiones coloquiales ("Dos mínimos", "2 palos", "500 mil") a valores numéricos exactos. Bias negativo: vacío SOLO si no se mencionaron ingresos.
 
+6.  **Gobernanza de Fuentes de Verdad:** SSOT Documental = docs/BUSINESS_RULES.md (guía de estilo y reglas de negocio para humanos). SSOT de Ejecución = campo `searchBy` del catálogo en Firestore + prompt `juan_pablo_personality` (sync vía scripts/sync_full_prompt.py). En caso de divergencia, prevalece siempre el SSOT de Ejecución.
+
 📋 Estado Actual del Embudo Comercial "Juan Pablo"
 
 **PASO 1 (Enganche de Valor):** Saludo condicional + search_catalog + Visual-Lock (imagen + precio). Pivote de competencia habilitado (Boxer → TVS Sport 100).
@@ -66,16 +71,16 @@ Coherence Score: 1.000 (Certificado vía GSD Framework - 516/516 Tests PASSED, 0
 
 ⚠️ Deuda Técnica Residual Documentada
 
-1.  **Saludo repetitivo en matriz (cosmético):** El bot continúa diciendo "¡Hola, Carlos!" en cada turno de la matriz. FIX-B no está funcionando completamente. Impacto: UX, no funcional. Ticket pendiente: BOT-BUILD-FIX-SALUDO-RESIDUAL-001.
+1.  ~~**Saludo repetitivo en matriz (cosmético)**~~ **RESUELTO (v10.48.0 — FIX-B Ampliado, BOT-PLAN-HARDENING-EGRESS-FUNNEL-001):** guard estático por dato `ocupacion` truthy (independiente de la fase-string) en la inyección de prompt + supresor coercitivo de prefijo post-generación (`_strip_leading_greeting`). Pin estático anti-regresión en tests.
 
-2.  ~~**Entidad "Crediorbe" obsoleta**~~ **RESUELTO (BOT-BUILD-FIX-E-CREDIORBE-ERADICATION-001):** personality.json PASO 2 re-sincronizado a "Brilla de Gases"; rama FINTECH purgada de scoring_service (score 400-699 → fallback Brilla); intercepción Crediorbe (BOT-FIN-104) purgada de ai_brain.py; defaults y fallbacks de config_service/config_loaders unificados; seed script actualizado. Pendiente paso operativo manual: borrar doc `financial_config/general/financieras/crediorbe` en Firestore prod.
+2.  ~~**Entidad "Crediorbe" obsoleta**~~ **RESUELTO y CERRADO FORENSEMENTE (v10.48.0 — FIX-E re-sync, BOT-PLAN-HARDENING-EGRESS-FUNNEL-001):** `scripts/sync_full_prompt.py` ejecutado como CANAL ÚNICO contra Firestore prod (`configuracion/juan_pablo_personality.system_instruction`): deriva detectada (10101 vs 10328 chars) y corregida; triple aserción post-sync archivada en `scripts/evidence/` (paridad byte-exacta SHA-256, 0 "Crediorbe", presencia "Brilla de Gases"/"nuestro sistema"). Guard continuo en suite (`tests/test_fix_e_firestore_parity_guard.py`, subprocess aislado). Residual operativo manual (ajeno al prompt): borrar doc `financial_config/general/financieras/crediorbe` en Firestore prod.
 
-3.  **Pregunta genérica en FAQ brake (L508):** _get_pending_funnel_question PHASE_3 retorna pregunta genérica en lugar de <siguiente_pendiente> del checklist. Ticket pendiente: FIX-D (v2.1).
+3.  ~~**Pregunta genérica en FAQ brake (L508)**~~ **RESUELTO (v10.48.0 — FIX-D, BOT-PLAN-HARDENING-EGRESS-FUNNEL-001):** `_get_pending_funnel_question` PHASE_3 evalúa la matriz vía `_evaluate_profiling_matrix` (SSOT compartido con `_build_profiling_checklist`) y retorna la pregunta exacta del mapa canónico de 8 entradas; rama COMPLETO → mandato de cierre de fase. Genérico hardcoded erradicado con pin estático.
 
-🎯 Próximos Pasos (Milestone 3 - Etapas 5, 6, 7)
+🎯 Próximos Pasos (Milestone 3 - Etapas 5, 7)
 
 **Etapa 5:** Resolución de Concurrencia y Aislamiento de Código Legado (fragmentación de _handle_message_background_impl, Algoritmo de Feathers, erradicación de background tasks).
 
-**Etapa 6:** Blindaje Conductual del Agente (FIX-B Ampliado, FIX-E re-sync, validadores coercitivos 4 líneas/350 chars).
+**Etapa 6:** ✅ CERRADA (v10.48.0) — Blindaje Conductual del Agente ejecutado y certificado [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001]: FIX-B Ampliado, FIX-E re-sync forense, validadores coercitivos 4 líneas/350 chars, URL-Lock, anclaje FAQ. Hallazgos colaterales H-COL-1 (tono) y H-COL-2 parcial (BUSINESS_RULES vs catálogo): ~~cuarentena C5 por mandato expreso~~ **RESUELTOS (2026-07-27 — cuarentena C5 levantada, intervención 100% documental):** H-COL-1 — script de BUSINESS_RULES.md alineado a primera persona singular ("No manejo la [Moto_Competencia]..."), en paridad verbatim con el prompt vivo; H-COL-2 — bloque "Gobernanza de Datos" insertado en BUSINESS_RULES.md (SSOT Documental vs SSOT de Ejecución + Regla de Precedencia) y Directiva Inmutable #6 (Gobernanza de Fuentes de Verdad).
 
 **Etapa 7:** Sincronización GSD (/gsd-sync), Certificación de Coherencia (npx agent-cli eval ≥0.9), Despliegue (npx agent-cli deploy → publish).

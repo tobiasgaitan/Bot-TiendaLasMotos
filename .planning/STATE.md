@@ -1,16 +1,17 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.47.5 | Hito: Milestone 3 Etapa 4 - Cierre de Fase Operativo COMPLETED | Coherence Score: 1.000 (516/516 Tests PASSED vía `npx agent-cli eval`)
+Versión: v10.48.0 | Hito: Milestone 3 Etapa 6 - Blindaje Conductual del Agente COMPLETED | Coherence Score: 1.000 (638/638 Tests PASSED vía `npx agent-cli eval`)
 
 ### Current Position
-**Phase:** Milestone 3 - Etapa 4: Cierre de Fase Operativo & Certified — CERRADA [BOT-BUILD-FIX-SUMMARY-MOTO-INTEREST-001, BOT-BUILD-FIX-MATRIX-RESTART-001, BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO-v2, BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO] (Success)
-**Status:** Complete — Flujo E2E completo certificado: PASO 1 (Enganche con pivote de competencia) → PASO 2 (Simulación Ciega) → PASO 3 (Entrega de Cuota) → PASO 4 (Habeas Data) → PASO 5 (Identidad) → MATRIZ 8/8 → CIERRE DE FASE sin timeouts ni reinicios. Persistencia garantizada de los 8 datos de la matriz de perfilamiento en Firestore. Suite: 516/516 tests PASSED, Coherence 1.000.
+**Phase:** Milestone 3 - Etapa 6: Blindaje Conductual del Agente e Integridad del Embudo — CERRADA [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001 / #M3-ETAPA6-001] (Success)
+**Status:** Complete — Cuatro blindajes certificados en secuencia atómica 1→6 con logs de cierre por fase: (1) URL-Lock anti-alucinación en capa de egreso (whitelist default-deny + sustitución SSOT catálogo + extirpación, integrado en los 3 puntos pre-Meta); (2) validadores coercitivos de longitud (truncado por \n a 4 líneas y por caracteres a 350, preservación de pregunta de cierre, exención de anclas legales); (3) deuda residual erradicada — FIX-B Ampliado (guard anti-saludo por `ocupacion` truthy independiente de fase + supresor coercitivo de prefijo), FIX-D (_evaluate_profiling_matrix SSOT + mapa canónico 8 preguntas; genérico hardcoded eliminado), FIX-E (sync_full_prompt.py CANAL ÚNICO ejecutado contra Firestore prod: triple aserción post-sync archivada en scripts/evidence/, paridad SHA-256 byte-exacta, 0 "Crediorbe"; guard continuo en suite); (4) anclaje de contexto FAQ vs. Embudo en 3 capas (function_response verbatim + freno saneado + re-inyección coercitiva post-generación en PHASE_3). Suite: 638/638 tests PASSED, Coherence 1.000 — DEPLOY AUTHORIZED.
 **Deuda Técnica Residual Documentada:**
-- Saludo repetitivo en matriz (cosmético/UX, no funcional) — Ticket: BOT-BUILD-FIX-SALUDO-RESIDUAL-001
-- Entidad "Crediorbe" obsoleta en personality.json (fallback #2) — Ticket: FIX-E (re-sync Firestore + personality.json)
-- Pregunta genérica en FAQ brake (L508) — Ticket: FIX-D (v2.1)
-**Previous:** Milestone 3 - Etapa 3: Concurrencia y Fragmentación RF-5 (God Node whatsapp.py) — Cerrada [BOT-BUILD-ETAPA3-WAVE01…WAVE06] (Success)
-**Next:** Milestone 3 - Etapa 5: Resolución de la Concurrencia y Aislamiento de Código Legado (fragmentación de _handle_message_background_impl, Algoritmo de Feathers, erradicación de background tasks en ejes prioritarios).
+- ~~Saludo repetitivo en matriz~~ — RESUELTO (FIX-B Ampliado, v10.48.0)
+- ~~Entidad "Crediorbe" obsoleta~~ — RESUELTO y cerrado forensemente (FIX-E re-sync Firestore prod + personality.json, v10.48.0). Residual operativo manual ajeno al prompt: borrar doc `financial_config/general/financieras/crediorbe` en Firestore prod.
+- ~~Pregunta genérica en FAQ brake~~ — RESUELTO (FIX-D, v10.48.0)
+- ~~Cuarentena C5 vigente (por mandato expreso, NO ejecutada en esta etapa): H-COL-1 (tono) y H-COL-2 parcial (BUSINESS_RULES vs catálogo)~~ — **RESUELTO (2026-07-27, cuarentena C5 levantada — intervención 100% documental):** script de BUSINESS_RULES.md alineado a 1ª persona singular + bloque "Gobernanza de Datos" (SSOT Documental vs SSOT de Ejecución + Regla de Precedencia) + Directiva Inmutable #6 en DOCUMENTO_MAESTRO.md.
+**Previous:** Milestone 3 - Etapa 4: Cierre de Fase Operativo & Certified — Cerrada [BOT-BUILD-FIX-SUMMARY-MOTO-INTEREST-001, BOT-BUILD-FIX-MATRIX-RESTART-001, BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO-v2, BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO] (Success)
+**Next:** Milestone 3 - Etapa 7: Sincronización GSD (/gsd-sync), Certificación de Coherencia (npx agent-cli eval ≥0.9), Despliegue (npx agent-cli deploy → publish). Etapa 5 (concurrencia/legado) permanece en el roadmap.
 
 ---
-*Last updated: 2026-07-25*
+*Last updated: 2026-07-27*

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 """
+⚠️  LEGACY — [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001 / FIX-E]
+Este script queda declarado LEGACY. El CANAL ÚNICO autorizado para sincronizar
+el prompt completo es `scripts/sync_full_prompt.py` (pre-write gate + read-back
+forense con triple aserción + evidencia archivada). No usar para sync del prompt.
+
 Admin Maintenance Script: Sync Live System Prompt to Firestore (v3.0.0)
 ========================================================================
 Sincroniza el prompt desde app/core/prompts.py (fuente de verdad) hacia

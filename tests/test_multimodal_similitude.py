@@ -12,21 +12,21 @@ def _canonical_mock_items():
         {
             "id": "tvs_sport",
             "name": "TVS Sport 100",
-            "image_url": "https://images.com/tvs_sport.jpg",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg",
             "price": 6200000,
             "formatted_price": "$6.200.000",
         },
         {
             "id": "tvs_raider",
             "name": "TVS Raider 125",
-            "image_url": "https://images.com/tvs_raider.jpg",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_raider.jpg",
             "price": 7500000,
             "formatted_price": "$7.500.000",
         },
         {
             "id": "akt_nkd",
             "name": "AKT NKD 125",
-            "image_url": "https://images.com/akt_nkd.jpg",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/akt_nkd.jpg",
             "price": 5200000,
             "formatted_price": "$5.200.000",
         },
@@ -89,7 +89,7 @@ def test_match_catalog_item_by_image_priority():
 
     # 2. Match by exact image_url – O(1) index (AF-02)
     res_url = catalog.match_catalog_item_by_image(
-        "MOTO_DETECTADA: AKT | Match URL: https://images.com/tvs_sport.jpg"
+        "MOTO_DETECTADA: AKT | Match URL: https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg"
     )
     assert res_url is not None
     assert res_url["id"] == "tvs_sport", "Should match by image_url"
@@ -129,7 +129,7 @@ def test_match_catalog_item_url_index_o1_no_linear_fallback():
     catalog._items = []
 
     res = catalog.match_catalog_item_by_image(
-        "MOTO_DETECTADA: Whatever | Match URL: https://images.com/tvs_sport.jpg"
+        "MOTO_DETECTADA: Whatever | Match URL: https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg"
     )
     assert res is not None
     assert res["id"] == "tvs_sport"
@@ -139,7 +139,7 @@ def test_match_catalog_item_url_index_o1_no_linear_fallback():
     # search_items which triggers the emergency fallback item (no 'id' key).
     # That is expected defensive behavior, not a regression.
     res_miss = catalog.match_catalog_item_by_image(
-        "MOTO_DETECTADA: Missing | Match URL: https://images.com/nonexistent.jpg"
+        "MOTO_DETECTADA: Missing | Match URL: https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/nonexistent.jpg"
     )
     assert res_miss is None or res_miss.get("id") != "tvs_sport"
 
@@ -156,7 +156,7 @@ def test_match_catalog_item_url_index_normalization():
 
     # Trailing slash normalized away
     res = catalog.match_catalog_item_by_image(
-        "MOTO_DETECTADA: TVS | Match URL: https://images.com/tvs_sport.jpg/"
+        "MOTO_DETECTADA: TVS | Match URL: https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg/"
     )
     assert res is not None
     assert res["id"] == "tvs_sport"
@@ -166,7 +166,7 @@ def test_match_catalog_item_url_index_normalization():
     # The O(1) index won't match → falls to fuzzy which matches "TVS NKD"?
     # The intent is: URL with appended query is "another resource".
     res_q = catalog.match_catalog_item_by_image(
-        "MOTO_DETECTADA: TVS | Match URL: https://images.com/tvs_sport.jpg?w=800&h=600"
+        "MOTO_DETECTADA: TVS | Match URL: https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg?w=800&h=600"
     )
     # May or may not match depending on fuzzy fallback; at minimum must not crash
     if res_q is not None:
@@ -174,7 +174,7 @@ def test_match_catalog_item_url_index_normalization():
 
     # Uppercase scheme/host/path → normalized to lowercase → matches index
     res_up = catalog.match_catalog_item_by_image(
-        "MOTO_DETECTADA: TVS | Match URL: HTTPS://IMAGES.COM/TVS_SPORT.JPG"
+        "MOTO_DETECTADA: TVS | Match URL: HTTPS://FIREBASESTORAGE.GOOGLEAPIS.COM/V0/B/TIENDALASMOTOS-DOCUMENTS/O/TVS_SPORT.JPG"
     )
     assert res_up is not None
     assert res_up["id"] == "tvs_sport"
@@ -238,21 +238,21 @@ def _agility_items():
         {
             "id": "agility_fusion",
             "name": "KYMCO Agility Fusion",
-            "image_url": "https://images.com/agility_fusion.jpg",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/agility_fusion.jpg",
             "price": 10179000,
             "formatted_price": "$10.179.000",
         },
         {
             "id": "tvs_sport",
             "name": "TVS Sport 100",
-            "image_url": "https://images.com/tvs_sport.jpg",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg",
             "price": 6200000,
             "formatted_price": "$6.200.000",
         },
         {
             "id": "akt_nkd",
             "name": "AKT NKD 125",
-            "image_url": "https://images.com/akt_nkd.jpg",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/akt_nkd.jpg",
             "price": 5200000,
             "formatted_price": "$5.200.000",
         },
@@ -366,14 +366,14 @@ def test_af_id_07_collision_first_candidate_deterministic():
         {
             "id": "agility_fusion",
             "name": "KYMCO Agility Fusion",
-            "image_url": "https://images.com/agility_fusion.jpg",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/agility_fusion.jpg",
             "price": 10179000,
             "formatted_price": "$10.179.000",
         },
         {
             "id": "agility_fusion_2",
             "name": "KYMCO Agility Fusion 2",
-            "image_url": "https://images.com/agility_fusion_2.jpg",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/agility_fusion_2.jpg",
             "price": 9990000,
             "formatted_price": "$9.990.000",
         },
@@ -397,14 +397,14 @@ def test_af_id_08_padded_item_exclusion():
         {
             "id": "padded_item_0",
             "name": "Placeholder",
-            "image_url": "https://images.com/pad.jpg",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/pad.jpg",
             "price": 0,
             "formatted_price": "$0",
         },
         {
             "id": "agility_fusion",
             "name": "KYMCO Agility Fusion",
-            "image_url": "https://images.com/agility_fusion.jpg",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/agility_fusion.jpg",
             "price": 10179000,
             "formatted_price": "$10.179.000",
         },
@@ -479,7 +479,7 @@ def test_match_catalog_item_dict_input():
     res = catalog.match_catalog_item_by_image({
         "type": "moto",
         "moto_detectada": "TVS Sport 100",
-        "match_url": "https://images.com/tvs_sport.jpg",
+        "match_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg",
         "model_id": "tvs_sport",
         "confidence": 0.92,
     })
@@ -523,7 +523,7 @@ def test_vision_service_catalog_serialization_anti_null_masking():
     mock_genai_client.models.generate_content.return_value = mock_response
 
     corrupt_items = [
-        {"id": "bad_item_1", "name": None, "image_url": "https://img.url"},
+        {"id": "bad_item_1", "name": None, "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/bad.webp?alt=media"},
         {"id": "bad_item_2", "name": "Victory Neo", "image_url": ""}
     ]
 
@@ -624,7 +624,7 @@ async def test_incoming_image_webhook_multimodal_similitude_flow():
         mock_part.text = (
             "Perfecto. La TVS Sport 100 cuesta $6.200.000. "
             "Ficha Tecnica: Gran rendimiento. "
-            "![TVS Sport 100](https://img.url/tvs_sport.jpg)"
+            "![TVS Sport 100](https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg)"
         )
         mock_part.function_call = None
         mock_candidate.content.parts = [mock_part]
@@ -640,13 +640,13 @@ async def test_incoming_image_webhook_multimodal_similitude_flow():
 
         mock_vision = AsyncMock()
         mock_vision.analyze_image = AsyncMock(
-            return_value="MOTO_DETECTADA: TVS Sport 100 | Match URL: https://img.url/tvs_sport.jpg | Model ID: tvs_sport"
+            return_value="MOTO_DETECTADA: TVS Sport 100 | Match URL: https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg | Model ID: tvs_sport"
         )
 
         mock_catalog_item = {
             "id": "tvs_sport",
             "name": "TVS Sport 100",
-            "image_url": "https://img.url/tvs_sport.jpg",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg",
             "price": 6200000,
             "formatted_price": "$6.200.000",
             "category": "sport",
@@ -696,7 +696,7 @@ async def test_incoming_image_webhook_multimodal_similitude_flow():
             assert meta_payload.get("type") == "image"
 
             # AF-13: canonical image link
-            assert meta_payload["image"]["link"] == "https://img.url/tvs_sport.jpg"
+            assert meta_payload["image"]["link"] == "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg"
 
             # AF-11: canonical price in caption
             caption = meta_payload["image"]["caption"]
@@ -790,13 +790,13 @@ async def _run_image_caption_flow(caption: str, summary: str, llm_text: str):
 
         mock_vision = AsyncMock()
         mock_vision.analyze_image = AsyncMock(
-            return_value="MOTO_DETECTADA: TVS Sport 100 | Match URL: https://img.url/tvs_sport.jpg | Model ID: tvs_sport"
+            return_value="MOTO_DETECTADA: TVS Sport 100 | Match URL: https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg | Model ID: tvs_sport"
         )
 
         mock_catalog_item = {
             "id": "tvs_sport",
             "name": "TVS Sport 100",
-            "image_url": "https://img.url/tvs_sport.jpg",
+            "image_url": "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg",
             "price": 6200000,
             "formatted_price": "$6.200.000",
             "category": "sport",
@@ -853,7 +853,7 @@ async def test_image_tech_caption_injects_canonical_ficha_hint():
     llm_text = (
         "La TVS Sport 100 cuesta $6.200.000. "
         "Ficha Tecnica: Motor 124.8cc, caja de 4 cambios, encendido eléctrico. "
-        "![TVS Sport 100](https://img.url/tvs_sport.jpg)"
+        "![TVS Sport 100](https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg)"
     )
     mock_ms, mock_http_post = await _run_image_caption_flow(
         caption="cuantos cambios tiene?", summary=summary, llm_text=llm_text
@@ -881,7 +881,7 @@ async def test_image_tech_caption_backstop_injects_ficha_when_llm_omits():
     summary = "Motor 124.8cc, caja de 4 cambios, encendido eléctrico"
     llm_text = (
         "Claro, la TVS Sport 100 cuesta $6.200.000. "
-        "![TVS Sport 100](https://img.url/tvs_sport.jpg)"
+        "![TVS Sport 100](https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg)"
     )
     mock_ms, mock_http_post = await _run_image_caption_flow(
         caption="que tipo de encendido maneja?", summary=summary, llm_text=llm_text
@@ -903,7 +903,7 @@ async def test_image_nontech_caption_no_ficha_injection():
     summary = "Motor 124.8cc, caja de 4 cambios, encendido eléctrico"
     llm_text = (
         "Claro, la TVS Sport 100 cuesta $6.200.000. "
-        "![TVS Sport 100](https://img.url/tvs_sport.jpg)"
+        "![TVS Sport 100](https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/tvs_sport.jpg)"
     )
     mock_ms, mock_http_post = await _run_image_caption_flow(
         caption="muy bonita", summary=summary, llm_text=llm_text

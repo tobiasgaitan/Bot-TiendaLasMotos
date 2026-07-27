@@ -24,6 +24,10 @@ from fastapi.responses import PlainTextResponse
 from app.core.config import settings
 from app.core.exceptions import HabeasDataBypassInterrupt
 
+# [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001] URL-Lock + coerción de longitud (capa de egreso).
+# Módulo puro (sin I/O de red): seguro para importar en la ruta caliente del webhook.
+from app.services import egress_guard_service as egress_guard
+
 # --- LANGFUSE OBSERVABILITY ---
 from app.utils.observability import observe, langfuse_context
 
@@ -105,9 +109,6 @@ class _LangfuseContextShim:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhook", tags=["WhatsApp"])
-
-# Semáforo para controlar concurrencia de acuses de recibo Meta (Burst Mitigation)
-status_semaphore = asyncio.Semaphore(5)
 
 # locks for E.164 phone numbers (session locks) to prevent webhook race conditions
 _session_locks = {}
@@ -453,11 +454,24 @@ async def webhook_handler(
             else:
                 statuses_list = _extract_statuses_list(payload)
                 for status_data in statuses_list:
+                    # [ETAPA-5 / Sincronía de Oficio] Procesamiento bloqueante (await) del
+                    # acuse: la persistencia en Firestore ocurre dentro del ciclo de vida
+                    # del request — erradicación del fire-and-forget residual (certificado
+                    # por el Auditor). Bloque de resiliencia §4.2: aislamiento por ítem
+                    # (continue), capturas tipadas, jamás silencio.
                     try:
-                        # Procesamiento asíncrono no bloqueante vía BackgroundTasks en ausencia de Cloud Tasks
-                        background_tasks.add_task(_handle_statuses_background, status_data)
+                        await _handle_statuses_background(status_data)
+                    except httpx.HTTPStatusError as e:
+                        logger.exception(
+                            f"❌ [STATUSES] Error HTTP {e.response.status_code} procesando acuse "
+                            f"en webhook_handler. Detalle Meta: {e.response.text[:200]}"
+                        )
+                        continue
+                    except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
+                        logger.exception(f"❌ [STATUSES] Error transitorio procesando acuse en webhook_handler: {e}")
+                        continue
                     except Exception as e:
-                        logger.error(f"❌ Error encolando acuse individual en webhook_handler: {e}", exc_info=True)
+                        logger.exception(f"❌ [STATUSES] Error inesperado procesando acuse en webhook_handler: {e}")
                         continue
             return {"status": "received"}
 
@@ -548,12 +562,23 @@ async def task_processor(
         if _is_valid_statuses(payload):
             statuses_list = _extract_statuses_list(payload)
             for status_data in statuses_list:
+                # [ETAPA-5 / Sincronía de Oficio] Await bloqueante por ítem: este worker se
+                # define como "procesador 100% síncrono" (docstring del endpoint) — la
+                # delegación a BackgroundTasks traicionaba ese contrato. Bloque de
+                # resiliencia §4.2: aislamiento por ítem (continue), capturas tipadas.
                 try:
-                    # Desacoplamiento asíncrono preventivo usando background_tasks nativo de FastAPI
-                    # para evitar que la ráfaga de acuses bloquee el procesador de Cloud Tasks
-                    background_tasks.add_task(_handle_statuses_background, status_data)
+                    await _handle_statuses_background(status_data)
+                except httpx.HTTPStatusError as e:
+                    logger.exception(
+                        f"❌ [STATUSES] Error HTTP {e.response.status_code} procesando acuse "
+                        f"en task_processor. Detalle Meta: {e.response.text[:200]}"
+                    )
+                    continue
+                except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
+                    logger.exception(f"❌ [STATUSES] Error transitorio procesando acuse en task_processor: {e}")
+                    continue
                 except Exception as e:
-                    logger.error(f"❌ Error procesando acuse individual en task_processor: {e}", exc_info=True)
+                    logger.exception(f"❌ [STATUSES] Error inesperado procesando acuse en task_processor: {e}")
                     continue
             return {"status": "processed", "type": "statuses"}
 
@@ -610,23 +635,25 @@ async def _handle_statuses_background(status_data: Dict[str, Any]) -> None:
         if status_value == 'read':
             logger.info(f"👉 Confirmación de lectura recibida para el número {recipient_id}")
 
-        # Persistencia bloqueante (await) — mandato ARCH-BULK-META-010
+        # Persistencia bloqueante (await) — mandato ARCH-BULK-META-010.
+        # [ETAPA-5 / D4 APROBADO] status_semaphore retirado (YAGNI): los acuses se
+        # procesan estrictamente en serie (await por ítem) desde ambos bucles;
+        # el semáforo solo tenía sentido bajo concurrencia de tareas delegadas.
         if memory_service_module.memory_service:
             errors = status_data.get("errors", [])
-            async with status_semaphore:
-                await memory_service_module.memory_service.update_whatsapp_status(
-                    phone_number=recipient_id,
-                    status_value=status_value,
-                    wamid=wamid,
-                    errors=errors,
-                )
+            await memory_service_module.memory_service.update_whatsapp_status(
+                phone_number=recipient_id,
+                status_value=status_value,
+                wamid=wamid,
+                errors=errors,
+            )
         else:
             logger.warning("⚠️ [STATUSES] MemoryService no inicializado. Acuse no persistido.")
 
     except Exception as e:
-        logger.error(
-            f"❌ [STATUSES] Error crítico en _handle_statuses_background: {str(e)}",
-            exc_info=True
+        # [ETAPA-5 / ZSF-G1] logger.exception: stack trace forense obligatorio.
+        logger.exception(
+            f"❌ [STATUSES] Error crítico en _handle_statuses_background: {str(e)}"
         )
 
 
@@ -2171,6 +2198,12 @@ async def _process_and_send_egress_message(user_phone: str, response_text: str, 
     persiste el resultado en Firestore a través de memory_service.
     """
     try:
+        # --- [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001] URL-Lock de entrada ---
+        # Toda URL extraída/generada por el LLM se valida contra la whitelist
+        # canónica ANTES de la extracción Markdown (default-deny + sustitución
+        # SSOT catálogo + extirpación). Ninguna URL alucinada llega a Meta.
+        response_text, _url_lock_report = egress_guard.enforce_urls(response_text)
+
         # --- NATIVE IMAGE INTEGRATION ---
         # Support both Markdown ![alt](url) and legacy [IMAGE: url]
         markdown_pattern = r'!?\[[\s\S]*?\]\s*\((https?://[^\s\)]+)\)'
@@ -2394,6 +2427,13 @@ async def _send_whatsapp_message(to_phone: str, message_text: str, phone_number_
     """
     from app.services.whatsapp_service import whatsapp_service
     meta_sender = meta_sender or whatsapp_service
+    # --- [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001] Defensa en profundidad en la
+    # frontera pre-Meta: URL-Lock (default-deny) + coerción <REGLAS_DE_LONGITUD_
+    # Y_CONCISION_WHATSAPP> (máx 4 líneas \n / 350 chars, preservando pregunta
+    # de cierre). Cubre TODA ruta que despacha texto a Meta (fallbacks del Juez,
+    # confirmaciones, overflow de caption, retry-degradado).
+    message_text, _url_lock_report = egress_guard.enforce_urls(message_text)
+    message_text = egress_guard.enforce_length(message_text)
     try:
         await meta_sender.send_text_message(to_phone, message_text, phone_number_id=phone_number_id)
         return True
@@ -2441,12 +2481,32 @@ async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "",
     """
     from app.services.whatsapp_service import whatsapp_service
     meta_sender = meta_sender or whatsapp_service
+    # --- [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001] URL-Lock sobre la imagen +
+    # coerción del caption (la regla de negocio 4 líneas/350 chars es más
+    # estricta que el límite Meta de 1024). Si la URL es no canónica y no hay
+    # sustituto en el SSOT del catálogo, se degrada a texto plano: la imagen
+    # alucinada JAMÁS se despacha a Meta.
+    safe_image_url, _img_lock_report = egress_guard.enforce_image_url(image_url)
+    if not safe_image_url:
+        logger.error(
+            f"🚨 [URL-LOCK] Imagen no canónica rechazada sin sustituto; "
+            f"degradando a texto plano para destino normalizado."
+        )
+        if caption:
+            return await _send_whatsapp_message(
+                to_phone, caption, phone_number_id=phone_number_id, meta_sender=meta_sender
+            )
+        return False
+    image_url = safe_image_url
+    if caption:
+        caption = egress_guard.enforce_length(caption)
     try:
         await meta_sender.send_image_message(to_phone, image_url, caption, phone_number_id=phone_number_id)
         return True
     except httpx.HTTPStatusError as e:
-        logger.error(f"❌ Error HTTP ({e.response.status_code}): El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e.response.text}")
+        # [ETAPA-5 / ZSF-G2] logger.exception: stack trace forense + volcado de e.response.text.
+        logger.exception(f"❌ Error HTTP ({e.response.status_code}): El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e.response.text}")
         return False
     except Exception as e:
-        logger.error(f"❌ Error Genérico: El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e}")
+        logger.exception(f"❌ Error Genérico: El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e}")
         return False

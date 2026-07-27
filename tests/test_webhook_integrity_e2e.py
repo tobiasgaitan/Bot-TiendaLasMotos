@@ -487,11 +487,12 @@ async def test_e2e_reset_command_nuclear_wipe():
 # ── E2E-STATUSES ──────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_e2e_statuses_branch_delegation_and_persistence():
+async def test_e2e_statuses_branch_sync_processing_and_persistence():
     """
-    Rama statuses [ARCH-BULK-META-010]: (1) la frontera responde 200 y delega a
-    BackgroundTasks (fuera del embudo comercial — acuses de entrega); (2) el handler
-    delegado persiste el acuse con await BLOQUEANTE vía update_whatsapp_status,
+    Rama statuses [ARCH-BULK-META-010 / ETAPA-5 Sincronía de Oficio]: (1) la frontera
+    responde 200 y procesa el acuse INLINE con await bloqueante — cero delegación a
+    BackgroundTasks (erradicación del fire-and-forget residual, veredicto del Auditor);
+    (2) el handler persiste el acuse con await BLOQUEANTE vía update_whatsapp_status,
     con teléfono normalizado E.164 y errores propagados.
     """
     payload_dict = {
@@ -526,9 +527,13 @@ async def test_e2e_statuses_branch_delegation_and_persistence():
     mock_catalog = MagicMock()
     mock_catalog.get_all_items = MagicMock(return_value=[])
 
+    mock_ms = MagicMock()
+    mock_ms.update_whatsapp_status = AsyncMock()
+
     with patch("app.routers.whatsapp.settings") as mock_settings, \
          patch("app.routers.whatsapp._ensure_services", new_callable=AsyncMock), \
-         patch("app.routers.whatsapp.catalog_service", mock_catalog):
+         patch("app.routers.whatsapp.catalog_service", mock_catalog), \
+         patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms):
 
         mock_settings.whatsapp_app_secret = None
         mock_settings.min_catalog_items = 0
@@ -539,14 +544,28 @@ async def test_e2e_statuses_branch_delegation_and_persistence():
         response = await webhook_handler(mock_request, background_tasks)
 
     assert response == {"status": "received"}
-    assert len(background_tasks.tasks) == 1
-    assert background_tasks.tasks[0].func is _handle_statuses_background
-    status_data = background_tasks.tasks[0].args[0]
-    assert status_data["status"] == "read"
+    # [ETAPA-5 / Sincronía de Oficio] La rama statuses ya NO delega a BackgroundTasks:
+    # el acuse se procesó inline (await bloqueante) dentro del ciclo del request.
+    assert len(background_tasks.tasks) == 0
+    # Persistencia bloqueante ejecutada durante la propia llamada al webhook
+    # (teléfono normalizado E.164, errores propagados).
+    mock_ms.update_whatsapp_status.assert_awaited_once_with(
+        phone_number=PHONE_E164,
+        status_value="read",
+        wamid="wamid.e2e_status",
+        errors=[],
+    )
 
-    # Persistencia bloqueante del acuse (await dentro del handler delegado).
-    mock_ms = MagicMock()
-    mock_ms.update_whatsapp_status = AsyncMock()
+    # Contrato del handler en aislamiento (misma persistencia bloqueante verificada).
+    status_data = {
+        "id": "wamid.e2e_status",
+        "recipient_id": PHONE_RAW,
+        "status": "read",
+        "timestamp": "1672531199",
+        "phone_number_id": PHONE_NUMBER_ID,
+        "errors": [],
+    }
+    mock_ms.update_whatsapp_status.reset_mock()
 
     with patch("app.routers.whatsapp._ensure_services", new_callable=AsyncMock), \
          patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms):

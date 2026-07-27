@@ -49,7 +49,10 @@ def make_catalog_item(idx: int, rng: random.Random) -> Dict[str, Any]:
         "price": price,
         "cc": cc,
         "category": category,
-        "image_url": f"https://cdn.factory.test/img/factory_moto_{idx}.webp",
+        # [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001] Host canónico (URL-Lock whitelist):
+        # el SSOT de imágenes vive en Firebase Storage; un host fixture no canónico
+        # sería extirpado por el guard de egreso (default-deny).
+        "image_url": f"https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/motos%2Ffactory_moto_{idx}.webp?alt=media",
         "link": f"https://factory.test/motos/factory_moto_{idx}",
         "description": f"Moto sintética {idx} generada por tests/factories.py (seed fija).",
         "summary": f"Ficha sintética {idx}: {cc}cc, categoría {category}.",

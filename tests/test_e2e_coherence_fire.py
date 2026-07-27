@@ -321,10 +321,17 @@ async def test_scenario_2_faq_query_uses_query_faq_not_catalog():
     assert "![" not in text
     assert not PRICE_REGEX.search(text), "La respuesta FAQ no debe incluir precios."
 
-    # 4. Embudo retomado: la directiva de Habeas viajó al LLM con el tool result
-    #    y el PHASE-GATE sancionado (ai_brain.py:922) cerró hacia la firma de Habeas Data.
+    # 4. Embudo retomado: [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001 / Fase 3 — Capa A]
+    #    el function response cierra con el ANCLA DE EMBUDO que porta la pregunta
+    #    pendiente VERBATIM (en PHASE_2: el script legal de consentimiento del PASO 4,
+    #    que ES la directiva de Habeas en forma textual), sustituyendo al
+    #    funnel_instruction genérico. El PHASE-GATE sancionado (ai_brain.py:922)
+    #    sigue cerrando hacia la firma de Habeas Data.
     assert len(sent) == 2
-    assert "Habeas Data" in str(sent[1]), "El function response no incluyó la directiva de embudo."
+    payload_str = str(sent[1])
+    assert "[ANCLA DE EMBUDO" in payload_str, "El function response no incluyó el ancla de embudo (Capa A)."
+    assert "¿me autorizas el tratamiento de tus datos?" in payload_str, \
+        "El ancla no porta la pregunta pendiente verbatim (script PASO 4)."
     assert "política de privacidad" in text, \
         "El PHASE-GATE no retomó el embudo hacia la firma de Habeas Data."
     _assert_no_human_fallback(turn)

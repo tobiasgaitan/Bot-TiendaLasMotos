@@ -21,9 +21,16 @@ Excepción sancionada (NO violación): `client.create_task` de `tasks_v2.CloudTa
 (API GCP Cloud Tasks) pasado POR REFERENCIA a `asyncio.to_thread` en
 `_enqueue_cloud_task` (L337-382) — encolado awaited, fuera del patrón asyncio.create_task.
 
-Contexto sancionado adicional: `background_tasks.add_task` solo en los 3 puntos de
-delegación certificados (statuses ×2, ingesta del mensaje ×1) — pineado en el
-tercer test para detectar nuevas delegaciones no aprobadas.
+Contexto sancionado adicional: `background_tasks.add_task` solo en el punto de
+delegación certificado restante (ingesta del mensaje ×1, frontera 200-OK a Meta
+en la ruta local sin Cloud Tasks) — pineado en el tercer test para detectar
+nuevas delegaciones no aprobadas.
+
+Migración Etapa 5 (Sincronía de Oficio — veredicto vinculante del Auditor): los
+acuses de recibo (statuses) dejaron de delegarse; ambos bucles (webhook_handler
+y task_processor) ejecutan `_handle_statuses_background` con await bloqueante y
+bloque de resiliencia por ítem. Sitios sancionados: 3 → 1. D4: `status_semaphore`
+retirado (YAGNI) al quedar los acuses serializados por construcción.
 """
 import ast
 import io
@@ -32,9 +39,10 @@ from pathlib import Path
 
 WHATSAPP_PY = Path(__file__).resolve().parent.parent / "app" / "routers" / "whatsapp.py"
 
-# Delegaciones BackgroundTasks sancionadas (fuera del eje de escritura de estado):
-# statuses (acuses de entrega, auditoría) e ingesta del mensaje (frontera 200-OK a Meta).
-SANCTIONED_ADD_TASK_TARGETS = {"_handle_statuses_background", "_handle_message_background"}
+# Delegación BackgroundTasks sancionada (frontera de red, fuera del eje de escritura
+# de estado): ingesta del mensaje (200-OK a Meta) en la ruta local sin Cloud Tasks.
+# [ETAPA-5] statuses migrados a await bloqueante (Sincronía de Oficio) — fuera del set.
+SANCTIONED_ADD_TASK_TARGETS = {"_handle_message_background"}
 
 
 def _strip_comments_and_strings(source: str) -> str:
@@ -110,10 +118,10 @@ def test_whatsapp_router_has_zero_fire_and_forget_token_in_code():
 
 def test_background_tasks_delegation_is_confined_to_sanctioned_targets():
     """
-    Pin de confinamiento: `background_tasks.add_task` solo puede apuntar a los
-    targets sancionados (statuses / ingesta del mensaje). Cualquier NUEVA
+    Pin de confinamiento: `background_tasks.add_task` solo puede apuntar al target
+    sancionado (ingesta del mensaje, frontera 200-OK a Meta). Cualquier NUEVA
     delegación background dentro del embudo comercial rompe este pin y exige
-    aprobación explícita del Auditor.
+    aprobación explícita del Auditor. [ETAPA-5] statuses migrados a await.
     """
     tree = ast.parse(WHATSAPP_PY.read_text(encoding="utf-8"))
     delegated = []
@@ -129,18 +137,19 @@ def test_background_tasks_delegation_is_confined_to_sanctioned_targets():
         f"Delegación background NO sancionada detectada: {sorted(targets - SANCTIONED_ADD_TASK_TARGETS)}. "
         f"Sitios: {delegated}. Sancionados: {sorted(SANCTIONED_ADD_TASK_TARGETS)}."
     )
-    assert len(delegated) == 3, (
-        f"Comportamiento vigente alterado: se esperaban exactamente 3 sitios "
-        f"add_task sancionados (statuses ×2, ingesta ×1), hallados: {delegated}"
+    assert len(delegated) == 1, (
+        f"Comportamiento vigente alterado: se esperaba exactamente 1 sitio "
+        f"add_task sancionado (ingesta ×1; statuses migrados a await en Etapa 5), "
+        f"hallados: {delegated}"
     )
 
 
 def test_background_tasks_delegation_is_confined_to_sanctioned_targets():
     """
-    Pin de confinamiento: `background_tasks.add_task` solo puede apuntar a los
-    targets sancionados (statuses / ingesta del mensaje). Cualquier NUEVA
+    Pin de confinamiento: `background_tasks.add_task` solo puede apuntar al target
+    sancionado (ingesta del mensaje, frontera 200-OK a Meta). Cualquier NUEVA
     delegación background dentro del embudo comercial rompe este pin y exige
-    aprobación explícita del Auditor.
+    aprobación explícita del Auditor. [ETAPA-5] statuses migrados a await.
     """
     tree = ast.parse(WHATSAPP_PY.read_text(encoding="utf-8"))
     delegated = []
@@ -156,7 +165,8 @@ def test_background_tasks_delegation_is_confined_to_sanctioned_targets():
         f"Delegación background NO sancionada detectada: {sorted(targets - SANCTIONED_ADD_TASK_TARGETS)}. "
         f"Sitios: {delegated}. Sancionados: {sorted(SANCTIONED_ADD_TASK_TARGETS)}."
     )
-    assert len(delegated) == 3, (
-        f"Comportamiento vigente alterado: se esperaban exactamente 3 sitios "
-        f"add_task sancionados (statuses ×2, ingesta ×1), hallados: {delegated}"
+    assert len(delegated) == 1, (
+        f"Comportamiento vigente alterado: se esperaba exactamente 1 sitio "
+        f"add_task sancionado (ingesta ×1; statuses migrados a await en Etapa 5), "
+        f"hallados: {delegated}"
     )

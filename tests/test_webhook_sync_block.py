@@ -296,11 +296,12 @@ async def test_webhook_no_redundant_config_load():
 
 
 @pytest.mark.asyncio
-async def test_webhook_handler_status_delegation_to_background():
+async def test_webhook_handler_status_sync_processing():
     """
-    Verifica que el webhook_handler retorne HTTP 200 a Meta
-    y delegue el procesamiento de statuses a BackgroundTasks en lugar
-    de procesarlo síncronamente cuando Cloud Tasks no está activo.
+    [ETAPA-5 / Sincronía de Oficio] Verifica que el webhook_handler retorne HTTP 200
+    a Meta y procese los statuses INLINE con await bloqueante (cero delegación a
+    BackgroundTasks) cuando Cloud Tasks no está activo. Comportamiento histórico
+    (delegación) erradicado por veredicto del Auditor.
     """
     mock_request = MagicMock()
     # [Incidente H-A · HA-2] Guard estricto: el request debe presentar catálogo listo.
@@ -350,22 +351,18 @@ async def test_webhook_handler_status_delegation_to_background():
 
         # Aserciones
         assert response == {"status": "received"}
-        assert len(background_tasks.tasks) == 1
-        
-        # El status no debe haber sido llamado de forma síncrona
-        mock_handle_statuses.assert_not_called()
+        # [ETAPA-5] Cero delegación: la rama statuses ya no usa BackgroundTasks.
+        assert len(background_tasks.tasks) == 0
 
-        from app.routers.whatsapp import _handle_statuses_background
-        task = background_tasks.tasks[0]
-        assert task.func == _handle_statuses_background
-        assert task.args[0] == {
+        # El status fue procesado inline: awaited exactamente una vez con el payload extraído.
+        mock_handle_statuses.assert_awaited_once_with({
             "id": "wamid.status_test_123",
             "recipient_id": "573192564288",
             "status": "delivered",
             "timestamp": "1672531199",
             "phone_number_id": "999999",
             "errors": []
-        }
+        })
 
 @pytest.mark.asyncio
 async def test_dynamic_greeting_evaluation_across_all_branches():

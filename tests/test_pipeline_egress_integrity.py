@@ -28,7 +28,7 @@ from app.routers.whatsapp import _pipeline_egress
 PHONE_E164 = "+573192564288"
 PHONE_NUMBER_ID = "999999"
 MOTO_NAME = "TVS Raider 125"
-MOTO_URL = "http://catalog.test/raider125.png"
+MOTO_URL = "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos-documents/o/raider125.png?alt=media"
 
 
 def _build_ms_mock() -> MagicMock:
