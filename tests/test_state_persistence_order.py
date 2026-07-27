@@ -371,6 +371,81 @@ async def test_order_audio_branch_transcription_state_precedes_egress():
     )
 
 
+# ── DV-1: UNICIDAD DE APERTURA DE SESIÓN EN RAMA AUDIO ───────────────────────
+
+@pytest.mark.asyncio
+async def test_dv1_audio_single_session_opening_precedes_egress():
+    """
+    [M3-DEUDA-VIVA-001 / DV-1] Un turno de audio ejecuta UNA SOLA VEZ la apertura
+    transicional de sesión: create_prospect_if_missing y update_last_interaction
+    corren exclusivamente en el preámbulo común (_open_session_and_refresh).
+    La doble ejecución heredada en _pipeline_audio (nacida en 24043c2, 2026-03-04,
+    como init defensiva "Good practice" ya cubierta por el preámbulo) quedó
+    erradicada. Pin adicional: ambas escrituras preceden al 1er envío Meta
+    (Sincronía de Oficio, paridad con _assert_precedes).
+    """
+    item = make_catalog_item(2, random.Random(2026))
+    transcription = "Quiero comprar una Victory"
+
+    timeline = []
+    history = [
+        {"role": "user", "content": "hola"},
+        {"role": "model", "content": "¿Qué tipo de moto buscas?"},
+    ]
+    mock_ms = _build_ms_mock(timeline)
+    mock_ms.get_chat_history = AsyncMock(return_value=history)
+    mock_wa = _build_whatsapp_service_mock(timeline)
+
+    mock_cerebro = MagicMock()
+    mock_cerebro.pensar_respuesta = AsyncMock(
+        return_value=f"Perfecto. Precio: {format_cop(item['price'])}. Ficha Tecnica: {item['summary']}"
+    )
+    mock_judge = MagicMock()
+    mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+
+    mock_audio = MagicMock()
+    mock_audio.transcribe_audio = AsyncMock(return_value=transcription)
+
+    mock_storage = MagicMock()
+    mock_storage.download_media = AsyncMock(return_value=b"fake_audio_bytes")
+
+    mock_catalog = MagicMock()
+    mock_catalog.search = MagicMock(return_value=[])
+    mock_catalog.normalize_transcription = MagicMock(side_effect=lambda x: x)
+
+    with patch("app.routers.whatsapp._ensure_services", new_callable=AsyncMock), \
+         patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
+         patch("app.routers.whatsapp.CerebroIA", return_value=mock_cerebro), \
+         patch("app.routers.whatsapp.judge_service", mock_judge), \
+         patch("app.services.whatsapp_service.whatsapp_service", mock_wa), \
+         patch("app.routers.whatsapp.catalog_service", mock_catalog), \
+         patch("app.routers.whatsapp.message_buffer", _build_buffer_mock()), \
+         patch("app.routers.whatsapp.AudioService", return_value=mock_audio), \
+         patch("app.routers.whatsapp.storage_service", mock_storage), \
+         patch("app.routers.whatsapp._send_whatsapp_image", _send_recorder("meta:send_image", timeline)), \
+         patch("app.routers.whatsapp._send_whatsapp_message", _send_recorder("meta:send_text", timeline)), \
+         patch("app.routers.whatsapp.db", MagicMock()):
+
+        msg_payload = {
+            "from": PHONE_RAW,
+            "id": "wamid.dv1_audio_single",
+            "type": "audio",
+            "phone_number_id": PHONE_NUMBER_ID,
+            "media_id": "media_dv1_audio",
+            "mime_type": "audio/ogg; codecs=opus",
+        }
+        await _handle_message_background_impl(msg_payload, BackgroundTasks())
+
+    # DV-1-PIN-1 (unicidad): la erradicación deja exactamente 1 ejecución por turno.
+    mock_ms.create_prospect_if_missing.assert_awaited_once()
+    mock_ms.update_last_interaction.assert_awaited_once()
+
+    # DV-1-PIN-2 (Sincronía de Oficio): persistencia ≺ 1er envío Meta.
+    ctx = "DV-1-AUDIO"
+    _assert_precedes(timeline, "create_prospect_if_missing", ctx)
+    _assert_precedes(timeline, "update_last_interaction", ctx)
+
+
 # ── ORDER-REACTION ────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

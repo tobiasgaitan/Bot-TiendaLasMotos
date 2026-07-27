@@ -139,6 +139,15 @@ def _set_human_help_status_direct(phone_number: str, status: bool) -> None:
             f"🔧 Admin API: Setting human_help_requested={status} | "
             f"Input: {phone_number} | Normalizado (ID): {normalized_phone}"
         )
+
+        # [M3-DEUDA-VIVA-001 / DV-2] Paridad BOT-PONYTAIL-200 con la vía router
+        # (_mark_ponytail_deprioritized, whatsapp.py): al ACTIVAR el handoff
+        # (status=True) se desprioriza el ponytail con el campo/valor canónico en
+        # el mismo commit Firestore (escritura atómica flag+ponytail). Al reanudar
+        # (status=False) NO se toca ponytail_status: la vía router no tiene flujo
+        # de reanudación (sin paridad que replicar).
+        ponytail_patch = {"ponytail_status": "DEPRIORITIZED"} if status else {}
+        ponytail_log = " | ponytail_status=DEPRIORITIZED (BOT-PONYTAIL-200)" if status else ""
         
         prospectos_ref = db.collection(settings.firestore_collection)
         
@@ -149,10 +158,11 @@ def _set_human_help_status_direct(phone_number: str, status: bool) -> None:
         if doc.exists:
             doc_ref.update({
                 "human_help_requested": status,
-                "updated_at": firestore.SERVER_TIMESTAMP
+                "updated_at": firestore.SERVER_TIMESTAMP,
+                **ponytail_patch,
             })
             logger.info(
-                f"✅ Admin API: Updated human_help_requested={status} for {normalized_phone}"
+                f"✅ Admin API: Updated human_help_requested={status} for {normalized_phone}{ponytail_log}"
             )
             return
         
@@ -163,10 +173,11 @@ def _set_human_help_status_direct(phone_number: str, status: bool) -> None:
         if docs:
             docs[0].reference.update({
                 "human_help_requested": status,
-                "updated_at": firestore.SERVER_TIMESTAMP
+                "updated_at": firestore.SERVER_TIMESTAMP,
+                **ponytail_patch,
             })
             logger.info(
-                f"✅ Admin API: Updated human_help_requested={status} for {normalized_phone} (Legacy Query)"
+                f"✅ Admin API: Updated human_help_requested={status} for {normalized_phone} (Legacy Query){ponytail_log}"
             )
             return
         
@@ -181,11 +192,12 @@ def _set_human_help_status_direct(phone_number: str, status: bool) -> None:
             "celular": normalized_phone,
             "human_help_requested": status,
             "created_at": firestore.SERVER_TIMESTAMP,
-            "updated_at": firestore.SERVER_TIMESTAMP
+            "updated_at": firestore.SERVER_TIMESTAMP,
+            **ponytail_patch,
         })
         
         logger.info(
-            f"✅ Admin API: Created new prospect with human_help_requested={status} for {normalized_phone}"
+            f"✅ Admin API: Created new prospect with human_help_requested={status} for {normalized_phone}{ponytail_log}"
         )
     except Exception as e:
         logger.error(f"❌ Admin API: Error setting human_help_status: {str(e)}", exc_info=True)

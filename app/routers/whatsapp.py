@@ -1575,8 +1575,9 @@ async def _pipeline_audio(
     current_history = []
     if memory_service_module.memory_service:
         ms = memory_service_module.memory_service
-        await ms.create_prospect_if_missing(user_phone) # Good practice
-        await ms.update_last_interaction(user_phone)
+        # [M3-DEUDA-VIVA-001 / DV-1] Doble ejecución erradicada: create_prospect_if_missing
+        # y update_last_interaction ya corrieron (await bloqueante) en el preámbulo común
+        # (_open_session_and_refresh) para todo msg_type. Pin: test_state_persistence_order.py.
 
         # Pre-fetch inicial: solo para cargar current_history pre-transcripción.
         # NO usamos este prospect_data para el check de human_help_requested.
