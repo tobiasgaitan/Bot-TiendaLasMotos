@@ -11,6 +11,22 @@ except Exception:
     pass
 
 @pytest.fixture(autouse=True)
+def _init_config_loader_per_test():
+    """[M4-ARNÉS-AISLAMIENTO-001] Re-establece la inicialización del singleton
+    POR TEST (el bloque a nivel import solo cubre el momento de colección).
+
+    WHY: el fixture global purge_config_loader_singletons (conftest.py) purga
+    ConfigLoader._instance/_initialized antes de cada test; sin este re-seed,
+    ConfigLoader() no-arg en catalog_service lanzaría ValueError. Mismo estado
+    que el bloque de import original (Mock db), en el punto de ciclo de vida
+    correcto (por test). Cero cambios de aserciones, cero cambios de cobertura.
+    Import runtime: resuelve la clase vigente (anti divergencia BOT-174).
+    """
+    from app.core.config_loader import ConfigLoader as _CL
+    _CL(db=MagicMock())
+    yield
+
+@pytest.fixture(autouse=True)
 def mock_registration_cost():
     """Guard against Global State Pollution from other tests mocking config_service."""
     with patch.object(config_service, 'get_registration_cost', return_value=0):

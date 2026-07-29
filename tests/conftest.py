@@ -8,6 +8,54 @@ pytest_plugins = ["tests.conftest_chaos"]
 # Asegurar que el path del proyecto esté disponible
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+
+@pytest.fixture(scope="session")
+def _canonical_sys_modules():
+    """[H-ARNÉS-4 / F2-sesión] Snapshot canónico de sys.modules al inicio de la
+    sesión (post-colección: el grafo de imports de colección ES la referencia
+    de identidad de clases/módulos para toda la sesión).
+
+    Se captura UNA sola vez (scope session) y se expone al fixture function-scope
+    `isolate_module_identity`. Prohibido re-capturar por test (C2).
+    """
+    return dict(sys.modules)
+
+
+@pytest.fixture(autouse=True)
+def isolate_module_identity(_canonical_sys_modules):
+    """[H-ARNÉS-4 / F2] Neutraliza estructuralmente los barridos de sys.modules
+    (H-ARNÉS-2: test_config_startup, test_brilla_gases_real_firestore_cuotas,
+    test_startup_lock) sin tocar sus cuerpos.
+
+    Teardown por test: para cada entrada canónica cuyo objeto actual `is not`
+    el canónico (expulsada o sustituida por re-import), se reasigna
+    sys.modules[key] = canonical → la identidad de clases, settings,
+    unittest.mock y google.cloud vuelve a la referencia de sesión.
+    Las expulsiones intra-test del test barredor NO se interfieren (sus
+    aserciones ya corrieron). ZSF: dict-ops directas, sin try/except.
+    Definido PRIMERO entre los fixtures function-scope: su teardown corre
+    ÚLTIMO (LIFO), de modo que los imports de los demás teardowns ya ven los
+    módulos canónicos.
+    """
+    yield
+    for key, module in _canonical_sys_modules.items():
+        if sys.modules.get(key) is not module:
+            sys.modules[key] = module
+    # Segunda pasada (re-anclaje de paquetes padre): `import a.b as c` resuelve
+    # `c` vía ATRIBUTO del paquete padre, no vía sys.modules (verificado: tras
+    # `del sys.modules['app.main']` + re-import, el atributo `app.main` queda
+    # ligado al módulo nuevo aunque sys.modules se restaure). Sin este re-anclaje,
+    # los patches por nombre de módulo (patch.object(main_module, ...)) caerían
+    # sobre el módulo re-importado y el código bajo prueba ejecutaría las
+    # referencias reales. ZSF: setattr directo, sin try/except.
+    for key, module in _canonical_sys_modules.items():
+        if "." in key:
+            parent_name, _, attr = key.rpartition(".")
+            parent = sys.modules.get(parent_name)
+            if parent is not None and getattr(parent, attr, None) is not sys.modules.get(key):
+                setattr(parent, attr, sys.modules[key])
+
+
 @pytest.fixture(autouse=True)
 def mock_env_vars():
     """Mocks de variables de entorno para evitar fallos de configuración.
@@ -32,6 +80,130 @@ def mock_env_vars():
         "WHATSAPP_APP_SECRET": "test_app_secret_197",
     }):
         yield
+
+
+@pytest.fixture(autouse=True)
+def purge_config_loader_singletons():
+    """[M4-ARNÉS-AISLAMIENTO-001] Purga los singletons ConfigLoader/FinanceConfigLoader
+    entre tests (setup + teardown).
+
+    WHY: tests/test_pcc_ficha_tecnica.py instancia ConfigLoader(db_real) contra
+    Firestore de producción en 6 tests, dejando _instance/_initialized ligados a
+    credenciales y configuración reales; todo test posterior recibe __init__ no-op
+    y datos fugados (corrupción del arnés en tests de concurrencia).
+    Patrón promovido a global desde test_refresh_atomicity.py (_reset_singletons).
+    Alcance mínimo (YAGNI): NO purga config_service/catalog_service (tienen
+    protocolo propio de restore vía factories).
+    ZSF: asignaciones directas, sin try/except — fail-fast ruidoso.
+    """
+    from app.core.config_loader import ConfigLoader
+    from app.services.config_loader import FinanceConfigLoader
+
+    ConfigLoader._instance = None
+    ConfigLoader._initialized = False
+    FinanceConfigLoader._instance = None
+    FinanceConfigLoader._initialized = False
+    yield
+    ConfigLoader._instance = None
+    ConfigLoader._initialized = False
+    FinanceConfigLoader._instance = None
+    FinanceConfigLoader._initialized = False
+
+
+@pytest.fixture(autouse=True)
+def isolate_app_state():
+    """[H-ARNÉS-4 / F3] Aislamiento de app.state (FastAPI/Starlette).
+
+    Productores neutralizados: test_health_check (delattr manual sobre la app
+    real), test_startup_lock (lifespan real que muta catalog_ready/startup_task).
+    Setup: snapshot del dict interno `_state`. Teardown: clear + update.
+    Coexiste con real_lifespan_client/catalog_guard_ready (doble restauración
+    convergente al snapshot). ZSF: dict-ops directas, sin try/except.
+    """
+    from app.main import app
+    saved = dict(app.state._state)
+    yield
+    app.state._state.clear()
+    app.state._state.update(saved)
+
+
+@pytest.fixture(autouse=True)
+def isolate_config_service():
+    """[H-ARNÉS-4 / F4] Aislamiento del singleton config_service.
+
+    Productor neutralizado: los 6 tests de integración real de
+    test_pcc_ficha_tecnica.py (initialize con db de producción). La mutación es
+    por asignación pura (initialize, L42-105) → snapshot shallow estructuralmente
+    correcto. Setup: copia de __dict__. Teardown: clear + update.
+    ZSF: dict-ops directas, sin try/except.
+    """
+    from app.services.config_service import config_service
+    saved = dict(config_service.__dict__)
+    yield
+    config_service.__dict__.clear()
+    config_service.__dict__.update(saved)
+
+
+@pytest.fixture(autouse=True)
+def isolate_catalog_service():
+    """[H-ARNÉS-4 / F5] Aislamiento del singleton catalog_service.
+
+    Productores neutralizados: carga de catálogo real desde los tests pcc
+    (initialize + load) y asignaciones directas de _items (agentic). El swap de
+    índices es por asignación (L473-477) → snapshot shallow correcto. La caché
+    semántica (_cache_service) se vacía en setup Y teardown (contenido mutable
+    in-place: canónica = vacía). Coexiste con dynamic_catalog (token restore
+    propio; LIFO deja el estado final = snapshot pre-test).
+    ZSF: dict-ops directas, sin try/except.
+    """
+    from app.services.catalog_service import catalog_service
+    saved = dict(catalog_service.__dict__)
+    catalog_service._cache_service.clear()
+    yield
+    catalog_service.__dict__.clear()
+    catalog_service.__dict__.update(saved)
+    catalog_service._cache_service.clear()
+
+
+@pytest.fixture(autouse=True)
+def isolate_router_globals():
+    """[H-ARNÉS-4 / F6] Aislamiento de los globales mutables de app.routers.whatsapp
+    (superficie Cerebro/LLM + latencia).
+
+    Productores neutralizados: rebinding vía _ensure_services_sync(), mutación
+    de debounce_seconds (agentic, try/finally manual), residuo de idempotencia
+    BOT-INFRA-171 (_processed_wamids/_added_wamids) y locks ligados a event
+    loops muertos (_locks por phone con loops function-scope).
+
+    Setup: snapshot de refs (db, message_buffer) + reset canónico del buffer
+    vivo: debounce_seconds = 4.0 (default real del constructor, verificado C3,
+    message_buffer.py L32) y .clear() in-place de _buffers, _active_tasks,
+    _locks, _processed_wamids, _added_wamids (in-place preserva la identidad del
+    objeto). Teardown: idem reset sobre el buffer vigente + restore de refs.
+    Rama explícita documentada: message_buffer is None → no-op (ausencia de
+    estado ≠ fallo de restauración). ZSF: operaciones directas, sin try/except.
+    """
+    from app.routers import whatsapp as whatsapp_module
+    saved_db = whatsapp_module.db
+    saved_buffer = whatsapp_module.message_buffer
+    if saved_buffer is not None:
+        saved_buffer.debounce_seconds = 4.0
+        saved_buffer._buffers.clear()
+        saved_buffer._active_tasks.clear()
+        saved_buffer._locks.clear()
+        saved_buffer._processed_wamids.clear()
+        saved_buffer._added_wamids.clear()
+    yield
+    current_buffer = whatsapp_module.message_buffer
+    if current_buffer is not None:
+        current_buffer.debounce_seconds = 4.0
+        current_buffer._buffers.clear()
+        current_buffer._active_tasks.clear()
+        current_buffer._locks.clear()
+        current_buffer._processed_wamids.clear()
+        current_buffer._added_wamids.clear()
+    whatsapp_module.db = saved_db
+    whatsapp_module.message_buffer = saved_buffer
 
 
 @pytest.fixture

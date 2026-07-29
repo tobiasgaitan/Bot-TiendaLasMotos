@@ -9,6 +9,28 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.services.catalog_service import CatalogService
 
+import pytest
+
+@pytest.fixture(autouse=True)
+def _init_config_loader_per_test():
+    """[M4-ARNÉS-AISLAMIENTO-001] Auto-suficiencia del singleton ConfigLoader
+    por test para la vía degradada de catalog_service (fallback _CL._instance,
+    catalog_service.py L205).
+
+    WHY: históricamente este archivo pasaba gracias al estado ambiental fugado
+    de tests previos (singleton inicializado con config real), de modo que la
+    resolución de category_aliases no loggeaba excepción y logger.exception se
+    invocaba exactamente 1 vez (el error de stream simulado). El fixture global
+    purge_config_loader_singletons (conftest.py) erradica esa fuga; este re-seed
+    provee un singleton íntegro con _catalog_config={} (resolución de aliases
+    sin excepción, camino no-inyectado). Cero cambios de aserciones, cero
+    cambios de cobertura. Import runtime: clase vigente (anti BOT-174).
+    """
+    from app.core.config_loader import ConfigLoader as _CL
+    loader = _CL(db=MagicMock())
+    loader._catalog_config = {}
+    yield
+
 class TestCatalogDoubleBuffer(unittest.TestCase):
     def setUp(self):
         self.service = CatalogService()
