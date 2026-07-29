@@ -2,24 +2,19 @@ import asyncio
 import logging
 import sys
 import os
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 # Add project root
 sys.path.append(os.getcwd())
 
-# Mock missing dependencies BEFORE imports
-sys.modules["ffmpeg"] = MagicMock()
-sys.modules["vertexai"] = MagicMock()
-sys.modules["vertexai.generative_models"] = MagicMock()
-sys.modules["vertexai.language_models"] = MagicMock()
-sys.modules["sklearn"] = MagicMock()
-sys.modules["sklearn.metrics.pairwise"] = MagicMock()
-
-# Mock Firestore before imports if needed, but we can pass mocks
-from app.services.inventory_service import InventoryService
-from app.services.vision_service import VisionService
-from app.services.audio_service import AudioService
-from app.services.finance import MotorFinanciero
+# [H-ARNÉS-7 / M4-PLAN-ARNÉS-7-002] Import-time PURO: los mocks de sys.modules
+# (ffmpeg / vertexai / sklearn) y los imports que protegían se movieron VERBATIM
+# dentro de main() vía patch.dict (patrón M4-003, scripts/test_v25_audio.py).
+# Importar este módulo ya no envenena sys.modules del proceso. Sentinels:
+InventoryService = None
+VisionService = None
+AudioService = None
+MotorFinanciero = None
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger("Phase3Verifier")
@@ -120,6 +115,20 @@ async def test_audio_transcode():
     logger.info("✅ Audio flow structure valid (Mocked)")
 
 async def main():
+    global InventoryService, VisionService, AudioService, MotorFinanciero
+    # Mock missing dependencies BEFORE imports
+    with patch.dict(sys.modules, {"ffmpeg": MagicMock(),
+                                  "vertexai": MagicMock(),
+                                  "vertexai.generative_models": MagicMock(),
+                                  "vertexai.language_models": MagicMock(),
+                                  "sklearn": MagicMock(),
+                                  "sklearn.metrics.pairwise": MagicMock()}):
+        # Mock Firestore before imports if needed, but we can pass mocks
+        from app.services.inventory_service import InventoryService
+        from app.services.vision_service import VisionService
+        from app.services.audio_service import AudioService
+        from app.services.finance import MotorFinanciero
+
     await test_inventory_budget()
     await test_vision_ocr()
     await test_audio_transcode()

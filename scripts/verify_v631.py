@@ -1,16 +1,24 @@
 import sys
 import os
 import asyncio
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 # Add app directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Mocking external dependencies
-sys.modules['app.services.notification_service'] = MagicMock()
-sys.modules['app.utils.security'] = MagicMock()
+# [H-ARNÉS-7 / M4-PLAN-ARNÉS-7-002] Import-time PURO: los mocks de sys.modules
+# (app.services.notification_service / app.utils.security) se movieron VERBATIM
+# dentro de test_dynamic_injection() vía patch.dict (patrón M4-003). Nota: el
+# veneno es VESTIGIAL — este script no importa ningún módulo de app (la lógica
+# usa MockCatalog local); el guard queda sin imports internos que proteger.
+# Importar este módulo ya no envenena sys.modules del proceso.
 
 async def test_dynamic_injection():
+    # Mocking external dependencies (vestigial: sin imports de app que proteger)
+    with patch.dict(sys.modules, {'app.services.notification_service': MagicMock(),
+                                  'app.utils.security': MagicMock()}):
+        pass
+
     print("🧪 Verificando Lógica de Inyección Dinámica v6.3.1...")
     
     # Mock Objects

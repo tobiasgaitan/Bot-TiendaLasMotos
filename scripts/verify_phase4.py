@@ -7,17 +7,14 @@ from unittest.mock import MagicMock, AsyncMock, patch
 # Add project root
 sys.path.append(os.getcwd())
 
-# Mock modules
-sys.modules["google.cloud"] = MagicMock()
-sys.modules["google.cloud.bigquery"] = MagicMock()
-sys.modules["vertexai"] = MagicMock()
-sys.modules["vertexai.generative_models"] = MagicMock()
-sys.modules["ffmpeg"] = MagicMock()
-
-# Import Services
-from app.services.audit_service import AuditService
-from app.services.ai_brain import CerebroIA
-from app.services.audio_service import AudioService
+# [H-ARNÉS-7 / M4-PLAN-ARNÉS-7-002] Import-time PURO: los mocks de sys.modules
+# (google.cloud / bigquery / vertexai / ffmpeg) y los imports que protegían se
+# movieron VERBATIM dentro de main() vía patch.dict (patrón M4-003,
+# scripts/test_v25_audio.py). Importar este módulo ya no envenena sys.modules
+# del proceso. Sentinels:
+AuditService = None
+CerebroIA = None
+AudioService = None
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger("Phase4Verifier")
@@ -113,6 +110,18 @@ async def test_audio_empty_check():
     logger.info("✅ Empty response handled gracefully.")
 
 async def main():
+    global AuditService, CerebroIA, AudioService
+    # Mock modules
+    with patch.dict(sys.modules, {"google.cloud": MagicMock(),
+                                  "google.cloud.bigquery": MagicMock(),
+                                  "vertexai": MagicMock(),
+                                  "vertexai.generative_models": MagicMock(),
+                                  "ffmpeg": MagicMock()}):
+        # Import Services
+        from app.services.audit_service import AuditService
+        from app.services.ai_brain import CerebroIA
+        from app.services.audio_service import AudioService
+
     await test_audit_service()
     await test_sentiment_logic()
     await test_retry_logic()

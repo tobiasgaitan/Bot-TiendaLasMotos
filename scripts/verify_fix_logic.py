@@ -6,17 +6,25 @@ from unittest.mock import MagicMock, patch
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Mock google.cloud.firestore before importing services that depend on it
-sys.modules["google.cloud"] = MagicMock()
-sys.modules["google.cloud.firestore"] = MagicMock()
-
-from app.services.memory_service import MemoryService
-from app.core.utils import PhoneNormalizer
+# [H-ARNÉS-7 / M4-PLAN-ARNÉS-7-002] Import-time PURO: el mock de sys.modules
+# (google.cloud / google.cloud.firestore) y los imports que protegía se
+# movieron VERBATIM dentro de test_memory_service_integration() vía patch.dict
+# (patrón M4-003, scripts/test_v25_audio.py). Importar este módulo ya no
+# envenena sys.modules del proceso. Sentinels de runtime:
+MemoryService = None
+PhoneNormalizer = None
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 
 def test_memory_service_integration():
+    global MemoryService, PhoneNormalizer
+    # Mock google.cloud.firestore before importing services that depend on it
+    with patch.dict(sys.modules, {"google.cloud": MagicMock(),
+                                  "google.cloud.firestore": MagicMock()}):
+        from app.services.memory_service import MemoryService
+        from app.core.utils import PhoneNormalizer
+
     print("🧪 STARTING MEMORY SERVICE VERIFICATION 🧪")
     
     # Mock DB client

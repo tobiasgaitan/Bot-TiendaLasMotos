@@ -9,11 +9,23 @@ from unittest.mock import MagicMock, AsyncMock, patch
 sys.path.append(os.getcwd())
 
 from unittest.mock import MagicMock
-sys.modules['ffmpeg'] = MagicMock()
-
-from app.routers import whatsapp
+# [H-ARNÉS-7 / M4-PLAN-ARNÉS-7-002 · C-prime] Import-time PURO: el mock de
+# sys.modules (ffmpeg) se movió dentro de run_test() como ASIGNACIÓN DIRECTA
+# SIN RESTORE (mecanismo α: lifetime permanente = semántica pre-fix; H-MEC-1 —
+# patch.dict-con-restore introdujo SIGSEGV de teardown, EXIT=139×3). Importar
+# este módulo no envenena sys.modules del proceso. Sentinel:
+whatsapp = None
 
 async def run_test():
+    global whatsapp
+    # [H-ARNÉS-7 · C-prime/α] Mock ffmpeg ANTES del import, SIN restore:
+    # lifetime permanente durante todo el proceso (= semántica pre-fix
+    # estable, EXIT=1×2; el restore de patch.dict causaba SIGSEGV en
+    # teardown). Vive en runtime — este cuerpo no se ejecuta en colección
+    # (run_test no matchea test_*), no contamina el proceso compartido.
+    sys.modules['ffmpeg'] = MagicMock()
+    from app.routers import whatsapp
+
     print("🚀 STARTING STRICT HANDOFF VERIFICATION")
     print("=" * 50)
 
