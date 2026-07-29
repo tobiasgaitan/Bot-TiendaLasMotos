@@ -27,56 +27,82 @@ import time
 import warnings
 warnings.filterwarnings("ignore")
 
-# ── .env support ──────────────────────────────────────────────────────────────
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
-# ── SDK selection: google-genai preferred, vertexai fallback ─────────────────
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GCP_PROJECT = os.getenv("GCP_PROJECT_ID", os.getenv("GOOGLE_CLOUD_PROJECT", "tiendalasmotos"))
-USE_VERTEX = False
-client = None
-
-if GEMINI_API_KEY:
-    try:
-        from google import genai
-        from google.genai import types
-        client_obj = genai.Client(api_key=GEMINI_API_KEY)
-        print(f"✅ Auth: Gemini API Key")
-    except ImportError:
-        print("❌ google-genai not installed. Run: pip3 install google-genai")
-        sys.exit(1)
-else:
-    # Fall back to vertexai with Application Default Credentials (Cloud Shell)
-    try:
-        import vertexai
-        from vertexai.generative_models import GenerativeModel, GenerationConfig
-        from google import genai
-        from google.genai import types
-        vertexai.init(project=GCP_PROJECT, location="us-central1")
-        USE_VERTEX = True
-        client_obj = None
-        print(f"✅ Auth: Vertex AI ADC (project={GCP_PROJECT})")
-    except Exception as e:
-        print(f"❌ No credentials found. Set GEMINI_API_KEY or run in Cloud Shell.")
-        print(f"   Detail: {e}")
-        sys.exit(1)
-
-# ── Load prompt from app/core/prompts.py ─────────────────────────────────────
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-try:
-    from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION as SYSTEM_PROMPT
-    print(f"✅ Prompt: app/core/prompts.py ({len(SYSTEM_PROMPT)} chars)")
-except ImportError as e:
-    print(f"❌ Cannot import app/core/prompts.py: {e}")
-    sys.exit(1)
+# ── [H-LAT-R5 / M4-PLAN-LAT-R5-001] Import-time PURO ─────────────────────────
+# Side effects de SDK/dotenv/sys.exit reubicados verbatim dentro de
+# _init_runtime() (patrón M4-003, scripts/test_v25_audio.py): en colección
+# pytest el import de este módulo es puro (0 red, 0 SDK, 0 sys.exit); en CLI
+# (_init_runtime vía __main__ o guard de call_model) la ausencia de
+# credenciales sigue fallando ruidoso (ZSF). Globales de runtime = sentinels.
+SYSTEM_PROMPT = None
+USE_VERTEX = None
+client_obj = None
+GEMINI_API_KEY = None
+GCP_PROJECT = None
+types = None
+GenerativeModel = None
+GenerationConfig = None
 
 # ── Model: MUST match ai_brain.py line 59 exactly ────────────────────────────
 MODEL = "gemini-2.5-flash"
-print(f"✅ Model: {MODEL}\n")
+
+
+def _init_runtime():
+    """Init lazy [H-LAT-R5]: contiene VERBATIM el bloque ex-import-time
+    (.env support, selección SDK google-genai/vertexai con prints y sys.exit,
+    sys.path + import de app/core/prompts, print de modelo). Solo se ejecuta
+    bajo __main__ o vía el guard de call_model; jamás en colección pytest.
+    """
+    global SYSTEM_PROMPT, USE_VERTEX, client_obj, GEMINI_API_KEY, GCP_PROJECT
+    global types, GenerativeModel, GenerationConfig
+
+    # ── .env support ──────────────────────────────────────────────────────────
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
+    # ── SDK selection: google-genai preferred, vertexai fallback ─────────────
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    GCP_PROJECT = os.getenv("GCP_PROJECT_ID", os.getenv("GOOGLE_CLOUD_PROJECT", "tiendalasmotos"))
+    USE_VERTEX = False
+    client = None
+
+    if GEMINI_API_KEY:
+        try:
+            from google import genai
+            from google.genai import types
+            client_obj = genai.Client(api_key=GEMINI_API_KEY)
+            print(f"✅ Auth: Gemini API Key")
+        except ImportError:
+            print("❌ google-genai not installed. Run: pip3 install google-genai")
+            sys.exit(1)
+    else:
+        # Fall back to vertexai with Application Default Credentials (Cloud Shell)
+        try:
+            import vertexai
+            from vertexai.generative_models import GenerativeModel, GenerationConfig
+            from google import genai
+            from google.genai import types
+            vertexai.init(project=GCP_PROJECT, location="us-central1")
+            USE_VERTEX = True
+            client_obj = None
+            print(f"✅ Auth: Vertex AI ADC (project={GCP_PROJECT})")
+        except Exception as e:
+            print(f"❌ No credentials found. Set GEMINI_API_KEY or run in Cloud Shell.")
+            print(f"   Detail: {e}")
+            sys.exit(1)
+
+    # ── Load prompt from app/core/prompts.py ─────────────────────────────────
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    try:
+        from app.core.prompts import JUAN_PABLO_SYSTEM_INSTRUCTION as SYSTEM_PROMPT
+        print(f"✅ Prompt: app/core/prompts.py ({len(SYSTEM_PROMPT)} chars)")
+    except ImportError as e:
+        print(f"❌ Cannot import app/core/prompts.py: {e}")
+        sys.exit(1)
+
+    print(f"✅ Model: {MODEL}\n")
 
 # ── Mock Prospect (Phase 1 + Phase 2 complete) ────────────────────────────────
 PROSPECT = {
@@ -116,6 +142,8 @@ def build_prompt(raw_msg: str, p: dict):
 
 def call_model(full_prompt: str) -> str:
     """Call Gemini via google-genai SDK or Vertex AI SDK depending on auth."""
+    if client_obj is None and not USE_VERTEX:
+        _init_runtime()
     if USE_VERTEX:
         model = GenerativeModel(
             MODEL,
@@ -196,6 +224,7 @@ def run_test(label: str, raw_msg: str,
 
 
 if __name__ == "__main__":
+    _init_runtime()
     print("🧪  Phase 3 FAQ QA Test Suite")
     res = []
     res.append(run_test("[P0] PRODUCTION FAILURE — FAQ skipped after Phase 2",
