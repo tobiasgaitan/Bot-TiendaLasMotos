@@ -40,12 +40,6 @@ class TestConfigStartup:
         pool_sin_token["WHATSAPP_TOKEN"] = ""
 
         with patch.dict(os.environ, pool_sin_token, clear=False):
-            # CRÍTICO: descargar el módulo para forzar re-instanciación de Settings()
-            import sys
-            mods_to_remove = [m for m in sys.modules if "app.core.config" in m]
-            for m in mods_to_remove:
-                del sys.modules[m]
-
             with pytest.raises(RuntimeError, match="WHATSAPP_TOKEN"):
                 from app.core.config import Settings
                 Settings()
@@ -59,11 +53,6 @@ class TestConfigStartup:
         pool_sin_phone["PHONE_NUMBER_ID"] = ""
 
         with patch.dict(os.environ, pool_sin_phone, clear=False):
-            import sys
-            mods_to_remove = [m for m in sys.modules if "app.core.config" in m]
-            for m in mods_to_remove:
-                del sys.modules[m]
-
             with pytest.raises(RuntimeError, match="PHONE_NUMBER_ID"):
                 from app.core.config import Settings
                 Settings()
@@ -74,11 +63,6 @@ class TestConfigStartup:
         con el pool completo de credenciales — escenario del workflow CI/CD post-fix.
         """
         with patch.dict(os.environ, FULL_POOL, clear=False):
-            import sys
-            mods_to_remove = [m for m in sys.modules if "app.core.config" in m]
-            for m in mods_to_remove:
-                del sys.modules[m]
-
             from app.core.config import Settings
             s = Settings()
 
@@ -96,11 +80,6 @@ class TestConfigStartup:
         pool_with_whitespace = {**FULL_POOL, "WHATSAPP_TOKEN": "  test_token_con_espacios_197  "}
 
         with patch.dict(os.environ, pool_with_whitespace, clear=False):
-            import sys
-            mods_to_remove = [m for m in sys.modules if "app.core.config" in m]
-            for m in mods_to_remove:
-                del sys.modules[m]
-
             from app.core.config import Settings
             s = Settings()
             # Después del strip() el token debe ser el valor limpio
@@ -114,11 +93,6 @@ class TestConfigStartup:
         pool_insecure = {**FULL_POOL, "WHATSAPP_TOKEN": "moto_master_2026"}
 
         with patch.dict(os.environ, pool_insecure, clear=False):
-            import sys
-            mods_to_remove = [m for m in sys.modules if "app.core.config" in m]
-            for m in mods_to_remove:
-                del sys.modules[m]
-
             with pytest.raises(RuntimeError, match="WHATSAPP_TOKEN"):
                 from app.core.config import Settings
                 Settings()

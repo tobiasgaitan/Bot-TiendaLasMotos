@@ -1187,37 +1187,6 @@ async def test_brilla_gases_real_firestore_cuotas():
     for Victory Bet ABS (initial = 1,395,000 COP) and $364.825 COP for TVS Sport 100 ELS
     (initial = 665,000 COP) under the real Firestore configuration layout.
     """
-    from unittest.mock import patch
-    patch.stopall()
-    import sys
-    from unittest.mock import Mock, MagicMock
-    
-    # 1. Pop all mock modules from sys.modules
-    for key, val in list(sys.modules.items()):
-        try:
-            if isinstance(val, (Mock, MagicMock)) or "Mock" in str(type(val)) or "mock" in str(val).lower():
-                sys.modules.pop(key, None)
-        except Exception:
-            pass
-            
-    # 2. Pop specific secretmanager modules and reload app.core.security
-    sys.modules.pop("app.core.security", None)
-    sys.modules.pop("google.cloud.secretmanager", None)
-    sys.modules.pop("google.cloud.secretmanager_v1", None)
-    for key in list(sys.modules.keys()):
-        if "secretmanager" in key:
-            sys.modules.pop(key, None)
-            
-    # 3. Clean google.cloud namespace attributes
-    import google.cloud
-    for attr in list(google.cloud.__dict__.keys()):
-        try:
-            val = getattr(google.cloud, attr)
-            if isinstance(val, (Mock, MagicMock)) or "Mock" in str(type(val)) or "mock" in str(val).lower():
-                delattr(google.cloud, attr)
-        except:
-            pass
-            
     from app.core.security import get_firebase_credentials_object
     from google.cloud import firestore
     from app.core.config import settings
