@@ -636,87 +636,83 @@ async def test_whatsapp_reaction_payload_processing():
     
     # 1. Asegurar la inicialización del message_buffer y forzar debounce_seconds a 0.0
     whatsapp._ensure_services_sync()
-    orig_debounce = whatsapp.message_buffer.debounce_seconds
     whatsapp.message_buffer.debounce_seconds = 0.0
     
     user_phone = "+573192564288"
     
-    try:
-        # Clear buffer to guarantee complete test isolation
-        await whatsapp.message_buffer.clear_buffer(user_phone)
-        if user_phone in whatsapp.message_buffer._processed_wamids:
-            whatsapp.message_buffer._processed_wamids[user_phone].clear()
-        msg_data = {
-            "from": user_phone,
-            "id": "wamid.test_reaction_134",
-            "timestamp": "1672531199",
-            "type": "reaction",
-            "reaction": {
-                "emoji": "👍",
-                "message_id": "wamid.target_msg_123"
-            },
-            "phone_number_id": "999999"
-        }
+    # Clear buffer to guarantee complete test isolation
+    await whatsapp.message_buffer.clear_buffer(user_phone)
+    if user_phone in whatsapp.message_buffer._processed_wamids:
+        whatsapp.message_buffer._processed_wamids[user_phone].clear()
+    msg_data = {
+        "from": user_phone,
+        "id": "wamid.test_reaction_134",
+        "timestamp": "1672531199",
+        "type": "reaction",
+        "reaction": {
+            "emoji": "👍",
+            "message_id": "wamid.target_msg_123"
+        },
+        "phone_number_id": "999999"
+    }
 
-        # Mock memory service
-        mock_memory_service = MagicMock()
-        mock_memory_service.save_message = AsyncMock(return_value=True)
-        mock_memory_service.get_prospect_data = AsyncMock(return_value={
-            "exists": True,
-            "status": "PENDING",
-            "chatbot_status": "ACTIVE",
-            "name": "Juan Test",
-            "celular": user_phone,
-            "habeas_data_accepted": True,
-            "moto_interest": "Raider 125",
-            "forma_pago": "credito"
-        })
-        mock_memory_service.get_chat_history = AsyncMock(return_value=[])
-        mock_memory_service.create_prospect_if_missing = AsyncMock()
-        mock_memory_service.update_last_interaction = AsyncMock()
-        mock_memory_service.transition_to_in_progress = AsyncMock()
-        mock_memory_service.generate_and_update_summary = AsyncMock()
-        mock_memory_service.set_human_help_status = AsyncMock()
-        # [RF-1] Barrera durable del embudo: reclamo siempre exitoso en este test
-        mock_memory_service.claim_webhook_idempotency = AsyncMock(return_value=True)
+    # Mock memory service
+    mock_memory_service = MagicMock()
+    mock_memory_service.save_message = AsyncMock(return_value=True)
+    mock_memory_service.get_prospect_data = AsyncMock(return_value={
+        "exists": True,
+        "status": "PENDING",
+        "chatbot_status": "ACTIVE",
+        "name": "Juan Test",
+        "celular": user_phone,
+        "habeas_data_accepted": True,
+        "moto_interest": "Raider 125",
+        "forma_pago": "credito"
+    })
+    mock_memory_service.get_chat_history = AsyncMock(return_value=[])
+    mock_memory_service.create_prospect_if_missing = AsyncMock()
+    mock_memory_service.update_last_interaction = AsyncMock()
+    mock_memory_service.transition_to_in_progress = AsyncMock()
+    mock_memory_service.generate_and_update_summary = AsyncMock()
+    mock_memory_service.set_human_help_status = AsyncMock()
+    # [RF-1] Barrera durable del embudo: reclamo siempre exitoso en este test
+    mock_memory_service.claim_webhook_idempotency = AsyncMock(return_value=True)
         
-        # Mock CerebroIA.pensar_respuesta
-        captured_user_message = []
-        async def mock_pensar_respuesta(*args, **kwargs):
-            captured_user_message.append(args[0])
-            return "Respuesta simulada de la IA"
+    # Mock CerebroIA.pensar_respuesta
+    captured_user_message = []
+    async def mock_pensar_respuesta(*args, **kwargs):
+        captured_user_message.append(args[0])
+        return "Respuesta simulada de la IA"
 
-        # Mock send_text_message to capture response to user
-        captured_outgoing = []
-        async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
-            captured_outgoing.append(text)
-            return {"messages": [{"id": "wamid.mocked_123"}]}
+    # Mock send_text_message to capture response to user
+    captured_outgoing = []
+    async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
+        captured_outgoing.append(text)
+        return {"messages": [{"id": "wamid.mocked_123"}]}
 
-        with patch("app.routers.whatsapp.settings") as mock_settings, \
-             patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
-             patch("app.routers.whatsapp.judge_service") as mock_judge, \
-             patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
-             patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
-             patch.object(CerebroIA, "pensar_respuesta", side_effect=mock_pensar_respuesta), \
-             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
-             patch("app.services.ai_brain.SDK_AVAILABLE", True):
+    with patch("app.routers.whatsapp.settings") as mock_settings, \
+         patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
+         patch("app.routers.whatsapp.judge_service") as mock_judge, \
+         patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
+         patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+         patch.object(CerebroIA, "pensar_respuesta", side_effect=mock_pensar_respuesta), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
              
-            mock_settings.whatsapp_app_secret = None  # Bypass signature verification
-            mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+        mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
             
-            background_tasks = BackgroundTasks()
-            await _handle_message_background(msg_data, background_tasks)
+        background_tasks = BackgroundTasks()
+        await _handle_message_background(msg_data, background_tasks)
             
-            # Verify that CerebroIA was indeed called with "Sí"
-            assert len(captured_user_message) == 1, "CerebroIA was not invoked."
-            assert captured_user_message[0] == "Sí", f"Expected 'Sí', but got '{captured_user_message[0]}'"
+        # Verify that CerebroIA was indeed called with "Sí"
+        assert len(captured_user_message) == 1, "CerebroIA was not invoked."
+        assert captured_user_message[0] == "Sí", f"Expected 'Sí', but got '{captured_user_message[0]}'"
             
-            # Verify that a response was sent to the user
-            assert len(captured_outgoing) == 1, "No outgoing WhatsApp message sent."
-            assert captured_outgoing[0] == "Respuesta simulada de la IA"
+        # Verify that a response was sent to the user
+        assert len(captured_outgoing) == 1, "No outgoing WhatsApp message sent."
+        assert captured_outgoing[0] == "Respuesta simulada de la IA"
 
-    finally:
-        whatsapp.message_buffer.debounce_seconds = orig_debounce
 
 
 @pytest.mark.asyncio
@@ -872,12 +868,9 @@ async def test_clean_text_message_bypasses_reaction_interceptor_and_preserves_di
     
     # 1. Asegurar la inicialización de servicios
     whatsapp._ensure_services_sync()
-    orig_debounce = whatsapp.message_buffer.debounce_seconds
     whatsapp.message_buffer.debounce_seconds = 0.0
     
     from app.services.catalog_service import catalog_service
-    original_items = getattr(catalog_service, "_items", [])
-    original_items_by_id = getattr(catalog_service, "_items_by_id", {})
     
     item = {
         "id": "tvs_raider",
@@ -898,98 +891,93 @@ async def test_clean_text_message_bypasses_reaction_interceptor_and_preserves_di
     
     user_phone = "+573192564288"
     
-    try:
-        # Clear buffer to guarantee complete test isolation
-        await whatsapp.message_buffer.clear_buffer(user_phone)
-        if user_phone in whatsapp.message_buffer._processed_wamids:
-            whatsapp.message_buffer._processed_wamids[user_phone].clear()
+    # Clear buffer to guarantee complete test isolation
+    await whatsapp.message_buffer.clear_buffer(user_phone)
+    if user_phone in whatsapp.message_buffer._processed_wamids:
+        whatsapp.message_buffer._processed_wamids[user_phone].clear()
             
-        # Payload de mensaje de texto limpio
-        msg_data = {
-            "from": user_phone,
-            "id": "wamid.test_text_fuzzy_139",
-            "timestamp": "1672531199",
-            "type": "text",
-            "text": "quiero ver la rayder",
-            "phone_number_id": "999999"
-        }
+    # Payload de mensaje de texto limpio
+    msg_data = {
+        "from": user_phone,
+        "id": "wamid.test_text_fuzzy_139",
+        "timestamp": "1672531199",
+        "type": "text",
+        "text": "quiero ver la rayder",
+        "phone_number_id": "999999"
+    }
 
-        # Mock memory service
-        mock_memory_service = MagicMock()
-        mock_memory_service.save_message = AsyncMock(return_value=True)
-        # Indicar que no ha aceptado habeas data, y tiene moto_interest Raider 125
-        mock_prospect_data = {
-            "exists": True,
-            "status": "PENDING",
-            "chatbot_status": "ACTIVE",
-            "name": "Juan Test",
-            "celular": user_phone,
-            "habeas_data_accepted": False,
-            "moto_interest": "Raider 125",
-            "forma_pago": "credito"
-        }
-        mock_memory_service.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
-        mock_memory_service.get_chat_history = AsyncMock(return_value=[])
-        mock_memory_service.create_prospect_if_missing = AsyncMock()
-        mock_memory_service.update_last_interaction = AsyncMock()
-        mock_memory_service.transition_to_in_progress = AsyncMock()
-        mock_memory_service.generate_and_update_summary = AsyncMock()
-        mock_memory_service.set_human_help_status = AsyncMock()
-        mock_memory_service.update_prospect_summary = AsyncMock()
-        # [RF-1] Barrera durable del embudo: reclamo siempre exitoso en este test
-        mock_memory_service.claim_webhook_idempotency = AsyncMock(return_value=True)
+    # Mock memory service
+    mock_memory_service = MagicMock()
+    mock_memory_service.save_message = AsyncMock(return_value=True)
+    # Indicar que no ha aceptado habeas data, y tiene moto_interest Raider 125
+    mock_prospect_data = {
+        "exists": True,
+        "status": "PENDING",
+        "chatbot_status": "ACTIVE",
+        "name": "Juan Test",
+        "celular": user_phone,
+        "habeas_data_accepted": False,
+        "moto_interest": "Raider 125",
+        "forma_pago": "credito"
+    }
+    mock_memory_service.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+    mock_memory_service.get_chat_history = AsyncMock(return_value=[])
+    mock_memory_service.create_prospect_if_missing = AsyncMock()
+    mock_memory_service.update_last_interaction = AsyncMock()
+    mock_memory_service.transition_to_in_progress = AsyncMock()
+    mock_memory_service.generate_and_update_summary = AsyncMock()
+    mock_memory_service.set_human_help_status = AsyncMock()
+    mock_memory_service.update_prospect_summary = AsyncMock()
+    # [RF-1] Barrera durable del embudo: reclamo siempre exitoso en este test
+    mock_memory_service.claim_webhook_idempotency = AsyncMock(return_value=True)
         
-        # Mock CerebroIA.pensar_respuesta
-        captured_user_message = []
-        async def mock_pensar_respuesta(*args, **kwargs):
-            captured_user_message.append(args[0])
-            # Assert that the prospect_data was NOT modified by the reaction interceptor
-            assert kwargs["prospect_data"]["habeas_data_accepted"] is False
-            return "Respuesta de la IA"
+    # Mock CerebroIA.pensar_respuesta
+    captured_user_message = []
+    async def mock_pensar_respuesta(*args, **kwargs):
+        captured_user_message.append(args[0])
+        # Assert that the prospect_data was NOT modified by the reaction interceptor
+        assert kwargs["prospect_data"]["habeas_data_accepted"] is False
+        return "Respuesta de la IA"
 
-        # Mock send_text_message to capture response to user
-        captured_outgoing = []
-        async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
-            captured_outgoing.append(text)
-            return {"messages": [{"id": "wamid.mocked_123"}]}
+    # Mock send_text_message to capture response to user
+    captured_outgoing = []
+    async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
+        captured_outgoing.append(text)
+        return {"messages": [{"id": "wamid.mocked_123"}]}
 
-        with patch("app.routers.whatsapp.settings") as mock_settings, \
-             patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
-             patch("app.routers.whatsapp.judge_service") as mock_judge, \
-             patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
-             patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
-             patch.object(CerebroIA, "pensar_respuesta", side_effect=mock_pensar_respuesta), \
-             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
-             patch("app.services.ai_brain.SDK_AVAILABLE", True):
+    with patch("app.routers.whatsapp.settings") as mock_settings, \
+         patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
+         patch("app.routers.whatsapp.judge_service") as mock_judge, \
+         patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
+         patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+         patch.object(CerebroIA, "pensar_respuesta", side_effect=mock_pensar_respuesta), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
              
-            mock_settings.whatsapp_app_secret = None  # Bypass signature verification
-            mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+        mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
             
-            background_tasks = BackgroundTasks()
-            await _handle_message_background(msg_data, background_tasks)
+        background_tasks = BackgroundTasks()
+        await _handle_message_background(msg_data, background_tasks)
             
-            # Verificaciones
-            # 1. CerebroIA fue invocado con la consulta de texto
-            assert len(captured_user_message) == 1
-            assert captured_user_message[0] == "quiero ver la rayder"
+        # Verificaciones
+        # 1. CerebroIA fue invocado con la consulta de texto
+        assert len(captured_user_message) == 1
+        assert captured_user_message[0] == "quiero ver la rayder"
             
-            # 2. No se llamó al interceptor de reacciones (update_prospect_summary no se llamó para forzar aceptación)
-            for call in mock_memory_service.update_prospect_summary.call_args_list:
-                args, kwargs_call = call
-                if len(args) >= 3 and "habeas_data_accepted" in args[2]:
-                    assert False, "update_prospect_summary was called to accept habeas data on a text message!"
-                if "habeas_data_accepted" in kwargs_call.get("data", {}):
-                    assert False, "update_prospect_summary was called to accept habeas data on a text message!"
+        # 2. No se llamó al interceptor de reacciones (update_prospect_summary no se llamó para forzar aceptación)
+        for call in mock_memory_service.update_prospect_summary.call_args_list:
+            args, kwargs_call = call
+            if len(args) >= 3 and "habeas_data_accepted" in args[2]:
+                assert False, "update_prospect_summary was called to accept habeas data on a text message!"
+            if "habeas_data_accepted" in kwargs_call.get("data", {}):
+                assert False, "update_prospect_summary was called to accept habeas data on a text message!"
             
-            # 3. La lógica difflib se conserva (los mocks no interceptaron de más y delegaron limpio)
-            # Para esto, llamamos directamente al CatalogService para demostrar que 'rayder' coincide con 'Raider 125' por difflib.
-            results = catalog_service.search("rayder")
-            assert any("Raider 125" in item["name"] for item in results), "Coincidencia fuzzy de difflib falló para 'rayder'!"
+        # 3. La lógica difflib se conserva (los mocks no interceptaron de más y delegaron limpio)
+        # Para esto, llamamos directamente al CatalogService para demostrar que 'rayder' coincide con 'Raider 125' por difflib.
+        results = catalog_service.search("rayder")
+        assert any("Raider 125" in item["name"] for item in results), "Coincidencia fuzzy de difflib falló para 'rayder'!"
 
-    finally:
-        catalog_service._items = original_items
-        catalog_service._items_by_id = original_items_by_id
-        whatsapp.message_buffer.debounce_seconds = orig_debounce
 
 
 async def test_concurrency_stress_phonetic_boser():
@@ -1003,12 +991,9 @@ async def test_concurrency_stress_phonetic_boser():
     from app.routers.whatsapp import _handle_message_background, _handle_statuses_background
     # 1. Asegurar la inicialización de servicios
     whatsapp._ensure_services_sync()
-    orig_debounce = whatsapp.message_buffer.debounce_seconds
     whatsapp.message_buffer.debounce_seconds = 0.0
     
     from app.services.catalog_service import catalog_service
-    original_items = getattr(catalog_service, "_items", [])
-    original_items_by_id = getattr(catalog_service, "_items_by_id", {})
     
     item = {
         "id": "tvs_sport",
@@ -1029,127 +1014,122 @@ async def test_concurrency_stress_phonetic_boser():
     
     user_phone = "+573192564288"
     
-    try:
-        # Clear buffer to guarantee complete test isolation
-        await whatsapp.message_buffer.clear_buffer(user_phone)
-        if user_phone in whatsapp.message_buffer._processed_wamids:
-            whatsapp.message_buffer._processed_wamids[user_phone].clear()
+    # Clear buffer to guarantee complete test isolation
+    await whatsapp.message_buffer.clear_buffer(user_phone)
+    if user_phone in whatsapp.message_buffer._processed_wamids:
+        whatsapp.message_buffer._processed_wamids[user_phone].clear()
             
-        # Payload de mensaje de texto con query fuzzy 'boser'
-        msg_data = {
-            "from": user_phone,
-            "id": "wamid.test_concurrency_msg",
-            "timestamp": "1672531199",
-            "type": "text",
-            "text": "tienen la boser",
-            "phone_number_id": "999999"
-        }
+    # Payload de mensaje de texto con query fuzzy 'boser'
+    msg_data = {
+        "from": user_phone,
+        "id": "wamid.test_concurrency_msg",
+        "timestamp": "1672531199",
+        "type": "text",
+        "text": "tienen la boser",
+        "phone_number_id": "999999"
+    }
 
-        # Mock memory service
-        mock_memory_service = MagicMock()
-        mock_memory_service.save_message = AsyncMock(return_value=True)
-        # Indicar que no ha aceptado habeas data, y tiene moto_interest Boxer
-        mock_prospect_data = {
-            "exists": True,
-            "status": "PENDING",
-            "chatbot_status": "ACTIVE",
-            "name": "Juan Test",
-            "celular": user_phone,
-            "habeas_data_accepted": False,
-            "moto_interest": "TVS Sport 100",
-            "forma_pago": "credito"
-        }
-        mock_memory_service.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
-        mock_memory_service.get_chat_history = AsyncMock(return_value=[])
-        mock_memory_service.create_prospect_if_missing = AsyncMock()
-        mock_memory_service.update_last_interaction = AsyncMock()
-        mock_memory_service.transition_to_in_progress = AsyncMock()
-        mock_memory_service.generate_and_update_summary = AsyncMock()
-        mock_memory_service.set_human_help_status = AsyncMock()
-        mock_memory_service.update_prospect_summary = AsyncMock()
-        # [RF-1] Barrera durable del embudo: reclamo siempre exitoso en este test
-        mock_memory_service.claim_webhook_idempotency = AsyncMock(return_value=True)
+    # Mock memory service
+    mock_memory_service = MagicMock()
+    mock_memory_service.save_message = AsyncMock(return_value=True)
+    # Indicar que no ha aceptado habeas data, y tiene moto_interest Boxer
+    mock_prospect_data = {
+        "exists": True,
+        "status": "PENDING",
+        "chatbot_status": "ACTIVE",
+        "name": "Juan Test",
+        "celular": user_phone,
+        "habeas_data_accepted": False,
+        "moto_interest": "TVS Sport 100",
+        "forma_pago": "credito"
+    }
+    mock_memory_service.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+    mock_memory_service.get_chat_history = AsyncMock(return_value=[])
+    mock_memory_service.create_prospect_if_missing = AsyncMock()
+    mock_memory_service.update_last_interaction = AsyncMock()
+    mock_memory_service.transition_to_in_progress = AsyncMock()
+    mock_memory_service.generate_and_update_summary = AsyncMock()
+    mock_memory_service.set_human_help_status = AsyncMock()
+    mock_memory_service.update_prospect_summary = AsyncMock()
+    # [RF-1] Barrera durable del embudo: reclamo siempre exitoso en este test
+    mock_memory_service.claim_webhook_idempotency = AsyncMock(return_value=True)
         
-        # Una de las actualizaciones de estado lanzará una excepción para testear try/except
-        async def mock_update_whatsapp_status(phone_number, status_value, wamid, errors=None):
-            if wamid == "wamid.status_fail":
-                raise ConnectionError("Simulated network failure on status update")
-            return None
+    # Una de las actualizaciones de estado lanzará una excepción para testear try/except
+    async def mock_update_whatsapp_status(phone_number, status_value, wamid, errors=None):
+        if wamid == "wamid.status_fail":
+            raise ConnectionError("Simulated network failure on status update")
+        return None
 
-        mock_memory_service.update_whatsapp_status = AsyncMock(side_effect=mock_update_whatsapp_status)
+    mock_memory_service.update_whatsapp_status = AsyncMock(side_effect=mock_update_whatsapp_status)
         
-        # Mock CerebroIA.pensar_respuesta
-        captured_user_message = []
-        async def mock_pensar_respuesta(*args, **kwargs):
-            captured_user_message.append(args[0])
-            return "Respuesta de la IA"
+    # Mock CerebroIA.pensar_respuesta
+    captured_user_message = []
+    async def mock_pensar_respuesta(*args, **kwargs):
+        captured_user_message.append(args[0])
+        return "Respuesta de la IA"
 
-        # Mock send_text_message to capture response to user
-        captured_outgoing = []
-        async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
-            captured_outgoing.append(text)
-            return {"messages": [{"id": "wamid.mocked_123"}]}
+    # Mock send_text_message to capture response to user
+    captured_outgoing = []
+    async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
+        captured_outgoing.append(text)
+        return {"messages": [{"id": "wamid.mocked_123"}]}
 
-        # Payload de acuses de recibo (delivered/read) para simulación paralela
-        status_payload_1 = {
-            "id": "wamid.status_ok_1",
-            "recipient_id": user_phone,
-            "status": "delivered",
-            "errors": []
-        }
-        status_payload_2 = {
-            "id": "wamid.status_ok_2",
-            "recipient_id": user_phone,
-            "status": "read",
-            "errors": []
-        }
-        status_payload_3 = {
-            "id": "wamid.status_fail", # Este fallará
-            "recipient_id": user_phone,
-            "status": "delivered",
-            "errors": [{"message": "Network Timeout"}]
-        }
+    # Payload de acuses de recibo (delivered/read) para simulación paralela
+    status_payload_1 = {
+        "id": "wamid.status_ok_1",
+        "recipient_id": user_phone,
+        "status": "delivered",
+        "errors": []
+    }
+    status_payload_2 = {
+        "id": "wamid.status_ok_2",
+        "recipient_id": user_phone,
+        "status": "read",
+        "errors": []
+    }
+    status_payload_3 = {
+        "id": "wamid.status_fail", # Este fallará
+        "recipient_id": user_phone,
+        "status": "delivered",
+        "errors": [{"message": "Network Timeout"}]
+    }
 
-        with patch("app.routers.whatsapp.settings") as mock_settings, \
-             patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
-             patch("app.routers.whatsapp.judge_service") as mock_judge, \
-             patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
-             patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
-             patch.object(CerebroIA, "pensar_respuesta", side_effect=mock_pensar_respuesta), \
-             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
-             patch("app.services.ai_brain.SDK_AVAILABLE", True):
+    with patch("app.routers.whatsapp.settings") as mock_settings, \
+         patch("app.routers.whatsapp.memory_service_module.memory_service", mock_memory_service), \
+         patch("app.routers.whatsapp.judge_service") as mock_judge, \
+         patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
+         patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+         patch.object(CerebroIA, "pensar_respuesta", side_effect=mock_pensar_respuesta), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
              
-            mock_settings.whatsapp_app_secret = None  # Bypass signature verification
-            mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+        mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
             
-            from fastapi import BackgroundTasks
-            background_tasks = BackgroundTasks()
+        from fastapi import BackgroundTasks
+        background_tasks = BackgroundTasks()
 
-            # Emulamos la llegada simultánea de los 3 acuses de estado y la consulta fuzzy
-            await asyncio.gather(
-                _handle_statuses_background(status_payload_1),
-                _handle_statuses_background(status_payload_2),
-                _handle_statuses_background(status_payload_3),
-                _handle_message_background(msg_data, background_tasks),
-                return_exceptions=True
-            )
+        # Emulamos la llegada simultánea de los 3 acuses de estado y la consulta fuzzy
+        await asyncio.gather(
+            _handle_statuses_background(status_payload_1),
+            _handle_statuses_background(status_payload_2),
+            _handle_statuses_background(status_payload_3),
+            _handle_message_background(msg_data, background_tasks),
+            return_exceptions=True
+        )
 
-            # Verificaciones
-            # 1. CerebroIA fue invocado con la consulta de texto
-            assert len(captured_user_message) == 1
-            assert "boser" in captured_user_message[0]
+        # Verificaciones
+        # 1. CerebroIA fue invocado con la consulta de texto
+        assert len(captured_user_message) == 1
+        assert "boser" in captured_user_message[0]
             
-            # 2. La consulta fonética 'boser' resolvió a la Boxer (TVS Sport 100) en CatalogService
-            results = catalog_service.search("boser")
-            assert any("TVS Sport 100" in item["name"] for item in results), "Coincidencia fuzzy de difflib falló para 'boser'!"
+        # 2. La consulta fonética 'boser' resolvió a la Boxer (TVS Sport 100) en CatalogService
+        results = catalog_service.search("boser")
+        assert any("TVS Sport 100" in item["name"] for item in results), "Coincidencia fuzzy de difflib falló para 'boser'!"
             
-            # 3. La actualización fallida de estado no interrumpió el flujo ni el catálogo
-            assert mock_memory_service.update_whatsapp_status.call_count == 3
+        # 3. La actualización fallida de estado no interrumpió el flujo ni el catálogo
+        assert mock_memory_service.update_whatsapp_status.call_count == 3
 
-    finally:
-        catalog_service._items = original_items
-        catalog_service._items_by_id = original_items_by_id
-        whatsapp.message_buffer.debounce_seconds = orig_debounce
 
 
 @pytest.mark.asyncio
@@ -1168,120 +1148,116 @@ async def test_whatsapp_reaction_payload_direct_legal_acceptance():
     
     # 1. Asegurar la inicialización del message_buffer y forzar debounce_seconds a 0.0
     whatsapp._ensure_services_sync()
-    orig_debounce = whatsapp.message_buffer.debounce_seconds
     whatsapp.message_buffer.debounce_seconds = 0.0
     
     user_phone = "+573192564288"
     
-    try:
-        # Clear buffer to guarantee complete test isolation
-        await whatsapp.message_buffer.clear_buffer(user_phone)
-        if user_phone in whatsapp.message_buffer._processed_wamids:
-            whatsapp.message_buffer._processed_wamids[user_phone].clear()
+    # Clear buffer to guarantee complete test isolation
+    await whatsapp.message_buffer.clear_buffer(user_phone)
+    if user_phone in whatsapp.message_buffer._processed_wamids:
+        whatsapp.message_buffer._processed_wamids[user_phone].clear()
             
-        msg_data = {
-            "from": user_phone,
-            "id": "wamid.reaction_test_999",
-            "type": "reaction",
-            "reaction": {
-                "message_id": "wamid.parent_message_123",
-                "emoji": "👍"
-            },
-            "phone_number_id": "1021779847693778"
-        }
+    msg_data = {
+        "from": user_phone,
+        "id": "wamid.reaction_test_999",
+        "type": "reaction",
+        "reaction": {
+            "message_id": "wamid.parent_message_123",
+            "emoji": "👍"
+        },
+        "phone_number_id": "1021779847693778"
+    }
         
-        # 2. Mock Prospect data sin consentimiento inicial y con identidad ausente (nombre/ciudad vacíos)
-        mock_prospect_data = {
-            "exists": True,
-            "celular": user_phone,
-            "chatbot_status": "ACTIVE",
-            "status": "PENDING",
-            "source": "whatsapp_bot",
-            "habeas_data_accepted": False,
-            "nombre": "",
-            "ciudad": "",
-            "forma_pago": "credito",
-            "moto_interest": "TVS Sport 100"
-        }
+    # 2. Mock Prospect data sin consentimiento inicial y con identidad ausente (nombre/ciudad vacíos)
+    mock_prospect_data = {
+        "exists": True,
+        "celular": user_phone,
+        "chatbot_status": "ACTIVE",
+        "status": "PENDING",
+        "source": "whatsapp_bot",
+        "habeas_data_accepted": False,
+        "nombre": "",
+        "ciudad": "",
+        "forma_pago": "credito",
+        "moto_interest": "TVS Sport 100"
+    }
 
-        # Setup mock memory service
-        mock_ms = AsyncMock()
-        mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
-        mock_ms.create_prospect_if_missing = AsyncMock()
-        mock_ms.get_chat_history = AsyncMock(return_value=[])
-        mock_ms.save_message = AsyncMock()
-        mock_ms.generate_and_update_summary = AsyncMock()
-        mock_ms.update_last_interaction = AsyncMock()
-        mock_ms.transition_to_in_progress = AsyncMock()
-        mock_ms.set_human_help_status = AsyncMock()
+    # Setup mock memory service
+    mock_ms = AsyncMock()
+    mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+    mock_ms.create_prospect_if_missing = AsyncMock()
+    mock_ms.get_chat_history = AsyncMock(return_value=[])
+    mock_ms.save_message = AsyncMock()
+    mock_ms.generate_and_update_summary = AsyncMock()
+    mock_ms.update_last_interaction = AsyncMock()
+    mock_ms.transition_to_in_progress = AsyncMock()
+    mock_ms.set_human_help_status = AsyncMock()
         
-        async def mock_update_summary(phone, summary, data):
-            if "habeas_data_accepted" in data:
-                mock_prospect_data["habeas_data_accepted"] = data["habeas_data_accepted"]
-        mock_ms.update_prospect_summary = AsyncMock(side_effect=mock_update_summary)
+    async def mock_update_summary(phone, summary, data):
+        if "habeas_data_accepted" in data:
+            mock_prospect_data["habeas_data_accepted"] = data["habeas_data_accepted"]
+    mock_ms.update_prospect_summary = AsyncMock(side_effect=mock_update_summary)
 
-        # Mock GenAI client to return a clean text response
-        mock_client = MagicMock()
-        mock_chat = AsyncMock()
-        mock_response = MagicMock()
-        mock_candidate = MagicMock()
-        mock_part = MagicMock()
+    # Mock GenAI client to return a clean text response
+    mock_client = MagicMock()
+    mock_chat = AsyncMock()
+    mock_response = MagicMock()
+    mock_candidate = MagicMock()
+    mock_part = MagicMock()
 
-        # Simulated response from Gemini adhering to our instruction
-        mock_part.text = "¡Excelente! He registrado tu consentimiento. Para continuar, indícame tu nombre completo y la ciudad en la que te encuentras."
-        mock_part.function_call = None
-        mock_candidate.content.parts = [mock_part]
-        mock_response.candidates = [mock_candidate]
+    # Simulated response from Gemini adhering to our instruction
+    mock_part.text = "¡Excelente! He registrado tu consentimiento. Para continuar, indícame tu nombre completo y la ciudad en la que te encuentras."
+    mock_part.function_call = None
+    mock_candidate.content.parts = [mock_part]
+    mock_response.candidates = [mock_candidate]
 
-        mock_chat.send_message = AsyncMock(return_value=mock_response)
-        mock_client.aio.chats.create = MagicMock(return_value=mock_chat)
+    mock_chat.send_message = AsyncMock(return_value=mock_response)
+    mock_client.aio.chats.create = MagicMock(return_value=mock_chat)
 
-        # Mock send_text_message on whatsapp_service to capture the outgoing message
-        captured_messages = []
-        async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
-            captured_messages.append(text)
-            return {"messages": [{"id": "wamid.mocked_123"}]}
+    # Mock send_text_message on whatsapp_service to capture the outgoing message
+    captured_messages = []
+    async def mock_send_text(to, text, reply_to_id=None, phone_number_id=None):
+        captured_messages.append(text)
+        return {"messages": [{"id": "wamid.mocked_123"}]}
 
-        with patch("app.routers.whatsapp.settings") as mock_settings, \
-             patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
-             patch("app.routers.whatsapp.judge_service") as mock_judge, \
-             patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
-             patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
-             patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
-             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
-             patch("app.services.ai_brain.SDK_AVAILABLE", True):
+    with patch("app.routers.whatsapp.settings") as mock_settings, \
+         patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
+         patch("app.routers.whatsapp.judge_service") as mock_judge, \
+         patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
+         patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+         patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
 
-            mock_settings.whatsapp_app_secret = None  # Bypass signature verification
-            mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+        mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
 
-            # 4. Ejecutar el handler
-            background_tasks = BackgroundTasks()
-            await _handle_message_background(msg_data, background_tasks)
+        # 4. Ejecutar el handler
+        background_tasks = BackgroundTasks()
+        await _handle_message_background(msg_data, background_tasks)
 
-            # 5. Verificaciones
-            # Debe haberse llamado a update_prospect_summary síncronamente
-            # [BOT-PONYTAIL-200] Updated assertion to include ponytail_status=PENDING
-            mock_ms.update_prospect_summary.assert_any_call("+573192564288", "", {"habeas_data_accepted": True, "ponytail_status": "PENDING"})
+        # 5. Verificaciones
+        # Debe haberse llamado a update_prospect_summary síncronamente
+        # [BOT-PONYTAIL-200] Updated assertion to include ponytail_status=PENDING
+        mock_ms.update_prospect_summary.assert_any_call("+573192564288", "", {"habeas_data_accepted": True, "ponytail_status": "PENDING"})
             
-            # prospect_data debió actualizarse a True
-            assert mock_prospect_data["habeas_data_accepted"] is True
+        # prospect_data debió actualizarse a True
+        assert mock_prospect_data["habeas_data_accepted"] is True
 
-            # Verificar que se llamó al chat con el prompt formateado
-            mock_chat.send_message.assert_called_once()
-            prompt_sent = mock_chat.send_message.call_args[0][0]
+        # Verificar que se llamó al chat con el prompt formateado
+        mock_chat.send_message.assert_called_once()
+        prompt_sent = mock_chat.send_message.call_args[0][0]
             
-            # Verificar que la directiva de interrupción semántica esté presente en el prompt consolidado
-            assert "El consentimiento ya ha sido firmado en este turno. Tienes ESTRICTAMENTE PROHIBIDO" in prompt_sent
-            assert "incluir enlaces de imágenes (![]) o precios ($) en tu respuesta" in prompt_sent
+        # Verificar que la directiva de interrupción semántica esté presente en el prompt consolidado
+        assert "El consentimiento ya ha sido firmado en este turno. Tienes ESTRICTAMENTE PROHIBIDO" in prompt_sent
+        assert "incluir enlaces de imágenes (![]) o precios ($) en tu respuesta" in prompt_sent
 
-            # Verificar que el mensaje enviado de vuelta no contiene imágenes ni precios
-            assert len(captured_messages) == 1
-            response = captured_messages[0]
-            assert '![' not in response, "La respuesta no debe incluir enlaces de imágenes (![)"
-            assert '$' not in response, "La respuesta no debe incluir precios ($)"
+        # Verificar que el mensaje enviado de vuelta no contiene imágenes ni precios
+        assert len(captured_messages) == 1
+        response = captured_messages[0]
+        assert '![' not in response, "La respuesta no debe incluir enlaces de imágenes (![)"
+        assert '$' not in response, "La respuesta no debe incluir precios ($)"
 
-    finally:
-        whatsapp.message_buffer.debounce_seconds = orig_debounce
 
 
 @pytest.mark.asyncio
@@ -1407,128 +1383,124 @@ async def test_whatsapp_image_url_with_complex_query_params_regression():
     
     # 1. Asegurar la inicialización del message_buffer y forzar debounce_seconds a 0.0
     whatsapp._ensure_services_sync()
-    orig_debounce = whatsapp.message_buffer.debounce_seconds
     whatsapp.message_buffer.debounce_seconds = 0.0
     
     user_phone = "+573192564289" # Use a distinct phone number
     
-    try:
-        # Clear buffer to guarantee complete test isolation
-        await whatsapp.message_buffer.clear_buffer(user_phone)
-        if user_phone in whatsapp.message_buffer._processed_wamids:
-            whatsapp.message_buffer._processed_wamids[user_phone].clear()
+    # Clear buffer to guarantee complete test isolation
+    await whatsapp.message_buffer.clear_buffer(user_phone)
+    if user_phone in whatsapp.message_buffer._processed_wamids:
+        whatsapp.message_buffer._processed_wamids[user_phone].clear()
             
-        msg_data = {
-            "from": user_phone,
-            "id": "wamid.image_param_test_122",
-            "type": "text",
-            "text": "Quiero ver la Victory Advance R 125",
-            "phone_number_id": "1021779847693778"
-        }
+    msg_data = {
+        "from": user_phone,
+        "id": "wamid.image_param_test_122",
+        "type": "text",
+        "text": "Quiero ver la Victory Advance R 125",
+        "phone_number_id": "1021779847693778"
+    }
         
-        # 2. Mock Prospect data con habeas_data firmado y moto de interés asignada
-        mock_prospect_data = {
-            "exists": True,
-            "celular": user_phone,
-            "chatbot_status": "ACTIVE",
-            "status": "IN_PROGRESS",
-            "source": "whatsapp_bot",
-            "habeas_data_accepted": True,
-            "nombre": "Juan Victory",
-            "ciudad": "Medellin",
-            "forma_pago": "credito",
-            "moto_interest": "Victory Advance R 125"
-        }
+    # 2. Mock Prospect data con habeas_data firmado y moto de interés asignada
+    mock_prospect_data = {
+        "exists": True,
+        "celular": user_phone,
+        "chatbot_status": "ACTIVE",
+        "status": "IN_PROGRESS",
+        "source": "whatsapp_bot",
+        "habeas_data_accepted": True,
+        "nombre": "Juan Victory",
+        "ciudad": "Medellin",
+        "forma_pago": "credito",
+        "moto_interest": "Victory Advance R 125"
+    }
 
-        # Setup mock memory service
-        mock_ms = AsyncMock()
-        mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
-        mock_ms.create_prospect_if_missing = AsyncMock()
-        mock_ms.get_chat_history = AsyncMock(return_value=[])
-        mock_ms.save_message = AsyncMock()
-        mock_ms.generate_and_update_summary = AsyncMock()
-        mock_ms.update_last_interaction = AsyncMock()
-        mock_ms.transition_to_in_progress = AsyncMock()
-        mock_ms.set_human_help_status = AsyncMock()
-        mock_ms.update_prospect_summary = AsyncMock()
+    # Setup mock memory service
+    mock_ms = AsyncMock()
+    mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+    mock_ms.create_prospect_if_missing = AsyncMock()
+    mock_ms.get_chat_history = AsyncMock(return_value=[])
+    mock_ms.save_message = AsyncMock()
+    mock_ms.generate_and_update_summary = AsyncMock()
+    mock_ms.update_last_interaction = AsyncMock()
+    mock_ms.transition_to_in_progress = AsyncMock()
+    mock_ms.set_human_help_status = AsyncMock()
+    mock_ms.update_prospect_summary = AsyncMock()
 
-        # Firebase Storage URL with extensive query parameters representing Victory Advance R 125
-        complex_image_url = (
-            "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/motos%2Fvictory_advance_r_125.webp"
-            "?alt=media&token=12345678-abcd-efgh-ijkl-1234567890ab&another_param=xyz%20abc"
-        )
+    # Firebase Storage URL with extensive query parameters representing Victory Advance R 125
+    complex_image_url = (
+        "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/motos%2Fvictory_advance_r_125.webp"
+        "?alt=media&token=12345678-abcd-efgh-ijkl-1234567890ab&another_param=xyz%20abc"
+    )
         
-        # Simulated response from Gemini adhering to our instruction
-        bot_response = (
-            "Perfecto. La Victory Advance R 125 cuesta $8.900.000. Ficha Tecnica: Gran rendimiento. "
-            f"![Victory Advance R 125]({complex_image_url})"
-        )
+    # Simulated response from Gemini adhering to our instruction
+    bot_response = (
+        "Perfecto. La Victory Advance R 125 cuesta $8.900.000. Ficha Tecnica: Gran rendimiento. "
+        f"![Victory Advance R 125]({complex_image_url})"
+    )
 
-        # Mock GenAI client to return this response
-        mock_client = MagicMock()
-        mock_chat = AsyncMock()
-        mock_response = MagicMock()
-        mock_candidate = MagicMock()
-        mock_part = MagicMock()
+    # Mock GenAI client to return this response
+    mock_client = MagicMock()
+    mock_chat = AsyncMock()
+    mock_response = MagicMock()
+    mock_candidate = MagicMock()
+    mock_part = MagicMock()
         
-        mock_part.text = bot_response
-        mock_part.function_call = None
-        mock_candidate.content.parts = [mock_part]
-        mock_response.candidates = [mock_candidate]
+    mock_part.text = bot_response
+    mock_part.function_call = None
+    mock_candidate.content.parts = [mock_part]
+    mock_response.candidates = [mock_candidate]
 
-        mock_chat.send_message = AsyncMock(return_value=mock_response)
-        mock_client.aio.chats.create = MagicMock(return_value=mock_chat)
+    mock_chat.send_message = AsyncMock(return_value=mock_response)
+    mock_client.aio.chats.create = MagicMock(return_value=mock_chat)
 
-        # Configurar la simulación del cliente HTTP para interceptar la petición POST a Meta
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json = MagicMock(return_value={"messages": [{"id": "wamid.mocked_image_123"}]})
+    # Configurar la simulación del cliente HTTP para interceptar la petición POST a Meta
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json = MagicMock(return_value={"messages": [{"id": "wamid.mocked_image_123"}]})
 
-        with patch("app.routers.whatsapp.settings") as mock_settings, \
-             patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
-             patch("app.routers.whatsapp.judge_service") as mock_judge, \
-             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_http_post, \
-             patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
-             patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
-             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
-             patch("app.services.ai_brain.SDK_AVAILABLE", True):
+    with patch("app.routers.whatsapp.settings") as mock_settings, \
+         patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
+         patch("app.routers.whatsapp.judge_service") as mock_judge, \
+         patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_http_post, \
+         patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+         patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
 
-            # Configurar el retorno del mock post
-            mock_http_post.return_value = mock_response
-            mock_settings.whatsapp_app_secret = None  # Bypass signature verification
-            mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+        # Configurar el retorno del mock post
+        mock_http_post.return_value = mock_response
+        mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
 
-            # 4. Ejecutar el handler
-            background_tasks = BackgroundTasks()
-            await _handle_message_background(msg_data, background_tasks)
+        # 4. Ejecutar el handler
+        background_tasks = BackgroundTasks()
+        await _handle_message_background(msg_data, background_tasks)
 
-            # 5. Verificaciones
-            assert mock_http_post.call_count == 1, "Debe haber enviado exactamente 1 petición POST a Meta."
-            call_args = mock_http_post.call_args
-            assert call_args is not None, "La llamada a Meta API no se realizó."
-            meta_payload = call_args.kwargs.get("json")
-            assert meta_payload is not None, "El payload JSON enviado a Meta está vacío."
+        # 5. Verificaciones
+        assert mock_http_post.call_count == 1, "Debe haber enviado exactamente 1 petición POST a Meta."
+        call_args = mock_http_post.call_args
+        assert call_args is not None, "La llamada a Meta API no se realizó."
+        meta_payload = call_args.kwargs.get("json")
+        assert meta_payload is not None, "El payload JSON enviado a Meta está vacío."
             
-            # Aserción rígida sobre el objeto de payload saliente simulado para Meta:
-            assert meta_payload.get("type") == "image", "El tipo de mensaje debe mutar estrictamente a 'image'."
-            assert "image" in meta_payload, "El payload debe contener el objeto de imagen."
+        # Aserción rígida sobre el objeto de payload saliente simulado para Meta:
+        assert meta_payload.get("type") == "image", "El tipo de mensaje debe mutar estrictamente a 'image'."
+        assert "image" in meta_payload, "El payload debe contener el objeto de imagen."
             
-            image_data = meta_payload["image"]
-            assert image_data.get("link") == complex_image_url, "La URL de la imagen en el link debe ser la URL compleja."
+        image_data = meta_payload["image"]
+        assert image_data.get("link") == complex_image_url, "La URL de la imagen en el link debe ser la URL compleja."
             
-            sent_caption = image_data.get("caption", "")
-            # - El texto limpio del caption no debe contener ningún Markdown crudo o remanente del tag ![alt](url)
-            assert "[" not in sent_caption, f"El caption retiene corchetes de apertura: '{sent_caption}'"
-            assert "]" not in sent_caption, f"El caption retiene corchetes de cierre: '{sent_caption}'"
-            assert "https://firebasestorage.googleapis.com" not in sent_caption, "El caption retiene la URL de la imagen."
+        sent_caption = image_data.get("caption", "")
+        # - El texto limpio del caption no debe contener ningún Markdown crudo o remanente del tag ![alt](url)
+        assert "[" not in sent_caption, f"El caption retiene corchetes de apertura: '{sent_caption}'"
+        assert "]" not in sent_caption, f"El caption retiene corchetes de cierre: '{sent_caption}'"
+        assert "https://firebasestorage.googleapis.com" not in sent_caption, "El caption retiene la URL de la imagen."
             
-            # - El caption debe contener la información comercial y la ficha técnica
-            assert "Victory Advance R 125" in sent_caption
-            assert "$8.900.000" in sent_caption
-            assert "Ficha Tecnica:" in sent_caption
+        # - El caption debe contener la información comercial y la ficha técnica
+        assert "Victory Advance R 125" in sent_caption
+        assert "$8.900.000" in sent_caption
+        assert "Ficha Tecnica:" in sent_caption
 
-    finally:
-        whatsapp.message_buffer.debounce_seconds = orig_debounce
 
 
 @pytest.mark.asyncio
@@ -1546,142 +1518,138 @@ async def test_incoming_image_webhook_egress_unification():
     
     # 1. Asegurar la inicialización del message_buffer y forzar debounce_seconds a 0.0
     whatsapp._ensure_services_sync()
-    orig_debounce = whatsapp.message_buffer.debounce_seconds
     whatsapp.message_buffer.debounce_seconds = 0.0
     
     user_phone = "+573192564290" # Use a distinct phone number
     
-    try:
-        # Clear buffer to guarantee complete test isolation
-        await whatsapp.message_buffer.clear_buffer(user_phone)
-        if user_phone in whatsapp.message_buffer._processed_wamids:
-            whatsapp.message_buffer._processed_wamids[user_phone].clear()
+    # Clear buffer to guarantee complete test isolation
+    await whatsapp.message_buffer.clear_buffer(user_phone)
+    if user_phone in whatsapp.message_buffer._processed_wamids:
+        whatsapp.message_buffer._processed_wamids[user_phone].clear()
             
-        msg_data = {
-            "from": user_phone,
-            "id": "wamid.incoming_image_test_125",
-            "type": "image",
-            "image": {
-                "id": "media_id_125",
-                "mime_type": "image/jpeg",
-                "caption": "Mira esta moto"
-            },
-            "phone_number_id": "1021779847693778"
-        }
+    msg_data = {
+        "from": user_phone,
+        "id": "wamid.incoming_image_test_125",
+        "type": "image",
+        "image": {
+            "id": "media_id_125",
+            "mime_type": "image/jpeg",
+            "caption": "Mira esta moto"
+        },
+        "phone_number_id": "1021779847693778"
+    }
         
-        # 2. Mock Prospect data con habeas_data firmado y moto de interés asignada
-        mock_prospect_data = {
-            "exists": True,
-            "celular": user_phone,
-            "chatbot_status": "ACTIVE",
-            "status": "IN_PROGRESS",
-            "source": "whatsapp_bot",
-            "habeas_data_accepted": True,
-            "nombre": "Juan TVS",
-            "ciudad": "Medellin",
-            "forma_pago": "credito",
-            "moto_interest": "TVS Sport 100"
-        }
+    # 2. Mock Prospect data con habeas_data firmado y moto de interés asignada
+    mock_prospect_data = {
+        "exists": True,
+        "celular": user_phone,
+        "chatbot_status": "ACTIVE",
+        "status": "IN_PROGRESS",
+        "source": "whatsapp_bot",
+        "habeas_data_accepted": True,
+        "nombre": "Juan TVS",
+        "ciudad": "Medellin",
+        "forma_pago": "credito",
+        "moto_interest": "TVS Sport 100"
+    }
 
-        # Setup mock memory service
-        mock_ms = AsyncMock()
-        mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
-        mock_ms.create_prospect_if_missing = AsyncMock()
-        mock_ms.get_chat_history = AsyncMock(return_value=[])
-        mock_ms.save_message = AsyncMock()
-        mock_ms.generate_and_update_summary = AsyncMock()
-        mock_ms.update_last_interaction = AsyncMock()
-        mock_ms.transition_to_in_progress = AsyncMock()
-        mock_ms.set_human_help_status = AsyncMock()
-        mock_ms.update_prospect_summary = MagicMock() # Wait, some calls are sync? Use MagicMock for safe fallback or AsyncMock
+    # Setup mock memory service
+    mock_ms = AsyncMock()
+    mock_ms.get_prospect_data = AsyncMock(return_value=mock_prospect_data)
+    mock_ms.create_prospect_if_missing = AsyncMock()
+    mock_ms.get_chat_history = AsyncMock(return_value=[])
+    mock_ms.save_message = AsyncMock()
+    mock_ms.generate_and_update_summary = AsyncMock()
+    mock_ms.update_last_interaction = AsyncMock()
+    mock_ms.transition_to_in_progress = AsyncMock()
+    mock_ms.set_human_help_status = AsyncMock()
+    mock_ms.update_prospect_summary = MagicMock() # Wait, some calls are sync? Use MagicMock for safe fallback or AsyncMock
 
-        # Firebase Storage URL with extensive query parameters representing TVS Sport 100
-        complex_image_url = (
-            "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/motos%2Ftvs_sport_100.webp"
-            "?alt=media&token=87654321-abcd-efgh-ijkl-0987654321ba"
-        )
+    # Firebase Storage URL with extensive query parameters representing TVS Sport 100
+    complex_image_url = (
+        "https://firebasestorage.googleapis.com/v0/b/tiendalasmotos/o/motos%2Ftvs_sport_100.webp"
+        "?alt=media&token=87654321-abcd-efgh-ijkl-0987654321ba"
+    )
         
-        # Simulated response from Gemini adhering to our instruction
-        bot_response = (
-            "Perfecto. La TVS Sport 100 cuesta $6.200.000. Ficha Tecnica: Excelente. "
-            f"![TVS Sport 100]({complex_image_url})"
-        )
+    # Simulated response from Gemini adhering to our instruction
+    bot_response = (
+        "Perfecto. La TVS Sport 100 cuesta $6.200.000. Ficha Tecnica: Excelente. "
+        f"![TVS Sport 100]({complex_image_url})"
+    )
 
-        # Mock GenAI client to return this response
-        mock_client = MagicMock()
-        mock_chat = AsyncMock()
-        mock_response = MagicMock()
-        mock_candidate = MagicMock()
-        mock_part = MagicMock()
+    # Mock GenAI client to return this response
+    mock_client = MagicMock()
+    mock_chat = AsyncMock()
+    mock_response = MagicMock()
+    mock_candidate = MagicMock()
+    mock_part = MagicMock()
         
-        mock_part.text = bot_response
-        mock_part.function_call = None
-        mock_candidate.content.parts = [mock_part]
-        mock_response.candidates = [mock_candidate]
+    mock_part.text = bot_response
+    mock_part.function_call = None
+    mock_candidate.content.parts = [mock_part]
+    mock_response.candidates = [mock_candidate]
 
-        mock_chat.send_message = AsyncMock(return_value=mock_response)
-        mock_client.aio.chats.create = MagicMock(return_value=mock_chat)
+    mock_chat.send_message = AsyncMock(return_value=mock_response)
+    mock_client.aio.chats.create = MagicMock(return_value=mock_chat)
 
-        # Configurar la simulación del cliente HTTP para interceptar la petición POST a Meta
-        mock_http_response = MagicMock()
-        mock_http_response.status_code = 200
-        mock_http_response.json = MagicMock(return_value={"messages": [{"id": "wamid.mocked_image_125"}]})
+    # Configurar la simulación del cliente HTTP para interceptar la petición POST a Meta
+    mock_http_response = MagicMock()
+    mock_http_response.status_code = 200
+    mock_http_response.json = MagicMock(return_value={"messages": [{"id": "wamid.mocked_image_125"}]})
 
-        # Mock VisionService to analyze image and return "TVS Sport 100"
-        mock_vision_service_inst = AsyncMock()
-        mock_vision_service_inst.analyze_image = AsyncMock(return_value="TVS Sport 100")
+    # Mock VisionService to analyze image and return "TVS Sport 100"
+    mock_vision_service_inst = AsyncMock()
+    mock_vision_service_inst.analyze_image = AsyncMock(return_value="TVS Sport 100")
 
-        mock_db = MagicMock()
-        mock_db.project = "test-project-123"
+    mock_db = MagicMock()
+    mock_db.project = "test-project-123"
 
-        with patch("app.routers.whatsapp.settings") as mock_settings, \
-             patch("app.routers.whatsapp.db", mock_db), \
-             patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
-             patch("app.routers.whatsapp.judge_service") as mock_judge, \
-             patch("app.routers.whatsapp.VisionService", return_value=mock_vision_service_inst), \
-             patch("app.routers.whatsapp.storage_service.download_media", AsyncMock(return_value=b"dummy_image_data")), \
-             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_http_post, \
-             patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
-             patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
-             patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
-             patch("app.services.ai_brain.SDK_AVAILABLE", True):
+    with patch("app.routers.whatsapp.settings") as mock_settings, \
+         patch("app.routers.whatsapp.db", mock_db), \
+         patch("app.routers.whatsapp.memory_service_module.memory_service", mock_ms), \
+         patch("app.routers.whatsapp.judge_service") as mock_judge, \
+         patch("app.routers.whatsapp.VisionService", return_value=mock_vision_service_inst), \
+         patch("app.routers.whatsapp.storage_service.download_media", AsyncMock(return_value=b"dummy_image_data")), \
+         patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_http_post, \
+         patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
+         patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
 
-            # Configurar el retorno del mock post
-            mock_http_post.return_value = mock_http_response
-            mock_settings.whatsapp_app_secret = None  # Bypass signature verification
-            mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
+        # Configurar el retorno del mock post
+        mock_http_post.return_value = mock_http_response
+        mock_settings.whatsapp_app_secret = None  # Bypass signature verification
+        mock_judge.analyze_response = AsyncMock(return_value=(True, ""))
 
-            # 4. Ejecutar el handler
-            background_tasks = BackgroundTasks()
-            await _handle_message_background(msg_data, background_tasks)
+        # 4. Ejecutar el handler
+        background_tasks = BackgroundTasks()
+        await _handle_message_background(msg_data, background_tasks)
 
-            # 5. Verificaciones
-            assert mock_http_post.call_count == 1, "Debe haber enviado exactamente 1 petición POST a Meta."
-            call_args = mock_http_post.call_args
-            assert call_args is not None, "La llamada a Meta API no se realizó."
-            meta_payload = call_args.kwargs.get("json")
-            assert meta_payload is not None, "El payload JSON enviado a Meta está vacío."
+        # 5. Verificaciones
+        assert mock_http_post.call_count == 1, "Debe haber enviado exactamente 1 petición POST a Meta."
+        call_args = mock_http_post.call_args
+        assert call_args is not None, "La llamada a Meta API no se realizó."
+        meta_payload = call_args.kwargs.get("json")
+        assert meta_payload is not None, "El payload JSON enviado a Meta está vacío."
             
-            # Aserción rígida sobre el objeto de payload saliente simulado para Meta:
-            assert meta_payload.get("type") == "image", "El tipo de mensaje debe mutar estrictamente a 'image'."
-            assert "image" in meta_payload, "El payload debe contener el objeto de imagen."
+        # Aserción rígida sobre el objeto de payload saliente simulado para Meta:
+        assert meta_payload.get("type") == "image", "El tipo de mensaje debe mutar estrictamente a 'image'."
+        assert "image" in meta_payload, "El payload debe contener el objeto de imagen."
             
-            image_data = meta_payload["image"]
-            assert image_data.get("link") == complex_image_url, "La URL de la imagen en el link debe ser la URL compleja."
+        image_data = meta_payload["image"]
+        assert image_data.get("link") == complex_image_url, "La URL de la imagen en el link debe ser la URL compleja."
             
-            sent_caption = image_data.get("caption", "")
-            # - El texto limpio del caption no debe contener ningún Markdown crudo o remanente del tag ![alt](url)
-            assert "[" not in sent_caption, f"El caption retiene corchetes de apertura: '{sent_caption}'"
-            assert "]" not in sent_caption, f"El caption retiene corchetes de cierre: '{sent_caption}'"
-            assert "https://firebasestorage.googleapis.com" not in sent_caption, "El caption retiene la URL de la imagen."
+        sent_caption = image_data.get("caption", "")
+        # - El texto limpio del caption no debe contener ningún Markdown crudo o remanente del tag ![alt](url)
+        assert "[" not in sent_caption, f"El caption retiene corchetes de apertura: '{sent_caption}'"
+        assert "]" not in sent_caption, f"El caption retiene corchetes de cierre: '{sent_caption}'"
+        assert "https://firebasestorage.googleapis.com" not in sent_caption, "El caption retiene la URL de la imagen."
             
-            # - El caption debe contener la información comercial y la ficha técnica
-            assert "TVS Sport 100" in sent_caption
-            assert "$6.200.000" in sent_caption
-            assert "Ficha Tecnica:" in sent_caption
+        # - El caption debe contener la información comercial y la ficha técnica
+        assert "TVS Sport 100" in sent_caption
+        assert "$6.200.000" in sent_caption
+        assert "Ficha Tecnica:" in sent_caption
 
-    finally:
-        whatsapp.message_buffer.debounce_seconds = orig_debounce
 
 
 def test_catalog_tokenizer_ngrams_characterization():
