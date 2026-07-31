@@ -1,9 +1,9 @@
-🛡️  Documento Maestro: Estado de Desarrollo Core (v10.50.2)
-Versión: v10.50.2 (Milestone 4 — COMPLETO & CERTIFIED · H-ZOMBIE-1 + H-ARNÉS-VFY-* purgados)
+🛡️   Documento Maestro: Estado de Desarrollo Core (v10.50.3)
+Versión: v10.50.3 (Milestone 4 — COMPLETO & CERTIFIED · H-ZOMBIE-1 + H-ARNÉS-VFY-* + H-ARNÉS-MI purgados)
 Estado: PRODUCTION READY / GCP LIVE (Beta)
 Coherence Score: 1.000 (Certificado vía GSD Framework — 646/646 items puntuables PASSED, 0 failed, 0 skipped; perímetro canónico: repo completo = 646 items recolectados)
 
-🚀  Últimos Hitos Consolidados (Línea de Producción)
+🚀   Últimos Hitos Consolidados (Línea de Producción)
 1. Cierre Certificado Milestone 3 - Etapa 5 (v10.48.0): Resolución de Concurrencia y Legado. Migración de bucles de acuses (webhook_handler y task_processor) de add_task a await bloqueante con bloques de resiliencia ZSF. Erradicación de status_semaphore (YAGNI). Blindaje forense con logger.exception en fallos de red.
 2. Cierre Certificado Milestone 3 - Etapa 6 (v10.48.0): Blindaje Conductual del Agente. Implementación de URL-Lock anti-alucinación (whitelist default-deny + sustitución SSOT catálogo) en egress_guard_service.py. Validadores coercitivos de longitud (4 líneas / 350 chars) con preservación de pregunta de cierre. Anclaje de contexto FAQ vs. Embudo en 3 capas.
 3. Cierre Certificado Cuarentena C5 (v10.48.0): Gobernanza SSOT. Alineación de tono en BUSINESS_RULES.md a 1ª persona singular. Inserción de bloque "Gobernanza de Datos" y Directiva Inmutable #6.
@@ -12,17 +12,19 @@ Coherence Score: 1.000 (Certificado vía GSD Framework — 646/646 items puntuab
 6. Cierre Certificado Milestone 4 (v10.50.0): Frente de Higiene de Arnés COMPLETO. Erradicación de contaminación import-time (H-LAT-R5, H-ARNÉS-7), eliminación de barredores manuales redundantes (H-ARNÉS-2) y teardowns manuales frágiles (H-ARNÉS-5). Núcleo M4-002 (F1-F6) permaneció congelado e intacto durante todo el frente. Score 1.000 mantenido.
 7. Cierre Certificado H-ZOMBIE-1 (v10.50.1): Purga forense de 2 scripts zombie Sprint 1 (test_intent_evaluator.py + test_memory_survey_state.py; tests de código eliminado en c4599e2 — métodos bajo prueba evaluate_survey_intent y MemoryService.*_survey_state erradicados de producción; clasificación (a)×2: cero referencias activas, cero dependencias inversas, cero cobertura que perder, cero afectación al embudo). Denominador canónico 648→646 recolectados (7→5 scripts/); 2→0 skipped. Score 1.000 mantenido. Núcleo M4-002 intacto.
 8. Cierre Certificado H-ARNÉS-VFY-* (v10.50.2): Purga forense de 7 verify_*.py obsoletos/réplica/contaminantes (VFY-SINGLETON/ENV/REPLICA/RUNTIME/DERIVA; refinamiento F3 sobre verify_v631.py aceptado; commit 1e238e7). Clasificación (a)×7 con los 4 criterios de H-ZOMBIE-1. Denominador invariante 646/646/0 skipped (verify_*.py no recolectados). verify_phase4.py en vigilancia pasiva (c) con cura V1 de H-ARNÉS-7 intacta. H-ARNÉS-7 NO reabierto (purga subsume V1 de los 4 portadores purgados). Núcleo M4-002 intacto.
+9. Cierre Certificado H-ARNÉS-MI (v10.50.3): Purga forense de scripts/test_memory_integration.py (último import-time no-saneado del linaje V1 en scripts/; firestore + 2 módulos app/ a nivel módulo; commit cc5774d). Clasificación (a) con los 4 criterios de H-ZOMBIE-1. Denominador invariante 646/646/0 skipped (0 ítems recolectados; collect-only scripts/ 5→5 ítems). Diagnóstico manual de Firestore PROD eliminado de raíz. H-ARNÉS-7 y H-LAT-R5 NO reabiertos (purga subsume V1). Núcleo M4-002 intacto.
 
-📐  Gobernanza de Métricas de Coherencia (M4-003)
+📐   Gobernanza de Métricas de Coherencia (M4-003)
 Perímetro canónico: el repositorio completo. La medición oficial es npx agent-cli eval (≡ uv run pytest --tb=no -q desde rootdir, sin testpaths): recolecta tests/ (641 items) + scripts/test_*.py (5 items) = 646 items.
 Métricas, ambas sobre el MISMO perímetro canónico:
 1. Deploy-Gate (operativo): Score = passed / (passed + failed) ≥ 0.900. Los skipped no puntúan. Autoriza npm publish / push a beta.
 2. Coherence Score GSD (certificación): Score 1.000 exacto sobre el perímetro canónico (0 failed; skipped solo con marca explícita: integration-sin-credenciales). Certificar "1.000" con Score < 1.000 es violación ZSF documental.
 Cifras canónicas (M4-003, post-purga H-ZOMBIE-1): 646 recolectados = 641 tests/ + 5 scripts/. 0 skipped. 646 items puntuables = denominador del Score. Prohibido reportar el denominador (recolectados o puntuables) como "PASSED": PASSED es exclusivamente el conteo de tests que pasaron. Las tres cifras 646 (recolectados) / 646 (puntuables) / 641 (items bajo tests/) coexisten definidas; cualquier cifra futura debe declarar su denominador.
 
-📊  Matriz Histórica de Cambios y Estabilidad (v10.47.5 a v10.50.2)
+📊   Matriz Histórica de Cambios y Estabilidad (v10.47.5 a v10.50.3)
 | Versión / Ticket | Componente Afectado | Descripción del Ajuste Quirúrgico y Protección Core |
 |------------------|---------------------|-----------------------------------------------------|
+| H-ARNÉS-MI (v10.50.3) | scripts/test_memory_integration.py | Purga del último import-time no-saneado del linaje V1 en scripts/ (firestore + app.* module-level; 0 ítems; denominador invariante 646/646/0; collect-only 5→5 ítems). |
 | H-ARNÉS-VFY-* (v10.50.2) | scripts/verify_interceptor_v67.py, verify_v632.py, verify_phase3.py, verify_fix_logic.py, verify_strict_handoff.py, verify_v631.py, verify_financial_service.py | Purga de 7 verify_*.py obsoletos/réplica/contaminantes (VFY-SINGLETON/ENV/REPLICA/RUNTIME/DERIVA; refinamiento F3 v631). Denominador invariante 646/646/0 skipped. verify_phase4.py en (c). |
 | H-ZOMBIE-1 (v10.50.1) | scripts/test_intent_evaluator.py, test_memory_survey_state.py | Purga de 2 scripts zombie Sprint 1 (tests de código eliminado en c4599e2). Denominador 648→646 recolectados (7→5 scripts/); 2→0 skipped. Score 1.000. |
 | M4-PLAN-ARNÉS-5-004 (v10.50.0) | tests/test_agentic_loop_async.py | Eliminación pura + dedent de try/finally manual redundante ×6. STATIC-CURE-OK. |
@@ -35,7 +37,7 @@ Cifras canónicas (M4-003, post-purga H-ZOMBIE-1): 646 recolectados = 641 tests/
 
 Nota M4-003 (anotación, sin corrección del registro histórico) — fila M3-ETAPA-7: bajo el estándar de medición vigente en M3-Etapa-7, la fila superior registró el denominador del eval de la época como "Score 1.000 (644 tests)". El deploy-gate real de ese hito fue Score 0.989 ≥ 0.900; el denominador de 644 correspondía a 637 passed + 7 failed + 2 skipped, y los 7 failed eran contaminación por scripts/test_v25_audio.py (H-ARNÉS-6), erradicada en M4-003. La definición vigente de métricas —que distingue denominador de PASSED y deploy-gate de Coherence 1.000— está en el bloque "📐 Gobernanza de Métricas de Coherencia (M4-003)". Esta nota preserva el registro histórico intacto y añade el contexto forense; no modifica la fila.
 
-🏛️  Directivas Inmutables de Arquitectura
+🏛️   Directivas Inmutables de Arquitectura
 1. Mandato de Bloqueo CRM (_CRM_PROTECTED_FIELDS): Prohibido que el motor de extracción de la IA pise, degrade o modifique las cuotas financieras reales o campos manuales introducidos por el asesor comercial.
 2. Zero-Silent-Failures: Prohibido capturar excepciones genéricas sin inyectar un log forense estructurado completo (logger.exception). Toda contingencia de red o timeout debe retornar un _ContingencySnapshot controlado.
 3. Visual-Lock (PCC Pro): Toda respuesta que mencione una motocicleta debe incluir obligatoriamente el precio formateado ($) y la imagen estructurada en Markdown nativo (![]()) recuperada de search_catalog.
@@ -43,7 +45,7 @@ Nota M4-003 (anotación, sin corrección del registro histórico) — fila M3-ET
 5. Mapeo Semántico de Ingresos (v10.47.3): El extractor DEBE mapear expresiones coloquiales a valores numéricos exactos. Bias negativo: vacío SOLO si no se mencionaron ingresos.
 6. Gobernanza de Fuentes de Verdad (v10.48.0): SSOT Documental = docs/DOCUMENTO_MAESTRO.md. SSOT de Ejecución = campo searchBy del catálogo en Firestore + prompt juan_pablo_personality. En caso de divergencia, prevalece siempre el SSOT de Ejecución.
 
-📋  Estado Actual del Embudo Comercial "Juan Pablo"
+📋   Estado Actual del Embudo Comercial "Juan Pablo"
 PASO 1 (Enganche de Valor): Saludo condicional + search_catalog + Visual-Lock (imagen + precio). Pivote de competencia habilitado.
 PASO 2 (Simulación Ciega Anticipada): calculate_credit_score con datos ciegos (Brilla de Gases, SMLV, 10% inicial). Timeout 25s + reintentos.
 PASO 3 (Entrega de Cuota Enganche): Lectura de JSON + entrega de cuota aproximada (24 meses) + script de Habeas Data.
@@ -52,17 +54,19 @@ PASO 5 (Identidad y Transición): Nombre + Ciudad (Sanitize PII: 50 chars máx).
 MATRIZ (8 datos): Ocupación → Contrato → Ingresos (mapeo semántico) → Datacrédito → Gastos → Gas Natural → Vivienda → Plan Celular. Checklist determinista.
 CIERRE DE FASE: Evaluación de puntaje → 4 rutas (Banco de Bogotá ≥750, Revisión humana 500-749, Brilla <499, Rechazo <499 sin Brilla).
 
-⚠️  Deuda Técnica Residual Documentada
+⚠️   Deuda Técnica Residual Documentada
 1. Saludo repetitivo en matriz (cosmético) ✅ RESUELTO (v10.48.0): Guard estático por dato ocupacion truthy + supresor coercitivo de prefijo post-generación.
 2. Entidad "Crediorbe" obsoleta ✅ RESUELTO Y CERRADO FORENSEMENTE (v10.48.0): sync_full_prompt.py ejecutado como CANAL ÚNICO. Triple aserción post-sync archivada.
 3. Pregunta genérica en FAQ brake ✅ RESUELTO (v10.48.0): _get_pending_funnel_question PHASE_3 evalúa la matriz vía _evaluate_profiling_matrix (SSOT compartido).
 4. Frente de Higiene de Arnés M4 ✅ RESUELTO Y CERRADO FORENSEMENTE (v10.50.0): H-LAT-R5, H-ARNÉS-7, H-ARNÉS-2, H-ARNÉS-5 desplegados en beta (#431 a #434). Núcleo M4-002 intacto.
 5. Scripts Zombie (H-ZOMBIE-1) ✅ RESUELTO Y CERRADO FORENSEMENTE (v10.50.1 / commit 53452aa): purga de scripts/test_intent_evaluator.py + scripts/test_memory_survey_state.py (tests de código eliminado en c4599e2; métodos bajo prueba evaluate_survey_intent y MemoryService.*_survey_state erradicados de producción en Sprint 1; clasificación (a)×2: cero referencias activas, cero dependencias inversas, cero cobertura que perder, cero afectación al embudo). Denominador canónico 648→646 recolectados (7→5 scripts/); 2→0 skipped. Score 1.000 mantenido. Núcleo M4-002 intacto.
 6. Deriva/Replica en verify_*.py (H-ARNÉS-VFY-*) ✅ RESUELTO Y CERRADO FORENSEMENTE (v10.50.2 / commit 1e238e7): purga de 7 verify_*.py obsoletos/réplica/contaminantes — verify_interceptor_v67.py (VFY-REPLICA: réplica divergida de calculate_ratio/evaluate_interceptor, polaridad/umbrales invertidos vs ai_brain.py), verify_v632.py (VFY-ENV os.environ["LOCAL_DB"] import-time + VFY-REPLICA MockCatalog divergida), verify_phase3.py (VFY-RUNTIME catalog_service.get_all_items=MagicMock en cuerpo + VFY-DERIVA app.services.finance muerto), verify_fix_logic.py (VFY-DERIVA contrato async + vestigio PhoneNormalizer), verify_strict_handoff.py (VFY-RUNTIME ×12 mutaciones whatsapp.* + VFY-DERIVA force_financial inexistente; mecanismo α de H-ARNÉS-7 subsumido con el archivo), verify_v631.py (VFY-REPLICA refinamiento F3: réplica autoconfesada, divergencia search_items vs search_catalog vivo), verify_financial_service.py (VFY-SINGLETON financial_service._config_service=MockConfigService() import-time). Clasificación (a)×7 con los 4 criterios de H-ZOMBIE-1 (cero referencias activas, cero dependencias inversas, cero cobertura que perder, cero afectación al embudo). Denominador invariante 646/646/0 skipped (los verify_*.py no se recolectan; patrón test_*.py). verify_phase4.py queda en vigilancia pasiva (c): conserva su cura V1 de H-ARNÉS-7 intacta; mutaciones instance-level; riesgo puramente teórico bajo P2. H-ARNÉS-7 NO reabierto (la purga subsume V1 de los 4 portadores purgados).
+7. Import-time no-saneado linaje V1 en scripts/ (H-ARNÉS-MI) ✅ RESUELTO Y CERRADO FORENSEMENTE (v10.50.3 / commit cc5774d): purga de scripts/test_memory_integration.py — último import-time no-saneado del linaje V1 en scripts/ (L4 from google.cloud import firestore + L9 from app.services.memory_service import MemoryService + L10 from app.core.utils import PhoneNormalizer a nivel módulo, que corría en cada colección canónica SIN la armadura de tests/conftest.py por vivir en scripts/). Clasificación (a) purgable con los 4 criterios de H-ZOMBIE-1 (cero referencias activas, cero dependencias inversas, cero cobertura que perder, cero afectación al embudo). Cuerpo = diagnóstico manual ASYNC v9.0.0 que conectaba a Firestore PROD (project="tiendalasmotos") con 0 asserts y 0 funciones test_* → recolectaba 0 ítems y nunca ejecutaba su cuerpo como test. Denominador invariante 646/646/0 skipped (collect-only scripts/ 5→5 ítems: el archivo aportaba 0; prueba reina F5 PRE=POST=5). Riesgo operativo latente eliminado de raíz (el cuerpo tocaba Firestore PROD). Métodos bajo prueba (MemoryService.get_prospect_data, PhoneNormalizer.normalize) con cobertura viva redundante en tests/ + scripts/test_memory_restoration.py + scripts/test_phone_normalization.py. H-ARNÉS-7 y H-LAT-R5 NO reabiertos (la purga subsume V1 del archivo: sin archivo no hay import-time). Núcleo M4-002 intacto (0 refs en tests/; archivo autocontenido en scripts/).
 
-🎯  Próximos Pasos
+🎯   Próximos Pasos
 •  ✅ Sincronización Documental (H-DOC-R5 / H-FUENTES-1) RESUELTO (v10.50.1): .docx del KB alineado con SSOT real post-purga (646/646 passed, 0 skipped; hitos M4 + H-ZOMBIE-1 registrados).
 •  ✅ Decisión de Gobernanza (H-ZOMBIE-1) RESUELTO (v10.50.1 / 53452aa): purga de 2 scripts zombie ejecutada y certificada.
 •  ✅ Cierre H-ARNÉS-VFY-* RESUELTO (v10.50.2 / 1e238e7): purga de 7 verify_*.py obsoletos/réplica/contaminantes certificada; verify_phase4.py en vigilancia pasiva (c).
+•  ✅ Cierre H-ARNÉS-MI RESUELTO (v10.50.3 / cc5774d): purga de scripts/test_memory_integration.py (último import-time no-saneado del linaje V1 en scripts/); denominador invariante 646/646/0 skipped (collect-only scripts/ 5→5 ítems).
 •  Mantenimiento de la higiene del arnés de pruebas (M4 completado; vigilancia continua).
-•  Vigilancia pasiva de deudas menores de arnés (H-ARNÉS-MI / H-ARNÉS-DEAD): purga futura con prueba si se reactivan.
+•  Vigilancia pasiva de deudas menores de arnés (H-ARNÉS-DEAD): purga futura con prueba si se reactivan.
