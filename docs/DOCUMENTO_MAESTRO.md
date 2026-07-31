@@ -1,5 +1,5 @@
-🛡️  Documento Maestro: Estado de Desarrollo Core (v10.50.1)
-Versión: v10.50.1 (Milestone 4 — COMPLETO & CERTIFIED · H-ZOMBIE-1 purgado)
+🛡️  Documento Maestro: Estado de Desarrollo Core (v10.50.2)
+Versión: v10.50.2 (Milestone 4 — COMPLETO & CERTIFIED · H-ZOMBIE-1 + H-ARNÉS-VFY-* purgados)
 Estado: PRODUCTION READY / GCP LIVE (Beta)
 Coherence Score: 1.000 (Certificado vía GSD Framework — 646/646 items puntuables PASSED, 0 failed, 0 skipped; perímetro canónico: repo completo = 646 items recolectados)
 
@@ -11,6 +11,7 @@ Coherence Score: 1.000 (Certificado vía GSD Framework — 646/646 items puntuab
 5. Cierre Certificado Etapa 7 (v10.49.0): Despliegue y Publicación. Push a beta exitoso, despliegue a GCP Cloud Run y publicación del paquete interno @tobiasgaitan/agent-cli@1.0.6 en GitHub Packages.
 6. Cierre Certificado Milestone 4 (v10.50.0): Frente de Higiene de Arnés COMPLETO. Erradicación de contaminación import-time (H-LAT-R5, H-ARNÉS-7), eliminación de barredores manuales redundantes (H-ARNÉS-2) y teardowns manuales frágiles (H-ARNÉS-5). Núcleo M4-002 (F1-F6) permaneció congelado e intacto durante todo el frente. Score 1.000 mantenido.
 7. Cierre Certificado H-ZOMBIE-1 (v10.50.1): Purga forense de 2 scripts zombie Sprint 1 (test_intent_evaluator.py + test_memory_survey_state.py; tests de código eliminado en c4599e2 — métodos bajo prueba evaluate_survey_intent y MemoryService.*_survey_state erradicados de producción; clasificación (a)×2: cero referencias activas, cero dependencias inversas, cero cobertura que perder, cero afectación al embudo). Denominador canónico 648→646 recolectados (7→5 scripts/); 2→0 skipped. Score 1.000 mantenido. Núcleo M4-002 intacto.
+8. Cierre Certificado H-ARNÉS-VFY-* (v10.50.2): Purga forense de 7 verify_*.py obsoletos/réplica/contaminantes (VFY-SINGLETON/ENV/REPLICA/RUNTIME/DERIVA; refinamiento F3 sobre verify_v631.py aceptado; commit 1e238e7). Clasificación (a)×7 con los 4 criterios de H-ZOMBIE-1. Denominador invariante 646/646/0 skipped (verify_*.py no recolectados). verify_phase4.py en vigilancia pasiva (c) con cura V1 de H-ARNÉS-7 intacta. H-ARNÉS-7 NO reabierto (purga subsume V1 de los 4 portadores purgados). Núcleo M4-002 intacto.
 
 📐  Gobernanza de Métricas de Coherencia (M4-003)
 Perímetro canónico: el repositorio completo. La medición oficial es npx agent-cli eval (≡ uv run pytest --tb=no -q desde rootdir, sin testpaths): recolecta tests/ (641 items) + scripts/test_*.py (5 items) = 646 items.
@@ -19,9 +20,10 @@ Métricas, ambas sobre el MISMO perímetro canónico:
 2. Coherence Score GSD (certificación): Score 1.000 exacto sobre el perímetro canónico (0 failed; skipped solo con marca explícita: integration-sin-credenciales). Certificar "1.000" con Score < 1.000 es violación ZSF documental.
 Cifras canónicas (M4-003, post-purga H-ZOMBIE-1): 646 recolectados = 641 tests/ + 5 scripts/. 0 skipped. 646 items puntuables = denominador del Score. Prohibido reportar el denominador (recolectados o puntuables) como "PASSED": PASSED es exclusivamente el conteo de tests que pasaron. Las tres cifras 646 (recolectados) / 646 (puntuables) / 641 (items bajo tests/) coexisten definidas; cualquier cifra futura debe declarar su denominador.
 
-📊  Matriz Histórica de Cambios y Estabilidad (v10.47.5 a v10.50.1)
+📊  Matriz Histórica de Cambios y Estabilidad (v10.47.5 a v10.50.2)
 | Versión / Ticket | Componente Afectado | Descripción del Ajuste Quirúrgico y Protección Core |
 |------------------|---------------------|-----------------------------------------------------|
+| H-ARNÉS-VFY-* (v10.50.2) | scripts/verify_interceptor_v67.py, verify_v632.py, verify_phase3.py, verify_fix_logic.py, verify_strict_handoff.py, verify_v631.py, verify_financial_service.py | Purga de 7 verify_*.py obsoletos/réplica/contaminantes (VFY-SINGLETON/ENV/REPLICA/RUNTIME/DERIVA; refinamiento F3 v631). Denominador invariante 646/646/0 skipped. verify_phase4.py en (c). |
 | H-ZOMBIE-1 (v10.50.1) | scripts/test_intent_evaluator.py, test_memory_survey_state.py | Purga de 2 scripts zombie Sprint 1 (tests de código eliminado en c4599e2). Denominador 648→646 recolectados (7→5 scripts/); 2→0 skipped. Score 1.000. |
 | M4-PLAN-ARNÉS-5-004 (v10.50.0) | tests/test_agentic_loop_async.py | Eliminación pura + dedent de try/finally manual redundante ×6. STATIC-CURE-OK. |
 | M4-PLAN-ARNÉS-2-003 (v10.50.0) | tests/test_config_startup.py, test_pcc... | Eliminación pura de barredores manuales (patch.stopall, sys.modules pops) redundantes con fixtures autouse. |
@@ -56,10 +58,11 @@ CIERRE DE FASE: Evaluación de puntaje → 4 rutas (Banco de Bogotá ≥750, Rev
 3. Pregunta genérica en FAQ brake ✅ RESUELTO (v10.48.0): _get_pending_funnel_question PHASE_3 evalúa la matriz vía _evaluate_profiling_matrix (SSOT compartido).
 4. Frente de Higiene de Arnés M4 ✅ RESUELTO Y CERRADO FORENSEMENTE (v10.50.0): H-LAT-R5, H-ARNÉS-7, H-ARNÉS-2, H-ARNÉS-5 desplegados en beta (#431 a #434). Núcleo M4-002 intacto.
 5. Scripts Zombie (H-ZOMBIE-1) ✅ RESUELTO Y CERRADO FORENSEMENTE (v10.50.1 / commit 53452aa): purga de scripts/test_intent_evaluator.py + scripts/test_memory_survey_state.py (tests de código eliminado en c4599e2; métodos bajo prueba evaluate_survey_intent y MemoryService.*_survey_state erradicados de producción en Sprint 1; clasificación (a)×2: cero referencias activas, cero dependencias inversas, cero cobertura que perder, cero afectación al embudo). Denominador canónico 648→646 recolectados (7→5 scripts/); 2→0 skipped. Score 1.000 mantenido. Núcleo M4-002 intacto.
-6. Deriva/Replica en verify_*.py no-portadores (H-ARNÉS-VFY-*) ⏳ VIGILANCIA PASIVA: Mutaciones runtime o variables de entorno en archivos fuera del perímetro de colección. Purga futura con prueba.
+6. Deriva/Replica en verify_*.py (H-ARNÉS-VFY-*) ✅ RESUELTO Y CERRADO FORENSEMENTE (v10.50.2 / commit 1e238e7): purga de 7 verify_*.py obsoletos/réplica/contaminantes — verify_interceptor_v67.py (VFY-REPLICA: réplica divergida de calculate_ratio/evaluate_interceptor, polaridad/umbrales invertidos vs ai_brain.py), verify_v632.py (VFY-ENV os.environ["LOCAL_DB"] import-time + VFY-REPLICA MockCatalog divergida), verify_phase3.py (VFY-RUNTIME catalog_service.get_all_items=MagicMock en cuerpo + VFY-DERIVA app.services.finance muerto), verify_fix_logic.py (VFY-DERIVA contrato async + vestigio PhoneNormalizer), verify_strict_handoff.py (VFY-RUNTIME ×12 mutaciones whatsapp.* + VFY-DERIVA force_financial inexistente; mecanismo α de H-ARNÉS-7 subsumido con el archivo), verify_v631.py (VFY-REPLICA refinamiento F3: réplica autoconfesada, divergencia search_items vs search_catalog vivo), verify_financial_service.py (VFY-SINGLETON financial_service._config_service=MockConfigService() import-time). Clasificación (a)×7 con los 4 criterios de H-ZOMBIE-1 (cero referencias activas, cero dependencias inversas, cero cobertura que perder, cero afectación al embudo). Denominador invariante 646/646/0 skipped (los verify_*.py no se recolectan; patrón test_*.py). verify_phase4.py queda en vigilancia pasiva (c): conserva su cura V1 de H-ARNÉS-7 intacta; mutaciones instance-level; riesgo puramente teórico bajo P2. H-ARNÉS-7 NO reabierto (la purga subsume V1 de los 4 portadores purgados).
 
 🎯  Próximos Pasos
 •  ✅ Sincronización Documental (H-DOC-R5 / H-FUENTES-1) RESUELTO (v10.50.1): .docx del KB alineado con SSOT real post-purga (646/646 passed, 0 skipped; hitos M4 + H-ZOMBIE-1 registrados).
 •  ✅ Decisión de Gobernanza (H-ZOMBIE-1) RESUELTO (v10.50.1 / 53452aa): purga de 2 scripts zombie ejecutada y certificada.
+•  ✅ Cierre H-ARNÉS-VFY-* RESUELTO (v10.50.2 / 1e238e7): purga de 7 verify_*.py obsoletos/réplica/contaminantes certificada; verify_phase4.py en vigilancia pasiva (c).
 •  Mantenimiento de la higiene del arnés de pruebas (M4 completado; vigilancia continua).
-•  Vigilancia pasiva de deudas menores de arnés (H-ARNÉS-MI / H-ARNÉS-DEAD / H-ARNÉS-VFY-*): purga futura con prueba si se reactivan.
+•  Vigilancia pasiva de deudas menores de arnés (H-ARNÉS-MI / H-ARNÉS-DEAD): purga futura con prueba si se reactivan.
