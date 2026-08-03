@@ -1,6 +1,15 @@
 """
 Memory Service - CRM Integration & Long-Term Memory
-v9.8.5 - GSD Standard Compatibility (Linear Blocking)
+v9.8.6 - AUD-SCORE-PERSIST-001 (GSD Standard Compatibility / Linear Blocking)
+
+CHANGELOG v9.8.6:
+  - [AUD-SCORE-PERSIST-001] Added persist_credit_score_result() with atomic
+    Firestore transaction (parent score_resultado + historial subdoc)
+  - [AUD-SCORE-PERSIST-001] Added _dashboard_mirror() for retrocompatible
+    dashboard aliases (moto_interes, ingresos, gastos, habeas_data,
+    habeas_data_sent) without renames/deletions
+  - [AUD-SCORE-PERSIST-001] Added _score_historial_dedup_id() deterministic
+    deduplication key (bucket 300s)
 
 CHANGELOG v9.6.0:
   - Renamed self.db → self._db (tests access memory_service._db)
@@ -13,7 +22,9 @@ CHANGELOG v9.6.0:
 
 import logging
 import asyncio
-from typing import Dict, Any, Optional, List, Set
+import hashlib
+import time
+from typing import Dict, Any, Optional, List, Set, Union
 from google.cloud import firestore
 from google.api_core import exceptions as gcp_exceptions
 from app.core.utils import PhoneNormalizer
@@ -54,7 +65,7 @@ class MemoryService:
         # Valla de Chesterton pre-Linear-Blocking BOT-INFRA-ASYNC-094: todas las
         # escrituras del embudo son await bloqueante, nadie registraba tareas).
         self._pending_tasks: Set[asyncio.Task] = set()
-        logger.info("🧠 MemoryService v9.8.5: Refactor Exception Handling")
+        logger.info("🧠 MemoryService v9.8.6: AUD-SCORE-PERSIST-001 Atomic Score Persistence")
 
     async def _firestore_io(self, coro, phone: str, label: str, timeout: Optional[int] = None):
         """
@@ -181,6 +192,79 @@ class MemoryService:
             merged["habeas_data_accepted"] = False
 
         return merged
+
+    # ──────────────────────────────────────────────────────────────────
+    # Dashboard key mirroring (retrocompatible double-write)
+    # ──────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _dashboard_mirror(
+        merged: Dict[str, Any], current_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        [AUD-SCORE-PERSIST-001] Retrocompatible mirror layer for the dashboard
+        consumer keys. Keeps the bot's canonical long keys intact and ADDS
+        the dashboard-canonical aliases. No renames, no deletions.
+
+        Rules:
+          - moto_interest -> moto_interes (verbatim string)
+          - ingresos_mensuales -> ingresos (int, only if pure digits)
+          - gastos_mensuales -> gastos (int, only if pure digits)
+          - habeas_data_accepted -> habeas_data (bool, latch-guarded)
+          - habeas_data_accepted_sent -> habeas_data_sent (bool, latch-guarded)
+        """
+        mirror: Dict[str, Any] = {}
+        if not isinstance(merged, dict):
+            return mirror
+
+        # 1. Moto interest — verbatim alias
+        if "moto_interest" in merged:
+            mirror["moto_interes"] = merged["moto_interest"]
+
+        # 2. Income / expenses — coerce to int only for pure-digit strings
+        for src_key, dst_key in (
+            ("ingresos_mensuales", "ingresos"),
+            ("gastos_mensuales", "gastos"),
+        ):
+            if src_key in merged:
+                raw = merged[src_key]
+                try:
+                    numeric = int(str(raw).strip())
+                    mirror[dst_key] = numeric
+                except (ValueError, TypeError):
+                    logger.warning(
+                        f"⚠️ [DASHBOARD_MIRROR] {src_key} value {raw!r} is not a pure integer; "
+                        f"skipping mirror to {dst_key} (Anti-Null-Masking)."
+                    )
+
+        # 3. Habeas consent flags — never write False over an existing True
+        #    (protects web-created leads that already have habeas_data=true)
+        alias_map = {
+            "habeas_data_accepted": "habeas_data",
+            "habeas_data_accepted_sent": "habeas_data_sent",
+        }
+        for src_key, dst_key in alias_map.items():
+            if src_key in merged:
+                value = merged[src_key]
+                if value is True:
+                    mirror[dst_key] = True
+                elif current_data.get(dst_key) is not True:
+                    mirror[dst_key] = value
+
+        return mirror
+
+    @staticmethod
+    def _score_historial_dedup_id(phone: str, content: str, now: Optional[float] = None) -> str:
+        """
+        [AUD-SCORE-PERSIST-001] Deterministic deduplication key for the score
+        result historial document. Collapses re-entries (double-save, Cloud
+        Tasks redelivery, judge retries) within the same 300s bucket.
+        """
+        bucket = int((now if now is not None else time.time()) // 300)
+        digest = hashlib.sha256(
+            f"{phone}|model|{content}|{bucket}".encode("utf-8")
+        ).hexdigest()
+        return f"scoremsg_{digest[:24]}"
         
     # ──────────────────────────────────────────────────────────────────
     # Firestore reference helpers (async)
@@ -220,6 +304,84 @@ class MemoryService:
         except Exception as e:
             logger.exception(f"❌ save_message failed for {phone_number}: {e}")
             raise
+
+    async def persist_credit_score_result(
+        self,
+        phone_number: str,
+        score_marker: Union[int, float, Dict[str, Any]],
+        content: str,
+    ) -> None:
+        """
+        [AUD-SCORE-PERSIST-001] Atomic persistence of the credit score result:
+          - parent doc: score_resultado (verbatim number) + score_resultado_at
+          - historial subdoc: role/model + content + timestamp + structured
+
+        The historial document uses a deterministic dedup ID so that re-entries
+        (double-save in text pipeline, Cloud Tasks retries) collapse into a
+        single Firestore document. The content text is preserved byte-identical.
+        """
+        clean_phone = PhoneNormalizer.normalize(phone_number)
+
+        # Accept either a bare numeric score or a dict marker from ai_brain.
+        if isinstance(score_marker, dict):
+            score = score_marker.get("score")
+            entity = score_marker.get("entity")
+            strategy = score_marker.get("strategy")
+        else:
+            score = score_marker
+            entity = None
+            strategy = None
+
+        # Type guard: score MUST be numeric (int or float, not bool). Verbatim.
+        if not isinstance(score, (int, float)) or isinstance(score, bool):
+            logger.warning(
+                f"⚠️ [SCORE_PERSIST] score value is not numeric (got {score!r} of type "
+                f"{type(score).__name__}). Falling back to plain save_message; "
+                f"score_resultado will NOT be persisted (Anti-Null-Masking)."
+            )
+            await self.save_message(clean_phone, "model", content)
+            return
+
+        dedup_id = self._score_historial_dedup_id(clean_phone, content)
+        parent_ref = self._db.collection(self.collection_name).document(clean_phone)
+        hist_ref = parent_ref.collection("historial").document(dedup_id)
+
+        structured: Dict[str, Any] = {
+            "type": "credit_score",
+            "score": score,
+        }
+        if entity is not None:
+            structured["entity"] = entity
+        if strategy is not None:
+            structured["strategy"] = strategy
+
+        transaction = self._db.transaction()
+
+        @firestore.async_transactional
+        async def _commit_score(txn):
+            txn.set(
+                parent_ref,
+                {
+                    "score_resultado": score,
+                    "score_resultado_at": firestore.SERVER_TIMESTAMP,
+                },
+                merge=True,
+            )
+            txn.set(
+                hist_ref,
+                {
+                    "role": "model",
+                    "content": content,
+                    "timestamp": firestore.SERVER_TIMESTAMP,
+                    "structured": structured,
+                },
+            )
+
+        await self._firestore_io(
+            _commit_score(transaction),
+            phone=clean_phone,
+            label="persist_credit_score_result",
+        )
 
     async def get_chat_history(self, phone_number: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Retrieve last N messages from historial, ordered ascending."""
@@ -442,6 +604,13 @@ class MemoryService:
 
             # Use centralized merge logic
             update_payload = self._merge_extracted_data(current_data, extracted_data or {})
+
+            # [AUD-SCORE-PERSIST-001] Add retrocompatible dashboard aliases without
+            # renaming or removing the bot's canonical keys. Runs AFTER merge so
+            # the _merge_extracted_data contract (test_memory_merge pins) is untouched.
+            mirror_payload = self._dashboard_mirror(update_payload, current_data)
+            update_payload.update(mirror_payload)
+
             update_payload["ai_summary"] = summary_text
             update_payload["fecha"] = firestore.SERVER_TIMESTAMP
 

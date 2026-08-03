@@ -2552,6 +2552,17 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             reportes=f_args.get("reportes")
                                         )
 
+                                    # [AUD-SCORE-PERSIST-001] Mark the verbatim score for atomic
+                                    # downstream persistence. Underscore prefix keeps it transient; it
+                                    # is consumed by the router egress writer and never leaks through
+                                    # the EXTRACTION_SCHEMA merge.
+                                    if prospect_data is not None:
+                                        prospect_data["_score_resultado"] = {
+                                            "score": res.get("score"),
+                                            "entity": res.get("entity"),
+                                            "strategy": res.get("strategy"),
+                                        }
+
                                     # [BOT-PONYTAIL-200] Compute ponytail_score from credit score
                                     # Clamped to [0-100] and stored as STRING in prospect_data
                                     # This runs in parallel to the existing credit flow — no mutation of

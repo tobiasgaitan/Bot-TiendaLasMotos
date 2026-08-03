@@ -15,7 +15,7 @@ import hashlib
 import os
 import sys
 import time
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request, Query, HTTPException, BackgroundTasks
@@ -2060,7 +2060,9 @@ async def _pipeline_text_cognitive(
             logger.warning(f"⚠️ Failed to update Langfuse trace: {e}")
 
     # Persistencia de la respuesta final (sea aprobada o fallback)
-    if memory_service_module.memory_service:
+    # [AUD-SCORE-PERSIST-001] Si hay marcador de score, la persistencia atómica
+    # se realiza en el egreso unificado; evita duplicar el mensaje de score.
+    if memory_service_module.memory_service and "_score_resultado" not in (prospect_data or {}):
         await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
 
     # TRIGGER_SURVEY interception REMOVED — 2026-03-12
@@ -2124,8 +2126,19 @@ async def _pipeline_egress(
     prospect_data = ctx.get("prospect_data")
     catalog = ctx.get("catalog") or catalog_service
 
+    # [AUD-SCORE-PERSIST-001] Consume score marker once per turn.
+    score_marker = None
+    if prospect_data and isinstance(prospect_data, dict):
+        score_marker = prospect_data.pop("_score_resultado", None)
+
     # Check for AI Handoff
     if response_text.startswith("HANDOFF_TRIGGERED"):
+        if score_marker:
+            logger.warning(
+                f"⚠️ [SCORE_PERSIST] Marcador de score presente en rama HANDOFF para "
+                f"{user_phone}. El score NO se persiste porque el mensaje al usuario es "
+                "la transferencia (Zero-Silent-Failures)."
+            )
         if memory_service_module.memory_service:
             await memory_service_module.memory_service.set_human_help_status(user_phone, True)
             # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
@@ -2177,26 +2190,46 @@ async def _pipeline_egress(
 
                                 # Save to history and stop
                                 if memory_service_module.memory_service:
-                                    await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
+                                    if score_marker:
+                                        await memory_service_module.memory_service.persist_credit_score_result(
+                                            user_phone, score_marker, response_text
+                                        )
+                                    else:
+                                        await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
                                 return 
                     except Exception as e:
                         logger.exception(f"⚠️ Error injecting dynamic Phase-Gate image: {e}")
             else:
                 logger.info("⏩ [BYPASS] Skipping image injection: moto already confirmed.")
 
-        await _process_and_send_egress_message(user_phone, response_text, phone_number_id=phone_number_id)
+        # [AUD-SCORE-PERSIST-001] Preserve exact call signature when no marker
+        # (pin PEI-1/PEI-4); pass score_marker only when present.
+        extra = {}
+        if score_marker:
+            extra["score_persist"] = score_marker
+        await _process_and_send_egress_message(user_phone, response_text, phone_number_id=phone_number_id, **extra)
 
 
 # ============================================================================
 # LOCAL HELPERS (Defined here to avoid missing dependency errors)
 # ============================================================================
 
-async def _process_and_send_egress_message(user_phone: str, response_text: str, phone_number_id: Optional[str] = None):
+async def _process_and_send_egress_message(
+    user_phone: str,
+    response_text: str,
+    phone_number_id: Optional[str] = None,
+    *,
+    score_persist: Optional[Union[Dict[str, Any], int, float]] = None,
+):
     """
     [BOT-BUGFIX-UNIFIED-EGRESS-PIPELINE-125] Pipeline unificado de egreso de mensajes.
     Detecta, extrae y limpia los Markdown de imágenes (alt/link o legacy IMAGE),
     despacha según corresponda (imagen con Caption o mensaje simple), y
     persiste el resultado en Firestore a través de memory_service.
+
+    [AUD-SCORE-PERSIST-001] score_persist es un kwarg-only opcional. Cuando no
+    se pasa, la firma de llamada y el eco save(model) permanecen exactamente
+    como el pin CH-5/PEI-1..5. Solo se materializa en turnos con score post-consentimiento.
     """
     try:
         # --- [BOT-PLAN-HARDENING-EGRESS-FUNNEL-001] URL-Lock de entrada ---
@@ -2251,14 +2284,20 @@ async def _process_and_send_egress_message(user_phone: str, response_text: str, 
         
         # Save Bot Response to History (PERSISTENCE FIX)
         if memory_service_module.memory_service:
-            await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
-            
+            if score_persist is not None:
+                await memory_service_module.memory_service.persist_credit_score_result(
+                    user_phone, score_persist, response_text
+                )
+            else:
+                await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
+
     except Exception as e:
         logger.error(
             f"❌ Fallo en _process_and_send_egress_message: {e}",
             extra={
                 "user_phone": user_phone,
-                "response_text_raw": response_text
+                "response_text_raw": response_text,
+                "score_persist": score_persist,
             },
             exc_info=True
         )
