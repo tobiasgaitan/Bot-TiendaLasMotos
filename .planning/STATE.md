@@ -1,6 +1,6 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.51.0 | Hito: AUD-SCORE-PERSIST-001 — Persistencia Estructurada del Score Post-Consentimiento COMPLETED | Coherence Score: 1.000 (666/666 Tests PASSED vía `npx agent-cli eval`)
+Versión: v10.51.1 | Hito: AUD-C5-GRAPHIFY-D2-003 — Restauración HTML viz graphify (tests/ excluido del lineage) COMPLETED | Coherence Score: 1.000 (666/666 Tests PASSED vía `npx agent-cli eval`)
 
 ### Current Position
 **Phase:** AUD-SCORE-PERSIST-001 (Milestone 3 / Etapa 6+) — Corrección de persistencia de `score_resultado` y espejos retrocompatibles de llaves divergentes — CERRADA (Success)

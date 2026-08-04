@@ -4,3 +4,7 @@
 # estadístico). Se conservan físicamente por reversibilidad pero quedan
 # excluidos del AST/Data-Lineage del grafo.
 attic
+
+# [AUD-C5-GRAPHIFY-D2-003] Excluir corpus tests/ raíz del lineage de
+# graphify para restaurar HTML viz (<5000 nodos). No afecta pytest.
+tests/*

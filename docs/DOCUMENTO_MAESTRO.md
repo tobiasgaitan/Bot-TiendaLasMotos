@@ -1,5 +1,5 @@
-🛡️   Documento Maestro: Estado de Desarrollo Core (v10.51.0)
-Versión: v10.51.0 (AUD-SCORE-PERSIST-001 — Persistencia Estructurada del Score + Espejos Retrocompatibles de Llaves Divergentes)
+🛡️   Documento Maestro: Estado de Desarrollo Core (v10.51.1)
+Versión: v10.51.1 (AUD-C5-GRAPHIFY-D2-003 — Restauración HTML viz graphify; tests/ excluido del lineage)
 Estado: PRODUCTION READY / GCP LIVE (Beta)
 Coherence Score: 1.000 (Certificado vía GSD Framework — 666/666 items puntuables PASSED, 0 failed, 0 skipped; perímetro canónico: repo completo = 666 items recolectados)
 
@@ -23,9 +23,10 @@ Métricas, ambas sobre el MISMO perímetro canónico:
 2. Coherence Score GSD (certificación): Score 1.000 exacto sobre el perímetro canónico (0 failed; skipped solo con marca explícita: integration-sin-credenciales). Certificar "1.000" con Score < 1.000 es violación ZSF documental.
 Cifras canónicas (M4-003, post-AUD-SCORE-PERSIST-001): 666 recolectados = 661 tests/ + 5 scripts/. 0 skipped. 666 items puntuables = denominador del Score. Prohibido reportar el denominador (recolectados o puntuables) como "PASSED": PASSED es exclusivamente el conteo de tests que pasaron. Las tres cifras 666 (recolectados) / 666 (puntuables) / 661 (items bajo tests/) coexisten definidas; cualquier cifra futura debe declarar su denominador.
 
-📊   Matriz Histórica de Cambios y Estabilidad (v10.47.5 a v10.51.0)
+📊   Matriz Histórica de Cambios y Estabilidad (v10.47.5 a v10.51.1)
 | Versión / Ticket | Componente Afectado | Descripción del Ajuste Quirúrgico y Protección Core |
 |------------------|---------------------|-----------------------------------------------------|
+| AUD-C5-GRAPHIFY-D2-003 (v10.51.1) | .graphifyignore | Cura de raíz del fallo cosmético del hook graphify (AUD-C5-GRAPHIFY-002): patrón `tests/*` excluye el corpus tests/ raíz (2241 nodos: 1027 code + 1214 rationale) del lineage de graphify; purga del artefacto local graphify-out/graph.json (−2241 nodos, −6530 aristas) → 3894/5000 nodos, margen 1106; graph.html regenerado. Trade-off: pérdida de cobertura DE LA HERRAMIENTA (tests/ fuera del lineage); repo, pytest, app/ y app/tests intactos. Denominador 666=661+5 invariante (collect-only PRE/POST). Núcleo M4-002 intacto. |
 | AUD-SCORE-PERSIST-001 (v10.51.0) | app/services/memory_service.py, app/services/ai_brain.py, app/routers/whatsapp.py, tests/test_score_persist_writer.py (único archivo adicionado en tests/) | Persistencia atómica score_resultado (+_at) post-consentimiento + espejos retrocompatibles (moto_interes, ingresos, gastos, habeas_data, habeas_data_sent). Transacción Firestore única; idempotencia bucket 300s. Puramente aditivo: guarda diff tests//scripts/ vacía, conftest.py 0 líneas. Denominador canónico 646→666 DECLARADO: 666 recolectados = 661 tests/ + 5 scripts/; 666 puntuables; 666 PASSED; 0 failed; 0 skipped. "2 subtests passed" = sub-aserciones unittest de 1 ítem preexistente (test_identity_legal_gate.py L406), ortogonales al denominador. Núcleo M4-002 (F1-F6) intacto. |
 | H-ARNÉS-DEAD (v10.50.4) | tests/conftest.py | Eliminación de función test_* muerta en L357-EOF (vestigio BOT-ARQ-FS-066 nunca recolectado; denominador invariante 646/646/0; núcleo M4-002 intacto). |
 | H-ARNÉS-MI (v10.50.3) | scripts/test_memory_integration.py | Purga del último import-time no-saneado del linaje V1 en scripts/ (firestore + app.* module-level; 0 ítems; denominador invariante 646/646/0; collect-only 5→5 ítems). |
