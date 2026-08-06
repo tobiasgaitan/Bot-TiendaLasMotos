@@ -1,16 +1,26 @@
-# 🏍️ Catalog Seeding Script - Usage Guide
+# ⚠️ catalog_items ERRADICADA 2026-08-05 (v10.52.1)
 
-## ✅ Script Created and Pushed to GitHub
+> **SSOT único**: `pagina/catalogo/items`  
+> **Backup**: `attic/backup_catalog_items_2026-08-05.json`  
+> **Seed archivado**: `attic/seed_catalog.py` — **NO re-ejecutar**  
+> La guía original se conserva como registro histórico. Las instrucciones para poblar la colección huérfana `catalog_items` están marcadas como obsoletas.
 
-**File**: `scripts/seed_catalog.py`
-**Commit**: `7b9f7a4`
+---
+
+# 🏍️ Catalog Seeding Script - Usage Guide (Histórico)
+
+## ✅ Script Created and Pushed to GitHub (Histórico)
+
+**Original file**: `scripts/seed_catalog.py`  
+**Archived file**: `attic/seed_catalog.py`  
+**Commit**: `7b9f7a4`  
 **Repository**: https://github.com/tobiasgaitan/Bot-TiendaLasMotos
 
 ---
 
-## 📋 What the Script Does
+## 📋 What the Script Did (Histórico)
 
-Seeds the `catalog_items` collection in Firestore with 4 motorcycles:
+Seeded the `catalog_items` collection in Firestore with 4 motorcycles:
 
 1. **NKD 125** (Urbana) - $4,500,000 COP
    - Económica, ideal para ciudad
@@ -30,30 +40,17 @@ Seeds the `catalog_items` collection in Firestore with 4 motorcycles:
 
 ---
 
-## 🚀 How to Run (Cloud Shell)
-
-### Step 1: Pull Latest Code
+## 🚀 How to Run (Cloud Shell) — ⚠️ OBsoleto
 
 ```bash
-cd ~/Bot-TiendaLasMotos
-git pull origin main
-```
-
-### Step 2: Install Dependencies (if needed)
-
-```bash
-pip3 install firebase-admin
-```
-
-### Step 3: Run the Seeding Script
-
-```bash
-python3 scripts/seed_catalog.py
+# ⚠️ NO EJECUTAR. scripts/seed_catalog.py fue archivado a attic/seed_catalog.py
+# y la colección catalog_items fue erradicada en v10.52.1.
+# El catálogo canónico vive en pagina/catalogo/items.
 ```
 
 ---
 
-## 📊 Expected Output
+## 📊 Expected Output (Histórico)
 
 ```
 🚀 Starting Catalog Seeding Script...
@@ -101,16 +98,16 @@ Total motorcycles in catalog: 4
 
 ---
 
-## 🔧 Technical Details
+## 🔧 Technical Details (Histórico)
 
 ### Firebase Initialization
 - Uses **Application Default Credentials**
 - Works automatically in Cloud Shell
 - No manual credential file needed
 
-### Collection Structure
+### Collection Structure (Histórico)
 ```
-catalog_items/
+catalog_items/          ← colección erradicada
   ├── nkd-125/
   │   ├── id: "nkd-125"
   │   ├── name: "NKD 125"
@@ -135,19 +132,21 @@ catalog_items/
 
 ---
 
-## 🔍 Verify in Firestore Console
+## 🔍 Verify in Firestore Console (actualizado)
 
-After running the script, verify in Firebase Console:
+El catálogo canónico se verifica en:
 
 1. Go to: https://console.firebase.google.com/
 2. Select project: **tiendalasmotos**
 3. Navigate to: **Firestore Database**
-4. Check collection: **catalog_items**
-5. Should see 4 documents: `nkd-125`, `sport-100`, `victory-black`, `mrx-150`
+4. Check: **pagina → catalogo → items**
+5. Should see 4+ documents: `nkd-125`, `sport-100`, `victory-black`, `mrx-150`
+
+La colección `catalog_items` debe estar **ausente**.
 
 ---
 
-## 🐛 Troubleshooting
+## 🐛 Troubleshooting (Histórico)
 
 ### Error: "Could not automatically determine credentials"
 
@@ -174,7 +173,7 @@ pip3 install firebase-admin
 
 ---
 
-## 📝 Additional Improvements
+## 📝 Additional Improvements (Histórico)
 
 Also pushed improvements to `app/services/catalog.py`:
 
@@ -186,15 +185,15 @@ Also pushed improvements to `app/services/catalog.py`:
 
 ---
 
-## ✅ Next Steps
+## ✅ Next Steps (actualizados)
 
-1. **Run the script** in Cloud Shell to seed the catalog
-2. **Verify** the data in Firestore Console
-3. **Test** the MotorVentas service with real catalog data
-4. **Deploy** the updated application
+1. **NO ejecutar** el seed script; está archivado en `attic/seed_catalog.py`.
+2. **Verificar** el catálogo canónico en `pagina/catalogo/items`.
+3. **Test** el `CatalogService` con los datos canónicos.
+4. **Deploy** la aplicación actualizada.
 
 ---
 
-**Status**: ✅ Script created, committed, and pushed to GitHub
-**Commit**: `7b9f7a4`
-**Ready**: To run in Cloud Shell
+**Status**: ⚠️ `catalog_items` erradicada en v10.52.1; script archivado en `attic/seed_catalog.py`  
+**Commit**: `7b9f7a4` (histórico), erradicación v10.52.1  
+**Ready**: NO ejecutar; el catálogo vive en `pagina/catalogo/items`

@@ -1,34 +1,35 @@
-# ✅ MotorVentas Synced with Firestore Catalog
+# ⚠️ catalog_items ERRADICADA 2026-08-05 (v10.52.1)
 
-## 🎯 Critical Fix Applied
-
-**Issue**: Bot responding with "Sin descripción disponible"
-**Root Cause**: MotorVentas was not querying Firestore catalog_items collection
-**Solution**: Rewrote `_load_catalog()` to fetch data directly from Firestore
+> **SSOT único**: `pagina/catalogo/items`  
+> **Backup**: `attic/backup_catalog_items_2026-08-05.json`  
+> **Seed archivado**: `attic/seed_catalog.py` — **NO re-ejecutar**  
+> **Motivo**: MotorVentas lee el catálogo canónico desde `pagina/catalogo/items` (ver `app/services/catalog_service.py`). La colección huérfana `catalog_items` fue respaldada y eliminada de producción.
 
 ---
 
-## 🔧 Changes Made
+## ✅ MotorVentas Synced with Firestore Catalog (Histórico)
 
-### 1. **Updated `app/services/catalog.py`**
+Este documento se conserva como registro histórico de la integración original. Las instrucciones operativas que apuntaban a `catalog_items` están marcadas como obsoletas.
 
-#### Before (ConfigLoader dependency):
-```python
-def _load_catalog(self) -> List[Dict[str, Any]]:
-    if self._config_loader:
-        catalog_config = self._config_loader.get_catalog_config()
-        return catalog_config.get("items", self._default_catalog())
-    return self._default_catalog()
-```
+## 🎯 Critical Fix Applied (Histórico)
 
-#### After (Direct Firestore query):
+**Issue**: Bot responding with "Sin descripción disponible"  
+**Root Cause**: MotorVentas was not querying Firestore catalog_items collection  
+**Solution**: Rewrote `_load_catalog()` to fetch data directly from Firestore (hoy la ruta canónica es `pagina/catalogo/items`)
+
+---
+
+## 🔧 Changes Made (Histórico)
+
+### 1. **Updated `app/services/catalog.py`** (versión histórica)
+
 ```python
 def _load_catalog(self) -> List[Dict[str, Any]]:
     try:
         if self._db:
-            logger.info("📚 Loading catalog from Firestore catalog_items collection...")
+            logger.info("📚 Loading catalog from Firestore pagina/catalogo/items collection...")
             
-            catalog_ref = self._db.collection("catalog_items")
+            catalog_ref = self._db.collection("pagina").document("catalogo").collection("items")
             docs = catalog_ref.stream()
             
             catalog = []
@@ -58,30 +59,15 @@ def _load_catalog(self) -> List[Dict[str, Any]]:
     return self._default_catalog()
 ```
 
----
-
-### 2. **Updated `app/routers/whatsapp.py`**
-
-#### Before:
-```python
-motor_ventas = MotorVentas(config_loader)
-```
-
-#### After:
-```python
-db = request.app.state.db
-motor_ventas = MotorVentas(db=db, config_loader=config_loader)
-```
+> **Nota**: El código actual de `CatalogService` vive en `app/services/catalog_service.py` y lee del SSOT `pagina/catalogo/items`. El snippet anterior ilustra la estructura histórica.
 
 ---
 
 ## 📊 Expected Log Output
 
-After deployment, you should see in Cloud Run logs:
-
 ```
 ✅ MotorVentas initialized with 4 motorcycles
-📚 Loading catalog from Firestore catalog_items collection...
+📚 Loading catalog from Firestore pagina/catalogo/items collection...
   ✅ Loaded: NKD 125 (urbana)
   ✅ Loaded: Sport 100 (deportiva)
   ✅ Loaded: Victory Black (ejecutiva)
@@ -91,7 +77,7 @@ After deployment, you should see in Cloud Run logs:
 
 ---
 
-## 🚀 Deployment Steps
+## 🚀 Deployment Steps (actualizadas)
 
 ### Step 1: Pull Latest Code in Cloud Shell
 
@@ -100,16 +86,15 @@ cd ~/Bot-TiendaLasMotos
 git pull origin main
 ```
 
-### Step 2: Verify Catalog is Seeded
+### Step 2: Verify Catalog is in the SSOT
 
-```bash
-python3 scripts/seed_catalog.py
+El catálogo canónico vive en:
+
+```
+Firestore → pagina → catalogo → items
 ```
 
-**Expected output**:
-```
-✅ Catalog seeding complete! 4 motorcycles added.
-```
+**NO ejecutar** `python3 scripts/seed_catalog.py`; el script fue archivado en `attic/seed_catalog.py` y la colección `catalog_items` ya no existe.
 
 ### Step 3: Deploy to Cloud Run
 
@@ -124,7 +109,7 @@ gcloud run services logs read bot-tiendalasmotos --limit=100
 ```
 
 **Look for**:
-- `📚 Loading catalog from Firestore catalog_items collection...`
+- `📚 Loading catalog from Firestore pagina/catalogo/items collection...`
 - `✅ Loaded: NKD 125 (urbana)` (and other motorcycles)
 - `✅ Catalog loaded successfully: 4 motorcycles`
 
@@ -194,21 +179,17 @@ Tenemos estas increíbles opciones para ti:
 ### Issue: Still showing "Sin descripción disponible"
 
 **Possible Causes**:
-1. Catalog not seeded in Firestore
+1. Catalog not seeded in the SSOT (`pagina/catalogo/items`)
 2. Firestore client not initialized
 3. Old code still deployed
 
 **Solution**:
 ```bash
-# 1. Verify catalog is seeded
-python3 scripts/seed_catalog.py
+# 1. Verify the SSOT catalog is populated
+# Firestore Console → pagina → catalogo → items
+# Should see 4+ documents
 
-# 2. Check Firestore Console
-# Go to: https://console.firebase.google.com/
-# Navigate to: Firestore Database → catalog_items
-# Should see 4 documents
-
-# 3. Redeploy with latest code
+# 2. Redeploy with latest code
 git pull origin main
 ./deploy.sh
 ```
@@ -217,10 +198,9 @@ git pull origin main
 
 ### Issue: "No motorcycles found in catalog_items collection"
 
-**Solution**: Run the seeding script
-```bash
-python3 scripts/seed_catalog.py
-```
+**Status**: ⚠️ Obsoleto. La colección `catalog_items` fue erradicada en v10.52.1.
+
+**Solution**: Verificar el SSOT en `pagina/catalogo/items`.
 
 ---
 
@@ -243,10 +223,10 @@ Should see:
 
 After deployment:
 
-- [ ] Catalog seeding script executed successfully
-- [ ] 4 motorcycles visible in Firestore Console (catalog_items)
+- [ ] 4+ motorcycles visible in Firestore Console (`pagina/catalogo/items`)
+- [ ] `catalog_items` collection **absent** in Firestore Console
 - [ ] Deployment completed without errors
-- [ ] Logs show "Loading catalog from Firestore catalog_items collection"
+- [ ] Logs show "Loading catalog from Firestore pagina/catalogo/items collection"
 - [ ] Logs show "Loaded: NKD 125 (urbana)" and other motorcycles
 - [ ] Logs show "Catalog loaded successfully: 4 motorcycles"
 - [ ] Test message shows real motorcycle descriptions (not "Sin descripción disponible")
@@ -264,11 +244,9 @@ WhatsApp Webhook
      ↓
 POST /webhook
      ↓
-MotorVentas.buscar_moto()
+CatalogService._load_catalog()
      ↓
-_load_catalog()
-     ↓
-Firestore.collection("catalog_items").stream()
+Firestore.collection("pagina").document("catalogo").collection("items").stream()
      ↓
 [NKD 125, Sport 100, Victory Black, MRX 150]
      ↓
@@ -281,8 +259,6 @@ User receives detailed motorcycle info
 
 ---
 
-**Status**: ✅ MotorVentas synced with Firestore catalog
-**Commit**: `826ba2c`
+**Status**: ⚠️ `catalog_items` erradicada; SSOT activo en `pagina/catalogo/items`  
+**Commit**: `826ba2c` (histórico), erradicación v10.52.1  
 **Repository**: https://github.com/tobiasgaitan/Bot-TiendaLasMotos
-
-**Next**: Deploy and test with real WhatsApp messages

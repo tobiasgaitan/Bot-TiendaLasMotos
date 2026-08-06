@@ -77,7 +77,10 @@ def discover_collections(db: firestore.Client) -> List[str]:
     collections = []
     for collection in db.collections():
         collections.append(collection.id)
-        print(f"  📁 {collection.id}")
+        display_name = collection.id
+        if collection.id == "catalog_items":
+            display_name += " (ERRADICADA 2026-08-05)"
+        print(f"  📁 {display_name}")
     
     print(f"\n{Colors.OKCYAN}Total collections found: {len(collections)}{Colors.ENDC}\n")
     return collections

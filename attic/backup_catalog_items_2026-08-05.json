@@ -1,0 +1,74 @@
+{
+  "mrx-150": {
+    "fuel_efficiency": "38 km/l",
+    "id": "mrx-150",
+    "price": 7200000,
+    "created_at": "2026-07-25 19:47:13.173259+00:00",
+    "highlights": [
+      "Suspensión reforzada",
+      "Perfecta para aventuras",
+      "Resistente y durable",
+      "Versatilidad campo-ciudad"
+    ],
+    "description": "Moto aventurera todo terreno, resistente y versátil para cualquier camino",
+    "active": true,
+    "name": "MRX 150",
+    "updated_at": "2026-07-25 19:47:13.173259+00:00",
+    "engine": "150cc",
+    "category": "todo-terreno"
+  },
+  "nkd-125": {
+    "fuel_efficiency": "45 km/l",
+    "id": "nkd-125",
+    "price": 4500000,
+    "created_at": "2026-07-25 19:47:13.173243+00:00",
+    "highlights": [
+      "Bajo consumo de combustible",
+      "Perfecta para tráfico urbano",
+      "Mantenimiento económico",
+      "Diseño moderno y compacto"
+    ],
+    "description": "Moto urbana económica, ideal para la ciudad y el trabajo diario",
+    "active": true,
+    "name": "NKD 125",
+    "updated_at": "2026-07-25 19:47:13.173251+00:00",
+    "engine": "125cc",
+    "category": "urbana"
+  },
+  "sport-100": {
+    "fuel_efficiency": "40 km/l",
+    "id": "sport-100",
+    "price": 5200000,
+    "created_at": "2026-07-25 19:47:13.173256+00:00",
+    "highlights": [
+      "Diseño deportivo agresivo",
+      "Ideal para jóvenes",
+      "Excelente relación precio-rendimiento",
+      "Ágil y rápida en ciudad"
+    ],
+    "description": "Moto deportiva de entrada, perfecta para jóvenes que buscan estilo y velocidad",
+    "active": true,
+    "name": "Sport 100",
+    "updated_at": "2026-07-25 19:47:13.173256+00:00",
+    "engine": "100cc",
+    "category": "deportiva"
+  },
+  "victory-black": {
+    "fuel_efficiency": "35 km/l",
+    "id": "victory-black",
+    "price": 8500000,
+    "created_at": "2026-07-25 19:47:13.173257+00:00",
+    "highlights": [
+      "Diseño elegante y sofisticado",
+      "Motor potente y confiable",
+      "Confort superior",
+      "Tecnología avanzada"
+    ],
+    "description": "Moto ejecutiva elegante y potente, diseñada para profesionales exigentes",
+    "active": true,
+    "name": "Victory Black",
+    "updated_at": "2026-07-25 19:47:13.173257+00:00",
+    "engine": "200cc",
+    "category": "ejecutiva"
+  }
+}

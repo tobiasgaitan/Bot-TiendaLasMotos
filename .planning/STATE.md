@@ -1,23 +1,22 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.52.0 | Hito: AUD-FP-AUTO-007 — Deterministic forma_pago="Crédito" auto-fill on Habeas Data acceptance + T3 deduplication | Coherence Score: 1.000 (673/673 Tests PASSED vía `npx agent-cli eval`)
+Versión: v10.52.1 | Hito: O1 — Erradicación catalog_items + agent-cli publish NO-OP | Coherence Score: 1.000 (673/673 Tests PASSED vía `npx agent-cli eval`)
 
 ### Current Position
-**Phase:** AUD-FP-AUTO-007 (Milestone 3 / Etapa 6+) — Regla determinista forma_pago="Crédito" en aceptación PASO 4 + T3 deduplicación de save_message — CERRADA (Success)
-**Status:** Complete — Implementación quirúrgica certificada contra el plan del OPENCODE PLANNER:
-  - Regla determinista `forma_pago="Crédito"` en `update_prospect_summary` cuando ocurre la transición `habeas_data_accepted` False→True, el script legal fue presentado (`habeas_data_accepted_sent` True) y `forma_pago` está vacío. Extracción explícita del mismo turno gana prioridad (R3).
-  - Capa de derivación aditiva post-merge (entre L606 y L611) respetando el contrato de `_merge_extracted_data` (pins `test_memory_merge` intactos) y los espejos dashboard existentes.
-  - Módulo MemoryService línea v9.x bump 9.8.6→9.8.7; sin cambios a `juan_pablo_personality`, reset (P0), backfill ni O1.
-  - T3: eliminación de la escritura duplicada `save_message` en `_pipeline_text_cognitive` (whatsapp.py L2065-2066); eco del modelo se mantiene únicamente en `_process_and_send_egress_message` y en ramas fallback internas. Pins PEI-1/3/4/5 intactos.
-  - Tests aditivos: `tests/test_forma_pago_autofill_007.py` (7 ítems: 6 unitarios + 1 e2e 👍). Pins A/B/C per A6: schema estable (Pin A), Pin B rediseñado como derivación en persistencia, Pin C robustecido (sent-gate). R2-4a documentada: pre-v10.52.0 la aceptación no rellenaba `forma_pago`; v10.52.0 la aceptación PASO 4 con script presentado lo rellena si vacío.
-  - Denominador canónico 666→673 (661+7 tests/ + 5 scripts/); 673 recolectados = 673 puntuables; 673 PASSED; 0 failed; 0 skipped. Coherence 1.000 — DEPLOY AUTHORIZED.
-**Deuda Técnica Residual Documentada:**
-- ~~Saludo repetitivo en matriz~~ — RESUELTO (FIX-B Ampliado, v10.48.0)
-- ~~Entidad "Crediorbe" obsoleta~~ — RESUELTO y cerrado forensemente (FIX-E re-sync Firestore prod + personality.json, v10.48.0). Residual operativo manual ajeno al prompt: borrar doc `financial_config/general/financieras/crediorbe` en Firestore prod.
-- ~~Pregunta genérica en FAQ brake~~ — RESUELTO (FIX-D, v10.48.0)
-- ~~Cuarentena C5 vigente (por mandato expreso, NO ejecutada en esta etapa): H-COL-1 (tono) y H-COL-2 parcial (BUSINESS_RULES vs catálogo)~~ — **RESUELTO (2026-07-27, cuarentena C5 levantada — intervención 100% documental):** script de BUSINESS_RULES.md alineado a 1ª persona singular + bloque "Gobernanza de Datos" (SSOT Documental vs SSOT de Ejecución + Regla de Precedencia) + Directiva Inmutable #6 en DOCUMENTO_MAESTRO.md.
-**Previous:** Milestone 3 - Etapa 4: Cierre de Fase Operativo & Certified — Cerrada [BOT-BUILD-FIX-SUMMARY-MOTO-INTEREST-001, BOT-BUILD-FIX-MATRIX-RESTART-001, BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO-v2, BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO] (Success)
-**Next:** Milestone 3 - Etapa 7: Sincronización GSD (/gsd-sync), Certificación de Coherencia (npx agent-cli eval ≥0.9), Despliegue (npx agent-cli deploy → publish). Etapa 5 (concurrencia/legado) permanece en el roadmap.
+**Phase:** O1 (Milestone patch v10.52.1) — Erradicación de la colección huérfana `catalog_items` de Firestore prod + agent-cli publish NO-OP — CERRADA (Success)
+**Status:** Complete — Ejecución certificada contra el runbook consolidado:
+  - Backup bloqueante en `attic/backup_catalog_items_2026-08-05.json` (4 docs: mrx-150, nkd-125, sport-100, victory-black) verificado antes del borrado.
+  - `catalog_items` eliminada de producción; re-listado post-borrado: 0 docs.
+  - Seed script archivado (`git mv scripts/seed_catalog.py attic/seed_catalog.py`).
+  - Documentos `FIRESTORE_CATALOG_SYNC.md` y `CATALOG_SEEDING_GUIDE.md` actualizados con cabecera de erradicación y SSOT `pagina/catalogo/items`.
+  - `scripts/buscar_y_destruir.py` marca `catalog_items` como ERRADICADA en listado cosmético.
+  - `.gitignore` añade `.opencode/` (precedente .vscode/.idea) sin commitear ni eliminar el archivo local.
+  - `agent-cli` publish NO-OP: sin cambios en `package.json`/`bin/agent-cli.js` desde el commit-1.0.6 (`273c063`); no se publicó ni se hizo bump.
+  - 0 cambios a `app/`, `catalog_service.py`, `normalize_imagen_url.py`, `pagina/catalogo/items`, `juan_pablo_personality`.
+  - Denominador canónico INVARIANTE 673 = 668 tests/ + 5 scripts/; 673/673 PASSED; 0 failed; 0 skipped. Coherence 1.000 — DEPLOY AUTHORIZED (beta, push diferido).
+
+**Previous:** AUD-FP-AUTO-007 (v10.52.0) — Regla determinista `forma_pago="Crédito"` en aceptación PASO 4 + T3 deduplicación de `save_message` — CERRADA (Success)
+**Next:** Push autorizado a beta + tag v10.52.1 (o deploy según orden).
 
 ---
 *Last updated: 2026-08-05*
