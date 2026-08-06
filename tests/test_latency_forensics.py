@@ -157,12 +157,11 @@ async def test_lat1_meta_api_latency_state_persisted_before_meta_send_returns():
         # El envío a Meta queda EN VUELO (latencia simulada sostenida).
         await asyncio.wait_for(send_started.wait(), timeout=5.0)
 
-        # ASERCIÓN CENTRAL: el estado ya estaba persistido ANTES del envío.
-        assert "save_message:model" in timeline, (
-            f"Con Meta en vuelo, el estado del turno no estaba persistido: {timeline}"
-        )
-        assert timeline.index("save_message:model") < timeline.index("meta:send_start"), (
-            f"VIOLACIÓN Sincronía de Oficio bajo latencia Meta: {timeline}"
+        # T3: el pre-egreso save_message("model") fue eliminado; el eco del modelo
+        # vive ahora dentro del egreso unificado. Durante la latencia simulada de Meta
+        # NO debe existir persistencia previa del modelo (la respuesta aún no se envía).
+        assert "save_message:model" not in timeline, (
+            f"T3: no debe haber save_message('model') antes del envío a Meta: {timeline}"
         )
 
         # Liberar Meta: el embudo completa limpio (sin excepción ni degradación).
@@ -170,6 +169,9 @@ async def test_lat1_meta_api_latency_state_persisted_before_meta_send_returns():
         await asyncio.wait_for(task, timeout=5.0)
 
     assert "meta:send_released" in timeline
+    assert "save_message:model" in timeline, (
+        f"T3: el eco save_message('model') debe ejecutarse dentro del egreso: {timeline}"
+    )
 
 
 # ── LAT-2: Timeout Firestore — contingencia controlada, colección íntegra ────

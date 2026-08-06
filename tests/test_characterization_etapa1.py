@@ -399,8 +399,8 @@ async def test_ch4_ponytail_deprioritized_after_human_help_on_handoff():
 async def test_ch5_unified_egress_single_persistence_and_send():
     """
     [BOT-BUGFIX-UNIFIED-EGRESS-PIPELINE-125] En el flujo texto aprobado:
-    exactamente 1 save_message("user"), exactamente 1 save_message("model")
-    con el response_text final, y exactamente 1 invocación de egreso unificado.
+    exactamente 1 save_message("user"), el eco save_message("model") vive en
+    el egreso unificado (post-T3), y exactamente 1 invocación de egreso unificado.
     Red contra la persistencia duplicada al fragmentar pipelines (RF-5).
     """
     from app.routers.whatsapp import _handle_message_background_impl
@@ -434,8 +434,9 @@ async def test_ch5_unified_egress_single_persistence_and_send():
 
         assert len(user_saves) == 1, f"❌ Persistencia 'user' duplicada/ausente: {save_calls}"
         assert user_saves[0].args == (PHONE_E164, "user", "Quiero una Raider 125")
-        assert len(model_saves) == 1, f"❌ Persistencia 'model' duplicada/ausente: {save_calls}"
-        assert model_saves[0].args == (PHONE_E164, "model", final_text)
+        # T3: eco save_message("model") ya no ocurre en el pipeline cognitivo; vive en
+        # _process_and_send_egress_message. Como aquí se mockea el egreso, no hay save model.
+        assert len(model_saves) == 0, f"❌ Persistencia 'model' inesperada en pipeline: {save_calls}"
 
         mock_egress.assert_called_once_with(
             PHONE_E164, final_text, phone_number_id="999999"

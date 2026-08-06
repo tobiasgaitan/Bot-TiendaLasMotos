@@ -2059,12 +2059,6 @@ async def _pipeline_text_cognitive(
         except Exception as e:
             logger.warning(f"⚠️ Failed to update Langfuse trace: {e}")
 
-    # Persistencia de la respuesta final (sea aprobada o fallback)
-    # [AUD-SCORE-PERSIST-001] Si hay marcador de score, la persistencia atómica
-    # se realiza en el egreso unificado; evita duplicar el mensaje de score.
-    if memory_service_module.memory_service and "_score_resultado" not in (prospect_data or {}):
-        await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
-
     # TRIGGER_SURVEY interception REMOVED — 2026-03-12
     # WHY: This block replaced the LLM's natural response with hardcoded survey
     # text whenever start_credit_survey was called. The LLM now handles all

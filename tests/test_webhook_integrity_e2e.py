@@ -189,11 +189,11 @@ async def test_e2e_text_branch_full_funnel():
     validators.assert_ficha_explicit(llm_response)
     validators.assert_image_reference(llm_response)
 
-    # Comportamiento vigente pineado: doble save_message("model") (pre-egreso + eco intra-egreso).
+    # T3: único eco save_message("model") intra-egreso en _process_and_send_egress_message;
+    # el pre-egreso fue eliminado para evitar duplicación.
     model_saves = [c for c in mock_ms.save_message.call_args_list if c.args[1] == "model"]
-    assert len(model_saves) == 2, (
-        f"Comportamiento vigente alterado: se esperaban 2 save_message('model') "
-        f"(pre-egreso + eco intra-egreso), hallado: {model_saves}"
+    assert len(model_saves) == 1, (
+        f"T3: se esperaba 1 save_message('model') (eco intra-egreso), hallado: {model_saves}"
     )
 
 

@@ -170,8 +170,8 @@ async def test_tci1_pensar_respuesta_call_parity():
 async def test_tci2_firestore_writes_parity_and_blocking_memory_sync():
     """
     Orden pineado: generate_and_update_summary (bloqueante, anclado con la última
-    pregunta del bot) ≺ re-fetch get_prospect_data ≺ pensar_respuesta ≺
-    save(model) — la matriz de perfilamiento se sincroniza antes de inferir.
+    pregunta del bot) ≺ re-fetch get_prospect_data ≺ pensar_respuesta.
+    T3: save(model) ya no ocurre en este pipeline; vive en el egreso unificado.
     """
     history = [
         {"role": "user", "content": "hola"},
@@ -209,13 +209,13 @@ async def test_tci2_firestore_writes_parity_and_blocking_memory_sync():
     i_sync = labels.index("generate_and_update_summary")
     i_refetch = labels.index("get_prospect_data")
     i_pensar = labels.index("pensar_respuesta")
-    i_save_model = labels.index("save_message:model")
-    assert i_sync < i_refetch < i_pensar < i_save_model, (
+    assert i_sync < i_refetch < i_pensar, (
         f"Orden LINEAR BLOCKING alterado: {labels}"
     )
-    # save(model) persiste la respuesta aprobada ANTES de retornar al orquestador.
-    saved_models = [c for label, c in timeline if label == "save_message:model"]
-    assert saved_models == [APPROVED_TEXT]
+    # T3: save(model) fue movido al egreso unificado; no debe aparecer en este pipeline.
+    assert "save_message:model" not in labels, (
+        f"T3: save_message('model') inesperado en pipeline cognitivo: {labels}"
+    )
 
 
 # ── TCI-3: Fallback del Juez (mandato v9.8.3) ────────────────────────────────

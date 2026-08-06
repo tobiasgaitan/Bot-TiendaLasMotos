@@ -201,9 +201,9 @@ async def test_order_text_branch_state_precedes_meta_egress():
         "transition_to_in_progress",
         "generate_and_update_summary",
         "save_message:user",
-        "save_message:model",
     ):
         _assert_precedes(timeline, label, ctx)
+    # T3: save_message:model ya no precede al envío; vive en el egreso unificado.
 
     # Pin del comportamiento vigente: exactamente UN eco save('model') posterior al envío.
     first_send = _first_send_index(timeline)

@@ -1,6 +1,13 @@
 """
 Memory Service - CRM Integration & Long-Term Memory
-v9.8.6 - AUD-SCORE-PERSIST-001 (GSD Standard Compatibility / Linear Blocking)
+v9.8.7 - AUD-FP-AUTO-007 (Deterministic forma_pago auto-fill on Habeas Data acceptance)
+
+CHANGELOG v9.8.7:
+  - [AUD-FP-AUTO-007] Added deterministic derivation layer in
+    update_prospect_summary: writes forma_pago="Crédito" when the canonical
+    Habeas Data acceptance transition (False -> True) occurs, the legal script
+    was already presented (habeas_data_accepted_sent=True), and forma_pago is
+    vacant. Explicit same-turn extraction always takes precedence.
 
 CHANGELOG v9.8.6:
   - [AUD-SCORE-PERSIST-001] Added persist_credit_score_result() with atomic
@@ -65,7 +72,7 @@ class MemoryService:
         # Valla de Chesterton pre-Linear-Blocking BOT-INFRA-ASYNC-094: todas las
         # escrituras del embudo son await bloqueante, nadie registraba tareas).
         self._pending_tasks: Set[asyncio.Task] = set()
-        logger.info("🧠 MemoryService v9.8.6: AUD-SCORE-PERSIST-001 Atomic Score Persistence")
+        logger.info("🧠 MemoryService v9.8.7: AUD-FP-AUTO-007 + AUD-SCORE-PERSIST-001")
 
     async def _firestore_io(self, coro, phone: str, label: str, timeout: Optional[int] = None):
         """
@@ -604,6 +611,19 @@ class MemoryService:
 
             # Use centralized merge logic
             update_payload = self._merge_extracted_data(current_data, extracted_data or {})
+
+            # [AUD-FP-AUTO-007] Deterministic payment-method auto-fill on Habeas Data
+            # acceptance (PASO 4). Only when the canonical transition False -> True
+            # occurs, the legal script was already presented (sent=True), and
+            # forma_pago is vacant. Explicit same-turn extraction always wins.
+            if (
+                update_payload.get("habeas_data_accepted") is True
+                and current_data.get("habeas_data_accepted") is not True
+                and current_data.get("habeas_data_accepted_sent") is True
+                and not self._is_field_valid(current_data.get("forma_pago"))
+                and "forma_pago" not in update_payload
+            ):
+                update_payload["forma_pago"] = "Crédito"
 
             # [AUD-SCORE-PERSIST-001] Add retrocompatible dashboard aliases without
             # renaming or removing the bot's canonical keys. Runs AFTER merge so
