@@ -38,9 +38,10 @@ def test_extraction_schema_contains_cedula_usuario():
 
 def test_scoring_never_routes_to_crediorbe():
     """
-    [BOT-BUILD-FIX-E-CREDIORBE-ERADICATION-001] Certificación de erradicación:
-    determine_strategy NUNCA enruta a 'Crediorbe' para ningún score, y el rango
-    400-699 (ex-FINTECH) converge al fallback Brilla de Gases.
+    [BOT-BUILD-FIX-E-CREDIORBE-ERADICATION-001 + AUD-CIERRE-RUTAS-010]
+    Certificación de erradicación: determine_strategy NUNCA enruta a 'Crediorbe'.
+    La decisión de cierre de fase ahora la resuelve resolve_cierre_route con
+    prioridad absoluta de bandas de score y gate de coherencia gas/Brilla.
     """
     from app.services.scoring_service import ScoringService
     svc = ScoringService()
@@ -52,15 +53,18 @@ def test_scoring_never_routes_to_crediorbe():
                 )
                 assert res["entity"] != "Crediorbe", \
                     f"Crediorbe resurgió con score={score}, gas={gas}, hist={hist!r}"
-    # Rango ex-FINTECH → Brilla de Gases (unificación doctrinal FIX-E)
-    for score in (400, 500, 699):
-        res = svc.determine_strategy(
-            score=score, tiene_gas_natural=False, historial_datacredito="Al dia"
-        )
-        assert res["entity"] == "Brilla de Gases", \
-            f"score={score} debía caer al fallback Brilla, obtuvo {res['entity']}"
-        assert res["strategy"] == "BRILLA"
-        assert res["requires_aval"] is False
+
+    # [AUD-CIERRE-RUTAS-010] Doctrina canónica de cierre de fase (bandas > strategy):
+    #   R1 >= 750, R2 500-749, R3 <= 499 + gas afirmativo, R4 <= 499 + gas negativo.
+    assert svc.resolve_cierre_route(750, False) == 1
+    assert svc.resolve_cierre_route(850, False) == 1
+    assert svc.resolve_cierre_route(1000, False) == 1
+    for score in (500, 699, 700, 749):
+        assert svc.resolve_cierre_route(score, False) == 2, f"score={score} sin gas debe ser ruta 2"
+        assert svc.resolve_cierre_route(score, True) == 2, f"score={score} con gas debe ser ruta 2 (bandas mandan)"
+    for score in (0, 200, 399, 400, 499):
+        assert svc.resolve_cierre_route(score, False) == 4, f"score={score} sin gas debe ser ruta 4"
+        assert svc.resolve_cierre_route(score, True) == 3, f"score={score} con gas debe ser ruta 3"
 
 
 def test_crediorbe_eradicated_from_source():

@@ -17,6 +17,7 @@ from app.utils.json_processor import clean_json_voorhees
 from app.core.exceptions import HabeasDataBypassInterrupt
 from app.services.credit_faq_taxonomy import is_abstract_credit_faq, classify_credit_turn, TurnIntent
 from app.services.faq_service import get_faq_answer, get_location_info
+from app.services.scoring_service import is_gas_affirmative
 
 logger = logging.getLogger(__name__)
 
@@ -2512,6 +2513,19 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             mora_y_paz_salvo=mora_y_paz_val
                                         )
 
+                                        # [AUD-CIERRE-RUTAS-010] Resolvedor determinista POST-JSON.
+                                        # Prioridad absoluta de bandas de score sobre strategy del motor.
+                                        cierre_ruta = await asyncio.to_thread(
+                                            self.motor_financiero.resolve_cierre_route,
+                                            score=score,
+                                            tiene_gas_natural=tiene_gas_val
+                                        )
+                                        logger.info(
+                                            f"[AUD-CIERRE-RUTAS-010] Ruta resuelta post-JSON: "
+                                            f"cierre_ruta={cierre_ruta}, score={score}, "
+                                            f"gas_afirmativo={is_gas_affirmative(tiene_gas_val)}"
+                                        )
+
                                         link_url = "#"
                                         try:
                                             partners = self._config_loader.get_partners_config() if self._config_loader else {}
@@ -2536,7 +2550,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             "requires_documents": requires_documents,
                                             "explanation": f"Basado en tu perfil (Score: {score}), la mejor opción es {strategy_info.get('entity', 'N/A')}.",
                                             "entidad": f_args.get("entidad"),
-                                            "reportes": f_args.get("reportes")
+                                            "reportes": f_args.get("reportes"),
+                                            "cierre_ruta": cierre_ruta,
                                         }
                                     else:
                                         # Legacy call to evaluate_profile (keeps tests/mocks passing perfectly)
@@ -2561,6 +2576,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             "score": res.get("score"),
                                             "entity": res.get("entity"),
                                             "strategy": res.get("strategy"),
+                                            "cierre_ruta": res.get("cierre_ruta"),
                                         }
 
                                     # [BOT-PONYTAIL-200] Compute ponytail_score from credit score
@@ -2578,7 +2594,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     except Exception as e:
                                         logger.warning(f"⚠️ [PONYTAIL] Failed to compute ponytail_score: {e}")
 
-                                    if res.get('entity') == "Brilla de Gases":
+                                    # [AUD-CIERRE-RUTAS-010] Selección de copywriting por ruta resuelta
+                                    # post-JSON. score/entity/strategy del motor permanecen inalterados.
+                                    if res.get('cierre_ruta') == 3:
                                         credit_res = (
                                             f"✅ RESULTADO: {res['score']} Puntos\n"
                                             f"- ESTRATEGIA: {res['strategy']}\n"
@@ -2588,18 +2606,27 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             f"mensaje las FOTOS de: 1. Cédula original y 2. Los dos últimos "
                                             f"recibos del gas natural. No cierres la sesión sin pedir esto.]"
                                         )
-                                    # [FIX-E] Rama de intercepción de la fintech obsoleta (ex BOT-FIN-104)
-                                    # purgada: la entidad fue erradicada del dominio y scoring_service
-                                    # ya no la emite. El else genérico cubre todas las entidades restantes.
+                                    elif res.get('cierre_ruta') == 2:
+                                        credit_res = (
+                                            "¡Perfecto! Para continuar con el estudio, envíame una foto clara "
+                                            "de tu Cédula, PPT o Cédula de Extranjería.\n\n"
+                                            "Un compañero revisará estos datos y se contactará contigo para "
+                                            "ayudarte con el siguiente paso del estudio de crédito."
+                                        )
+                                    elif res.get('cierre_ruta') == 4:
+                                        credit_res = (
+                                            "Lastimosamente por esta ocasión no es posible aprobar el crédito "
+                                            "por las políticas de nuestros aliados financieros."
+                                        )
                                     else:
                                         # [COGNITIVE BRAKES v1.2 — BOT-LOGIC-1.2]
-                                        # Consolidating output. PROHIBIDO emitir placeholders ($X.XXX).
-                                        entity = res.get('entity', 'Brilla de Gases')
-                                        
+                                        # Ruta 1 (Banco): comportamiento vigente. PROHIBIDO emitir placeholders.
+                                        entity = res.get('entity')
+
                                         # Resolve simulation if moto is in context
                                         moto_name = (prospect_data or {}).get("moto_interest", "")
                                         cuota_line = ""  # Omitted by default (Cognitive Brake)
-                                        
+
                                         if moto_name and self.motor_financiero:
                                             # We attempt a quick lookup to get the price
                                             m_price = 0
@@ -2607,7 +2634,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             category = "motos"
                                             if self._catalog_service:
                                                 m_results = self._catalog_service.search_items(moto_name)
-                                                if m_results: 
+                                                if m_results:
                                                     first_match = m_results[0]
                                                     m_price = self._parse_raw_price(
                                                         first_match.get('raw_price'),
@@ -2615,7 +2642,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                     )
                                                     moto_cc = float(first_match.get("cc", 0.0) or 0.0)
                                                     category = first_match.get("category", "motos") or "motos"
-                                            
+
                                             if m_price <= 0:
                                                 import traceback
                                                 stack = "".join(traceback.format_stack())

@@ -476,9 +476,11 @@ def test_promptrestore003_fuentes_armonizadas_texto_definitivo():
         assert "PRIORIDAD ABSOLUTA" in src, f"Cláusula de precedencia de las 4 rutas ausente en {name}"
         # Las 4 rutas del cierre de fase (redacción exacta del texto definitivo)
         assert "Si el JSON indica score igual o mayor a 750 puntos" in src, f"Ruta 1 (Banco >=750) ausente en {name}"
-        assert "Un compañero revisará estos datos y se contactará contigo" in src, f"Ruta 2 (Revisión Humana 500-749) ausente en {name}"
-        assert "Si el JSON indica score menor a 499 puntos" in src, f"Ruta 3 (Brilla <499) ausente en {name}"
-        assert "no es posible aprobar el crédito" in src, f"Ruta 4 (Rechazo sin Brilla) ausente en {name}"
+        assert "Si el JSON indica score entre 500 y 749 puntos" in src, f"Ruta 2 (Revisión Humana 500-749) ausente en {name}"
+        assert "Un compañero revisará estos datos y se contactará contigo" in src, f"Texto revisión humana ruta 2 ausente en {name}"
+        assert "Si el JSON indica score igual o menor a 499 puntos Y el dato de Gas Natural de la matriz es afirmativo" in src, f"Ruta 3 (Brilla <=499 + gas) ausente en {name}"
+        assert "Si el JSON indica score igual o menor a 499 puntos Y el dato de Gas Natural de la matriz es negativo" in src, f"Ruta 4 (Rechazo <=499 sin gas) ausente en {name}"
+        assert "no es posible aprobar el crédito" in src, f"Texto de rechazo ruta 4 ausente en {name}"
         # Invariante (b): PASO 4 neutral ('nuestro sistema')
         assert "validar tu cupo exacto con nuestro sistema" in src, \
             f"PASO 4 neutral ('nuestro sistema') ausente en {name}"

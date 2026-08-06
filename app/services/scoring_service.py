@@ -188,5 +188,48 @@ class ScoringService:
                 "is_fallback": True
             }
 
+    def resolve_cierre_route(self, score: int, tiene_gas_natural: Any = False) -> int:
+        """
+        [AUD-CIERRE-RUTAS-010] Resolvedor determinista de ruta de cierre de fase.
+        Prioridad absoluta de bandas de score sobre strategy del motor (R-A).
+        Gate de coherencia gas/Brilla (R-B) con normalización estricta (R-C).
+
+        Banda canónica (aprobada v1.0):
+          - R1 score >= 750     -> Banco
+          - R2 500 <= score <= 749 -> Revisión humana
+          - R3 score <= 499 + gas afirmativo -> Brilla
+          - R4 score <= 499 + gas negativo   -> Rechazo
+
+        Returns:
+            int: 1 (Banco), 2 (Revisión humana), 3 (Brilla), 4 (Rechazo)
+        """
+        gas_ok = is_gas_affirmative(tiene_gas_natural)
+
+        if score >= 750:
+            return 1
+        if score >= 500:
+            return 2
+        if gas_ok:
+            return 3
+        return 4
+
+
+def is_gas_affirmative(value: Any) -> bool:
+    """
+    [AUD-CIERRE-RUTAS-010] Normalización estricta del dato de gas natural.
+    Acepta únicamente True/1 o strings 'Sí'/'Si'/'sí'/'si'.
+    Cualquier otro valor (incluido el string 'No') se trata como False.
+
+    WHY: prospect_data persiste STRING 'Sí'/'No' (EXTRACTION_SCHEMA) y el
+         string 'No' es truthy en Python; un OR simple conduce a falsos
+         positivos en el gate de coherencia gas/Brilla.
+    """
+    if value is True or value == 1:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in {"sí", "si"}
+    return False
+
+
 # Global instance
 scoring_service = ScoringService()

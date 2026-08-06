@@ -55,6 +55,7 @@ htmlcov/
 *.tmp
 *.bak
 bot-tiendalasmotos.zip
+tmp_prompt_to_sync.txt
 *.json
 *.json
 graphify-out/
