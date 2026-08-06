@@ -80,7 +80,7 @@ class MemoryService:
         # Valla de Chesterton pre-Linear-Blocking BOT-INFRA-ASYNC-094: todas las
         # escrituras del embudo son await bloqueante, nadie registraba tareas).
         self._pending_tasks: Set[asyncio.Task] = set()
-        logger.info("🧠 MemoryService v9.8.8: AUD-FP-AUTO-REG-009 + AUD-FP-AUTO-007 + AUD-SCORE-PERSIST-001")
+        logger.info("🧠 MemoryService v9.8.8 (retrigger 16bf9f7→): AUD-FP-AUTO-REG-009 + AUD-FP-AUTO-007 + AUD-SCORE-PERSIST-001")
 
     async def _firestore_io(self, coro, phone: str, label: str, timeout: Optional[int] = None):
         """
