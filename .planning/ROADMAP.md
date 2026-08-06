@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
 ## Tasks Completadas (v10.47.5+)
+- [x] **AUD-FP-AUTO-REG-009 (v10.53.1): Fix temporal R1∧R2 en auto-fill forma_pago="Crédito"** [app/services/memory_service.py, tests/test_forma_pago_autofill_007.py]. Relajación R1/R2 en capa ALT-1 con R3 intacta; reconciliación pin B-3; T8/T9 aditivos. Cero cambios en `ai_brain.py`, `juan_pablo_personality`, `whatsapp.py`, `_merge_extracted_data` ni espejos dashboard. Certificación: **684 tests PASSED, Coherence Score 1.000**.
 - [x] **AUD-DEUDA-DASH-008 (v10.53.0): Extensión del writer de score_resultado a media y fallback del Juez** [app/routers/whatsapp.py, tests/test_score_persist_media_fallback_008.py]. Protocolo F2 read-only en `prospectos/` (9 docs): 0 llaves dashboard fantasma → clasificación (i) muertas/vestigiales. G1–G5 consumen `_score_resultado` y reutilizan `persist_credit_score_result` (transacción padre+historial, bucket 300s). Sin cambios en `ai_brain.py`, `juan_pablo_personality`, `catalog_service.py`, `pagina/catalogo/items`, `normalize_imagen_url.py`, `reset`; sin backfill. HANDOFF intacto. Certificación: **682 tests PASSED, Coherence Score 1.000**.
 - [x] **O1 (v10.52.1): Erradicación catalog_items + agent-cli publish NO-OP** [attic/backup, attic/seed_catalog.py, docs, scripts/buscar_y_destruir.py]. Backup bloqueante, borrado de 4 docs en Firestore prod, seed archivado, SSOT `pagina/catalogo/items` documentado. Certificación: **673 tests PASSED, Coherence Score 1.000**.
 - [x] **AUD-FP-AUTO-007 (v10.52.0): Auto-fill determinista forma_pago="Crédito"** [memory_service.py, whatsapp.py]. Denominador 673.
@@ -61,6 +62,7 @@
 | 4 | Cierre de Fase Operativo & Certified | Completed | 2026-07-25 |
 | O1 | Erradicación colección huérfana `catalog_items` (v10.52.1) | Completed | 2026-08-05 |
 | DASH-008 | Extensión score_resultado a media/fallback del Juez (v10.53.0) | Completed | 2026-08-05 |
+| REG-009 | Fix temporal R1∧R2 auto-fill forma_pago (v10.53.1) | Completed | 2026-08-06 |
 | 5 | Resolución de la Concurrencia y Aislamiento de Código Legado | Pending | - |
 | 6 | Blindaje Conductual del Agente e Integridad del Embudo | Pending | - |
 | 7 | Sincronización GSD, Certificación de Coherencia y Despliegue | Pending | - |

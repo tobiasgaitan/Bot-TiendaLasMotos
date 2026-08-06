@@ -1,6 +1,14 @@
 """
 Memory Service - CRM Integration & Long-Term Memory
-v9.8.7 - AUD-FP-AUTO-007 (Deterministic forma_pago auto-fill on Habeas Data acceptance)
+v9.8.8 - AUD-FP-AUTO-REG-009 (Fix temporal R1∧R2 unsatisfiability in forma_pago auto-fill)
+
+CHANGELOG v9.8.8:
+  - [AUD-FP-AUTO-REG-009] Relaxed R1 and R2 in update_prospect_summary
+    derivation layer so that forma_pago="Crédito" fills when either (a)
+    habeas_data_accepted is already accepted or arrives in the same payload,
+    and (b) habeas_data_accepted_sent is already persisted or arrives in the
+    same payload. R3 (vacancy + explicit-wins) remains intact. Closes the
+    canonical immediate-acceptance gap (reaction 👍 and text "Sí").
 
 CHANGELOG v9.8.7:
   - [AUD-FP-AUTO-007] Added deterministic derivation layer in
@@ -72,7 +80,7 @@ class MemoryService:
         # Valla de Chesterton pre-Linear-Blocking BOT-INFRA-ASYNC-094: todas las
         # escrituras del embudo son await bloqueante, nadie registraba tareas).
         self._pending_tasks: Set[asyncio.Task] = set()
-        logger.info("🧠 MemoryService v9.8.7: AUD-FP-AUTO-007 + AUD-SCORE-PERSIST-001")
+        logger.info("🧠 MemoryService v9.8.8: AUD-FP-AUTO-REG-009 + AUD-FP-AUTO-007 + AUD-SCORE-PERSIST-001")
 
     async def _firestore_io(self, coro, phone: str, label: str, timeout: Optional[int] = None):
         """
@@ -612,14 +620,20 @@ class MemoryService:
             # Use centralized merge logic
             update_payload = self._merge_extracted_data(current_data, extracted_data or {})
 
-            # [AUD-FP-AUTO-007] Deterministic payment-method auto-fill on Habeas Data
-            # acceptance (PASO 4). Only when the canonical transition False -> True
-            # occurs, the legal script was already presented (sent=True), and
-            # forma_pago is vacant. Explicit same-turn extraction always wins.
+            # [AUD-FP-AUTO-007 + AUD-FP-AUTO-REG-009] Deterministic payment-method
+            # auto-fill on Habeas Data acceptance (PASO 4). R1 accepts either a
+            # current/payload accepted flag; R2 accepts either a current/payload
+            # sent flag (latch-guarded via _LATCH_TRUE_FIELDS). R3 (vacancy +
+            # explicit-wins) remains intact.
             if (
-                update_payload.get("habeas_data_accepted") is True
-                and current_data.get("habeas_data_accepted") is not True
-                and current_data.get("habeas_data_accepted_sent") is True
+                (
+                    update_payload.get("habeas_data_accepted") is True
+                    or current_data.get("habeas_data_accepted") is True
+                )
+                and (
+                    current_data.get("habeas_data_accepted_sent") is True
+                    or update_payload.get("habeas_data_accepted_sent") is True
+                )
                 and not self._is_field_valid(current_data.get("forma_pago"))
                 and "forma_pago" not in update_payload
             ):

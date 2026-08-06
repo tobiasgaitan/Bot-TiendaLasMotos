@@ -1,5 +1,5 @@
 """
-AUD-FP-AUTO-007 — Deterministic forma_pago="Crédito" auto-fill on Habeas Data acceptance.
+AUD-FP-AUTO-007 + AUD-FP-AUTO-REG-009 — Deterministic forma_pago="Crédito" auto-fill on Habeas Data acceptance.
 
 Pins:
   A: schema stable (create_prospect_if_missing initializes forma_pago="").
@@ -7,8 +7,10 @@ Pins:
      layer in MemoryService.update_prospect_summary), only if vacant.
   C: acceptance without the legal script presented (e.g., "sí" at PASO 1) does
      NOT auto-fill.
+  REG-009: canonical immediate acceptance (reaction 👍 and text "Sí") now fills
+     even when the sent flag arrives in the same payload/turn.
 
-6 unitarios + 1 e2e de reacción 👍 (7 ítems).
+8 unitarios + 1 e2e de reacción 👍 (9 ítems).
 """
 
 import pytest
@@ -108,12 +110,15 @@ async def test_forma_pago_no_autofill_when_script_not_sent():
     assert "forma_pago" not in payload
 
 
-# ── B-3: Ya aceptado previamente → idempotente, no re-escribe ────────────────
+# ── B-3: Estado inconsistente aceptado+sent+vacante → SE CURA ────────────────
 
 @pytest.mark.asyncio
-async def test_forma_pago_no_autofill_when_already_accepted():
+async def test_forma_pago_autofill_heals_previously_accepted():
     """
-    R1 fails: current_data.habeas_data_accepted is True → transition consumed.
+    AUD-FP-AUTO-REG-009 reconciliación: un doc con habeas aceptado, script ya
+    presentado y forma_pago vacío es un estado inconsistente que el fix F2
+    cura determinísticamente. Pre-F2 el pin asertaba idempotencia estricta;
+    post-F2 asertamos curación (R3 sigue bloqueando si forma_pago ya poblado).
     """
     ms, ref = _build_real_ms_with_doc(
         {
@@ -126,7 +131,7 @@ async def test_forma_pago_no_autofill_when_already_accepted():
         PHONE, "summary", {"habeas_data_accepted": True}
     )
     payload = ref.set.call_args[0][0]
-    assert "forma_pago" not in payload
+    assert payload["forma_pago"] == "Crédito"
 
 
 # ── B-4: Extracción explícita "Contado" en mismo turno → gana ───────────────
@@ -233,3 +238,68 @@ async def test_e2e_reaction_positive_autofill_forma_pago():
     assert payload["habeas_data_accepted"] is True
     assert payload["forma_pago"] == "Crédito"
     assert payload["ponytail_status"] == "PENDING"
+
+
+# ── T8: Turno 👍 canónico — CALL 1 no rellena, CALL 2 rellena ───────────────
+
+@pytest.mark.asyncio
+async def test_forma_pago_autofill_reaction_canonical_two_calls():
+    """
+    REG-009: en aceptación inmediata tras el script, el interceptor (CALL 1)
+    corre antes de que el sent-flag esté persistido, por lo que NO rellena.
+    La extracción del mismo turno (CALL 2) ya ve habeas=True (escrito por
+    CALL 1) y sent=True (detectado por link en historial) → rellena.
+    """
+    current_data = {
+        "habeas_data_accepted": False,
+        "habeas_data_accepted_sent": False,
+        "forma_pago": "",
+    }
+    ms, ref = _build_real_ms_with_doc(current_data)
+
+    # CALL 1: interceptor de reacción positiva (payload sin sent)
+    await ms.update_prospect_summary(
+        PHONE, "", {"habeas_data_accepted": True, "ponytail_status": "PENDING"}
+    )
+    payload1 = ref.set.call_args[0][0]
+    assert "forma_pago" not in payload1
+    assert payload1["habeas_data_accepted"] is True
+    assert payload1["ponytail_status"] == "PENDING"
+
+    # Mutar current_data como lo haría el commit de CALL 1
+    current_data["habeas_data_accepted"] = True
+    current_data["ponytail_status"] = "PENDING"
+
+    # CALL 2: extracción del mismo turno (payload con habeas+sent)
+    await ms.update_prospect_summary(
+        PHONE,
+        "summary",
+        {"habeas_data_accepted": True, "habeas_data_accepted_sent": True},
+    )
+    payload2 = ref.set.call_args[0][0]
+    assert payload2["forma_pago"] == "Crédito"
+
+
+# ── T9: Aceptación texto "Sí" mismo turno → rellena ─────────────────────────
+
+@pytest.mark.asyncio
+async def test_forma_pago_autofill_text_si_same_turn():
+    """
+    REG-009: en aceptación textual inmediata tras el script, el payload de
+    extracción trae habeas=True (guard C2) y sent=True (detector de link)
+    en la misma llamada → R1' y R2' se satisfacen y rellena.
+    """
+    ms, ref = _build_real_ms_with_doc(
+        {
+            "habeas_data_accepted": False,
+            "habeas_data_accepted_sent": False,
+            "forma_pago": "",
+        }
+    )
+    await ms.update_prospect_summary(
+        PHONE,
+        "summary",
+        {"habeas_data_accepted": True, "habeas_data_accepted_sent": True},
+    )
+    payload = ref.set.call_args[0][0]
+    assert payload["forma_pago"] == "Crédito"
