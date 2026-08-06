@@ -1,6 +1,10 @@
 # Roadmap - Bot-TiendaLasMotos
  
-## Tasks Completadas (v10.47.5)
+## Tasks Completadas (v10.47.5+)
+- [x] **AUD-DEUDA-DASH-008 (v10.53.0): Extensión del writer de score_resultado a media y fallback del Juez** [app/routers/whatsapp.py, tests/test_score_persist_media_fallback_008.py]. Protocolo F2 read-only en `prospectos/` (9 docs): 0 llaves dashboard fantasma → clasificación (i) muertas/vestigiales. G1–G5 consumen `_score_resultado` y reutilizan `persist_credit_score_result` (transacción padre+historial, bucket 300s). Sin cambios en `ai_brain.py`, `juan_pablo_personality`, `catalog_service.py`, `pagina/catalogo/items`, `normalize_imagen_url.py`, `reset`; sin backfill. HANDOFF intacto. Certificación: **682 tests PASSED, Coherence Score 1.000**.
+- [x] **O1 (v10.52.1): Erradicación catalog_items + agent-cli publish NO-OP** [attic/backup, attic/seed_catalog.py, docs, scripts/buscar_y_destruir.py]. Backup bloqueante, borrado de 4 docs en Firestore prod, seed archivado, SSOT `pagina/catalogo/items` documentado. Certificación: **673 tests PASSED, Coherence Score 1.000**.
+- [x] **AUD-FP-AUTO-007 (v10.52.0): Auto-fill determinista forma_pago="Crédito"** [memory_service.py, whatsapp.py]. Denominador 673.
+- [x] **AUD-SCORE-PERSIST-001 (v10.51.0): Persistencia atómica score_resultado** [memory_service.py, ai_brain.py, whatsapp.py]. Denominador 666.
 - [x] **Etapa 4 (Milestone 3): Cierre de Fase Operativo & Certified** [BOT-BUILD-FIX-SUMMARY-MOTO-INTEREST-001, BOT-BUILD-FIX-MATRIX-RESTART-001, BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO-v2, BOT-BUILD-FIX-CATALOG-PROFILE-001-AMPLIADO]. Flujo E2E completo certificado desde enganche inicial hasta CIERRE DE FASE sin timeouts ni reinicios. Persistencia garantizada de los 8 datos de la matriz de perfilamiento en Firestore. Deuda técnica residual documentada (saludo repetitivo cosmético, entidad "Crediorbe" obsoleta, pregunta genérica FAQ brake). Certificación: **516 tests PASSED, Coherence Score 1.000** (arnés eval 516).
     - **FIX-SUMMARY-MOTO-INTEREST-001 (v10.47.4):** REGLA DE PIVOTE en generate_summary. Si el usuario menciona marca de competencia pero el bot ofrece equivalente del catálogo, el extractor DEBE persistir el modelo del catálogo, NO dejar vacío.
     - **FIX-MATRIX-RESTART-001 (v10.47.3):** Mapeo semántico de ingresos_mensuales. Enmienda ADITIVA de descripción del campo en EXTRACTION_SCHEMA: "Dos mínimos" → "3411810", "Tres mínimos" → "5117715", etc.
@@ -55,6 +59,8 @@
 | 2 | Incidente H-A (Saneamiento Historial Git y Reestructuración de Pruebas) | Completed | 2026-07-18 |
 | 3 | Concurrencia y Fragmentación RF-5 (God Node whatsapp.py) | Completed | 2026-07-22 |
 | 4 | Cierre de Fase Operativo & Certified | Completed | 2026-07-25 |
+| O1 | Erradicación colección huérfana `catalog_items` (v10.52.1) | Completed | 2026-08-05 |
+| DASH-008 | Extensión score_resultado a media/fallback del Juez (v10.53.0) | Completed | 2026-08-05 |
 | 5 | Resolución de la Concurrencia y Aislamiento de Código Legado | Pending | - |
 | 6 | Blindaje Conductual del Agente e Integridad del Embudo | Pending | - |
 | 7 | Sincronización GSD, Certificación de Coherencia y Despliegue | Pending | - |
@@ -93,4 +99,4 @@
 | 1 | Similitud Multimodal e Integración | Completed | 2026-07-11 |
 
 ---
-*Last updated: 2026-07-25*
+*Last updated: 2026-08-05*

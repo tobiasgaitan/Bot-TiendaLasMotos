@@ -1320,9 +1320,17 @@ async def _pipeline_media_vision(
                             if not final_response:
                                 final_response = "¡Estuvo bueno! 😅 Pero cuéntame, ¿en qué moto estabas pensando?"
 
+                            # [AUD-SCORE-PERSIST-001] Consume score marker once per turn.
+                            score_marker = None
+                            if prospect_data and isinstance(prospect_data, dict):
+                                score_marker = prospect_data.pop("_score_resultado", None)
+
                             await _send_whatsapp_message(user_phone, final_response, phone_number_id=phone_number_id)
                             await ms.save_message(user_phone, "user", input_text)
-                            await ms.save_message(user_phone, "model", final_response)
+                            if score_marker is not None:
+                                await ms.persist_credit_score_result(user_phone, score_marker, final_response)
+                            else:
+                                await ms.save_message(user_phone, "model", final_response)
                             return
 
                     # 2. Default: Handle Moto Detection (Legacy / Main Vision Logic)
@@ -1476,8 +1484,23 @@ async def _pipeline_media_vision(
                                     final_response = final_response.rstrip() + f"\n\nFicha Tecnica: {backstop_summary}"
                                     logger.info(f"🔒 [CAPTION-01] Backstop enforced: injected canonical 'Ficha Tecnica:' block into response for {user_phone}")
 
+                            # [AUD-SCORE-PERSIST-001] Consume score marker once per turn.
+                            score_marker = None
+                            if prospect_data and isinstance(prospect_data, dict):
+                                score_marker = prospect_data.pop("_score_resultado", None)
+
                             await ms.save_message(user_phone, "user", simulated_user_msg)
-                            await _process_and_send_egress_message(user_phone, final_response, phone_number_id=phone_number_id)
+                            if score_marker is not None:
+                                await _process_and_send_egress_message(
+                                    user_phone,
+                                    final_response,
+                                    phone_number_id=phone_number_id,
+                                    score_persist=score_marker,
+                                )
+                            else:
+                                await _process_and_send_egress_message(
+                                    user_phone, final_response, phone_number_id=phone_number_id
+                                )
                             return
 
                 except Exception as inner_e:
@@ -1701,13 +1724,21 @@ async def _pipeline_audio(
                 logger.error(f"❌ [JUDGE] Audio Max retries reached. Forcing fallback. Criteria: {last_criteria_id}")
                 fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
 
+                # [AUD-SCORE-PERSIST-001] Consume score marker once per turn.
+                score_marker = None
+                if prospect_data and isinstance(prospect_data, dict):
+                    score_marker = prospect_data.pop("_score_resultado", None)
+
                 # [MANDATO v9.8.3] Marcar estado PRIMERO, luego enviar mensaje
                 try:
                     if memory_service_module.memory_service:
                         await memory_service_module.memory_service.set_human_help_status(user_phone, True)
                         # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
                         await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
-                        await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
+                        if score_marker is not None:
+                            await memory_service_module.memory_service.persist_credit_score_result(user_phone, score_marker, fallback_msg)
+                        else:
+                            await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
                 except Exception as e_ms:
                     logger.error(f"⚠️ [JUDGE_FALLBACK_AUDIO] Error persistencia fallback: {e_ms}")
 
@@ -1994,6 +2025,11 @@ async def _pipeline_text_cognitive(
             logger.error(f"❌ [JUDGE] Max retries reached. Forcing official fallback response. Criteria: {last_criteria_id}. Rejection Reason: {rejection_reason}")
             fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
 
+            # [AUD-SCORE-PERSIST-001] Consume score marker once per turn.
+            score_marker = None
+            if prospect_data and isinstance(prospect_data, dict):
+                score_marker = prospect_data.pop("_score_resultado", None)
+
             # [MANDATO v9.8.3] Marcar estado PRIMERO, luego enviar mensaje
             # Esto asegura que el CRM se actualice incluso si Meta falla temporalmente.
             try:
@@ -2002,7 +2038,10 @@ async def _pipeline_text_cognitive(
                     await memory_service_module.memory_service.set_human_help_status(user_phone, True)
                     # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
                     await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
-                    await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
+                    if score_marker is not None:
+                        await memory_service_module.memory_service.persist_credit_score_result(user_phone, score_marker, fallback_msg)
+                    else:
+                        await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
             except Exception as e_ms:
                 logger.error(f"⚠️ [JUDGE_FALLBACK] Error persistencia fallback: {e_ms}")
 
@@ -2037,12 +2076,21 @@ async def _pipeline_text_cognitive(
         # Capturar el cuerpo nativo del error antes de activar human_help_requested.
         logger.exception(f"🔥 [JUDGE_CRITICAL_ERROR] AI Inference failed for {user_phone}: {e}")
         fallback_msg = "Disculpa, no estoy seguro de la respuesta, permíteme le pregunto a mi supervisor y te comento."
+
+        # [AUD-SCORE-PERSIST-001] Consume score marker once per turn.
+        score_marker = None
+        if prospect_data and isinstance(prospect_data, dict):
+            score_marker = prospect_data.pop("_score_resultado", None)
+
         if memory_service_module.memory_service:
             await memory_service_module.memory_service.set_human_help_status(user_phone, True)
             # [BOT-PONYTAIL-200] Persist ponytail_status=DEPRIORITIZED in parallel to human_help_requested
             await _mark_ponytail_deprioritized(memory_service_module.memory_service, user_phone)
             await _send_whatsapp_message(user_phone, fallback_msg, phone_number_id=phone_number_id)
-            await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
+            if score_marker is not None:
+                await memory_service_module.memory_service.persist_credit_score_result(user_phone, score_marker, fallback_msg)
+            else:
+                await memory_service_module.memory_service.save_message(user_phone, "model", fallback_msg)
         return None, prospect_data
 
     # Observabilidad: Langfuse Tag y Metadata
