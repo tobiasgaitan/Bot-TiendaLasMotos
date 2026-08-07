@@ -946,7 +946,8 @@ La FAQ no avanza el embudo. {one_shot}
     def _determine_funnel_phase(self, prospect_data: Optional[Dict[str, Any]], history: List[Any] = None) -> str:
         """
         Deterministic state machine for funnel phase allocation.
-        Based on explicit business data gathered in Firestore.
+        The parent document (prospect_data) is the primary source of truth;
+        chat history is used only as a fallback signal.
         """
         if not prospect_data:
             return "PHASE_1_PROFILING"
@@ -963,7 +964,11 @@ La FAQ no avanza el embudo. {one_shot}
             logger.info(f"🚫 [PROTOCOL] Competitor brand detected: {moto_interest}. Blocking advance to Phase 2/3.")
             return "PHASE_1_PROFILING"
 
-        # --- INTENCIÓN FINANCIERA (v1.3.1) ---
+        # --- INTENCIÓN FINANCIERA (v1.3.1) + SEÑAL DOMINANTE DEL PADRE ---
+        # La intención crediticia se determina primero por el estado latcheado en
+        # el documento padre (habeas_data_accepted = True sólo es posible dentro
+        # del flujo crediticio); el historial es un fallback legítimo para
+        # prospectos tempranos.
         is_credit = bool(str(prospect_data.get("forma_pago") or "").strip().lower() in ["credito", "crédito"])
         is_financial_intent = False
         if history:
@@ -988,11 +993,14 @@ La FAQ no avanza el embudo. {one_shot}
                 logger.info("💰 [INTENT] Financial intent detected.")
                 is_financial_intent = True
 
-       # Evaluamos transiciones en estricto orden secuencial de negocio:
+        # Evaluamos transiciones en estricto orden secuencial de negocio:
         # GUARDRAIL: No permitimos avanzar a fase legal si no hay un modelo inmutable identificado en el CRM
         has_moto_interest = bool(prospect_data and prospect_data.get("moto_interest"))
+        # [BOT-BUILD-CLASSIFIER-011] habeas_data_accepted latcheado en el padre
+        # actúa como intención crediticia confirmada, dominante sobre el historial.
+        credit_intent = is_credit or is_financial_intent or bool(prospect_data.get("habeas_data_accepted"))
         
-        if (is_credit or is_financial_intent) and has_moto_interest:
+        if credit_intent and has_moto_interest:
             is_accepted = bool(prospect_data.get("habeas_data_accepted"))
             is_sent = bool(prospect_data.get("habeas_data_accepted_sent"))
             
@@ -1005,9 +1013,13 @@ La FAQ no avanza el embudo. {one_shot}
                     elif isinstance(m, dict) and m.get("content"):
                         conversation_text += str(m.get("content", "")) + " "
             
+            # [BOT-BUILD-CLASSIFIER-011] Fuente primaria: campos padre
+            # accepted_sent atestigua que el script legal y el link fueron enviados.
+            # El link físico en el historial queda como evidencia fallback (OR).
             has_sent_link = "tiendalasmotos.com/politica-de-privacidad" in conversation_text.lower()
+            consent_evidence = is_sent or has_sent_link
             
-            if is_accepted and is_sent and has_sent_link:
+            if is_accepted and consent_evidence:
                 # Transición a Perfilamiento Profundo (Fase 3) tras la captura de 'nombre' y 'ciudad'
                 has_name = bool(prospect_data.get("nombre"))
                 has_city = bool(prospect_data.get("ciudad"))

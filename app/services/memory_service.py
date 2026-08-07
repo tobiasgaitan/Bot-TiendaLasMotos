@@ -475,13 +475,20 @@ class MemoryService:
 
     async def create_prospect_if_missing(self, phone_number: str) -> None:
         """
-        Idempotent prospect initialization with zombie session purge.
+        Idempotent prospect initialization with zombie session purge on fresh start.
+
         Restored from v9.5.0 logic to ensure full CRM compatibility.
 
         Contract (test_reset_flow.py, test_read_asymmetry.py):
           - If prospect does NOT exist → create with canonical keys
-          - Purge any stale historial subcollection docs
+            and purge any stale historial subcollection docs
+          - If prospect exists → NO history wipe; accumulated state is preserved
           - Canonical keys: status=PENDING, chatbot_status=ACTIVE, etc.
+
+        [BOT-BUILD-CLASSIFIER-011] The history purge is conditional: it only runs
+        when the parent doc is created here. This keeps /reset idempotency (after
+        nuclear wipe the next message recreates the doc and wipes orphan history)
+        while preserving chat memory for existing prospects.
         """
         try:
             clean_phone = PhoneNormalizer.normalize(phone_number)
@@ -511,9 +518,10 @@ class MemoryService:
                 await self._firestore_io(doc_ref.set(payload), phone=clean_phone, label="create_prospect_if_missing.set")
                 logger.info(f"✅ Prospect created for {clean_phone} (Status: PENDING)")
 
-            # Zombie purge — clear stale historial docs under prospectos/{phone}/historial
-            # WHY: Ensures idempotency for /reset by wiping orphan history
-            await self.clear_memory(clean_phone)
+                # Zombie purge — clear stale historial docs under prospectos/{phone}/historial
+                # WHY: Ensures idempotency for /reset by wiping orphan history.
+                # ONLY executed on fresh doc creation (see docstring above).
+                await self.clear_memory(clean_phone)
         except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded) as e:
             logger.exception(f"🔌 [NETWORK_ERR] Fallo de red/timeout de Firestore en create_prospect_if_missing para {phone_number}: {e}")
             raise

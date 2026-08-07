@@ -52,18 +52,16 @@ class TestHabeasDataRegression(unittest.TestCase):
 
     def test_phase_block_without_physical_link(self):
         """
+        [BOT-BUILD-CLASSIFIER-011] Re-pin de reconciliación: el documento padre
+        pasa a ser la fuente primaria de verdad para el consentimiento.
+
         GIVEN: habeas_data_accepted=True y habeas_data_accepted_sent=True en DB.
         BUT: El link físico de privacidad no está en el historial del chat.
-        THEN: El orquestador DEBE bloquear el avance a PHASE_3.
+        THEN: El orquestador DEBE avanzar a PHASE_3 (no bloquear).
 
-        WHY history=[]: _determine_funnel_phase tiene DOS ramas que procesan history:
-          1. Línea 315-320: extrae texto de .parts (Pydantic-style objects)
-          2. Línea 363: llama .get("role") — dict-style — siempre ejecuta si history != []
-
-        Pasar objetos Pydantic-style (.parts) rompe la rama 2 con AttributeError.
-        La condición de PHASE_2 que este test verifica ('sin link en chat') se cumple
-        con history=[] porque conversation_text="" no contiene el link de privacidad.
-        El behavior de no-link es agnóstico al tipo de los objetos del historial.
+        WHY: `habeas_data_accepted_sent=True` en el padre ya atestigua que el bot
+        envió el script legal y el enlace. El link físico en historial queda como
+        evidencia fallback (OR), no como requisito bloqueante.
         """
         prospect_data = {
             "nombre": "Test User",
@@ -72,14 +70,13 @@ class TestHabeasDataRegression(unittest.TestCase):
             "moto_confirmada": True,
             "forma_pago": "credito",
             "habeas_data_accepted": True,        # Canonical key (v7.7.0)
-            "habeas_data_accepted_sent": True    # Script was sent — but no link in chat
+            "habeas_data_accepted_sent": True    # Script/link sent per parent doc
         }
-        # history=[] → conversation_text="" → has_sent_link=False → PHASE_2
-        # El bloque de intent financiero (línea 361) es omitido (history is falsy)
+        # history=[] → no hay link físico, pero accepted_sent del padre es suficiente
         history = []
 
         phase = self.cerebro._determine_funnel_phase(prospect_data, history=history)
-        self.assertEqual(phase, "PHASE_2_HABEAS_DATA", "Debe bloquear si no hay evidencia física del link de privacidad.")
+        self.assertEqual(phase, "PHASE_3_CREDIT_PROFILING", "Con consentimiento latcheado en padre, el link físico en historial no debe bloquear PHASE_3.")
 
     def test_phase_allowed_with_sent_and_accepted(self):
         """
