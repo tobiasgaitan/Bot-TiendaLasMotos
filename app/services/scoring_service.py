@@ -5,7 +5,7 @@ Used to route leads to Bank, Fintech, or Alternative financing.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,79 @@ class ScoringService:
         "variable": 500
     }
     
+    # Salario Mínimo Legal Vigente (COP) — SSOT numérico del scoring/juez.
+    SMLV_COP = 1_705_905
+
+    def _income_to_band(self, value: Any) -> str:
+        """
+        [AUD-LEGACY-JUDGE-012] Mapea un ingreso numérico (dígitos) a la banda
+        categórica que espera calculate_score. Los valores no numéricos se
+        pasan sin cambios para preservar inputs categóricos legacy/tests.
+        """
+        if value is None:
+            return ""
+        raw = str(value).strip()
+        normalized = raw.replace(".", "").replace(",", "")
+        try:
+            num = int(normalized)
+        except (ValueError, TypeError):
+            return raw
+        if num >= 2 * self.SMLV_COP:
+            return "mayor a 2 smlv"
+        if num >= self.SMLV_COP:
+            return "1-2 smlv"
+        if num > 0:
+            return "menos del minimo"
+        return ""
+
+    def score_from_prospect_data(self, prospect_data: Dict[str, Any]) -> Tuple[int, Any]:
+        """
+        [AUD-LEGACY-JUDGE-012] Reconstruye el score y el dato crudo de gas
+        a partir de un documento de prospecto (plano o legacy anidado).
+        El Juez usa esto como fallback cuando no existe score_resultado.
+        """
+        if not isinstance(prospect_data, dict):
+            prospect_data = {}
+
+        flat = prospect_data
+        legacy = prospect_data.get("extracted") or {}
+
+        def _get(*keys):
+            for src in (flat, legacy):
+                if not isinstance(src, dict):
+                    continue
+                for k in keys:
+                    v = src.get(k)
+                    if v is not None and v != "":
+                        return v
+            return ""
+
+        ocupacion = _get("ocupacion", "ocupacion_y_contrato", "labor_type")
+        datacredito = _get("datacredito", "historial_datacredito", "credit_history")
+        ingresos_demostrables = _get(
+            "ingresos_demostrables", "ingresos_mensuales", "ingresos", "income"
+        )
+        plan_celular = _get("plan_celular", "phone_plan")
+        tiene_gas_natural = _get("tiene_gas_natural", "has_gas_natural")
+
+        # Fallback semántico de servicios públicos (espejo de Vía B).
+        if not tiene_gas_natural:
+            servicios = str(_get("servicios_publicos")).lower()
+            if "gas" in servicios:
+                tiene_gas_natural = "Sí"
+
+        ingresos_band = self._income_to_band(ingresos_demostrables)
+
+        try:
+            score = self.calculate_score(
+                ocupacion, datacredito, ingresos_band, plan_celular
+            )
+        except Exception as e:
+            logger.exception(f"[score_from_prospect_data] Fallo recomputando score: {e}")
+            score = 0
+
+        return score, tiene_gas_natural
+
     def calculate_score(self, ocupacion_y_contrato: str, historial_datacredito: str, ingresos_demostrables: str, plan_celular: str = "No") -> int:
         """
         Calculate credit score based on user profile.

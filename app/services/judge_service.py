@@ -333,15 +333,64 @@ class JudgeService:
         return True, ""
 
     def _check_scoring_consistency(self, text: str, prospect_data: Dict[str, Any]) -> Tuple[bool, str]:
-        extracted = prospect_data.get("extracted", {})
-        ocupacion = extracted.get("ocupacion", "informal")
-        habit = extracted.get("datacredito", "sin experiencia")
-        ingresos = extracted.get("ingresos", "minimo")
-        
-        score = scoring_service.calculate_score(ocupacion, habit, ingresos)
-        
-        if score < 400 and "Banco" in text:
-            return False, f"Perfil insuficiente para Banco (Score {score})."
+        """
+        C6 — Scoring Accuracy v2 (AUD-LEGACY-JUDGE-012 / BOT-BUILD-LEGACY-JUDGE-012).
+        Alinea la auditoría al resolvedor determinista resolve_cierre_route y al
+        gate de coherencia gas/Brilla (R-B) de la doctrina de 4 rutas.
+        """
+        if not isinstance(prospect_data, dict):
+            prospect_data = {}
+
+        # 1. Score autoritativo si fue persistido por la Vía B; si no, recomputo.
+        score = None
+        raw_score = prospect_data.get("score_resultado")
+        if isinstance(raw_score, (int, float)) and not isinstance(raw_score, bool):
+            score = int(raw_score)
+            logger.info(f"⚖️ [C6] Score autoritativo score_resultado={score}")
+        else:
+            try:
+                score, _ = scoring_service.score_from_prospect_data(prospect_data)
+                logger.info(f"⚖️ [C6] Score recomputado desde prospect_data={score}")
+            except Exception as e:
+                logger.exception(f"❌ [C6] Error recomputando score: {e}")
+                return True, ""
+
+        # 2. Gas: dato crudo tal como lo recibe resolve_cierre_route.
+        tiene_gas_natural = prospect_data.get("tiene_gas_natural") or prospect_data.get("has_gas_natural")
+        if not tiene_gas_natural:
+            servicios = str(
+                (prospect_data.get("extracted") or {}).get("servicios_publicos")
+                or prospect_data.get("servicios_publicos")
+                or ""
+            ).lower()
+            if "gas" in servicios:
+                tiene_gas_natural = "Sí"
+
+        # 3. Ruta canónica determinista.
+        try:
+            ruta = scoring_service.resolve_cierre_route(score, tiene_gas_natural)
+        except Exception as e:
+            logger.exception(f"❌ [C6] Error resolviendo ruta: {e}")
+            return True, ""
+
+        # 4. Matchers de recomendación.
+        banco_recommended = "Banco" in text
+        brilla_recommended = bool(re.search(
+            r"(?i)(tramitar\s+por\s+brilla|cr[eé]dito\s+brilla|financiaci[oó]n\s+brilla|cupo\s+brilla|brilla\s+de\s+gases)",
+            text,
+        ))
+
+        if banco_recommended and ruta != 1:
+            return False, (
+                f"R-A: Banco requiere ruta 1 (score >= 750); "
+                f"ruta resuelta={ruta}, score={score}."
+            )
+        if brilla_recommended and ruta != 3:
+            return False, (
+                f"R-B: Brilla requiere ruta 3 (score <= 499 + gas afirmativo); "
+                f"ruta resuelta={ruta}, score={score}, gas={tiene_gas_natural!r}."
+            )
+
         return True, ""
 
     def _check_links(self, text: str) -> Tuple[bool, str]:

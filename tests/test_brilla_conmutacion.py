@@ -69,15 +69,32 @@ def test_scoring_never_routes_to_crediorbe():
 
 def test_crediorbe_eradicated_from_source():
     """
-    [FIX-E] Guard estático anti-regresión: la nomenclatura 'Crediorbe' no debe
-    reaparecer en la fuente de scoring_service.py ni ai_brain.py.
+    [FIX-E + BOT-BUILD-LEGACY-JUDGE-012] Guard estático anti-regresión: la
+    nomenclatura 'Crediorbe' no debe reaparecer en la fuente de
+    scoring_service.py, ai_brain.py ni judge_service.py.
     """
     import pathlib
     root = pathlib.Path(__file__).resolve().parents[1]
-    for rel in ("app/services/scoring_service.py", "app/services/ai_brain.py"):
+    for rel in (
+        "app/services/scoring_service.py",
+        "app/services/ai_brain.py",
+        "app/services/judge_service.py",
+    ):
         src = (root / rel).read_text(encoding="utf-8")
         assert "Crediorbe" not in src, f"'Crediorbe' reapareció en {rel}"
         assert "crediorbe" not in src, f"'crediorbe' reapareció en {rel}"
+
+
+def test_m4_003_survey_service_purgado():
+    """
+    [BOT-BUILD-LEGACY-JUDGE-012] Tumba M4-003: el módulo muerto
+    survey_service.py (residuo CrediOrbe) fue purgado y no debe renacer.
+    """
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    assert not (root / "app/services/survey_service.py").exists(), (
+        "El módulo legacy survey_service.py sigue existiendo (M4-003)."
+    )
 
 
 def test_personality_json_synced_to_brilla():

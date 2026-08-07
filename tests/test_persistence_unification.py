@@ -168,24 +168,6 @@ def test_no_mensajeria_collection_in_memory_service():
     )
 
 
-def test_no_mensajeria_collection_in_survey_service():
-    """
-    [BOT-ARQ-837] Same static analysis for survey_service.py.
-    """
-    source_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        "app", "services", "survey_service.py"
-    )
-    with open(source_path, "r", encoding="utf-8") as f:
-        source_code = f.read()
-
-    matches = re.findall(r'\.collection\(\s*["\']mensajeria["\']\s*\)', source_code)
-    assert len(matches) == 0, (
-        f"Found {len(matches)} reference(s) to .collection('mensajeria') in survey_service.py. "
-        f"All persistence MUST use the canonical 'prospectos' collection (BOT-ARQ-837)."
-    )
-
-
 def test_no_mensajeria_collection_in_whatsapp_router():
     """
     [BOT-ARQ-837] Same static analysis for whatsapp.py.

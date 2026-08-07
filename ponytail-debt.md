@@ -40,7 +40,7 @@ dejados fuera de scope por decisión explícita del owner.
 
 | # | Ubicación | Hallazgo | Estado |
 |---|-----------|----------|--------|
-| 1 | `app/services/survey_service.py:261` | Texto user-facing `"CrediOrbe"` en rama REDIRECT. El servicio no tiene callers en `app/` y su contrato con `evaluate_profile` está roto (espera `action_type`/`payload` inexistentes → KeyError → HANDOFF). Candidato a purga de módulo completo. | PENDIENTE |
+| 1 | `app/services/survey_service.py` (purged) | Texto user-facing `"CrediOrbe"` en rama REDIRECT. Módulo muerto purgado en BOT-BUILD-LEGACY-JUDGE-012; denominador M4-003; test tumba `test_m4_003_survey_service_purgado`; guard FIX-E extendido a `judge_service.py`. | EJECUTADO (M4-003) |
 
 ### Fixtures cosméticos sin impacto funcional (nomenclatura en tests/scripts legacy)
 

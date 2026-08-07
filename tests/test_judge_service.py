@@ -143,9 +143,13 @@ async def test_judge_c9_reactivates_second_turn(judge_service):
 
 @pytest.mark.asyncio
 async def test_judge_brilla_protocol_fail(judge_service):
-    # Brilla without requirements
+    # Brilla without requirements (gas present so C6 passes; C7 catches missing docs).
     response = "Podemos financiarte con Crédito Brilla."
-    prospect_data = {"ciudad": "Cali"}
+    prospect_data = {
+        "ciudad": "Cali",
+        "score_resultado": 450,
+        "tiene_gas_natural": "Sí",
+    }
     approved, reason = await judge_service.analyze_response("brilla", response, prospect_data=prospect_data)
     assert not approved
     assert "C7_BRILLA_PROTOCOL" in reason
@@ -174,6 +178,80 @@ async def test_judge_link_check_fail(judge_service):
     assert not approved
     assert "C8_CONVERSION_PATH" in reason
     assert "URL no autorizada" in reason
+
+
+@pytest.mark.asyncio
+async def test_c6_banco_ruta1_aprobada(judge_service):
+    """
+    [BOT-BUILD-LEGACY-JUDGE-012] Banco con score >= 750 (ruta 1) debe pasar C6.
+    """
+    response = "Con tu perfil puedes financiar con Banco de Bogotá."
+    prospect_data = {"ciudad": "Cali", "score_resultado": 800, "tiene_gas_natural": "No"}
+    approved, reason = await judge_service.analyze_response("banco", response, prospect_data=prospect_data)
+    assert approved, reason
+
+
+@pytest.mark.asyncio
+async def test_c6_banco_banda_media_rechazada(judge_service):
+    """
+    [BOT-BUILD-LEGACY-JUDGE-012] Banco en banda 500-749 (ruta 2) debe ser
+    rechazado por C6 (banda canónica R-A).
+    """
+    response = "Te recomiendo financiar con un Banco."
+    prospect_data = {
+        "ciudad": "Cali",
+        "ocupacion": "independiente",
+        "datacredito": "sin experiencia",
+        "ingresos_mensuales": "1500000",
+    }
+    approved, reason = await judge_service.analyze_response("banco", response, prospect_data=prospect_data)
+    assert not approved
+    assert "C6_SCORING_INCONSISTENCY" in reason
+    assert "R-A" in reason
+
+
+@pytest.mark.asyncio
+async def test_c6_brilla_sin_gas_rechazada(judge_service):
+    """
+    [BOT-BUILD-LEGACY-JUDGE-012] Brilla sin gas afirmativo (ruta != 3)
+    debe ser rechazada por C6 (gate R-B).
+    """
+    response = "Puedes tramitar por Brilla."
+    prospect_data = {"ciudad": "Cali", "score_resultado": 450, "tiene_gas_natural": "No"}
+    approved, reason = await judge_service.analyze_response("brilla", response, prospect_data=prospect_data)
+    assert not approved
+    assert "C6_SCORING_INCONSISTENCY" in reason
+    assert "R-B" in reason
+
+
+@pytest.mark.asyncio
+async def test_c6_brilla_con_gas_aprobada(judge_service):
+    """
+    [BOT-BUILD-LEGACY-JUDGE-012] Brilla con score <= 499 y gas afirmativo
+    (ruta 3) debe pasar C6 y C7.
+    """
+    response = "Puedes tramitar por Brilla. Envíame tu cédula y los últimos recibos de gas."
+    prospect_data = {"ciudad": "Cali", "score_resultado": 450, "tiene_gas_natural": "Sí"}
+    approved, reason = await judge_service.analyze_response("brilla", response, prospect_data=prospect_data)
+    assert approved, reason
+
+
+@pytest.mark.asyncio
+async def test_c6_score_resultado_prevalece_sobre_perfil(judge_service):
+    """
+    [BOT-BUILD-LEGACY-JUDGE-012] score_resultado autoritativo (AUD-SCORE-PERSIST-001)
+    debe prevalecer sobre campos de perfil contradictorios.
+    """
+    response = "Te recomiendo financiar con un Banco."
+    prospect_data = {
+        "ciudad": "Cali",
+        "score_resultado": 800,
+        "ocupacion": "informal",
+        "datacredito": "reportado",
+        "ingresos": "minimo",
+    }
+    approved, reason = await judge_service.analyze_response("banco", response, prospect_data=prospect_data)
+    assert approved, reason
 
 
 # --- BOT-BUG-2.1 CERTIFICATION TESTS ---
