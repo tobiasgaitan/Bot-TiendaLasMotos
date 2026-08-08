@@ -187,14 +187,15 @@ class WhatsAppService:
             raise ValueError(f"Invalid payload structure: {e}") from e
 
         try:
-            logger.debug(f"📤 Enviando imagen a Meta: {payload}")
+            logger.info(f"📤 [META-PAYLOAD] phone_number_id={target_id} payload={payload}")
             async with httpx.AsyncClient() as client:
                 response = await client.post(url, headers=self.headers, json=payload, timeout=10.0)
                 if response.status_code >= 400:
                     logger.error(f"❌ Error Meta API Imagen ({response.status_code}): {response.text}")
                 response.raise_for_status()
                 data = response.json()
-                logger.info(f"✅ Imagen enviada a {to}")
+                wamid = (data.get("messages") or [{}])[0].get("id") if isinstance(data, dict) else None
+                logger.info(f"✅ [META-PAYLOAD] Imagen enviada a {to} wamid={wamid}")
                 return data
         except httpx.HTTPStatusError as e:
             raw_response = e.response.text

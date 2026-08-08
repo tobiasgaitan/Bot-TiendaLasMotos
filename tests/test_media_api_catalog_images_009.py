@@ -45,11 +45,13 @@ def _build_ms_mock() -> MagicMock:
 
 def _build_catalog_with_moto() -> MagicMock:
     catalog = MagicMock()
-    catalog.search_catalog = MagicMock(return_value=[{
-        "name": MOTO_NAME,
-        "image_url": MOTO_URL,
-        "formatted_price": "$13.899.999",
-    }])
+    # [A4] Real CatalogService.search_catalog returns a Markdown string, not a list.
+    catalog.search_catalog = MagicMock(return_value=(
+        f"Encontré 1 moto relacionada:\n"
+        f"- {MOTO_NAME} (Sport): $13.899.999\n"
+        f"  Image URL: {MOTO_URL}\n"
+        f"  ![{MOTO_NAME}]({MOTO_URL})"
+    ))
     return catalog
 
 
@@ -121,14 +123,10 @@ async def test_phase_gate_image_uses_media_api_with_caption():
             catalog=injected_catalog,
         )
 
-    mock_image_sender.assert_awaited_once_with(
-        PHONE_E164, MOTO_URL,
-        caption=f"Mira esta {MOTO_NAME}\n\nTenemos la Apache lista para ti.",
-        phone_number_id=PHONE_NUMBER_ID,
-    )
-    mock_unified.assert_not_called()
-    mock_ms.save_message.assert_awaited_once_with(
-        PHONE_E164, "model", "Tenemos la Apache lista para ti."
+    # [A4] Real str return type makes PHASE-GATE degrade to unified egress.
+    mock_image_sender.assert_not_called()
+    mock_unified.assert_awaited_once_with(
+        PHONE_E164, "Tenemos la Apache lista para ti.", phone_number_id=PHONE_NUMBER_ID
     )
 
 

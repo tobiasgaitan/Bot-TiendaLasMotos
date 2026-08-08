@@ -4,7 +4,7 @@ import json
 import subprocess
 import logging
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from app.services.credit_faq_taxonomy import is_abstract_credit_faq
 
@@ -72,7 +72,7 @@ class AgenticOrchestrator:
             logger.exception(f"Error forense al crear Git Worktree: {err_msg}")
             raise e
 
-    def run_checker(self, bot_response: str, is_catalog_query: bool = False, prospect_data: Dict[str, Any] = None, user_prompt: str = None) -> Dict[str, Any]:
+    def run_checker(self, bot_response: str, is_catalog_query: bool = False, prospect_data: Dict[str, Any] = None, user_prompt: str = None, trace_id: Optional[str] = None) -> Dict[str, Any]:
         has_price = bool(re.search(r"\$\d+", bot_response))
         has_image = bool(re.search(r"!\[.*?\]\(.*?\)|\[IMAGE:.*?\]", bot_response))
 
@@ -117,6 +117,14 @@ class AgenticOrchestrator:
             (not is_catalog_query_effective)
             or is_credit_faq_abstract
             or (is_faq_intent and not has_moto_interest)
+        )
+
+        phone = (prospect_data or {}).get("phone") or "unknown"
+        logger.info(
+            f"🔍 [PCC-FORENSIC] turn_id={trace_id!r} phone={phone} "
+            f"has_price={has_price} has_image={has_image} has_ficha={has_ficha} "
+            f"bypass_strict={bypass_strict} is_catalog_query_effective={is_catalog_query_effective} "
+            f"response_len={len(bot_response) if bot_response else 0}"
         )
         
         if bypass_strict:

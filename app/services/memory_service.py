@@ -608,6 +608,8 @@ class MemoryService:
         phone_number: str,
         summary_text: str,
         extracted_data: Optional[Dict[str, Any]] = None,
+        catalog_moto_hint: Optional[str] = None,
+        catalog=None,
     ) -> None:
         """Merge AI-extracted data into prospect and update summary."""
         try:
@@ -618,15 +620,33 @@ class MemoryService:
             # --- CORRECCIÓN QUIRÚRGICA ANTE BORRADO NUCLEAR (/RESET) ---
             if not doc_snap.exists:
                 logger.warning(f"⚠️ [RESET_RECOVERY] Documento no encontrado para {clean_phone} durante actualización. Creando nodo base de emergencia...")
-                # Invocamos la inicialización limpia con claves canónicas
+                # Invocamos la inicialización limpia con llaves canónicas
                 await self.create_prospect_if_missing(clean_phone)
                 # Re-congelamos el snapshot para obtener el diccionario base limpio
                 doc_snap = await self._firestore_io(doc_ref.get(), phone=clean_phone, label="update_prospect_summary.reget")
             
             current_data = doc_snap.to_dict() if doc_snap.exists else {}
 
+            # [M1+M2] Canonicalize moto_interest before merging.
+            # The catalog_moto_hint (model name chosen by the tool-exec) is the
+            # source of truth; it overrides any category/style extracted by the LLM.
+            extracted = dict(extracted_data) if extracted_data else {}
+            hint = str(catalog_moto_hint).strip() if catalog_moto_hint else None
+            incoming_moto = str(extracted.get("moto_interest", "")).strip() or None
+            if hint:
+                extracted["moto_interest"] = hint
+                logger.info(f"🔁 [MOTO-CANON] catalog_moto_hint='{hint}' overrides extracted moto_interest for {clean_phone}")
+            elif incoming_moto and not self._is_canonical_moto_interest(incoming_moto, catalog) and self._is_canonical_moto_interest(current_data.get("moto_interest"), catalog):
+                # Protect an already-canonical DB value from a non-canonical (category/style)
+                # extraction when no tool hint is available.
+                logger.info(
+                    f"🔁 [MOTO-CANON] preserving canonical DB moto_interest='{current_data.get('moto_interest')}' "
+                    f"over non-canonical extracted='{incoming_moto}' for {clean_phone}"
+                )
+                extracted.pop("moto_interest", None)
+
             # Use centralized merge logic
-            update_payload = self._merge_extracted_data(current_data, extracted_data or {})
+            update_payload = self._merge_extracted_data(current_data, extracted)
 
             # [AUD-FP-AUTO-007 + AUD-FP-AUTO-REG-009] Deterministic payment-method
             # auto-fill on Habeas Data acceptance (PASO 4). R1 accepts either a
@@ -667,7 +687,8 @@ class MemoryService:
         phone_number: str, 
         conversation_text: str, 
         ai_brain, 
-        last_bot_question: str = ""
+        last_bot_question: str = "",
+        catalog_moto_hint: Optional[str] = None,
     ) -> None:
         """
         Garantía de Verdad (Linear Blocking):
@@ -677,11 +698,22 @@ class MemoryService:
         try:
             logger.info(f"🧠 [LINEAR BLOCKING] Starting summary generation for {phone_number}...")
             
+            # [M1] Reactivate REGLA DE PERSISTENCIA: feed the extractor with the
+            # canonical moto_interest already stored in Firestore, so it is not
+            # overwritten by a category/style extraction on subsequent turns.
+            previous_moto_interest = ""
+            try:
+                current_data = await self.get_prospect_data(phone_number)
+                previous_moto_interest = (current_data or {}).get("moto_interest", "")
+            except Exception as e:
+                logger.warning(f"⚠️ [MOTO-PERSIST] Could not fetch previous moto_interest for {phone_number}: {e}")
+            
             # 1. AI Extraction (Async)
             summary_data = await ai_brain.generate_summary(
                 conversation_text, 
                 last_bot_question=last_bot_question,
-                session_id=phone_number
+                session_id=phone_number,
+                previous_moto_interest=previous_moto_interest,
             )
             
             # 2. Firestore Persistence
@@ -700,13 +732,78 @@ class MemoryService:
             await self.update_prospect_summary(
                 phone_number, 
                 summary_text, 
-                extracted_data
+                extracted_data,
+                catalog_moto_hint=catalog_moto_hint,
             )
             
             logger.info(f"✅ Successfully updated prospect summary for {phone_number}")
             
         except Exception as e:
             logger.exception(f"❌ [LINEAR BLOCKING] Failed to generate/update summary for {phone_number}: {e}")
+
+    def _is_canonical_moto_interest(self, value: Any, catalog=None) -> bool:
+        """True if value exactly matches a canonical model name in the catalog."""
+        if value is None:
+            return False
+        try:
+            target = str(value).strip()
+            if not target:
+                return False
+            if catalog is None:
+                from app.services.catalog_service import catalog_service as catalog
+            if catalog is None:
+                return False
+            matches = catalog.search_items(target)
+            if not matches:
+                return False
+            target_norm = catalog._normalize_item_id_key(target)
+            return any(
+                catalog._normalize_item_id_key(str(item.get("name", ""))) == target_norm
+                for item in matches
+            )
+        except Exception as e:
+            logger.exception(f"❌ [MOTO-CANON] Error validating moto_interest canonicity: {e}")
+            return False
+
+    async def update_prospect_moto_interest(
+        self,
+        phone_number: str,
+        moto_interest: Optional[str],
+        catalog=None,
+    ) -> None:
+        """
+        Persist the canonical model name selected by the catalog tool-exec.
+        This runs AFTER AI inference (the extraction phase already completed)
+        and protects the CRM from category/style extractions.
+        """
+        if not moto_interest or not str(moto_interest).strip():
+            return
+        try:
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            doc_ref = await self.get_ref(clean_phone)
+            doc_snap = await self._firestore_io(doc_ref.get(), phone=clean_phone, label="update_prospect_moto_interest.get")
+            current_data = doc_snap.to_dict() if doc_snap.exists else {}
+            extracted_data = {"moto_interest": str(moto_interest).strip()}
+            # [M2] Conservative protection: if the hint is not canonical but the DB
+            # already stores a canonical model, keep the DB value.
+            if not self._is_canonical_moto_interest(extracted_data["moto_interest"], catalog) and self._is_canonical_moto_interest(current_data.get("moto_interest"), catalog):
+                logger.info(
+                    f"🔁 [MOTO-CANON] skipping persistence: DB already has canonical "
+                    f"'{current_data.get('moto_interest')}' and hint '{extracted_data['moto_interest']}' is not canonical for {clean_phone}"
+                )
+                return
+            update_payload = self._merge_extracted_data(current_data, extracted_data)
+            if not update_payload:
+                return
+            mirror_payload = self._dashboard_mirror(update_payload, current_data)
+            update_payload.update(mirror_payload)
+            update_payload["fecha"] = firestore.SERVER_TIMESTAMP
+            await self._firestore_io(doc_ref.set(update_payload, merge=True), phone=clean_phone, label="update_prospect_moto_interest.set")
+            logger.info(f"💾 [MOTO-CANON] persisted canonical moto_interest='{extracted_data['moto_interest']}' for {clean_phone}")
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+            raise
+        except Exception as e:
+            logger.exception(f"❌ update_prospect_moto_interest failed for {phone_number}: {e}")
 
     async def transition_to_in_progress(self, phone_number: str) -> bool:
         """

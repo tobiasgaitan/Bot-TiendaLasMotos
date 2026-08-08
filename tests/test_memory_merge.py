@@ -189,5 +189,6 @@ async def test_generate_and_update_summary_anti_null_masking(caplog, memory_serv
     memory_service.update_prospect_summary.assert_called_once_with(
         "1234567890",
         "test summary",
-        {}
+        {},
+        catalog_moto_hint=None,
     )

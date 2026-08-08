@@ -15,7 +15,8 @@ import hashlib
 import os
 import sys
 import time
-from typing import Dict, Any, Optional, List, Union
+import uuid
+from typing import Dict, Any, Optional, List, Union, Tuple
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request, Query, HTTPException, BackgroundTasks
@@ -1489,6 +1490,12 @@ async def _pipeline_media_vision(
                             if prospect_data and isinstance(prospect_data, dict):
                                 score_marker = prospect_data.pop("_score_resultado", None)
 
+                            # [A3] Persist canonical model selected by the catalog tool-exec in vision turns.
+                            try:
+                                await _persist_catalog_moto_hint(ms, user_phone, prospect_data, catalog=catalog)
+                            except Exception as e:
+                                logger.exception(f"❌ [MOTO-CANON] Vision post-inference persistence failed for {user_phone}: {e}")
+
                             await ms.save_message(user_phone, "user", simulated_user_msg)
                             if score_marker is not None:
                                 await _process_and_send_egress_message(
@@ -1767,6 +1774,16 @@ async def _pipeline_audio(
             response_text = "Escuché el audio pero no entendí bien. ¿Me repites? 😅"
     else:
         response_text = "No pude descargar el audio. 😢"
+
+    # [A3] Persist canonical model selected by the catalog tool-exec in audio turns.
+    if memory_service_module.memory_service:
+        try:
+            await _persist_catalog_moto_hint(
+                memory_service_module.memory_service, user_phone, prospect_data, catalog=catalog
+            )
+        except Exception as e:
+            logger.exception(f"❌ [MOTO-CANON] Audio post-inference persistence failed for {user_phone}: {e}")
+
     return response_text, prospect_data
 
 
@@ -1876,6 +1893,8 @@ async def _pipeline_text_cognitive(
     # Receptor de persistencia: la rama heredada lo lee del singleton (el guard
     # BOT-174 lo re-vincula dentro). Mismo objeto que el `ms` de sesión.
     ms = memory_service_module.memory_service
+    # [A1] Correlation identifier for this turn's forensic logs.
+    turn_id = str(uuid.uuid4())
 
     # --- LINEAR BLOCKING: Memory Update (Wait for Firestore) ---
     if memory_service_module.memory_service:
@@ -1996,7 +2015,8 @@ async def _pipeline_text_cognitive(
                 response_text or "",
                 is_catalog_query=is_tech_spec_query(message_body),
                 prospect_data=prospect_data,
-                user_prompt=message_body
+                user_prompt=message_body,
+                trace_id=turn_id,
             )
             _is_faq_bypass = bool(_pcc_result.get("bypass_strict", False))
             if _is_faq_bypass:
@@ -2134,6 +2154,15 @@ async def _pipeline_text_cognitive(
 
     if typing_delay > 0:
         await asyncio.sleep(typing_delay)
+
+    # [A3] Persist the canonical model chosen by the catalog tool-exec so the
+    # CRM stores the exact model (e.g. "Victory MRX 150") instead of the category.
+    if ms:
+        try:
+            await _persist_catalog_moto_hint(ms, user_phone, prospect_data, catalog=catalog)
+        except Exception as e:
+            logger.exception(f"❌ [MOTO-CANON] Post-inference persistence failed for {user_phone}: {e}")
+
     return response_text, prospect_data
 
 
@@ -2167,6 +2196,8 @@ async def _pipeline_egress(
     phone_number_id = ctx.get("phone_number_id")
     prospect_data = ctx.get("prospect_data")
     catalog = ctx.get("catalog") or catalog_service
+    # [A1] Turn-level correlation identifier for forensic logs.
+    turn_id = ctx.get("trace_id") or str(uuid.uuid4())
 
     # [AUD-SCORE-PERSIST-001] Consume score marker once per turn.
     score_marker = None
@@ -2195,6 +2226,15 @@ async def _pipeline_egress(
             # su ausencia queda registrada con ID de correlación (E.164).
             logger.warning(f"⚠️ [HANDOFF] notification_service no disponible para {user_phone}: {e}")
     else:
+        has_price = bool(re.search(r"\$\d+", response_text))
+        has_markdown_image = _response_has_image_markdown(response_text)
+        moto_interest = prospect_data.get("moto_interest") if prospect_data else None
+        logger.info(
+            f"🖼️ [EGRESS-FORENSIC] turn_id={turn_id} phone={user_phone} "
+            f"has_price={has_price} has_markdown_image={has_markdown_image} "
+            f"moto_interest={moto_interest} response_len={len(response_text) if response_text else 0}"
+        )
+
         # --- PHASE-GATE IMAGE INJECTION (Update v6.3.1) ---
         if response_text.startswith("PHASE_GATE_TRIGGERED:"):
             logger.info("🛡️ PHASE-GATE TRIGGERED detected.")
@@ -2243,6 +2283,30 @@ async def _pipeline_egress(
                         logger.exception(f"⚠️ Error injecting dynamic Phase-Gate image: {e}")
             else:
                 logger.info("⏩ [BYPASS] Skipping image injection: moto already confirmed.")
+
+        # [A2] Deterministic Visual-Lock backstop: if the response recommends a
+        # canonical model with a price but the LLM omitted the Markdown image,
+        # inject it via Strategy A before falling back to plain text.
+        if not has_markdown_image:
+            try:
+                visual_lock = _ensure_visual_lock(response_text, prospect_data, catalog)
+                if visual_lock:
+                    image_url, moto_name = visual_lock
+                    caption, _ = egress_guard.enforce_urls(response_text)
+                    caption = egress_guard.enforce_length(caption)
+                    logger.info(
+                        f"🖼️ [EGRESS-FORENSIC] turn_id={turn_id} Visual-Lock deterministic injection: "
+                        f"image_url={image_url} moto={moto_name}"
+                    )
+                    await _send_whatsapp_image(user_phone, image_url, caption=caption, phone_number_id=phone_number_id)
+                    if memory_service_module.memory_service:
+                        if score_marker:
+                            await memory_service_module.memory_service.persist_credit_score_result(user_phone, score_marker, response_text)
+                        else:
+                            await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
+                    return
+            except Exception as e:
+                logger.exception(f"❌ [VISUAL-LOCK] Deterministic injection failed for {user_phone}: {e}")
 
         # [AUD-SCORE-PERSIST-001] Preserve exact call signature when no marker
         # (pin PEI-1/PEI-4); pass score_marker only when present.
@@ -2344,6 +2408,85 @@ async def _process_and_send_egress_message(
             exc_info=True
         )
         raise
+
+def _response_has_image_markdown(text: str) -> bool:
+    """True if text already contains an image Markdown token."""
+    if not text:
+        return False
+    return bool(re.search(r"!\[.*?\]\(.*?\)|\[IMAGE:.*?\]", text))
+
+
+def _ensure_visual_lock(
+    response_text: str,
+    prospect_data: Optional[Dict[str, Any]],
+    catalog,
+) -> Optional[Tuple[str, str]]:
+    """
+    [A2] Deterministic Visual-Lock backstop. If the response mentions a canonical
+    model and a price but has no Markdown image, resolve the canonical image_url
+    from the catalog and return (image_url, model_name).
+    """
+    if not response_text or not catalog:
+        return None
+    if _response_has_image_markdown(response_text):
+        return None
+    if not re.search(r"\$\d+", response_text):
+        return None
+
+    candidate = None
+    moto_interest = (prospect_data or {}).get("moto_interest")
+    if moto_interest:
+        moto_name = str(moto_interest).strip()
+        if moto_name and moto_name.lower() in response_text.lower():
+            candidate = moto_name
+
+    if not candidate:
+        items = getattr(catalog, "_items", []) or []
+        for item in sorted(items, key=lambda i: len(str(i.get("name", ""))), reverse=True):
+            name = str(item.get("name", "")).strip()
+            if name and name.lower() in response_text.lower():
+                candidate = name
+                break
+
+    if not candidate:
+        return None
+
+    try:
+        matches = catalog.search_items(candidate)
+    except Exception as e:
+        logger.exception(f"❌ [VISUAL-LOCK] catalog.search_items failed for candidate '{candidate}': {e}")
+        return None
+
+    if not matches:
+        return None
+
+    first = matches[0]
+    image_url = first.get("image_url")
+    model_name = first.get("name", candidate)
+    if not image_url:
+        return None
+    return image_url, model_name
+
+
+async def _persist_catalog_moto_hint(
+    ms,
+    user_phone: str,
+    prospect_data: Optional[Dict[str, Any]],
+    catalog=None,
+) -> None:
+    """
+    [A3] Persist the canonical model name chosen by the catalog tool-exec.
+    Skips silently when there is no hint or no memory service.
+    """
+    if not ms or not prospect_data:
+        return
+    moto_interest = prospect_data.get("moto_interest")
+    if not moto_interest:
+        return
+    try:
+        await ms.update_prospect_moto_interest(user_phone, moto_interest, catalog=catalog)
+    except Exception as e:
+        logger.exception(f"❌ [MOTO-CANON] Failed to persist catalog moto hint for {user_phone}: {e}")
 
 def _is_valid_statuses(payload: Dict[str, Any]) -> bool:
     """

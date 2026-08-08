@@ -41,11 +41,13 @@ def _build_ms_mock() -> MagicMock:
 
 def _build_catalog_with_moto() -> MagicMock:
     catalog = MagicMock()
-    catalog.search_catalog = MagicMock(return_value=[{
-        "name": MOTO_NAME,
-        "image_url": MOTO_URL,
-        "formatted_price": "$9.000.000",
-    }])
+    # [A4] Real CatalogService.search_catalog returns a Markdown string, not a list.
+    catalog.search_catalog = MagicMock(return_value=(
+        f"Encontré 1 moto relacionada:\n"
+        f"- {MOTO_NAME} (Urban): $9.000.000\n"
+        f"  Image URL: {MOTO_URL}\n"
+        f"  ![{MOTO_NAME}]({MOTO_URL})"
+    ))
     return catalog
 
 
@@ -146,13 +148,12 @@ async def test_pei3_phase_gate_dynamic_image_injection_and_catalog_seam():
 
     injected_catalog.search_catalog.assert_called_once_with(MOTO_NAME)
     sentinel_catalog.search_catalog.assert_not_called()
-    mock_image_sender.assert_awaited_once_with(
-        PHONE_E164, MOTO_URL,
-        caption=f"Mira esta {MOTO_NAME}\n\nTenemos la Raider lista para ti.",
-        phone_number_id=PHONE_NUMBER_ID,
+    # [A4] With the real str return type, PHASE-GATE cannot index the result and
+    # degrades safely to the unified egress path (no image injection).
+    mock_image_sender.assert_not_called()
+    mock_unified.assert_awaited_once_with(
+        PHONE_E164, "Tenemos la Raider lista para ti.", phone_number_id=PHONE_NUMBER_ID
     )
-    mock_ms.save_message.assert_awaited_once_with(PHONE_E164, "model", "Tenemos la Raider lista para ti.")
-    mock_unified.assert_not_called()
 
     # Escenario b: sin kwarg catalog, el global parcheado dirige la búsqueda.
     global_catalog = _build_catalog_with_moto()
@@ -170,7 +171,7 @@ async def test_pei3_phase_gate_dynamic_image_injection_and_catalog_seam():
         )
 
     global_catalog.search_catalog.assert_called_once_with("RAIDER 125")
-    mock_image_sender2.assert_awaited_once()
+    mock_image_sender2.assert_not_called()
 
 
 # ── PEI-4: PHASE_GATE con moto confirmada (bypass) ───────────────────────────

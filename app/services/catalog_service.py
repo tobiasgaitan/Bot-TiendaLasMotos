@@ -757,7 +757,7 @@ class CatalogService:
                 flattened[cat_key] = values
         return flattened
 
-    def search_items(self, query: str) -> List[Dict[str, Any]]:
+    def search_items(self, query: str, trace_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Search for items using rich search index, fuzzy matching, and token tolerance.
         Why: Replacing naive substring matching with full-corpus token evaluation allows 
@@ -1172,6 +1172,19 @@ class CatalogService:
             }
             unique_results.append(fallback_item)
 
+        # [A1] Forensic log: catalog search result with image_url lineage.
+        items_summary = [
+            {
+                "name": item.get("name"),
+                "price": item.get("price"),
+                "image_url": item.get("image_url"),
+            }
+            for item in unique_results[:3]
+        ]
+        logger.info(
+            f"📦 [CATALOG-FORENSIC] query='{query}' trace_id={trace_id!r} "
+            f"matches={len(unique_results)} items={items_summary}"
+        )
         return unique_results[:3]
 
 # =========================================================================
