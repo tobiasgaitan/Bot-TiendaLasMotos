@@ -1,6 +1,12 @@
 """
 Memory Service - CRM Integration & Long-Term Memory
-v9.8.8 - AUD-FP-AUTO-REG-009 (Fix temporal R1∧R2 unsatisfiability in forma_pago auto-fill)
+v9.8.9 - BOT-BUILD-FUNNEL-SKIP-014 (reset_phase_latches: reset de latches de fase sin purgar historial/identidad)
+
+CHANGELOG v9.8.9:
+  - [BOT-BUILD-FUNNEL-SKIP-014] Added `reset_phase_latches()` to zero phase latches
+    (habeas_data_accepted, habeas_data_accepted_sent, forma_pago, moto_interest,
+    moto_interes, moto_confirmada, score_resultado) while preserving commercial
+    history and identity (nombre/ciudad). Idempotent via set(merge=True).
 
 CHANGELOG v9.8.8:
   - [AUD-FP-AUTO-REG-009] Relaxed R1 and R2 in update_prospect_summary
@@ -804,6 +810,41 @@ class MemoryService:
             raise
         except Exception as e:
             logger.exception(f"❌ update_prospect_moto_interest failed for {phone_number}: {e}")
+
+    async def reset_phase_latches(self, phone_number: str) -> bool:
+        """
+        [BOT-BUILD-FUNNEL-SKIP-014] Reset de latches de fase SIN purgar historial
+        comercial ni identidad del prospecto. Idempotente: set(merge=True) sobre
+        documento inexistente simplemente lo crea con los latches en cero (C-8).
+        """
+        try:
+            clean_phone = PhoneNormalizer.normalize(phone_number)
+            doc_ref = await self.get_ref(clean_phone)
+            reset_payload = {
+                "habeas_data_accepted": False,
+                "habeas_data_accepted_sent": False,
+                "habeas_data": False,
+                "habeas_data_sent": False,
+                "forma_pago": "",
+                "moto_interest": "",
+                "moto_interes": "",
+                "moto_confirmada": False,
+                "score_resultado": "",
+                "reset_at": firestore.SERVER_TIMESTAMP,
+                "reset_by": "system_reset_command",
+            }
+            await self._firestore_io(
+                doc_ref.set(reset_payload, merge=True),
+                phone=clean_phone,
+                label="reset_phase_latches.set",
+            )
+            logger.info(f"🧹 [RESET-LATCHES] Phase latches reset for {clean_phone}")
+            return True
+        except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
+            raise
+        except Exception as e:
+            logger.exception(f"❌ [RESET-LATCHES] Failed to reset phase latches for {phone_number}: {e}")
+            return False
 
     async def transition_to_in_progress(self, phone_number: str) -> bool:
         """

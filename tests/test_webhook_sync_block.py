@@ -620,6 +620,7 @@ async def test_inferred_state_reset_consistency():
     # 1. Configurar Mocks de base
     mock_memory_service = MagicMock()
     mock_memory_service.delete_prospect_completely = AsyncMock(return_value=True)
+    mock_memory_service.reset_phase_latches = AsyncMock(return_value=True)
     mock_memory_service.create_prospect_if_missing = AsyncMock()
     mock_memory_service.update_last_interaction = AsyncMock()
     mock_memory_service.transition_to_in_progress = AsyncMock()

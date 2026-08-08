@@ -926,24 +926,42 @@ async def _handle_message_background_impl(
                             return
                         
                         _active_resets.add(user_phone)
+                        reset_turn_id = str(uuid.uuid4())
                         try:
-                            logger.warning(f"☢️ NUCLEAR RESET TRIGGERED (Sync) for {user_phone}")
+                            logger.warning(f"☢️ [RESET] NUCLEAR RESET TRIGGERED (Sync) for {user_phone} trace_id={reset_turn_id}")
                             # Nuclear wipe (Siempre intentamos limpiar, sea que exista o no en Firestore)
                             success = await ms.delete_prospect_completely(user_phone)
                             if not success:
-                                logger.error(f"❌ [RESET] Fallo en limpieza profunda para {user_phone}, procediendo con feedback.")
+                                logger.warning(
+                                    f"⚠️ [RESET] delete_prospect_completely returned False for {user_phone}; "
+                                    f"reset_phase_latches will sanitize phase latches. trace_id={reset_turn_id}"
+                                )
+                            
+                            # [BOT-BUILD-FUNNEL-SKIP-014] Siempre zero latches de fase,
+                            # preservando historial comercial e identidad. Cierra R2.
+                            await ms.reset_phase_latches(user_phone)
     
                             # Limpiar buffer de mensajes para evitar duplicados residuales
                             await message_buffer.clear_buffer(user_phone)
                             
                             # Sincronía de Feedback: Garantía de respuesta determinista
+                            if success:
+                                feedback_msg = (
+                                    "✅ Tu sesión ha sido reiniciada por completo. "
+                                    "Cuéntame, ¿en qué moto estás interesado?"
+                                )
+                            else:
+                                feedback_msg = (
+                                    "✅ Tu sesión ha sido reiniciada. "
+                                    "Cuéntame, ¿en qué moto estás interesado?"
+                                )
                             await meta_sender.send_text_message(
-                                user_phone, 
-                                "✅ Tu sesión ha sido reiniciada por completo. Cuéntame, ¿en qué moto estás interesado?", 
+                                user_phone,
+                                feedback_msg,
                                 phone_number_id=phone_number_id
                             )
                         except Exception as e:
-                            logger.exception(f"❌ [RESET] Error inesperado en flujo de reset para {user_phone}: {e}")
+                            logger.exception(f"❌ [RESET] Error inesperado en flujo de reset para {user_phone} trace_id={reset_turn_id}: {e}")
                         finally:
                             # Blindaje de Cleanup: Evita bloqueo permanente de hilos del usuario
                             if user_phone in _active_resets:

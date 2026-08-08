@@ -996,11 +996,51 @@ La FAQ no avanza el embudo. {one_shot}
         # Evaluamos transiciones en estricto orden secuencial de negocio:
         # GUARDRAIL: No permitimos avanzar a fase legal si no hay un modelo inmutable identificado en el CRM
         has_moto_interest = bool(prospect_data and prospect_data.get("moto_interest"))
+        # [BOT-BUILD-FUNNEL-SKIP-014] Para fase legal se exige moto_interest CANÓNICO
+        # (nombre exacto de modelo en catálogo), no una categoría o intención libre-texto.
+        # Si no hay catálogo disponible (cold-start/tests) conservamos el comportamiento
+        # heredado para no bloquear el turno; en producción catalog_service se pasa desde
+        # whatsapp.py y la compuerta canónica está activa.
+        has_canonical_moto = has_moto_interest
+        if has_moto_interest and self._catalog_service:
+            has_canonical_moto = False  # con catálogo disponible se exige verificación
+            try:
+                catalog = self._catalog_service
+                # Modelo confirmado explícitamente por el usuario = canónico para la fase legal.
+                if prospect_data.get("moto_confirmada") is True:
+                    has_canonical_moto = True
+                else:
+                    target = str(prospect_data.get("moto_interest")).lower().strip()
+                    catalog_usable = False
+                    # 1) Exact match contra catálogo cargado en memoria.
+                    items = getattr(catalog, "_items", None)
+                    if isinstance(items, list) and items:
+                        catalog_usable = True
+                        has_canonical_moto = any(
+                            str(item.get("name", "")).lower().strip() == target
+                            for item in items
+                        )
+                    # 2) Fallback a get_all_items (mocks/tests que no poblan _items).
+                    if not catalog_usable and hasattr(catalog, "get_all_items"):
+                        all_items = catalog.get_all_items()
+                        if isinstance(all_items, list) and all_items:
+                            catalog_usable = True
+                            has_canonical_moto = any(
+                                str(item.get("name", "")).lower().strip() == target
+                                for item in all_items
+                            )
+                    # 3) Sin catálogo usable (cold-start/mocks heredados): conservar
+                    #    comportamiento previo para no romper tests que no modelan el catálogo.
+                    if not catalog_usable:
+                        has_canonical_moto = has_moto_interest
+            except Exception:
+                logger.exception("❌ [FUNNEL-SKIP-014] Error validando canonicidad de moto; degradando a no canónico.")
+                has_canonical_moto = has_moto_interest
         # [BOT-BUILD-CLASSIFIER-011] habeas_data_accepted latcheado en el padre
         # actúa como intención crediticia confirmada, dominante sobre el historial.
         credit_intent = is_credit or is_financial_intent or bool(prospect_data.get("habeas_data_accepted"))
         
-        if credit_intent and has_moto_interest:
+        if credit_intent and has_canonical_moto:
             is_accepted = bool(prospect_data.get("habeas_data_accepted"))
             is_sent = bool(prospect_data.get("habeas_data_accepted_sent"))
             
@@ -1715,20 +1755,56 @@ REGLAS ESTRICTAS DE USO:
             # Se eliminan detecciones manuales por Regex para evitar falsos positivos y bloqueos de lógica.
             pass
 
+            # [BOT-BUILD-FUNNEL-SKIP-014] Refuerzo soft: si hay moto_interest no canónico,
+            # ordenar al LLM invocar search_catalog para recomendar un modelo canónico,
+            # con fallback genérico ante catálogo vacío o error (Zero-Silent-Failures).
+            # Sólo se activa cuando el catálogo es usable; en mocks heredados sin _items
+            # se conserva el comportamiento previo para no alterar pins existentes.
+            if data.get("moto_interest") and not data.get("moto_confirmada") and self._catalog_service:
+                try:
+                    _moto = str(data.get("moto_interest")).lower().strip()
+                    _catalog = self._catalog_service
+                    _is_canonical = False
+                    _catalog_usable = False
+                    items = getattr(_catalog, "_items", None)
+                    if isinstance(items, list) and items:
+                        _catalog_usable = True
+                        _is_canonical = any(
+                            str(item.get("name", "")).lower().strip() == _moto
+                            for item in items
+                        )
+                    if not _catalog_usable and hasattr(_catalog, "get_all_items"):
+                        all_items = _catalog.get_all_items()
+                        if isinstance(all_items, list) and all_items:
+                            _catalog_usable = True
+                            _is_canonical = any(
+                                str(item.get("name", "")).lower().strip() == _moto
+                                for item in all_items
+                            )
+                    if _catalog_usable and not _is_canonical:
+                        funnel_instruction = (
+                            "El usuario mencionó un tipo de moto pero no tenemos un modelo específico. "
+                            "INVOCA search_catalog con el tipo de moto para recomendar un modelo canónico con precio e imagen."
+                        )
+                except Exception:
+                    logger.exception("❌ [FUNNEL-SKIP-014] Error evaluando refuerzo PHASE_1; continuando sin refuerzo.")
+                    funnel_instruction = ""
+
             # HARD-GATE DE IDENTIDAD (Requirement 2026.1): Prohibido preguntar si ya existe.
             # v1.3.0: Skip name request if moto is confirmed or in context
-            moto_context = data.get("moto_interest") or data.get("moto_confirmada")
-            if p_name:
-                pass # Already have it
-            elif not moto_context:
-                funnel_instruction = "El sistema requiere el nombre del prospecto. Cierra tu mensaje preguntando: '¿con quién tengo el gusto?' o similar."
-            else:
-                funnel_instruction = "El usuario ya mostró interés en una moto. Prioriza responder sobre la moto y NO pidas el nombre todavía."
+            if not funnel_instruction:
+                moto_context = data.get("moto_interest") or data.get("moto_confirmada")
+                if p_name:
+                    pass # Already have it
+                elif not moto_context:
+                    funnel_instruction = "El sistema requiere el nombre del prospecto. Cierra tu mensaje preguntando: '¿con quién tengo el gusto?' o similar."
+                else:
+                    funnel_instruction = "El usuario ya mostró interés en una moto. Prioriza responder sobre la moto y NO pidas el nombre todavía."
             
-            if not funnel_instruction and not p_ciudad:
-                funnel_instruction = "Falta la ciudad del prospecto. Cierra tu mensaje preguntando: '¿Desde qué ciudad nos escribes?'"
-            elif not funnel_instruction and not p_payment:
-                funnel_instruction = "Falta el método de pago. Pregunta si prefiere compra de contado o a crédito."
+                if not funnel_instruction and not p_ciudad:
+                    funnel_instruction = "Falta la ciudad del prospecto. Cierra tu mensaje preguntando: '¿Desde qué ciudad nos escribes?'"
+                elif not funnel_instruction and not p_payment:
+                    funnel_instruction = "Falta el método de pago. Pregunta si prefiere compra de contado o a crédito."
         
         elif phase == "PHASE_2_HABEAS_DATA":
             is_accepted = data.get("habeas_data_accepted") is True

@@ -81,6 +81,7 @@ def _build_ms_mock(prospect: dict | None = None) -> MagicMock:
     ms.set_human_help_status = AsyncMock()
     ms.update_prospect_summary = AsyncMock()
     ms.delete_prospect_completely = AsyncMock(return_value=True)
+    ms.reset_phase_latches = AsyncMock(return_value=True)
     ms.get_or_create_prospect = AsyncMock(return_value=prospect)
     ms.get_prospect_data = AsyncMock(return_value=prospect)
     ms.get_chat_history = AsyncMock(return_value=[])
