@@ -284,3 +284,38 @@ def test_rh4_fallback_copy_is_honest():
     system = cerebro._fallback_response("query", reason="system_error")
     assert "no me cargó tu mensaje" not in system
     assert "Se me quedó colgado el sistema" in system
+
+
+@pytest.mark.asyncio
+async def test_rh4_tool_loop_fallback_copy_is_honest():
+    """
+    [BOT-BUILD-PCC-LOOP-017 / PIN-4] El path degradado del tool-loop
+    (ai_brain.py:3027) debe invocar _fallback_response con reason='empty_candidate'
+    cuando hay resultados de catálogo, y debe anexar el Top Result (nombre + precio + imagen).
+    """
+    catalog = _build_fake_catalog()
+    cerebro = CerebroIA(catalog_service=catalog)
+    cerebro.client = MagicMock()
+
+    async def mock_call_gemini(*args, **kwargs):
+        fc = MagicMock()
+        fc.name = "search_catalog"
+        fc.args = {"query": "doble proposito"}
+        part = MagicMock(function_call=fc, text=None)
+        return MagicMock(candidates=[MagicMock(content=MagicMock(parts=[part]))])
+
+    with patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call_gemini), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+
+        res = await cerebro._generate_with_retry_async(
+            "doble proposito",
+            context="",
+            prospect_data={"exists": True, "nombre": "Test"},
+            history=[],
+        )
+
+    assert "Se me quedó colgado el sistema" not in res
+    assert "inconveniente procesando esa búsqueda" in res
+    assert "Victory MRX 150" in res
+    assert "$8.500.000" in res

@@ -1294,6 +1294,41 @@ La FAQ no avanza el embudo. {one_shot}
                             f"🚨 [PCC VALIDATION] CATALOG_VALIDATION_FAIL - Max validation attempts reached. "
                             f"user_id={user_id} query='{texto}' - Returning degraded response."
                         )
+                        # [BOT-BUILD-PCC-LOOP-017] Degraded path: if we already have valid catalog
+                        # results, return the honest empty_candidate copy + deterministic Top Result.
+                        # [BOT-BUILD-PCC-LOOP-017] Degraded path: only if the generation
+                        # yielded an empty final_text do we route to the honest fallback.
+                        # If final_text is non-empty we preserve the legacy behavior of
+                        # returning it validated, avoiding regressions in non-search_catalog
+                        # flows (e.g., image caption, direct injection).
+                        if not final_text or not final_text.strip():
+                            _top_name = prospect_data.get("_catalog_top_name") if prospect_data else ""
+                            _top_image = prospect_data.get("_catalog_top_image") if prospect_data else ""
+                            _top_price = ""
+                            if _top_name and self._catalog_service:
+                                try:
+                                    _top_matches = self._catalog_service.search_items(_top_name)
+                                    if _top_matches:
+                                        _top_price = (
+                                            _top_matches[0].get("price")
+                                            or _top_matches[0].get("formatted_price")
+                                            or _top_matches[0].get("precio")
+                                            or ""
+                                        )
+                                except Exception as _pcc_err:
+                                    logger.exception(f"⚠️ [PCC-LOOP-017] Error recuperando precio del Top Result: {_pcc_err}")
+                                    _top_price = ""
+                            if _top_name:
+                                _extra_parts = [x for x in [
+                                    f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
+                                    f"💰 Precio: {_top_price}" if _top_price else "",
+                                    f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
+                                ] if x]
+                                _fallback = self._fallback_response(texto, history, reason="empty_candidate")
+                                if _extra_parts:
+                                    _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
+                                return _fallback
+                            return self._fallback_response(texto, history)
                         validated_text = CerebroIA._validate_output(final_text)
                         return CerebroIA._ensure_soat_anchor(validated_text)
                 else:
@@ -2086,6 +2121,21 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         await asyncio.sleep(wait_time)
                         continue
                     logger.exception(f"🚨 [AI FALLBACK REASON]: Gemini Inference Failure for {user_name}: {str(e)}")
+                    _local_matches = locals().get("matches", [])
+                    if locals().get("search_catalog_called") and locals().get("catalog_returned_results") and _local_matches:
+                        _top = _local_matches[0]
+                        _top_name = _top.get("name", "")
+                        _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
+                        _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
+                        _extra_parts = [x for x in [
+                            f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
+                            f"💰 Precio: {_top_price}" if _top_price else "",
+                            f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
+                        ] if x]
+                        _fallback = self._fallback_response(texto, history, reason="empty_candidate")
+                        if _extra_parts:
+                            _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
+                        return _fallback
                     return self._fallback_response(texto, history)
 
                 if not response.candidates or not response.candidates[0].content.parts:
@@ -2103,6 +2153,21 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         await asyncio.sleep(wait_time)
                         continue
                     logger.error(f"🚨 [AI FALLBACK REASON]: Empty candidates persisted after {max_retries} retries for {user_name}")
+                    _local_matches = locals().get("matches", [])
+                    if locals().get("search_catalog_called") and locals().get("catalog_returned_results") and _local_matches:
+                        _top = _local_matches[0]
+                        _top_name = _top.get("name", "")
+                        _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
+                        _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
+                        _extra_parts = [x for x in [
+                            f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
+                            f"💰 Precio: {_top_price}" if _top_price else "",
+                            f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
+                        ] if x]
+                        _fallback = self._fallback_response(texto, history, reason="empty_candidate")
+                        if _extra_parts:
+                            _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
+                        return _fallback
                     return self._fallback_response(texto, history)
 
                 # --- FORCED TOOL VALIDATION TURN (PVN-Hardened) ---
@@ -2172,6 +2237,21 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 await asyncio.sleep(wait_time)
                                 continue
                             logger.error(f"🚨 [AI FALLBACK REASON]: Empty candidates in forced turn persisted after {max_retries} retries for {user_name}")
+                            _local_matches = locals().get("matches", [])
+                            if locals().get("search_catalog_called") and locals().get("catalog_returned_results") and _local_matches:
+                                _top = _local_matches[0]
+                                _top_name = _top.get("name", "")
+                                _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
+                                _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
+                                _extra_parts = [x for x in [
+                                    f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
+                                    f"💰 Precio: {_top_price}" if _top_price else "",
+                                    f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
+                                ] if x]
+                                _fallback = self._fallback_response(texto, history, reason="empty_candidate")
+                                if _extra_parts:
+                                    _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
+                                return _fallback
                             return self._fallback_response(texto, history)
                 except Exception as e:
                     logger.exception(f"⚠️ Tool Validation Logic Error for {user_name}: {e}")
@@ -2193,12 +2273,30 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         response = await self._call_gemini_with_retry_async(
                             chat.send_message,
                             "[SYSTEM: Tu respuesta anterior llegó vacía. Genera AHORA la respuesta final "
-                            "al usuario usando ÚNICAMENTE los resultados de las herramientas ya ejecutadas.]",
-                            config=types.GenerateContentConfig(temperature=0.1)
+                            "al usuario usando ÚNICAMENTE los resultados de las herramientas ya ejecutadas. "
+                            "PROHIBIDO volver a invocar search_catalog; construye la recomendación con el "
+                            "⭐ TOP RESULT, precio ($) e imagen Markdown.]",
+                            config=types.GenerateContentConfig(temperature=0.1, tools=[])
                         )
                         if not response.candidates or not response.candidates[0].content.parts:
-                            _fb_reason = locals().get("_intercepted_reason_local", "empty_candidate")
-                            return self._fallback_response(texto, history, reason=_fb_reason)
+                            _fb_reason = locals().get("_intercepted_reason_local") or "empty_candidate"
+                            if _fb_reason == "interceptor_block":
+                                return self._fallback_response(texto, history, reason=_fb_reason)
+                            if search_catalog_called and catalog_returned_results and matches:
+                                _top = matches[0]
+                                _top_name = _top.get("name", "")
+                                _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
+                                _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
+                                _extra_parts = [x for x in [
+                                    f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
+                                    f"💰 Precio: {_top_price}" if _top_price else "",
+                                    f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
+                                ] if x]
+                                _fallback = self._fallback_response(texto, history, reason="empty_candidate")
+                                if _extra_parts:
+                                    _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
+                                return _fallback
+                            return self._fallback_response(texto, history)
                         continue
 
                     candidate = response.candidates[0]
@@ -2211,6 +2309,20 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             ai_response = "".join([part.text for part in candidate.content.parts if part.text]).strip()
                             if not ai_response:
                                 logger.error(f"🚨 [AI FALLBACK REASON]: Empty AI Text Response (Turn final) for {user_name}")
+                                if search_catalog_called and catalog_returned_results and matches:
+                                    _top = matches[0]
+                                    _top_name = _top.get("name", "")
+                                    _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
+                                    _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
+                                    _extra_parts = [x for x in [
+                                        f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
+                                        f"💰 Precio: {_top_price}" if _top_price else "",
+                                        f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
+                                    ] if x]
+                                    _fallback = self._fallback_response(texto, history, reason="empty_candidate")
+                                    if _extra_parts:
+                                        _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
+                                    return _fallback
                                 return self._fallback_response(texto, history)
 
                             # --- GUARDRAILS ---
@@ -2262,12 +2374,15 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     
                                     logger.warning(f"🚨 Consistency Guardrail Triggered: {error_msg}")
                                     retry_name_reinforcement = f" Sigue hablando con {user_name}." if user_name != "desconocido" else ""
-                                    retry_instruction = f"[SYSTEM: ERROR: {error_msg} INSTRUCCIÓN: Corrige la respuesta usando ÚNICAMENTE los modelos, precios e imágenes devueltos por el catálogo.{retry_name_reinforcement}]"
+                                    retry_instruction = f"[SYSTEM: ERROR: {error_msg} INSTRUCCIÓN: Corrige la respuesta usando ÚNICAMENTE los modelos, precios e imágenes devueltos por el catálogo. PROHIBIDO volver a invocar search_catalog.{retry_name_reinforcement}]"
                                     
                                     response = await self._call_gemini_with_retry_async(
                                         chat.send_message,
                                         retry_instruction,
-                                        config=types.GenerateContentConfig(temperature=0.1)
+                                        config=types.GenerateContentConfig(
+                                            temperature=0.1,
+                                            tools=[] if (search_catalog_called and catalog_returned_results) else None,
+                                        )
                                     )
                                     continue
                                 elif moto_confirmada and (not has_price or not has_image):
@@ -2321,6 +2436,20 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             return ai_response
                         except Exception as e:
                             logger.exception(f"⚠️ Error extracting text for {user_name}: {e}")
+                            if search_catalog_called and catalog_returned_results and matches:
+                                _top = matches[0]
+                                _top_name = _top.get("name", "")
+                                _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
+                                _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
+                                _extra_parts = [x for x in [
+                                    f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
+                                    f"💰 Precio: {_top_price}" if _top_price else "",
+                                    f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
+                                ] if x]
+                                _fallback = self._fallback_response(texto, history, reason="empty_candidate")
+                                if _extra_parts:
+                                    _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
+                                return _fallback
                             return self._fallback_response(texto, history)
 
                     # Execute function calls
@@ -3015,15 +3144,32 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
 
                     if response_parts:
                         turns += 1
+                        _tool_loop_cfg_kwargs = {"temperature": 0.2}
+                        if search_catalog_called and catalog_returned_results:
+                            _tool_loop_cfg_kwargs["tools"] = []
                         response = await self._call_gemini_with_retry_async(
                             chat.send_message,
                             response_parts,
-                            config=types.GenerateContentConfig(temperature=0.2)
+                            config=types.GenerateContentConfig(**_tool_loop_cfg_kwargs)
                         )
                     else:
                         break
                 
                 logger.error(f"🚨 [AI FALLBACK REASON]: Tool loop exited without generating text in {turns} turns for {user_name}")
+                if search_catalog_called and catalog_returned_results and matches:
+                    _top = matches[0]
+                    _top_name = _top.get("name", "")
+                    _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
+                    _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
+                    _extra_parts = [x for x in [
+                        f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
+                        f"💰 Precio: {_top_price}" if _top_price else "",
+                        f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
+                    ] if x]
+                    _fallback = self._fallback_response(texto, history, reason="empty_candidate")
+                    if _extra_parts:
+                        _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
+                    return _fallback
                 return self._fallback_response(texto, history)
             
             except InvalidArgument as e:

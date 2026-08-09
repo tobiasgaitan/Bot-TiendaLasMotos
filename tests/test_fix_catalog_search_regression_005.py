@@ -26,6 +26,7 @@ from app.services.catalog_service import CatalogService
 
 
 FALLBACK_MARKER = "Se me quedó colgado el sistema"
+HONEST_FALLBACK_MARKER = "inconveniente procesando esa búsqueda"
 
 APACHE_ITEM = {
     "id": "apache_rtr_200_4v_fi_abs",
@@ -153,13 +154,14 @@ async def test_empty_candidate_in_turn_recovers_via_inline_retry():
 
 
 # ---------------------------------------------------------------------------
-# T2: Empty candidate PERSISTENTE → fallback preservado (degradación intacta)
+# T2: Empty candidate PERSISTENTE con resultados de catálogo → fallback honesto
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_empty_candidate_persistent_still_falls_back():
+async def test_empty_candidate_persistent_with_catalog_results_uses_honest_fallback():
     """
-    [BOT-BUILD-FIX-CATALOG-SEARCH-REGRESSION-005] Si Gemini devuelve candidates=[]
-    también en el retry inline, el fallback controlado DEBE preservarse.
+    [BOT-BUILD-PCC-LOOP-017] Si Gemini devuelve candidates=[] también en el retry
+    inline PERO ya tenemos resultados de catálogo, el fallback debe ser el copy
+    honesto de DRIFT-CANON-016 y debe incluir el Top Result (nombre + precio + imagen).
     """
     cerebro, catalog_service = _build_cerebro()
 
@@ -181,9 +183,51 @@ async def test_empty_candidate_persistent_still_falls_back():
         res = await cerebro.pensar_respuesta("apache", prospect_data=prospect_data)
 
     assert res is not None
-    assert FALLBACK_MARKER in res, (
-        "La degradación controlada se perdió: empty candidates persistente debe "
-        "seguir retornando el fallback."
+    assert FALLBACK_MARKER not in res, (
+        "REGRESIÓN: con resultados de catálogo, el fallback persistente emitió "
+        "el copy deshonesto de system_error."
     )
+    assert HONEST_FALLBACK_MARKER in res
+    assert "APACHE RTR 200" in res
+    assert "$13.899.999" in res
+    assert "![TVS APACHE RTR 200 4V XC FI ABS](" in res
+    # inicial + tool-result (vacío) + retry inline (vacío) → fallback
+    assert len(gemini_calls) == 3
+
+
+# ---------------------------------------------------------------------------
+# T3: Empty candidate PERSISTENTE sin resultados → legacy system_error preservado
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_empty_candidate_persistent_no_catalog_results_uses_legacy_fallback():
+    """
+    [BOT-BUILD-PCC-LOOP-017 / C-21] Sin resultados de catálogo, el path degradado
+    conserva el fallback legacy system_error; no hay Top Result que mostrar.
+    """
+    cerebro, catalog_service = _build_cerebro()
+
+    gemini_calls = []
+
+    async def mock_call_gemini(*args, **kwargs):
+        gemini_calls.append(args)
+        if len(gemini_calls) == 1:
+            return _fc_search_catalog("apache")
+        return _empty_response()  # vacío persistente (tool-result Y retry)
+
+    prospect_data = {"exists": True, "nombre": "Mario", "habeas_data_accepted": False}
+
+    with patch.object(catalog_service, "search_items", return_value=[]), \
+         patch.object(cerebro, "_call_gemini_with_retry_async", side_effect=mock_call_gemini), \
+         patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
+         patch("app.services.ai_brain.SDK_AVAILABLE", True):
+
+        res = await cerebro.pensar_respuesta("apache", prospect_data=prospect_data)
+
+    assert res is not None
+    assert FALLBACK_MARKER in res, (
+        "Sin resultados de catálogo, el fallback degradado debe preservar el "
+        "copy legacy system_error."
+    )
+    assert HONEST_FALLBACK_MARKER not in res
     # inicial + tool-result (vacío) + retry inline (vacío) → fallback
     assert len(gemini_calls) == 3
