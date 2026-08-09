@@ -1659,12 +1659,22 @@ async def _pipeline_audio(
 
             # 1. LINEAR BLOCKING: Memory Sync (Wait for Firestore)
             logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync (Audio) for {user_phone}")
-            await ms.generate_and_update_summary(
-                user_phone, 
-                f"User sent audio. Transcription: {transcription}", 
-                cerebro_ia, 
-                last_bot_question=last_bot_q
-            )
+            hint = (prospect_data or {}).get("_catalog_top_name")
+            if hint:
+                await ms.generate_and_update_summary(
+                    user_phone, 
+                    f"User sent audio. Transcription: {transcription}", 
+                    cerebro_ia, 
+                    last_bot_question=last_bot_q,
+                    catalog_moto_hint=hint
+                )
+            else:
+                await ms.generate_and_update_summary(
+                    user_phone, 
+                    f"User sent audio. Transcription: {transcription}", 
+                    cerebro_ia, 
+                    last_bot_question=last_bot_q
+                )
 
             # 2. GESTIÓN DE VERDAD: Re-fetch autoritativo post-sync (Espeja patrón TEXT)
             # [BOT-ROUTER-AUDIO-LINEAGE-123] Este es el único prospect_data confiable.
@@ -1935,12 +1945,22 @@ async def _pipeline_text_cognitive(
 
             # 1. Generate & Update Summary (BLOCKING)
             logger.info(f"🧠 [LINEAR BLOCKING] Starting Memory Sync for {user_phone}")
-            await ms.generate_and_update_summary(
-                user_phone, 
-                conversation, 
-                cerebro_ia, 
-                last_bot_question=last_bot_q
-            )
+            hint = (prospect_data or {}).get("_catalog_top_name")
+            if hint:
+                await ms.generate_and_update_summary(
+                    user_phone, 
+                    conversation, 
+                    cerebro_ia, 
+                    last_bot_question=last_bot_q,
+                    catalog_moto_hint=hint
+                )
+            else:
+                await ms.generate_and_update_summary(
+                    user_phone, 
+                    conversation, 
+                    cerebro_ia, 
+                    last_bot_question=last_bot_q
+                )
 
             # 2. GESTIÓN DE VERDAD: Re-fetch fresh prospect data from Firestore
             prospect_data = await ms.get_prospect_data(user_phone)

@@ -642,14 +642,35 @@ class MemoryService:
             if hint:
                 extracted["moto_interest"] = hint
                 logger.info(f"🔁 [MOTO-CANON] catalog_moto_hint='{hint}' overrides extracted moto_interest for {clean_phone}")
-            elif incoming_moto and not self._is_canonical_moto_interest(incoming_moto, catalog) and self._is_canonical_moto_interest(current_data.get("moto_interest"), catalog):
-                # Protect an already-canonical DB value from a non-canonical (category/style)
-                # extraction when no tool hint is available.
-                logger.info(
-                    f"🔁 [MOTO-CANON] preserving canonical DB moto_interest='{current_data.get('moto_interest')}' "
-                    f"over non-canonical extracted='{incoming_moto}' for {clean_phone}"
-                )
-                extracted.pop("moto_interest", None)
+            elif incoming_moto:
+                incoming_is_canonical = self._is_canonical_moto_interest(incoming_moto, catalog)
+                current_is_canonical = self._is_canonical_moto_interest(current_data.get("moto_interest"), catalog)
+                if not incoming_is_canonical and not current_is_canonical:
+                    # [BOT-BUILD-DRIFT-CANON-016-B] Reject category/alias/partial model extractions
+                    # that resolve to catalog results, but allow no-match conservative values.
+                    try:
+                        matches = catalog.search_items(incoming_moto) if catalog else []
+                    except Exception:
+                        matches = []
+                    if matches:
+                        logger.info(
+                            f"🔁 [MOTO-CANON] rejecting non-canonical extraction='{incoming_moto}' "
+                            f"(resolves to {len(matches)} catalog matches, no hint/DB) for {clean_phone}"
+                        )
+                        extracted.pop("moto_interest", None)
+                    else:
+                        logger.info(
+                            f"🔁 [MOTO-CANON] allowing non-canonical no-match extraction='{incoming_moto}' "
+                            f"for {clean_phone}"
+                        )
+                elif not incoming_is_canonical and current_is_canonical:
+                    # Protect an already-canonical DB value from a non-canonical (category/style)
+                    # extraction when no tool hint is available.
+                    logger.info(
+                        f"🔁 [MOTO-CANON] preserving canonical DB moto_interest='{current_data.get('moto_interest')}' "
+                        f"over non-canonical extracted='{incoming_moto}' for {clean_phone}"
+                    )
+                    extracted.pop("moto_interest", None)
 
             # Use centralized merge logic
             update_payload = self._merge_extracted_data(current_data, extracted)
@@ -790,9 +811,28 @@ class MemoryService:
             doc_snap = await self._firestore_io(doc_ref.get(), phone=clean_phone, label="update_prospect_moto_interest.get")
             current_data = doc_snap.to_dict() if doc_snap.exists else {}
             extracted_data = {"moto_interest": str(moto_interest).strip()}
-            # [M2] Conservative protection: if the hint is not canonical but the DB
-            # already stores a canonical model, keep the DB value.
-            if not self._is_canonical_moto_interest(extracted_data["moto_interest"], catalog) and self._is_canonical_moto_interest(current_data.get("moto_interest"), catalog):
+            # [M2] Canonical gate: reject non-canonical hints that resolve to catalog matches
+            # when neither DB nor hint is canonical; allow no-match conservative hints.
+            # [BOT-BUILD-DRIFT-CANON-016-B] Post-reset DB is empty, so "already canonical DB" guard
+            # is insufficient; we must also reject category/style hints outright.
+            incoming_is_canonical = self._is_canonical_moto_interest(extracted_data["moto_interest"], catalog)
+            current_is_canonical = self._is_canonical_moto_interest(current_data.get("moto_interest"), catalog)
+            if not incoming_is_canonical and not current_is_canonical:
+                try:
+                    matches = catalog.search_items(extracted_data["moto_interest"]) if catalog else []
+                except Exception:
+                    matches = []
+                if matches:
+                    logger.info(
+                        f"🔁 [MOTO-CANON] rejecting non-canonical hint '{extracted_data['moto_interest']}' "
+                        f"(resolves to {len(matches)} catalog matches, no canonical DB) for {clean_phone}"
+                    )
+                    return
+                logger.info(
+                    f"🔁 [MOTO-CANON] allowing non-canonical no-match hint '{extracted_data['moto_interest']}' "
+                    f"for {clean_phone}"
+                )
+            if not incoming_is_canonical and current_is_canonical:
                 logger.info(
                     f"🔁 [MOTO-CANON] skipping persistence: DB already has canonical "
                     f"'{current_data.get('moto_interest')}' and hint '{extracted_data['moto_interest']}' is not canonical for {clean_phone}"

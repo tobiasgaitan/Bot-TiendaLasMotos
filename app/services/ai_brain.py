@@ -429,44 +429,60 @@ class CerebroIA:
         """
         Determines if a catalog search query matches the prospect's motorcycle of interest
         either through regional synonyms (aliases dictionary) or clean alphanumeric substring match.
+        [BOT-BUILD-DRIFT-CANON-016-A] Strip diacritics ONLY from the stored moto_interest side
+        so 'doble propósito' (user-extracted) matches the catalog alias 'doble proposito',
+        while keeping the query side accent-sensitive to preserve drift-blocking of typos
+        like 'señoriter' (missing final 'a') in the alias lists.
         """
+        import unicodedata
+
+        def _strip_diacritics(s: str) -> str:
+            return "".join(
+                c for c in unicodedata.normalize("NFD", s)
+                if unicodedata.category(c) != "Mn"
+            )
+
         q = str(query).lower().strip()
-        m = str(moto_interest).lower().strip()
-        
-        if not q or not m:
+        m_raw = str(moto_interest).lower().strip()
+        m = _strip_diacritics(m_raw)
+
+        if not q or not m_raw:
             return False
-            
-        if q == m:
+
+        if q == m_raw or q == m:
             return True
-            
-        # 1. Coincidencia por subcadena limpia (ej. "TVS Apache 160" y "Apache")
+
+        # 1. Coincidencia por subcadena limpia (usar m normalizado)
         q_alnum = "".join(c for c in q if c.isalnum())
         m_alnum = "".join(c for c in m if c.isalnum())
         if q_alnum and m_alnum:
             if q_alnum in m_alnum or m_alnum in q_alnum:
                 return True
-                
+
         # 2. Coincidencia por alias de catálogo (regionalismos)
+        #    q permanece con tildes (preserva PINs de typo-drift).
+        #    m se compara sin tildes para alinear extracción del LLM con alias del catálogo.
         for category, syns in aliases.items():
             cat_lower = str(category).lower().strip()
             syns_lower = [str(s).lower().strip() for s in syns]
-            
-            # Check if query is category or in syns
+
+            # Check if query is category or in syns (accent-sensitive on query side)
             q_matches = (q == cat_lower or q in syns_lower)
-            
+
             # Check if moto_interest matches the category or matches any synonym containing/contained in m
             m_matches = False
-            if m == cat_lower:
+            if m == _strip_diacritics(cat_lower):
                 m_matches = True
             else:
                 for syn in syns_lower:
-                    if syn in m or m in syn:
+                    syn_norm = _strip_diacritics(syn)
+                    if syn_norm in m or m in syn_norm:
                         m_matches = True
                         break
-            
+
             if q_matches and m_matches:
                 return True
-                
+
         return False
 
     def _is_abstract_credit_faq(self, text: str) -> bool:
@@ -2181,7 +2197,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             config=types.GenerateContentConfig(temperature=0.1)
                         )
                         if not response.candidates or not response.candidates[0].content.parts:
-                            return self._fallback_response(texto, history)
+                            _fb_reason = locals().get("_intercepted_reason_local", "empty_candidate")
+                            return self._fallback_response(texto, history, reason=_fb_reason)
                         continue
 
                     candidate = response.candidates[0]
@@ -2398,9 +2415,36 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                     skip_catalog = True
                                                     logger.info(f"🛡️ [INTERCEPTOR] Búsqueda de '{query}' bloqueada. Ratio: {ratio:.2f} (Drift Threshold). Protegiendo '{moto_interest_prev}'.")
                                     
+                                    _intercepted_reason_local = None
                                     if skip_catalog:
-                                        search_results = f"[SISTEMA: El usuario ya tiene en contexto la moto '{moto_interest_prev}'. REGLA OBLIGATORIA: NO listes otras motos ni ofrezcas más opciones. Enfócate en concretar la venta de '{moto_interest_prev}' (preguntar forma de pago o iniciar crédito).]"
-                                    else:
+                                        # [BOT-BUILD-DRIFT-CANON-016-A] Re-inyección determinista SOLO si
+                                        # el término protegido es un modelo canónico conocido. Si es una
+                                        # categoría/estilo no canónico, conservamos el bloqueo original
+                                        # para no romper los PINs de drift-blocking de typos.
+                                        cat_items = getattr(self._catalog_service, "_items", None)
+                                        is_canonical_protected = False
+                                        if isinstance(cat_items, list) and cat_items:
+                                            norm_fn = getattr(self._catalog_service, "_normalize_item_id_key", None)
+                                            if callable(norm_fn):
+                                                try:
+                                                    target_norm = norm_fn(str(moto_interest_prev))
+                                                    if isinstance(target_norm, str):
+                                                        is_canonical_protected = any(
+                                                            norm_fn(str(item.get("name", ""))) == target_norm
+                                                            for item in cat_items
+                                                        )
+                                                except Exception:
+                                                    is_canonical_protected = False
+                                        if is_canonical_protected:
+                                            logger.info(f"🛡️ [INTERCEPTOR] Búsqueda de '{query}' bloqueada. Re-inyectando término protegido canónico '{moto_interest_prev}'.")
+                                            query = str(moto_interest_prev)
+                                            skip_catalog = False
+                                            _intercepted_reason_local = "interceptor_block"
+                                        else:
+                                            logger.info(f"🛡️ [INTERCEPTOR] Búsqueda de '{query}' bloqueada. Término protegido '{moto_interest_prev}' no es canónico; manteniendo bloqueo.")
+                                            search_results = f"[SISTEMA: El usuario ya tiene en contexto la moto '{moto_interest_prev}'. REGLA OBLIGATORIA: NO listes otras motos ni ofrezcas más opciones. Enfócate en concretar la venta de '{moto_interest_prev}' (preguntar forma de pago o iniciar crédito).]"
+                                    
+                                    if not skip_catalog:
                                         t_start = time.perf_counter()
                                         
                                         # Llamada estructurada certificada en v9.9.7
@@ -3196,13 +3240,18 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             text,
         ))
 
-    def _fallback_response(self, texto: str, history: list = []) -> str:
+    def _fallback_response(self, texto: str, history: list = [], reason: str = "system_error") -> str:
         """
-        Clean, generic fallback response to avoid hallucinations.
-        Uses history to allow basic continuity if AI fails.
+        Clean, honest fallback response to avoid hallucinations.
+        [BOT-BUILD-DRIFT-CANON-016-D] The copy is chosen by reason so it does not
+        falsely claim the message was not loaded when the failure is upstream.
         """
-        return "¡Qué pena! Se me quedó colgado el sistema del concesionario un segundo y no me cargó tu mensaje. 😅 ¿Me lo repites para seguir ayudándote?"
-
+        if reason == "empty_candidate":
+            return "¡Qué pena! Tuve un inconveniente procesando esa búsqueda. ¿Me confirmas la moto que tienes en mente para buscarla mejor? 😅"
+        if reason == "interceptor_block":
+            return "Ya tenemos en contexto la moto de tu interés; déjame ayudarte a concretarla. ¿Quieres ver la ficha técnica o calcular el crédito? 🏍️"
+        # reason == "system_error" (default) and legacy callers
+        return "¡Qué pena! Se me quedó colgado el sistema del concesionario un segundo. 😅 ¿Me lo repites para seguir ayudándote?"
     # evaluate_survey_intent() REMOVED — Sprint 1 (2026-03-13)
     # WHY: SurveyService (the Python-level state machine) was deleted in a previous sprint.
     # evaluate_survey_intent() was its sole caller and is now unreachable dead code.

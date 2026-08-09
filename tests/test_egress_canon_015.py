@@ -212,10 +212,12 @@ async def test_alignment_guard_retries_until_top_result_recommended():
     responses = [
         _make_fc_response("search_catalog", {"query": "doble propósito"}),
         _make_text_response(
-            f"Para doble propósito te recomiendo la {MRX150_NAME} por $9.000.000."
+            f"Para doble propósito te recomiendo la {MRX150_NAME} por $9.000.000. "
+            f"![{MRX150_NAME}]({MRX150_URL})\n\nFicha Tecnica: Motor 150cc, ideal para ciudad."
         ),
         _make_text_response(
-            f"Para doble propósito te recomiendo la {MRX125_NAME} por $8.500.000."
+            f"Para doble propósito te recomiendo la {MRX125_NAME} por $8.500.000. "
+            f"![{MRX125_NAME}]({MRX125_URL})\n\nFicha Tecnica: Motor 125cc, perfecta para doble propósito."
         ),
     ]
 

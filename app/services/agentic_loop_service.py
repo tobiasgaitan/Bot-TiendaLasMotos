@@ -73,17 +73,21 @@ class AgenticOrchestrator:
             raise e
 
     def run_checker(self, bot_response: str, is_catalog_query: bool = False, prospect_data: Dict[str, Any] = None, user_prompt: str = None, trace_id: Optional[str] = None) -> Dict[str, Any]:
+        def _raw_purchase_intent(text: str) -> bool:
+            if not text:
+                return False
+            return bool(re.search(
+                r"\b(quisiera|quiero|busco|buscar|comprar|compro|adquirir|ver|una moto|motos|"
+                r"doble prop[oó]sito|enduro|trocha|campo|deportiva|scooter|moped|autom[aá]tica|"
+                r"se[ñn]oritera|calle|trabajo|cu[aá]l moto|estoy interesad[oa]|"
+                r"me interesa|me gustar[íi]a)\b",
+                text.lower(),
+            ))
+
         has_price = bool(re.search(r"\$\d+", bot_response))
         has_image = bool(re.search(r"!\[.*?\]\(.*?\)|\[IMAGE:.*?\]", bot_response))
 
         has_moto_interest = bool(prospect_data and prospect_data.get("moto_interest"))
-        
-        is_catalog_query_effective = (
-            is_catalog_query
-            or is_tech_spec_query(user_prompt or "")
-        )
-        
-        has_ficha = "Ficha Tecnica:" in bot_response if is_catalog_query_effective else True
 
         # Detección semántica de intenciones de FAQ puras
         # [BOT-BUILD-REGRESSION-TRIAGE-COMPETENCIA-CUOTA-203]
@@ -92,6 +96,20 @@ class AgenticOrchestrator:
         # evita que un token como "datacredito" o "reportado" quede atrapado
         # dentro del anidamiento `if is_faq_intent:` y nunca active el bypass.
         is_credit_faq_abstract = is_abstract_credit_faq(user_prompt)
+
+        # [BOT-BUILD-DRIFT-CANON-016-C] Intención de compra: señales léxicas explícitas,
+        # pero anuladas cuando el usuario está haciendo una FAQ crediticia abstracta
+        # (preserva PINs 1588-1696: "quiero saber requisitos" no es compra).
+        raw_purchase = _raw_purchase_intent(user_prompt or "")
+        is_purchase_intent = raw_purchase and not is_credit_faq_abstract
+
+        is_catalog_query_effective = (
+            is_catalog_query
+            or is_tech_spec_query(user_prompt or "")
+            or is_purchase_intent
+        )
+
+        has_ficha = "Ficha Tecnica:" in bot_response if is_catalog_query_effective else True
 
         is_faq_intent = False
         if user_prompt:
@@ -117,13 +135,14 @@ class AgenticOrchestrator:
             (not is_catalog_query_effective)
             or is_credit_faq_abstract
             or (is_faq_intent and not has_moto_interest)
-        )
+        ) and not is_purchase_intent
 
         phone = (prospect_data or {}).get("phone") or "unknown"
         logger.info(
             f"🔍 [PCC-FORENSIC] turn_id={trace_id!r} phone={phone} "
             f"has_price={has_price} has_image={has_image} has_ficha={has_ficha} "
             f"bypass_strict={bypass_strict} is_catalog_query_effective={is_catalog_query_effective} "
+            f"is_purchase_intent={is_purchase_intent} raw_purchase={raw_purchase} "
             f"response_len={len(bot_response) if bot_response else 0}"
         )
         

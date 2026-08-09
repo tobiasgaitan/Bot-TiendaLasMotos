@@ -532,7 +532,8 @@ async def test_pin_014_e2e_reset_then_category_credit_stays_phase_1_with_recomme
     user_text = "Hola, quisiera una moto doble propósito a crédito"
     scripted_final_text = (
         "¡Hola! Qué gusto saludarte. Para uso doble propósito te recomiendo la "
-        f"{MOTO_VICTORY} por $8.500.000. ![{MOTO_VICTORY}]({MOTO_URL}) "
+        f"{MOTO_VICTORY} por $8.500.000. ![{MOTO_VICTORY}]({MOTO_URL})\n\n"
+        "Ficha Tecnica: Motor doble propósito, perfecto para ciudad y campo. "
         "¿con quién tengo el gusto?"
     )
     scripted_responses = [
