@@ -2222,6 +2222,14 @@ async def _pipeline_egress(
     if prospect_data and isinstance(prospect_data, dict):
         score_marker = prospect_data.pop("_score_resultado", None)
 
+    # [BOT-BUILD-EGRESS-CANON-015] Consume ephemeral TOP RESULT stash once per turn.
+    # Prohibida su persistencia en Firestore (C-15.2); se poppea aquí igual que _score_resultado.
+    catalog_top_name = None
+    catalog_top_image = None
+    if prospect_data and isinstance(prospect_data, dict):
+        catalog_top_name = prospect_data.pop("_catalog_top_name", None)
+        catalog_top_image = prospect_data.pop("_catalog_top_image", None)
+
     # Check for AI Handoff
     if response_text.startswith("HANDOFF_TRIGGERED"):
         if score_marker:
@@ -2302,35 +2310,89 @@ async def _pipeline_egress(
             else:
                 logger.info("⏩ [BYPASS] Skipping image injection: moto already confirmed.")
 
-        # [A2] Deterministic Visual-Lock backstop: if the response recommends a
-        # canonical model with a price but the LLM omitted the Markdown image,
-        # inject it via Strategy A before falling back to plain text.
-        if not has_markdown_image:
+        # [A2] Deterministic Visual-Lock backstop v2 (BOT-BUILD-EGRESS-CANON-015):
+        # Resolve the post-URL-Lock state BEFORE deciding image injection so that
+        # Markdown present-but-extirpated (e.g. hallucinated auteco.com.co) still
+        # gets the canonical ficha image of the TOP RESULT via Strategy A.
+        try:
+            cleaned_response_text, url_lock_report = egress_guard.enforce_urls(response_text)
+            if url_lock_report.substituted or url_lock_report.stripped:
+                logger.info(f"🔒 [URL-LOCK] {url_lock_report.summary()}")
+        except Exception as e:
+            logger.exception(f"❌ [URL-LOCK] enforce_urls failed in _pipeline_egress: {e}")
+            cleaned_response_text = response_text
+            url_lock_report = None
+
+        has_canonical_image_after_lock = _response_has_image_markdown(cleaned_response_text)
+        surviving_image_url = None
+        if has_canonical_image_after_lock:
+            m = re.search(r'!\[.*?\]\((https?://[^\s\)]+)\)', cleaned_response_text)
+            if m:
+                surviving_image_url = m.group(1)
+
+        # Fallback to legacy Visual-Lock when the ephemeral top-result stash is absent.
+        # Preserves pre-CANON-015 callers that pass moto_interest + catalog directly.
+        if not catalog_top_image:
+            visual_lock = _ensure_visual_lock(response_text, prospect_data, catalog)
+            if visual_lock:
+                catalog_top_image, catalog_top_name = visual_lock
+
+        # [CANON-015] A stashed top image must survive URL-Lock. Non-canonical
+        # stashed URLs (e.g., test harnesses or misconfigured catalog feeds) must
+        # NOT bypass the unified egress pipeline with a direct image injection.
+        if catalog_top_image:
+            safe_top_image, _top_lock_report = egress_guard.enforce_image_url(catalog_top_image)
+            if not safe_top_image:
+                logger.warning(
+                    f"🚨 [EGRESS-CANON] Stashed top image rejected by URL-Lock; "
+                    f"falling back to unified egress: {catalog_top_image}"
+                )
+                catalog_top_image = None
+            else:
+                catalog_top_image = safe_top_image
+
+        needs_inject = False
+        inject_reason = None
+        if catalog_top_image:
+            if not surviving_image_url:
+                needs_inject = True
+                inject_reason = "missing_or_stripped"
+            else:
+                surviving_owner = egress_guard.image_owner_model(surviving_image_url)
+                if surviving_owner and surviving_owner.strip().lower() != (catalog_top_name or "").strip().lower():
+                    needs_inject = True
+                    inject_reason = "wrong_model"
+
+        if needs_inject:
             try:
-                visual_lock = _ensure_visual_lock(response_text, prospect_data, catalog)
-                if visual_lock:
-                    image_url, moto_name = visual_lock
-                    caption, _ = egress_guard.enforce_urls(response_text)
-                    caption = egress_guard.enforce_length(caption)
-                    logger.info(
-                        f"🖼️ [EGRESS-FORENSIC] turn_id={turn_id} Visual-Lock deterministic injection: "
-                        f"image_url={image_url} moto={moto_name}"
-                    )
-                    await _send_whatsapp_image(user_phone, image_url, caption=caption, phone_number_id=phone_number_id)
-                    if memory_service_module.memory_service:
-                        if score_marker:
-                            await memory_service_module.memory_service.persist_credit_score_result(user_phone, score_marker, response_text)
-                        else:
-                            await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
-                    return
+                # Strip the markdown/legacy image token from the caption because
+                # the canonical image is being delivered as the WhatsApp image
+                # payload; leaving the token would show the wrong model URL.
+                caption = re.sub(r'!\[[\s\S]*?\]\s*\((https?://[^\s\)]+)\)', '', cleaned_response_text)
+                caption = re.sub(r'\[IMAGE:\s*(https?://[^\s\]]+)\]', '', caption).strip()
+                caption = egress_guard.enforce_length(caption)
+                logger.info(
+                    f"🖼️ [EGRESS-FORENSIC] turn_id={turn_id} Strategy A canonical injection: "
+                    f"image_url={catalog_top_image} top_name={catalog_top_name} reason={inject_reason}"
+                )
+                assert catalog_top_image is not None, "[EGRESS-CANON] catalog_top_image must be set to inject"
+                await _send_whatsapp_image(user_phone, catalog_top_image, caption=caption, phone_number_id=phone_number_id)
+                if memory_service_module.memory_service:
+                    if score_marker:
+                        await memory_service_module.memory_service.persist_credit_score_result(user_phone, score_marker, response_text)
+                    else:
+                        await memory_service_module.memory_service.save_message(user_phone, "model", response_text)
+                return
             except Exception as e:
-                logger.exception(f"❌ [VISUAL-LOCK] Deterministic injection failed for {user_phone}: {e}")
+                logger.exception(f"❌ [VISUAL-LOCK] Canonical image injection failed for {user_phone}: {e}")
 
         # [AUD-SCORE-PERSIST-001] Preserve exact call signature when no marker
         # (pin PEI-1/PEI-4); pass score_marker only when present.
         extra = {}
         if score_marker:
             extra["score_persist"] = score_marker
+        if catalog_top_name:
+            extra["recommended_model"] = catalog_top_name
         await _process_and_send_egress_message(user_phone, response_text, phone_number_id=phone_number_id, **extra)
 
 
@@ -2344,6 +2406,7 @@ async def _process_and_send_egress_message(
     phone_number_id: Optional[str] = None,
     *,
     score_persist: Optional[Union[Dict[str, Any], int, float]] = None,
+    recommended_model: Optional[str] = None,
 ):
     """
     [BOT-BUGFIX-UNIFIED-EGRESS-PIPELINE-125] Pipeline unificado de egreso de mensajes.
@@ -2360,7 +2423,9 @@ async def _process_and_send_egress_message(
         # Toda URL extraída/generada por el LLM se valida contra la whitelist
         # canónica ANTES de la extracción Markdown (default-deny + sustitución
         # SSOT catálogo + extirpación). Ninguna URL alucinada llega a Meta.
-        response_text, _url_lock_report = egress_guard.enforce_urls(response_text)
+        response_text, _url_lock_report = egress_guard.enforce_urls(
+            response_text, recommended_model=recommended_model
+        )
 
         # --- NATIVE IMAGE INTEGRATION ---
         # Support both Markdown ![alt](url) and legacy [IMAGE: url]

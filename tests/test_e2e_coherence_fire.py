@@ -108,6 +108,7 @@ def _memory_mock(prospect: dict, history: list):
     ms.get_chat_history = AsyncMock(return_value=history)
     ms.delete_prospect_completely = AsyncMock(return_value=True)
     ms.reset_phase_latches = AsyncMock(return_value=True)
+    ms.update_prospect_moto_interest = AsyncMock(return_value=True)
     return ms
 
 
