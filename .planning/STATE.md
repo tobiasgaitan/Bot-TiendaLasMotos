@@ -1,20 +1,23 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.57.0 | Hito: BOT-BUILD-FUNNEL-SKIP-014 — Cierre incidente salto de fase: compuerta canónica Habeas + reset verdadero de latches | Coherence Score: 1.000 (denominador REAL 716 = 711 tests/ + 5 scripts/, declarado post-eval; desviación C6 cerrada por PIN-014-E2E)
+Versión: v10.58.0 | Hito: BOT-BUILD-EGRESS-CANON-015 — Egreso determinista de imagen y modelo + fix regresión E2E | Coherence Score: 1.000 (denominador REAL 723 = 718 tests/ + 5 scripts/)
 
 ### Current Position
-**Phase:** BOT-BUILD-FUNNEL-SKIP-014 (minor v10.57.0) — Cierre de R1/R2/R3 del incidente de salto de fase post-reset/Wave A — CERRADA (Build + Eval certificados; complementación COND-1 PIN-014-E2E integrada)
-**Status:** Build ejecutado contra plan arquitectónico aprobado BOT-PLAN-FUNNEL-SKIP-014 + ADD-01:
-  - Fix A (`app/services/ai_brain.py` L996 + L1733-1785): compuerta canónica en `_determine_funnel_phase` — avance a PHASE_2_HABEAS_DATA exige `credit_intent ∧ has_canonical_moto`; categorías libre-texto (ej. "doble propósito") ya no activan el script Habeas. Refuerzo soft PHASE_1 con `try/except` y fallback genérico ante catálogo vacío/timeout.
-  - Fix B (`app/services/memory_service.py` + `app/routers/whatsapp.py` L922-969): `reset_phase_latches` zero latches de fase (`habeas_data_accepted`, `forma_pago`, `moto_interest/moto_interes`, `moto_confirmada`, `score_resultado`) SIN purgar historial comercial ni identidad (`nombre`/`ciudad` preservados). Enganche bloqueante SIEMPRE tras `delete_prospect_completely`; feedback condicional `success=True`→"reiniciada por completo" / `success=False`→"reiniciada" + warning estructurado con `trace_id`.
-  - Migración one-shot legacy documentada en `CRM_MEMORY_GUIDE.md` (C-10: ejecutable separado, prohibido commitar en `app/` o `scripts/`).
-  - Revisión externa F3.5 (MiMo-V2.5-pro, revisor Qwen3.8-Max) integrada: lock por phone ya cubierto por sesión (whatsapp.py:732); feedback diferenciado implementado; docs legacy atendidos por migración documentada; PINs A4/B2 añadidos; C-8 idempotencia confirmada (`set(merge=True)` sobre doc inexistente crea latches en cero).
-  - Pins aditivos: PIN-014-A1/A2/A3/A4 en `tests/test_habeas_data_regression.py`, PIN-014-B1/B2 en `tests/test_m4_wave_a.py`; complementación COND-1: PIN-014-E2E en `tests/test_m4_wave_a.py` (/reset real → "doble propósito a crédito": search_catalog invocada, log [CATALOG-FORENSIC], funnel_phase == PHASE_1_PROFILING en todas las evaluaciones, respuesta con precio y sin script Habeas); prueba en vivo retenida por C-9.
-  - **Denominador REAL certificado: 716 (711 tests/ + 5 scripts/); 716/716 PASSED; 0 failed; 0 skipped; Score 1.000 vía `npx agent-cli eval`. Desviación C6 CERRADA: el recuento real de pytest (716) coincide con el proyectado 716 tras la incorporación de PIN-014-E2E.**
-  - Núcleos intactos: `clear_memory` y guard Fix B-011 (`memory_service.py:521-523`), `_process_and_send_egress_message` y Visual-Lock A2 (`whatsapp.py:2284-2310`), `juan_pablo_personality`, `prompts.py`, `resolve_cierre_route` y bandas 750/500/499.
+**Phase:** BOT-BUILD-EGRESS-CANON-015 (minor v10.58.0) — Egreso determinista: imagen siempre desde `imagen_url` de la ficha del Top Result (independiente del eco del LLM) + modelo presentado alineado a matches[0] vía retry + sustitución SSOT con `recommended_model` — CERRADA (Build + Eval certificados; C-16 pendiente)
+**Status:** Build ejecutado contra plan arquitectónico aprobado BOT-PLAN-EGRESS-CANON-015 + ADD-02:
+  - Stash efímero `_catalog_top_name`/`_catalog_top_image` en tool-exec (`ai_brain.py:2494`), pop antes de persistencia (patrón `_score_resultado`).
+  - Backstop en `_pipeline_egress` (`whatsapp.py:2305-2327`): `enforce_urls` primero + log de `url_report.summary()` (no bindeado a `_`); `needs_inject` cuando falta/extirpada/wrong-model; Strategy A desde ficha con caption limpia; PEI-5 preservado en eco correcto.
+  - Formatter con énfasis TOP RESULT (`ai_brain.py:2397`) + guard post-generación con retry (`ai_brain.py:2199-2236`) para alinear texto a matches[0].
+  - Sustitución SSOT en `egress_guard_service.py` con kw `recommended_model` + helper `image_owner_model`.
+  - Whitelist NO extendida (auteco.com.co permanece fuera; default-deny intacto).
+  - Fix de regresión en `tests/test_e2e_coherence_fire.py`: `update_prospect_moto_interest` como `AsyncMock` (patrón FUNNEL-SKIP-014).
+  - Orden literal C-12 de Tobias (2026-08-09) autorizó toques en `ai_brain.py` en :2397, :2494, :2199-2236.
+  - 7 pins nuevos en `tests/test_egress_canon_015.py`: inyección canónica, retry alignment, M2 intacto, sustitución por stem no único, wrong-model canonical host, bypass PEI-5, no persistencia del stash.
+  - **Denominador REAL certificado: 723 (718 tests/ + 5 scripts/); 723/723 PASSED; 0 failed; 0 skipped; Score 1.000 vía `npx agent-cli eval`.**
+  - Núcleos intactos: `juan_pablo_personality`, `prompts.py`, `resolve_cierre_route`, `clear_memory`, guard B-011, `_process_and_send_egress_message` (solo kw-only `recommended_model=None`, firma PEI-1 intacta, CH-5 respetado).
 
-**Previous:** AUD-LEGACY-JUDGE-012 (v10.56.1) — Purga de residuo CrediOrbe + C6 del Juez activado y alineado a la doctrina de 4 rutas — CERRADA (Success)
-**Next:** Prueba en vivo /reset → "doble propósito a crédito" (C-9) + push beta v10.57.0 solo tras orden literal.
+**Previous:** BOT-BUILD-FUNNEL-SKIP-014 (v10.57.0) — Cierre incidente salto de fase post-reset/Wave A — CERRADA (Success)
+**Next:** F5 (eval + sync + push beta v10.58.0) + prueba en vivo: /reset → "doble propósito a crédito" → Top Result + imagen firebasestorage + moto_interest canónico.
 
 ---
 *Last updated: 2026-08-09*
