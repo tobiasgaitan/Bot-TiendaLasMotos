@@ -2216,13 +2216,32 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                             hallucinated_model = f"{brand} {model}"
                                             break
 
-                                if (catalog_returned_results and requires_visuals and (not has_price or not has_image)) or hallucinated_model:
+                                # [BOT-BUILD-EGRESS-CANON-015] Alignment guard: the free-text recommendation
+                                # must name the deterministic TOP RESULT (matches[0]) stashed in prospect_data.
+                                alignment_violation = None
+                                if search_catalog_called and catalog_returned_results and prospect_data:
+                                    top_name = prospect_data.get("_catalog_top_name") or prospect_data.get("moto_interest")
+                                    if top_name and top_name.strip().lower() not in ai_response.lower():
+                                        # Only flag if the LLM is presenting a different catalog model as recommendation.
+                                        other_models = [
+                                            m for m in catalog_models_found
+                                            if m.strip().lower() != top_name.strip().lower()
+                                        ]
+                                        if other_models and any(m.lower() in ai_response.lower() for m in other_models):
+                                            alignment_violation = (
+                                                f"El TOP RESULT es '{top_name}'. Recomienda ÚNICAMENTE ese modelo; "
+                                                f"no cites otros matches como opción principal."
+                                            )
+
+                                if (catalog_returned_results and requires_visuals and (not has_price or not has_image)) or hallucinated_model or alignment_violation:
                                     turns += 1
                                     error_msg = ""
                                     if requires_visuals and (not has_price or not has_image):
                                         error_msg = "Has ejecutado el catálogo pero tu respuesta final NO incluye el precio ($ o la palabra 'precio:') o la imagen. "
                                     if hallucinated_model:
                                         error_msg += f"Has mencionado la moto '{hallucinated_model}' que NO aparece en los resultados locales del catálogo. "
+                                    if alignment_violation:
+                                        error_msg += f"[ALINEACIÓN TOP RESULT] {alignment_violation} "
                                     
                                     logger.warning(f"🚨 Consistency Guardrail Triggered: {error_msg}")
                                     retry_name_reinforcement = f" Sigue hablando con {user_name}." if user_name != "desconocido" else ""
@@ -2394,7 +2413,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                         # Formateo de los resultados a Markdown con aserción estricta de llaves
                                         if matches:
                                             catalog_response_str = f"Encontré {len(matches)} motos relacionados:\n"
-                                            for m in matches:
+                                            for idx, m in enumerate(matches):
                                                 # Validaciones estrictas de Anti-Null Masking
                                                 name = m.get('name')
                                                 # 'summary'/'descripcion' is optional, default: 'Sin descripción'
@@ -2412,7 +2431,13 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                                     )
                                                     continue
                                                 
-                                                catalog_response_str += f"- {name} ({m.get('category', 'Moto')}): {price}\n"
+                                                # [BOT-BUILD-EGRESS-CANON-015] TOP RESULT emphasis:
+                                                # matches[0] is the deterministic Top Result; mark it so the LLM
+                                                # is contractually bound to recommend it, not matches[1+].
+                                                if idx == 0:
+                                                    catalog_response_str += f"⭐ TOP RESULT — {name} ({m.get('category', 'Moto')}): {price}\n"
+                                                else:
+                                                    catalog_response_str += f"- {name} ({m.get('category', 'Moto')}): {price}\n"
                                                 
                                                 image_val = m.get('image_url') or m.get('imagen_url')
                                                 if image_val:
@@ -2481,18 +2506,35 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 
                             # Personalización de resultados (v8.3)
                             if catalog_returned_results:
-                                search_results = f"[SISTEMA: Estos son los resultados para {user_name}. Recomiéndale la mejor opción de forma cálida basándote en su perfil, no solo listes datos.]\n\n" + search_results
+                                search_results = (
+                                    f"[SISTEMA: Estos son los resultados para {user_name}. "
+                                    f"El ⭐ TOP RESULT (primera opción) es el modelo que debes recomendar SIEMPRE; "
+                                    f"no ofrezcas otros matches como opción principal. "
+                                    f"Recomiéndale el TOP RESULT de forma cálida basándote en su perfil, no solo listes datos.]\n\n"
+                                    + search_results
+                                )
                                 # [BOT-206] Precedencia absoluta del router: skip_greeting es la única autoridad para suprimir saludo
                                 if skip_greeting:
                                     search_results += "\n\n[SYSTEM: BYPASS GREETING: Un elemento del catálogo ha sido recuperado en caliente. Tienes ESTRICTAMENTE PROHIBIDO saludar, dar la bienvenida, decir 'Hola' o presentarte. Empieza tu respuesta directamente con la información de la motocicleta.]"
                                 else:
                                     logger.info(f"🆕 [FIRST CONTACT SHIELD] Tool search_catalog returned results but skip_greeting={skip_greeting}. Mandatory greeting enforced.")
                                 if prospect_data is not None and matches:
+                                    # [BOT-BUILD-EGRESS-CANON-015] Stash ephemeral TOP RESULT metadata for
+                                    # deterministic egress image injection and alignment guardrails.
+                                    top_item = matches[0]
+                                    prospect_data["_catalog_top_name"] = top_item.get("name", "")
+                                    prospect_data["_catalog_top_image"] = (
+                                        top_item.get("image_url") or top_item.get("imagen_url") or ""
+                                    )
+                                    logger.info(
+                                        f"💾 [EGRESS-CANON] Stashed _catalog_top_name='{prospect_data['_catalog_top_name']}' "
+                                        f"_catalog_top_image='{prospect_data['_catalog_top_image']}'"
+                                    )
                                     # [BOT-BUILD-REGRESSION-TRIAGE-COMPETENCIA-CUOTA-203]
                                     # Competitor queries must pivot the prospect interest to the catalog alternative.
                                     if is_competitor_query or not prospect_data.get("moto_interest"):
-                                        prospect_data["moto_interest"] = matches[0]["name"]
-                                        logger.info(f"💾 Updated prospect_data['moto_interest'] to '{matches[0]['name']}' in tool execution (competitor={is_competitor_query}).")
+                                        prospect_data["moto_interest"] = top_item["name"]
+                                        logger.info(f"💾 Updated prospect_data['moto_interest'] to '{top_item['name']}' in tool execution (competitor={is_competitor_query}).")
                             
                             search_results += f"\n\n{funnel_instruction}"
                             response_parts.append(types.Part.from_function_response(

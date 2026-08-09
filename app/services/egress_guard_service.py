@@ -112,7 +112,7 @@ def _filename_stem_key(url: str) -> str:
         return ""
 
 
-def _substitute_from_catalog(url: str) -> Optional[str]:
+def _substitute_from_catalog(url: str, recommended_model: Optional[str] = None) -> Optional[str]:
     """
     Algoritmo de sustitución automática contra el SSOT del catálogo (§1.3):
       1. Match exacto O(1) por URL normalizada (índice _items_by_image_url_norm).
@@ -169,6 +169,26 @@ def _substitute_from_catalog(url: str) -> Optional[str]:
             if len(token_cands) == 1:
                 return token_cands.pop()
 
+        # 4. Fallback al modelo canónico recomendado (BOT-BUILD-EGRESS-CANON-015)
+        # Si la URL alucinada no pudo sustituirse por firma, resolvemos por el
+        # modelo que el catálogo rankeó como TOP RESULT para la consulta original.
+        if recommended_model:
+            try:
+                rec_clean = recommended_model.strip().lower()
+                for item in items:
+                    if str(item.get("name", "")).strip().lower() == rec_clean:
+                        candidate_url = item.get("image_url") or ""
+                        if candidate_url:
+                            return candidate_url
+                # Match exacto no encontrado: usar Top Result de search_items
+                top_matches = catalog_service.search_items(recommended_model)
+                if top_matches:
+                    candidate_url = top_matches[0].get("image_url") or ""
+                    if candidate_url:
+                        return candidate_url
+            except Exception as e:
+                logger.exception(f"❌ [URL-LOCK] Error en fallback recommended_model '{recommended_model}': {e}")
+
         return None
     except Exception as e:
         # Zero-Silent-Failures: log forense; la extirpación sigue siendo el fallback seguro.
@@ -176,13 +196,35 @@ def _substitute_from_catalog(url: str) -> Optional[str]:
         return None
 
 
-def _classify_and_resolve_image_url(url: str, report: UrlLockReport) -> Optional[str]:
+def image_owner_model(image_url: str) -> Optional[str]:
+    """Devuelve el nombre del ítem de catálogo dueño de una image_url canónica."""
+    try:
+        from app.services.catalog_service import CatalogService, catalog_service
+        if not image_url or not catalog_service:
+            return None
+        norm = CatalogService._normalize_image_url(image_url)
+        if not norm:
+            return None
+        index = getattr(catalog_service, "_items_by_image_url_norm", None) or {}
+        item = index.get(norm)
+        if item:
+            return item.get("name")
+    except Exception:
+        logger.exception("❌ [URL-LOCK] Error resolviendo dueño de imagen canónica")
+    return None
+
+
+def _classify_and_resolve_image_url(
+    url: str,
+    report: UrlLockReport,
+    recommended_model: Optional[str] = None,
+) -> Optional[str]:
     """Retorna la URL autorizada (original o sustituta) o None si debe extirparse."""
     host = _host_of(url)
     if host in ALLOWED_IMAGE_HOSTS:
         report.passed += 1
         return url
-    substitute = _substitute_from_catalog(url)
+    substitute = _substitute_from_catalog(url, recommended_model=recommended_model)
     if substitute:
         report.substituted.append((url, substitute))
         logger.info(f"🔒 [URL-LOCK] URL no canónica sustituida por SSOT catálogo: host='{host}'")
@@ -207,7 +249,10 @@ def _resolve_text_url(url: str, report: UrlLockReport) -> Optional[str]:
     return None
 
 
-def enforce_urls(text: str) -> Tuple[str, UrlLockReport]:
+def enforce_urls(
+    text: str,
+    recommended_model: Optional[str] = None,
+) -> Tuple[str, UrlLockReport]:
     """
     URL-Lock (§1): valida cada URL extraída/generada por el LLM antes del despacho.
     Función pura (sin I/O de red). Retorna (texto_sanitizado, reporte).
@@ -220,7 +265,7 @@ def enforce_urls(text: str) -> Tuple[str, UrlLockReport]:
     def _markdown_sub(m: re.Match) -> str:
         report.extracted += 1
         open_part, url, close_part = m.group(1), m.group(2), m.group(3)
-        resolved = _classify_and_resolve_image_url(url, report)
+        resolved = _classify_and_resolve_image_url(url, report, recommended_model=recommended_model)
         if resolved is None:
             return ""  # extirpación del token completo
         return f"{open_part}{resolved}{close_part}"
@@ -230,7 +275,7 @@ def enforce_urls(text: str) -> Tuple[str, UrlLockReport]:
     # 2) Formato legacy [IMAGE: url]
     def _legacy_sub(m: re.Match) -> str:
         report.extracted += 1
-        resolved = _classify_and_resolve_image_url(m.group(1), report)
+        resolved = _classify_and_resolve_image_url(m.group(1), report, recommended_model=recommended_model)
         return f"[IMAGE: {resolved}]" if resolved else ""
 
     sanitized = _LEGACY_IMG_RE.sub(_legacy_sub, sanitized)
@@ -255,7 +300,10 @@ def enforce_urls(text: str) -> Tuple[str, UrlLockReport]:
     return sanitized.strip(), report
 
 
-def enforce_image_url(image_url: str) -> Tuple[Optional[str], UrlLockReport]:
+def enforce_image_url(
+    image_url: str,
+    recommended_model: Optional[str] = None,
+) -> Tuple[Optional[str], UrlLockReport]:
     """
     Variante para la frontera `_send_whatsapp_image` (defensa en profundidad, §1.1).
     Retorna (url_autorizada_o_None, reporte).
@@ -263,7 +311,7 @@ def enforce_image_url(image_url: str) -> Tuple[Optional[str], UrlLockReport]:
     report = UrlLockReport(extracted=1 if image_url else 0)
     if not image_url:
         return None, report
-    return _classify_and_resolve_image_url(image_url, report), report
+    return _classify_and_resolve_image_url(image_url, report, recommended_model=recommended_model), report
 
 
 # ---------------------------------------------------------------------------
