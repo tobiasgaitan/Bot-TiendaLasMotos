@@ -12,6 +12,7 @@ of Cloud Run before any network I/O completes.
 import logging
 import asyncio
 import sys
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -97,6 +98,11 @@ async def lifespan(app: FastAPI):
         logger.info(f"🔭 Telemetry: ACTIVE (host={settings.langfuse_host})")
     else:
         logger.info("🔭 Telemetry: DISABLED (missing LANGFUSE_* credentials, export silenced)")
+
+    # [BOT-BUILD-DEADLINE-BUDGET-023] Capturar el timestamp de arranque de la
+    # instancia para la política de deadline frío/caliente.
+    from app.core.deadline_policy import set_instance_started_monotonic
+    set_instance_started_monotonic(time.monotonic())
 
     # WHY: Launch heavy init in background so Uvicorn can open port 8080 immediately.
     # The startup_task is stored in app.state for test awaiting (test_startup_lock.py).

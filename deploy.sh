@@ -3,7 +3,7 @@ echo "🔑 Activating Service Account..."
 gcloud auth activate-service-account --key-file=deploy-key.json
 gcloud config set project tiendalasmotos
 echo "🚀 Deploying to Cloud Run..."
-uvx google-agents-cli run deploy bot-tiendalasmotos --source . --region us-central1 --allow-unauthenticated
+uvx google-agents-cli run deploy bot-tiendalasmotos --source . --region us-central1 --min-instances=1 --allow-unauthenticated
 
 # [BOT-PLAN-CICD-IAM-205] El bloque de grant IAM fue ERRADICADO: apuntaba a la SA
 # compute default mientras prod corre con SA personalizada, y era redundante — ambas
@@ -32,6 +32,7 @@ echo "🔑 Binding WHATSAPP_TOKEN=WHATSAPP_TOKEN:latest"
 gcloud run services update bot-tiendalasmotos \
   --region us-central1 \
   --project tiendalasmotos \
-  --update-secrets="WHATSAPP_TOKEN=WHATSAPP_TOKEN:latest" || {
+  --update-secrets="WHATSAPP_TOKEN=WHATSAPP_TOKEN:latest" \
+  --update-env-vars="GEMINI_COLD_CALL_TIMEOUT_S=30" || {
   echo "❌ FORENSIC: fallo --update-secrets en bot-tiendalasmotos (revisar IAM de la SA de runtime y existencia del servicio)"; exit 1; }
-echo "✅ Deploy completado: WHATSAPP_TOKEN respaldado por Secret Manager."
+echo "✅ Deploy completado: WHATSAPP_TOKEN respaldado por Secret Manager, GEMINI_COLD_CALL_TIMEOUT_S=30."

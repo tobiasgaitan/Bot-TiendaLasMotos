@@ -1,9 +1,9 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.64.0 | Hito: BOT-BUILD-DEADLOCK-PERSISTENT-022-RF — Cierre determinista dead-lock PASO 2 + freeze fase + review finding fix | Coherence Score: 1.000 (793 recolectados = 788 tests/ + 5 scripts/; 793/793 PASSED; 0 failed; 0 skipped)
+Versión: v10.65.0 | Hito: BOT-BUILD-DEADLINE-BUDGET-023 — Deadline dinámico frío/caliente Gemini + min-instances=1 — BUILD COMPLETE + C6 SYNC docs | Coherence Score: 1.000 (803 recolectados = 798 tests/ + 5 scripts/; 803/803 PASSED; 0 failed; 0 skipped)
 
 ### Current Position
-**Phase:** BOT-BUILD-DEADLOCK-PERSISTENT-022 (v10.64.0) — C-23 ejecutado y certificado.
+**Phase:** BOT-BUILD-DEADLINE-BUDGET-023 (v10.65.0) — Deadline dinámico frío/caliente + min-instances=1 — build completo certificado (803/803), C6 SYNC docs aplicado.
 **Status:** Build completo:
   - C-23 / T1 (:3211-3219): tools=dynamic_tools condicional en reenvío post-search (PHASE_1∧crédito∧¬rechazada). Cierra físicamente el abort UNEXPECTED_TOOL_CALL.
   - C-23 / T2 (:2326): nudge endurecido con prohibición dual search_catalog + calculate_credit_score.

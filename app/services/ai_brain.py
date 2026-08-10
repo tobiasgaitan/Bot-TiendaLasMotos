@@ -33,6 +33,9 @@ except ImportError:
 # [BOT-TRACE-201] Langfuse Observability
 from app.utils.observability import observe, langfuse_context, LANGFUSE_AVAILABLE
 
+# [BOT-BUILD-DEADLINE-BUDGET-023] Política de deadline dinámico frío/caliente.
+from app.core.deadline_policy import effective_gemini_timeout_s
+
 
 # Unused class kept for backward compatibility with tests/test_trace_propagation.py
 class _LangfuseContextShim:
@@ -734,7 +737,7 @@ La FAQ no avanza el embudo. {one_shot}
 
         for attempt in range(max_retries + 1):
             try:
-                return await asyncio.wait_for(func(*args, **kwargs), timeout=GEMINI_CALL_TIMEOUT_S)
+                return await asyncio.wait_for(func(*args, **kwargs), timeout=effective_gemini_timeout_s())
             except Exception as e:
                 err_str = str(e).lower()
                 is_quota_error = "429" in err_str or "resource_exhausted" in err_str
@@ -744,7 +747,7 @@ La FAQ no avanza el embudo. {one_shot}
 
                 if (is_quota_error or is_service_error or is_timeout) and attempt < max_retries:
                     elapsed = time.monotonic() - _retry_start
-                    if elapsed + GEMINI_CALL_TIMEOUT_S > GEMINI_TIMEOUT_BUDGET_S:
+                    if elapsed + effective_gemini_timeout_s() > GEMINI_TIMEOUT_BUDGET_S:
                         logger.error(
                             f"🚨 [GEMINI BUDGET] Aggregate timeout budget exhausted after {elapsed:.1f}s "
                             f"(limit {GEMINI_TIMEOUT_BUDGET_S}s); aborting retries."

@@ -68,6 +68,16 @@ def _empty_response() -> MockResponse:
     return MockResponse(candidates=[])
 
 
+# [BOT-BUILD-DEADLINE-BUDGET-023 / F4.5] Fixture aditiva - cero edición de pins.
+# La política frío/caliente de deadline_budget se activa si GEMINI_COLD_CALL_TIMEOUT_S
+# existe en el entorno.  Borrarla aquí garantiza que los pins FIX-2A (que parchean la
+# constante GEMINI_CALL_TIMEOUT_S) no deriven al timeout frío si un dev pone la var en
+# su .env local.
+@pytest.fixture(autouse=True)
+def _clean_deadline_env_for_fix2a(monkeypatch):
+    monkeypatch.delenv("GEMINI_COLD_CALL_TIMEOUT_S", raising=False)
+
+
 # ===========================================================================
 # FIX-1 — Compuerta forzada con alias searchBy dinámicos
 # ===========================================================================
