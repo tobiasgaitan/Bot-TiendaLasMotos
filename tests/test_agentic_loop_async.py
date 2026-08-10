@@ -72,7 +72,7 @@ async def test_ai_brain_validation_retry():
     # 1st attempt: invalid response (missing price/image)
     # 2nd attempt: valid response
     calls = []
-    async def mock_generate(texto, context, prospect_data, history, skip_greeting, forced_instruction=None, forced_temperature=None):
+    async def mock_generate(texto, context, prospect_data, history, skip_greeting, forced_instruction=None, forced_temperature=None, **kwargs):
         calls.append({
             "forced_instruction": forced_instruction,
             "forced_temperature": forced_temperature
@@ -535,8 +535,8 @@ async def test_meta_payload_leak_prevention_and_bypass():
 async def test_alias_pure_catalog_invocation():
     """
     Certifica que la consulta 'señoritera' genera obligatoriamente una invocación a 'search_catalog'
-    (debido a la inclusión del alias dinámico en motorcycle_keywords) y devuelve 'success: False'
-    al run_checker si falta la ficha técnica.
+    (debido a la inclusión del alias dinámico en motorcycle_keywords) y que, tras C-20b,
+    la degradación por max-intentos de validación retorna un fallback conforme con 'Ficha Tecnica:'.
     """
     from app.services.config_service import config_service
     from app.services.agentic_loop_service import AgenticOrchestrator
@@ -615,11 +615,9 @@ async def test_alias_pure_catalog_invocation():
         # Aserción 1: Se debió haber forzado al menos un turno llamando a Gemini con el mensaje de error del sistema
         assert len(gemini_calls) >= 2, "No se forzó el turno de validación a pesar de tener el alias 'señoritera'."
         
-        # Aserción 2: Validamos que al run_checker se le devuelva success: False cuando se fuerza la validación de la ficha técnica
-        orchestrator = AgenticOrchestrator()
-        chk = orchestrator.run_checker(res, is_catalog_query=True)
-        assert chk["success"] is False, "El run_checker debió fallar por falta de 'Ficha Tecnica:'."
-        assert chk["report"]["broken_guardrail"] == "PRICE_CONSISTENCY_CHECK"
+        # Aserción 2: Tras C-20b, la degradación por max-intentos produce un
+        # fallback conforme que incluye Ficha Tecnica: y pasa run_checker.
+        assert "Ficha Tecnica: Victory Flow" in res, "El fallback conforme debe incluir Ficha Tecnica: con el top result"
 
 
 
@@ -1936,7 +1934,7 @@ async def test_consecutive_catalog_search_suppresses_greeting():
     # We will trace the calls to _generate_with_retry_async
     calls_made = []
     
-    async def mock_generate(texto, context, prospect_data, history, skip_greeting, forced_instruction=None, forced_temperature=None):
+    async def mock_generate(texto, context, prospect_data, history, skip_greeting, forced_instruction=None, forced_temperature=None, **kwargs):
         calls_made.append({
             "texto": texto,
             "skip_greeting": skip_greeting,
@@ -2048,7 +2046,7 @@ async def test_category_to_specific_model_transition_no_fallback():
     # We will trace calls to _generate_with_retry_async
     calls_made = []
     
-    async def mock_generate(texto, context, prospect_data, history, skip_greeting, forced_instruction=None, forced_temperature=None):
+    async def mock_generate(texto, context, prospect_data, history, skip_greeting, forced_instruction=None, forced_temperature=None, **kwargs):
         calls_made.append({
             "texto": texto,
             "skip_greeting": skip_greeting,

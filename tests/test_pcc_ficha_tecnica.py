@@ -316,7 +316,8 @@ async def test_habeas_data_gate_before_credit_score():
         "moto_interest": "TVS Sport 100",
         "ciudad": "Cali",
         "forma_pago": "Crédito",
-        "habeas_data_accepted": True  # Consentimiento explícito
+        "habeas_data_accepted": True,  # Consentimiento explícito
+        "_catalog_top_name": "TVS Sport 100",
     }
 
     # Transformador dinámico: verificar que la URL compleja no sea truncada ni mutilada.

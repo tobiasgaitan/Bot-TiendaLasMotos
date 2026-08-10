@@ -168,7 +168,9 @@ EXTRACTION_SCHEMA = {
 # resumen) vía _call_gemini_with_retry_async. Un hang de Vertex deja de
 # congelar el pipeline: el timeout se convierte en error reintentable.
 # Constante de módulo (no def-time default) para ser parcheada en tests.
-GEMINI_CALL_TIMEOUT_S = 25.0
+GEMINI_CALL_TIMEOUT_S = 18.0
+GEMINI_TIMEOUT_BUDGET_S = float(os.getenv("GEMINI_TIMEOUT_BUDGET_S", "75.0"))
+PCC_DEADLINE_BUDGET_S = float(os.getenv("PCC_DEADLINE_BUDGET_S", "120.0"))
 
 BLIND_CREDIT_DEFAULTS: Dict[str, str] = {
     "entidad": "Brilla de Gases",
@@ -722,8 +724,9 @@ La FAQ no avanza el embudo. {one_shot}
         añade al conjunto reintentable (mismo backoff exponencial que 429/503).
         """
         from google.genai.errors import APIError
-        max_retries = 3
+        max_retries = 2
         base_delay = 2.0
+        _retry_start = time.monotonic()
 
         for attempt in range(max_retries + 1):
             try:
@@ -736,6 +739,16 @@ La FAQ no avanza el embudo. {one_shot}
                 is_timeout = isinstance(e, (asyncio.TimeoutError, TimeoutError))
 
                 if (is_quota_error or is_service_error or is_timeout) and attempt < max_retries:
+                    elapsed = time.monotonic() - _retry_start
+                    if elapsed + GEMINI_CALL_TIMEOUT_S > GEMINI_TIMEOUT_BUDGET_S:
+                        logger.error(
+                            f"🚨 [GEMINI BUDGET] Aggregate timeout budget exhausted after {elapsed:.1f}s "
+                            f"(limit {GEMINI_TIMEOUT_BUDGET_S}s); aborting retries."
+                        )
+                        raise RuntimeError(
+                            f"GEMINI_TIMEOUT_BUDGET_S ({GEMINI_TIMEOUT_BUDGET_S}s) "
+                            f"exhausted after {elapsed:.1f}s"
+                        )
                     wait_time = base_delay * (2 ** attempt) + random.uniform(0, 1)
                     logger.warning(f"⏳ [EXP BACKOFF] Attempt {attempt+1} failed ({type(e).__name__}). Retrying in {wait_time:.2f}s...")
                     await asyncio.sleep(wait_time)
@@ -1138,6 +1151,7 @@ La FAQ no avanza el embudo. {one_shot}
         # [BOT-TRACE-FIX-v2.5] Migrate to update_current_trace for better userId propagation
         max_validation_attempts = 3
         current_attempt = 0
+        start_pcc = time.monotonic()
         forced_instruction = None
         forced_temp = None
 
@@ -1172,13 +1186,15 @@ La FAQ no avanza el embudo. {one_shot}
                 raw_response = await self._generate_with_retry_async(
                     texto, context, prospect_data, history, skip_greeting,
                     forced_instruction=forced_instruction,
-                    forced_temperature=forced_temp
+                    forced_temperature=forced_temp,
+                    pcc_deadline_start=start_pcc,
                 )
             else:
                 raw_response = await self._generate_with_retry_async(
                     texto, context, prospect_data, history, skip_greeting,
                     forced_instruction=forced_instruction,
-                    forced_temperature=forced_temp
+                    forced_temperature=forced_temp,
+                    pcc_deadline_start=start_pcc,
                 )
             
             # --- PHASE-GATE FÍSICO (Bypass de Habeas Data) ---
@@ -1281,6 +1297,13 @@ La FAQ no avanza el embudo. {one_shot}
                         f"⚠️ [PCC VALIDATION FAILED] CATALOG_VALIDATION_FAIL - Attempt {current_attempt}/{max_validation_attempts} for query '{texto}' user_id={user_id}. "
                         f"Expected: {validation['report']['expected_behavior']}."
                     )
+                    elapsed_pcc_s = time.monotonic() - start_pcc
+                    if elapsed_pcc_s > PCC_DEADLINE_BUDGET_S:
+                        logger.warning(
+                            f"⏱️ [PCC-DEADLINE] Outer retry budget exhausted after {elapsed_pcc_s:.1f}s "
+                            f"(limit {PCC_DEADLINE_BUDGET_S}s); forcing degraded fallback."
+                        )
+                        current_attempt = max_validation_attempts
                     if current_attempt < max_validation_attempts:
                         forced_instruction = (
                             f"ERROR: La respuesta generada anteriormente falló la validación del catálogo y precio. "
@@ -1294,43 +1317,28 @@ La FAQ no avanza el embudo. {one_shot}
                             f"🚨 [PCC VALIDATION] CATALOG_VALIDATION_FAIL - Max validation attempts reached. "
                             f"user_id={user_id} query='{texto}' - Returning degraded response."
                         )
-                        # [BOT-BUILD-PCC-LOOP-017] Degraded path: if we already have valid catalog
-                        # results, return the honest empty_candidate copy + deterministic Top Result.
-                        # [BOT-BUILD-PCC-LOOP-017] Degraded path: only if the generation
-                        # yielded an empty final_text do we route to the honest fallback.
-                        # If final_text is non-empty we preserve the legacy behavior of
-                        # returning it validated, avoiding regressions in non-search_catalog
-                        # flows (e.g., image caption, direct injection).
-                        if not final_text or not final_text.strip():
-                            _top_name = prospect_data.get("_catalog_top_name") if prospect_data else ""
-                            _top_image = prospect_data.get("_catalog_top_image") if prospect_data else ""
-                            _top_price = ""
-                            if _top_name and self._catalog_service:
-                                try:
-                                    _top_matches = self._catalog_service.search_items(_top_name)
-                                    if _top_matches:
-                                        _top_price = (
-                                            _top_matches[0].get("price")
-                                            or _top_matches[0].get("formatted_price")
-                                            or _top_matches[0].get("precio")
-                                            or ""
-                                        )
-                                except Exception as _pcc_err:
-                                    logger.exception(f"⚠️ [PCC-LOOP-017] Error recuperando precio del Top Result: {_pcc_err}")
-                                    _top_price = ""
-                            if _top_name:
-                                _extra_parts = [x for x in [
-                                    f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
-                                    f"💰 Precio: {_top_price}" if _top_price else "",
-                                    f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
-                                ] if x]
-                                _fallback = self._fallback_response(texto, history, reason="empty_candidate")
-                                if _extra_parts:
-                                    _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
-                                return _fallback
-                            return self._fallback_response(texto, history)
-                        validated_text = CerebroIA._validate_output(final_text)
-                        return CerebroIA._ensure_soat_anchor(validated_text)
+                        _top_name = prospect_data.get("_catalog_top_name") if prospect_data else ""
+                        _top_image = prospect_data.get("_catalog_top_image") if prospect_data else ""
+                        _top_price = ""
+                        if _top_name and self._catalog_service:
+                            try:
+                                _top_matches = self._catalog_service.search_items(_top_name)
+                                if _top_matches:
+                                    _top_price = (
+                                        _top_matches[0].get("price")
+                                        or _top_matches[0].get("formatted_price")
+                                        or _top_matches[0].get("precio")
+                                        or ""
+                                    )
+                            except Exception as _pcc_err:
+                                logger.exception(f"⚠️ [PCC-LOOP-017] Error recuperando precio del Top Result: {_pcc_err}")
+                                _top_price = ""
+                        return self._build_pcc_fallback(
+                            texto, history,
+                            top_name=_top_name,
+                            top_image=_top_image,
+                            top_price=_top_price,
+                        )
                 else:
                     # BOT-BRAIN-FAQ-CATALOG-COLLISION-146: Si run_checker determinó un bypass semántico
                     # (FAQ pura sin moto_interest en CRM), forzar is_catalog_query=False de forma síncrona
@@ -1346,6 +1354,29 @@ La FAQ no avanza el embudo. {one_shot}
                     final_text = CerebroIA._ensure_soat_anchor(validated_text)
                     return final_text
             else:
+                if not final_text or not final_text.strip():
+                    _top_name = prospect_data.get("_catalog_top_name") if prospect_data else ""
+                    _top_image = prospect_data.get("_catalog_top_image") if prospect_data else ""
+                    _top_price = ""
+                    if _top_name and self._catalog_service:
+                        try:
+                            _top_matches = self._catalog_service.search_items(_top_name)
+                            if _top_matches:
+                                _top_price = (
+                                    _top_matches[0].get("price")
+                                    or _top_matches[0].get("formatted_price")
+                                    or _top_matches[0].get("precio")
+                                    or ""
+                                )
+                        except Exception as _pcc_err:
+                            logger.exception(f"⚠️ [PCC-LOOP-017] Error recuperando precio del Top Result: {_pcc_err}")
+                            _top_price = ""
+                    return self._build_pcc_fallback(
+                        texto, history,
+                        top_name=_top_name,
+                        top_image=_top_image,
+                        top_price=_top_price,
+                    )
                 validated_text = CerebroIA._validate_output(final_text)
                 return validated_text
         except HabeasDataBypassInterrupt as hdbi:
@@ -1669,10 +1700,12 @@ REGLAS ESTRICTAS DE USO:
             logger.error(f"❌ Error creating tools: {str(e)}", exc_info=True)
             return []
 
-    async def _generate_with_retry_async(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, forced_instruction: Optional[str] = None, forced_temperature: Optional[float] = None) -> str:
+    async def _generate_with_retry_async(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, forced_instruction: Optional[str] = None, forced_temperature: Optional[float] = None, pcc_deadline_start: Optional[float] = None) -> str:
         """
         Internal generation with exponential backoff and structured prompt injection (Async).
         """
+        if pcc_deadline_start is None:
+            pcc_deadline_start = time.monotonic()
         if not self.client: 
             logger.error("🚨 [AI FALLBACK REASON]: SDK Client not initialized")
             return self._fallback_response(texto, history)
@@ -2124,18 +2157,12 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     _local_matches = locals().get("matches", [])
                     if locals().get("search_catalog_called") and locals().get("catalog_returned_results") and _local_matches:
                         _top = _local_matches[0]
-                        _top_name = _top.get("name", "")
-                        _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
-                        _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
-                        _extra_parts = [x for x in [
-                            f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
-                            f"💰 Precio: {_top_price}" if _top_price else "",
-                            f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
-                        ] if x]
-                        _fallback = self._fallback_response(texto, history, reason="empty_candidate")
-                        if _extra_parts:
-                            _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
-                        return _fallback
+                        return self._build_pcc_fallback(
+                            texto, history,
+                            top_name=_top.get("name", ""),
+                            top_image=_top.get("image_url") or _top.get("imagen_url") or "",
+                            top_price=_top.get("price") or _top.get("formatted_price") or _top.get("precio") or "",
+                        )
                     return self._fallback_response(texto, history)
 
                 if not response.candidates or not response.candidates[0].content.parts:
@@ -2156,18 +2183,12 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                     _local_matches = locals().get("matches", [])
                     if locals().get("search_catalog_called") and locals().get("catalog_returned_results") and _local_matches:
                         _top = _local_matches[0]
-                        _top_name = _top.get("name", "")
-                        _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
-                        _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
-                        _extra_parts = [x for x in [
-                            f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
-                            f"💰 Precio: {_top_price}" if _top_price else "",
-                            f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
-                        ] if x]
-                        _fallback = self._fallback_response(texto, history, reason="empty_candidate")
-                        if _extra_parts:
-                            _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
-                        return _fallback
+                        return self._build_pcc_fallback(
+                            texto, history,
+                            top_name=_top.get("name", ""),
+                            top_image=_top.get("image_url") or _top.get("imagen_url") or "",
+                            top_price=_top.get("price") or _top.get("formatted_price") or _top.get("precio") or "",
+                        )
                     return self._fallback_response(texto, history)
 
                 # --- FORCED TOOL VALIDATION TURN (PVN-Hardened) ---
@@ -2240,18 +2261,12 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             _local_matches = locals().get("matches", [])
                             if locals().get("search_catalog_called") and locals().get("catalog_returned_results") and _local_matches:
                                 _top = _local_matches[0]
-                                _top_name = _top.get("name", "")
-                                _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
-                                _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
-                                _extra_parts = [x for x in [
-                                    f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
-                                    f"💰 Precio: {_top_price}" if _top_price else "",
-                                    f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
-                                ] if x]
-                                _fallback = self._fallback_response(texto, history, reason="empty_candidate")
-                                if _extra_parts:
-                                    _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
-                                return _fallback
+                                return self._build_pcc_fallback(
+                                    texto, history,
+                                    top_name=_top.get("name", ""),
+                                    top_image=_top.get("image_url") or _top.get("imagen_url") or "",
+                                    top_price=_top.get("price") or _top.get("formatted_price") or _top.get("precio") or "",
+                                )
                             return self._fallback_response(texto, history)
                 except Exception as e:
                     logger.exception(f"⚠️ Tool Validation Logic Error for {user_name}: {e}")
@@ -2265,6 +2280,13 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 catalog_models_found = []
                 
                 while turns < max_turns:
+                    elapsed_pcc_s = time.monotonic() - pcc_deadline_start
+                    if elapsed_pcc_s > PCC_DEADLINE_BUDGET_S * 0.5:
+                        logger.warning(
+                            f"⏱️ [PCC-DEADLINE] Inner loop cut at turn {turns+1}: "
+                            f"elapsed={elapsed_pcc_s:.1f}s > 50% of budget ({PCC_DEADLINE_BUDGET_S}s). Degrading."
+                        )
+                        break
                     if not response.candidates or not response.candidates[0].content.parts:
                         logger.error(f"🚨 [AI FALLBACK REASON]: Empty Candidate in Turn {turns+1} for {user_name}")
                         # [BOT-BUILD-FIX-CATALOG-SEARCH-REGRESSION-005] Retry inline antes de degradar:
@@ -2284,18 +2306,12 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 return self._fallback_response(texto, history, reason=_fb_reason)
                             if search_catalog_called and catalog_returned_results and matches:
                                 _top = matches[0]
-                                _top_name = _top.get("name", "")
-                                _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
-                                _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
-                                _extra_parts = [x for x in [
-                                    f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
-                                    f"💰 Precio: {_top_price}" if _top_price else "",
-                                    f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
-                                ] if x]
-                                _fallback = self._fallback_response(texto, history, reason="empty_candidate")
-                                if _extra_parts:
-                                    _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
-                                return _fallback
+                                return self._build_pcc_fallback(
+                                    texto, history,
+                                    top_name=_top.get("name", ""),
+                                    top_image=_top.get("image_url") or _top.get("imagen_url") or "",
+                                    top_price=_top.get("price") or _top.get("formatted_price") or _top.get("precio") or "",
+                                )
                             return self._fallback_response(texto, history)
                         continue
 
@@ -2314,15 +2330,12 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     _top_name = _top.get("name", "")
                                     _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
                                     _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
-                                    _extra_parts = [x for x in [
-                                        f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
-                                        f"💰 Precio: {_top_price}" if _top_price else "",
-                                        f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
-                                    ] if x]
-                                    _fallback = self._fallback_response(texto, history, reason="empty_candidate")
-                                    if _extra_parts:
-                                        _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
-                                    return _fallback
+                                    return self._build_pcc_fallback(
+                                        texto, history,
+                                        top_name=_top_name,
+                                        top_image=_top_image,
+                                        top_price=_top_price,
+                                    )
                                 return self._fallback_response(texto, history)
 
                             # --- GUARDRAILS ---
@@ -2441,15 +2454,12 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 _top_name = _top.get("name", "")
                                 _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
                                 _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
-                                _extra_parts = [x for x in [
-                                    f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
-                                    f"💰 Precio: {_top_price}" if _top_price else "",
-                                    f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
-                                ] if x]
-                                _fallback = self._fallback_response(texto, history, reason="empty_candidate")
-                                if _extra_parts:
-                                    _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
-                                return _fallback
+                                return self._build_pcc_fallback(
+                                    texto, history,
+                                    top_name=_top_name,
+                                    top_image=_top_image,
+                                    top_price=_top_price,
+                                )
                             return self._fallback_response(texto, history)
 
                     # Execute function calls
@@ -2495,7 +2505,6 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                              
                             try:
                                 if self._catalog_service:
-                                    import time
                                     # --- INTERCEPTOR DE NEGOCIO (JSON Voorhees v6.6.6) ---
                                     # [UNIFICACIÓN] moto_interest enforced
                                     moto_interest_prev = prospect_data.get("moto_interest") if prospect_data else None
@@ -3158,18 +3167,12 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 logger.error(f"🚨 [AI FALLBACK REASON]: Tool loop exited without generating text in {turns} turns for {user_name}")
                 if search_catalog_called and catalog_returned_results and matches:
                     _top = matches[0]
-                    _top_name = _top.get("name", "")
-                    _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
-                    _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
-                    _extra_parts = [x for x in [
-                        f"⭐ Recomendación TOP: {_top_name}" if _top_name else "",
-                        f"💰 Precio: {_top_price}" if _top_price else "",
-                        f"![{_top_name or 'Moto recomendada'}]({_top_image})" if _top_image else "",
-                    ] if x]
-                    _fallback = self._fallback_response(texto, history, reason="empty_candidate")
-                    if _extra_parts:
-                        _fallback = f"{_fallback}\n\n" + "\n".join(_extra_parts)
-                    return _fallback
+                    return self._build_pcc_fallback(
+                        texto, history,
+                        top_name=_top.get("name", ""),
+                        top_image=_top.get("image_url") or _top.get("imagen_url") or "",
+                        top_price=_top.get("price") or _top.get("formatted_price") or _top.get("precio") or "",
+                    )
                 return self._fallback_response(texto, history)
             
             except InvalidArgument as e:
@@ -3385,6 +3388,37 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             r"de acuerdo|est[aá] bien|[👍✅👌🆗✔☑💯])",
             text,
         ))
+
+    def _build_pcc_fallback(
+        self,
+        texto: str,
+        history: list,
+        top_name: str = "",
+        top_image: str = "",
+        top_price: str = "",
+    ) -> str:
+        """
+        [BOT-BUILD-PCC-LOOP-017] Build an honest degraded fallback with the
+        required 'Ficha Tecnica:' prefix, price and image when catalog results
+        are available. Preserves the existing empty_candidate copy verbatim
+        and only decorates it; no technical hallucinations are introduced.
+        """
+        if top_name == "Sin descripción":
+            logger.warning(
+                "⚠️ [PCC-LOOP-017/ZSF] _catalog_top_name collides with "
+                "has_sin_descripcion_fallback; sanitizing."
+            )
+            top_name = "(información no disponible)"
+        extra_parts = [x for x in [
+            f"Ficha Tecnica: {top_name}" if top_name else "",
+            f"⭐ Recomendación TOP: {top_name}" if top_name else "",
+            f"💰 Precio: {top_price}" if top_price else "",
+            f"![{top_name or 'Moto recomendada'}]({top_image})" if top_image else "",
+        ] if x]
+        fallback = self._fallback_response(texto, history, reason="empty_candidate")
+        if extra_parts:
+            fallback = f"{fallback}\n\n" + "\n".join(extra_parts)
+        return fallback
 
     def _fallback_response(self, texto: str, history: list = [], reason: str = "system_error") -> str:
         """

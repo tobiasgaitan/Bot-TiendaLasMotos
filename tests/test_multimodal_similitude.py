@@ -756,7 +756,8 @@ async def _run_image_caption_flow(caption: str, summary: str, llm_text: str):
             "nombre": "Juan Caption",
             "ciudad": "Cali",
             "forma_pago": "credito",
-            "moto_interest": None
+            "moto_interest": None,
+            "_catalog_top_name": "TVS Sport 100",
         }
 
         mock_ms = AsyncMock()
@@ -889,8 +890,13 @@ async def test_image_tech_caption_backstop_injects_ficha_when_llm_omits():
 
     assert mock_http_post.call_count == 1
     caption_out = mock_http_post.call_args.kwargs["json"]["image"]["caption"]
-    assert "Ficha Tecnica:" in caption_out
-    assert summary in caption_out
+    assert "Ficha Tecnica: TVS Sport 100" in caption_out, (
+        "C-20b fallback must emit Ficha Tecnica: with model name"
+    )
+    # C-20b trade-off (C6): specs summary NOT injected. C5-028 pending.
+    assert summary not in caption_out, (
+        "C-20b: technical summary intentionally absent from degraded fallback"
+    )
 
 
 @pytest.mark.asyncio

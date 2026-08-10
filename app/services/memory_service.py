@@ -648,8 +648,9 @@ class MemoryService:
                 if not incoming_is_canonical and not current_is_canonical:
                     # [BOT-BUILD-DRIFT-CANON-016-B] Reject category/alias/partial model extractions
                     # that resolve to catalog results, but allow no-match conservative values.
+                    effective_catalog = self._resolve_catalog(catalog)
                     try:
-                        matches = catalog.search_items(incoming_moto) if catalog else []
+                        matches = effective_catalog.search_items(incoming_moto) if effective_catalog else []
                     except Exception:
                         matches = []
                     if matches:
@@ -768,6 +769,16 @@ class MemoryService:
         except Exception as e:
             logger.exception(f"❌ [LINEAR BLOCKING] Failed to generate/update summary for {phone_number}: {e}")
 
+    def _resolve_catalog(self, catalog: Any = None) -> Any:
+        """Resolve the catalog singleton if none was explicitly passed."""
+        if catalog is not None:
+            return catalog
+        try:
+            from app.services.catalog_service import catalog_service
+            return catalog_service
+        except Exception:
+            return None
+
     def _is_canonical_moto_interest(self, value: Any, catalog=None) -> bool:
         """True if value exactly matches a canonical model name in the catalog."""
         if value is None:
@@ -776,16 +787,15 @@ class MemoryService:
             target = str(value).strip()
             if not target:
                 return False
-            if catalog is None:
-                from app.services.catalog_service import catalog_service as catalog
-            if catalog is None:
+            effective_catalog = self._resolve_catalog(catalog)
+            if effective_catalog is None:
                 return False
-            matches = catalog.search_items(target)
+            matches = effective_catalog.search_items(target)
             if not matches:
                 return False
-            target_norm = catalog._normalize_item_id_key(target)
+            target_norm = effective_catalog._normalize_item_id_key(target)
             return any(
-                catalog._normalize_item_id_key(str(item.get("name", ""))) == target_norm
+                effective_catalog._normalize_item_id_key(str(item.get("name", ""))) == target_norm
                 for item in matches
             )
         except Exception as e:

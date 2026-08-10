@@ -163,7 +163,7 @@ async def test_fix1_forced_turn_fires_for_searchby_only_reference():
 @pytest.mark.asyncio
 async def test_fix2a_timeout_retries_and_propagates():
     """Un hang de Gemini (la corutina nunca completa) dispara asyncio.wait_for;
-    el wrapper reintenta con backoff (max_retries=3 → 4 llamadas) y propaga
+    el wrapper reintenta con backoff (max_retries=2 → 3 llamadas) y propaga
     TimeoutError tras agotar el presupuesto."""
     cerebro = CerebroIA()
     calls = {"n": 0}
@@ -177,8 +177,8 @@ async def test_fix2a_timeout_retries_and_propagates():
         with pytest.raises(asyncio.TimeoutError):
             await cerebro._call_gemini_with_retry_async(slow_func)
 
-    assert calls["n"] == 4, f"Esperaba 1 intento + 3 reintentos, hubo {calls['n']}"
-    assert mock_sleep.await_count == 3, "El backoff exponencial no se ejecutó entre reintentos"
+    assert calls["n"] == 3, f"Esperaba 1 intento + 2 reintentos, hubo {calls['n']}"
+    assert mock_sleep.await_count == 2, "El backoff exponencial no se ejecutó entre reintentos"
 
 
 @pytest.mark.asyncio

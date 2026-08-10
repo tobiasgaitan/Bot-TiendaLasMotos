@@ -8,9 +8,12 @@ import os
 from typing import Dict, Any, Optional, List
 import json
 import asyncio
+import random
 import time
 
 from google.cloud import firestore
+
+GEMINI_CALL_TIMEOUT_S = 18.0
 
 logger = logging.getLogger(__name__)
 
@@ -82,23 +85,48 @@ class VisionService:
     async def _call_gemini_with_retry_async(self, contents):
         """
         Resiliencia de Red (Exponential Backoff) con offload non-blocking.
+        [BOT-BUILD-MOTO-CANON-018 / C-17] FIX-2A-equivalent: per-call timeout + retry
+        on asyncio.TimeoutError / APIError 429/503.
         """
         max_retries = 2
-        delay = 1.5
+        base_delay = 2.0
         for attempt in range(max_retries + 1):
             try:
-                return await asyncio.to_thread(
-                    self.client.models.generate_content,
-                    model=self._model_id,
-                    contents=contents
+                return await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.client.models.generate_content,
+                        model=self._model_id,
+                        contents=contents,
+                    ),
+                    timeout=GEMINI_CALL_TIMEOUT_S,
                 )
-            except APIError as e:
+            except asyncio.TimeoutError as e:
                 if attempt < max_retries:
-                    logger.warning(f"⚠️ Vision Gemini API failure (Attempt {attempt+1}/{max_retries+1}). Retrying in {delay}s... Error: {e}")
-                    await asyncio.sleep(delay)
+                    wait_time = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(
+                        f"⏳ [VISION EXP BACKOFF] Attempt {attempt+1} timed out. "
+                        f"Retrying in {wait_time:.2f}s..."
+                    )
+                    await asyncio.sleep(wait_time)
                     continue
+                logger.exception(f"🚨 [VISION GEMINI ERROR] Final timeout failure: {e}")
+                raise e
+            except APIError as e:
+                err_str = str(e).lower()
+                is_quota_error = "429" in err_str or "resource_exhausted" in err_str
+                is_service_error = "503" in err_str or "service_unavailable" in err_str
+                if (is_quota_error or is_service_error) and attempt < max_retries:
+                    wait_time = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(
+                        f"⏳ [VISION EXP BACKOFF] Attempt {attempt+1} failed ({type(e).__name__}). "
+                        f"Retrying in {wait_time:.2f}s..."
+                    )
+                    await asyncio.sleep(wait_time)
+                    continue
+                logger.exception(f"🚨 [VISION GEMINI ERROR] Final API failure: {e}")
                 raise e
             except Exception as e:
+                logger.exception(f"🚨 [VISION GEMINI ERROR] Non-retriable failure: {e}")
                 raise e
 
     async def analyze_image(self, image_bytes: bytes, mime_type: str, phone: str, caption: str = "", catalog_items: Optional[List[Dict[str, Any]]] = None) -> str:
