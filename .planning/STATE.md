@@ -1,48 +1,40 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.63.0 | Hito: BOT-BUILD-EMPTY-CANDIDATE-021-RF2 — Hardening + pins review #2 | Coherence Score: 1.000 (786 recolectados = 781 tests/ + 5 scripts/; 786/786 PASSED; 0 failed; 0 skipped)
+Versión: v10.64.0 | Hito: BOT-BUILD-DEADLOCK-PERSISTENT-022-RF — Cierre determinista dead-lock PASO 2 + freeze fase + review finding fix | Coherence Score: 1.000 (793 recolectados = 788 tests/ + 5 scripts/; 793/793 PASSED; 0 failed; 0 skipped)
 
 ### Current Position
-**Phase:** BOT-BUILD-EMPTY-CANDIDATE-021 (v10.63.0) — Fix-1/2/3/4 ejecutado y certificado.
+**Phase:** BOT-BUILD-DEADLOCK-PERSISTENT-022 (v10.64.0) — C-23 ejecutado y certificado.
 **Status:** Build completo:
-  - Fix-1 (C-22.1): retry inline reparado — reenvío de response_parts + nudge. El historial curado ahora contiene los resultados.
-  - Fix-2 (C-22.2): directriz anti-deadlock turn-scoped en function_response search_catalog (credit-condicional, NUNCA juan_pablo_personality).
-  - Fix-3 (C-22.3): joiner \n + reorden Ficha/💰/⭐/imagen en _build_pcc_fallback. Caption post-egreso 4 líneas con 💰 intacto.
-  - Fix-4 (C-22.1): log finish_reason/safety en vacíos (Zero-Silent-Failures).
-  - Pin 005-T1 actualizado; P-HAPPY/P-RECOVERY/P-EGRESS-💰 nuevos.
-   - **Pins:** 42 tests; 786 recolectados = 781 tests/ + 5 scripts/; 786/786 PASSED; 0 failed; 0 skipped (M4-003). -W error::RuntimeWarning limpio.
+  - C-23 / T1 (:3211-3219): tools=dynamic_tools condicional en reenvío post-search (PHASE_1∧crédito∧¬rechazada). Cierra físicamente el abort UNEXPECTED_TOOL_CALL.
+  - C-23 / T2 (:2326): nudge endurecido con prohibición dual search_catalog + calculate_credit_score.
+  - C-23 / T3 (:2289 + :2782-2799): flag credit_tool_rejected_this_turn one-shot + cortocircuito defensivo en TOOL REJECTION con marcador de log distinto.
+  - C-23 / T4 (:1162 + :1176 + :1191-1204): captura única de turn_phase pre-while + paso como forced_phase en los 2 call sites + tag Langfuse usa fase congelada.
+  - C-23 / T5 (:1703 + :1729): parámetro forced_phase en _generate_with_retry_async + resolución condicionada.
+  - Constante _CREDIT_TURN_KEYWORDS a nivel módulo (:158), reutilizada en C-22.2 (:2743).
+  - RF (post-review): R1 — cortocircuito T3 emite function_response (no text Part), preserva pairing fc=fr ante doble calculate_credit_score paralelo. P7-PARALLEL-CREDIT nuevo (7 pines total).
+  - **Pins:** P1-HAPPY-E2E, P2-FASE-CONGELADA, P3-CLASIFICADOR, P4-NO-UTC, P6-FLAG-ONE-SHOT, P7-PARALLEL-CREDIT (7 tests). 793 recolectados = 788 tests/ + 5 scripts/; 793/793 PASSED; 0 failed; 0 skipped. -W error::RuntimeWarning limpio.
   - **Eval:** Score 1.000 ≥ 0.9 — DEPLOY AUTHORIZED ✅.
-  - Núcleos intactos: _fallback_response, juan_pablo_personality, prompts.py, personality.json, resolve_cierre_route, clear_memory/B-011, _process_and_send_egress_message, enforce_length.
+  - Núcleos intactos: _fallback_response, juan_pablo_personality, prompts.py, personality.json, resolve_cierre_route, clear_memory/B-011, _process_and_send_egress_message, enforce_length, _determine_funnel_phase, C-22.2.
   - PASO 2 vivo para turnos siguientes (fase ≥ PHASE_2 con moto canónica).
+  - **C6 + RF — Documentación**: L3 (stash visible en prospect_xml de attempt 2 con fase congelada = coherente); L5 (attempt 2 usa catálogo en estado actual, no snapshot). Review finding corregido (RF-R1: from_text → from_function_response en rama re-intento, preserva fc/fr pairing).
 
-### Evidencia Vertex (read-only, Fase 1)
-- **Run 1 (7.8s):** finish_reason=UNEXPECTED_TOOL_CALL — modelo intentó calculate_credit_score (EXCEPCIÓN), tools=[] bloqueó → candidato vacío. safety_ratings=None.
-- **Run 2 (16.8s):** finish_reason=STOP — PASO 1 perfecto (saludo Juan Pablo + VICTORY MRX 125 + $9.969.000 + imagen + pregunta cierre). Mismo payload, comportamiento no-determinista.
-- **Conclusión:** NO es bloqueo de safety; el dead-lock cognitivo del prompt produce empty candidate a alta probabilidad. Los Fix-1 y Fix-2 lo resuelven con dos capas de defensa.
+### Evidencia determinista del fix C-23
+- Turn 1 (PHASE_1 + mención crédito): search_catalog OK → reenvío post-search con tools=dynamic_tools → modelo puede llamar calculate_credit_score.
+- Turn 2: calculate_credit_score capturada → TOOL REJECTION controlado (NO UNEXPECTED_TOOL_CALL) → append error fr + flag=True.
+- Turn 3: modelo recibe rechazo autoritativo + tools=[] (flag True) → genera PASO 1 (saludo + $ + imagen + Ficha Tecnica:).
+- Defensivo: si modelo insiste credit en Turn 3 → cortocircuito con marcador de log distinto + text Part → tools=[] → modelo obligado a generar texto.
 
-### Evidencia prod (Cloud Logging 00:17-00:19 UTC 10-ago)
-- Turn 1: TimeoutError a 18s exactos (GEMINI_CALL_TIMEOUT_S → H4 amplificador documentado, fuera de alcance).
-- Turn 2: Empty Candidate in Turn 2 a 3.4s (no timeout — UNEXPECTED_TOOL_CALL confirmado).
-- Egress: ✂️ Coerción 250→191 chars. Caption enviado: disculpa + Ficha + ⭐ (💰 truncado).
-- JUDGE approved el fallback. Score=410.
-
-### Trade-off vigente (C6)
-C-20b: el fallback degradado emite `Ficha Tecnica: <top_name>` SIN summary técnico. C5-028 abierto.
-
-### Tickets abiertos post-F5
+### Colaterales abiertos (podaron L1+L4; diferidos C5-034/C5-035)
 - **C5-028:** enriquecer _build_pcc_fallback con summary del catálogo.
-- **C5-031 (H4):** revisar GEMINI_CALL_TIMEOUT_S (18s → Turn 1 TimeoutError en frío) y deadline inner-loop que descarta respuestas recuperadas.
+- **C5-031 (H4):** revisar GEMINI_CALL_TIMEOUT_S (18s → Turn 1 TimeoutError en frío).
 - **C-21:** flag canonical=False.
+- **C5-033 (C-24):** compuerta paso_1_completed en _determine_funnel_phase (diferida).
+- **C5-034 (L1):** call site :1689 (_create_tools, log-only) no consume fase congelada → inconsistencia cosmética de log vs tag Langfuse.
+- **C5-035 (L4):** edge case fc múltiples simultáneos (handoff + search_catalog) y condición T1; también cubre exposición extra de trigger_human_handoff en ventana T1 (inerte sin rama de ejecución).
+- **C5-036 (F3):** interacción T1 con max_turns=3 — dos desobediencias (re-search + crédito) pueden consumir el budget antes del texto final → _build_pcc_fallback. Trade-off acotado; evaluar bump a 4 como tarea propia.
 
-### Remediación post-review (BOT-BUILD-EMPTY-CANDIDATE-021-RF)
-- R1: Pin anti-deadlock en P-HAPPY + P-NO-CREDIT (tests/test_empty_candidate_021.py).
-- R2: Refino C-22.2 — condición `phase == "PHASE_1_PROFILING"` ∧ keyword crediticia, sin "cuotas" (ai_brain.py :2734-2735).
-- R3: Limpieza imports no usados (test_empty_candidate_021.py).
-- R4: SSOT documental unificado — MAESTRO.md / STATE.md raíz eliminados; v10.63.0 portado a docs/DOCUMENTO_MAESTRO.md (Directivas #6/#7).
-- R5: Fórmula M4-003 "784 recolectados = 779 tests/ + 5 scripts/" en .planning/STATE.md + .planning/ROADMAP.md + DOCUMENTO_MAESTRO.
-
-**Previous:** BOT-BUILD-MOTO-CANON-020 (v10.62.0) — C-20a-e
-**Next:** Prueba en vivo F5 + C5-028/C5-031/C-21 bajo decisión de Tobias.
+**Previous:** BOT-BUILD-EMPTY-CANDIDATE-021 (v10.63.0) — C-22.1/C-22.2/C-22.3/C-22.4
+**Next:** F5 (prueba en vivo: /reset → "doble propósito a crédito" → happy path + "¿cuánto queda la cuota?" → PASO 2/3/4). Luego C5-028/C5-031 bajo decisión de Tobias.
 
 ---
-*Last updated: 2026-08-09*
+*Last updated: 2026-08-10*

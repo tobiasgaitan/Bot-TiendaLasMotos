@@ -155,6 +155,10 @@ EXTRACTION_SCHEMA = {
     "required": ["summary", "extracted"]
 }
 
+# [BOT-BUILD-DEADLOCK-PERSISTENT-022] Keywords crediticias compartidas entre
+# C-22.2 (directriz anti-deadlock function_response) y T1 (condicional tools=[]).
+_CREDIT_TURN_KEYWORDS = ("crédito", "credito", "cuota", "financia", "mensualidad")
+
 
 # ---------------------------------------------------------------------------
 # [BOT-BUILD-COHERENCE-WAVE07-02-BLIND-CREDIT-001] Crédito Ciego determinista.
@@ -1154,6 +1158,7 @@ La FAQ no avanza el embudo. {one_shot}
         start_pcc = time.monotonic()
         forced_instruction = None
         forced_temp = None
+        turn_phase = self._determine_funnel_phase(prospect_data, history)
 
         # [BOT-PONYTAIL-200] Defensive initialization of parallel Ponytail state
         # Ensures keys exist without altering existing CRM fields or greeting logic
@@ -1168,7 +1173,7 @@ La FAQ no avanza el embudo. {one_shot}
             current_attempt += 1
             if LANGFUSE_AVAILABLE and prospect_data:
                 _phone = prospect_data.get("phone") or prospect_data.get("id", "unknown")
-                _phase = self._determine_funnel_phase(prospect_data, history)
+                _phase = turn_phase
                 _session = f"wa_{_phone}"  # Stable session key per WhatsApp thread
                 
                 langfuse_context.update_current_trace(
@@ -1188,6 +1193,7 @@ La FAQ no avanza el embudo. {one_shot}
                     forced_instruction=forced_instruction,
                     forced_temperature=forced_temp,
                     pcc_deadline_start=start_pcc,
+                    forced_phase=turn_phase,
                 )
             else:
                 raw_response = await self._generate_with_retry_async(
@@ -1195,8 +1201,9 @@ La FAQ no avanza el embudo. {one_shot}
                     forced_instruction=forced_instruction,
                     forced_temperature=forced_temp,
                     pcc_deadline_start=start_pcc,
+                    forced_phase=turn_phase,
                 )
-            
+
             # --- PHASE-GATE FÍSICO (Bypass de Habeas Data) ---
             # AUDIT P1 (2.2): Interceptor de Respuesta.
             # Si el usuario NO ha aceptado Habeas Data, bloqueamos cualquier pregunta de crédito.
@@ -1700,7 +1707,7 @@ REGLAS ESTRICTAS DE USO:
             logger.error(f"❌ Error creating tools: {str(e)}", exc_info=True)
             return []
 
-    async def _generate_with_retry_async(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, forced_instruction: Optional[str] = None, forced_temperature: Optional[float] = None, pcc_deadline_start: Optional[float] = None) -> str:
+    async def _generate_with_retry_async(self, texto: str, context: str, prospect_data: Optional[Dict[str, Any]] = None, history: list = [], skip_greeting: bool = False, forced_instruction: Optional[str] = None, forced_temperature: Optional[float] = None, pcc_deadline_start: Optional[float] = None, forced_phase: Optional[str] = None) -> str:
         """
         Internal generation with exponential backoff and structured prompt injection (Async).
         """
@@ -1722,8 +1729,8 @@ REGLAS ESTRICTAS DE USO:
         # [BOT-BUILD-204] Deterministic credit turn intent from the raw user text.
         turn_intent = classify_credit_turn([texto])
 
-        # 1. Deterministic state evaluation
-        phase = self._determine_funnel_phase(prospect_data, history)
+        # 1. Deterministic state evaluation (forced_phase congela el turno; ver C-23)
+        phase = forced_phase or self._determine_funnel_phase(prospect_data, history)
         
         # --- HOT SEARCH GREETING BYPASS (BOT-BACKEND-BUGFIX-CATALOG-PERIMETER-187) ---
         is_mock_search = False
@@ -2279,6 +2286,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 catalog_returned_results = False
                 catalog_models_found = []
                 response_parts = []
+                credit_tool_rejected_this_turn = False
                 
                 while turns < max_turns:
                     elapsed_pcc_s = time.monotonic() - pcc_deadline_start
@@ -2315,7 +2323,8 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         _retry_nudge = types.Part.from_text(
                             text="[SYSTEM: Tu respuesta anterior llegó vacía. Genera AHORA la respuesta final "
                             "al usuario usando ÚNICAMENTE los resultados de las herramientas ya ejecutadas. "
-                            "PROHIBIDO volver a invocar search_catalog; construye la recomendación con el "
+                            "PROHIBIDO volver a invocar search_catalog ni calculate_credit_score en este turno; "
+                            "construye la recomendación con el "
                             "⭐ TOP RESULT, precio ($) e imagen Markdown.]"
                         )
                         _retry_payload = response_parts + [_retry_nudge] if response_parts else [_retry_nudge]
@@ -2731,7 +2740,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 # turn-scoped (SOLO en este function_response, NUNCA en juan_pablo_personality)
                                 # neutraliza el dead-lock en el turno actual; PASO 2 sigue vivo para turnos
                                 # siguientes (fase ≥ PHASE_2 con moto canónica).
-                                _credit_keywords = ("crédito", "credito", "cuota", "financia", "mensualidad")
+                                _credit_keywords = _CREDIT_TURN_KEYWORDS
                                 if phase == "PHASE_1_PROFILING" and any(kw in str(texto).lower() for kw in _credit_keywords):
                                     search_results += (
                                         "\n\n[DIRECTRIZ DE TURNO — MÁXIMA PRIORIDAD: completa ÚNICAMENTE el PASO 1 "
@@ -2771,6 +2780,14 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             # retornamos un JSON/dict de error indicando al LLM que la acción está denegada
                             # y obligándolo a usar search_catalog y mostrar precio/imagen.
                             if phase == "PHASE_1_PROFILING":
+                                if credit_tool_rejected_this_turn:
+                                    logger.warning("🔄 [TOOL REJECTION] Repeated calculate_credit_score attempt — forcing text completion.")
+                                    response_parts.append(types.Part.from_function_response(
+                                        name=f_name,
+                                        response={"error": "Acción denegada (repetida): completa el PASO 1 AHORA con el ⭐ TOP RESULT, precio ($) e imagen Markdown. Sin más herramientas."}
+                                    ))
+                                    continue
+                                credit_tool_rejected_this_turn = True
                                 reject_msg = (
                                     "Acción denegada: La herramienta calculate_credit_score no puede ser utilizada en PHASE_1_PROFILING. "
                                     "OBLIGATORIO: Debes identificar primero la moto de interés mediante la herramienta search_catalog, "
@@ -3195,7 +3212,12 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         turns += 1
                         _tool_loop_cfg_kwargs = {"temperature": 0.2}
                         if search_catalog_called and catalog_returned_results:
-                            _tool_loop_cfg_kwargs["tools"] = []
+                            if (phase == "PHASE_1_PROFILING"
+                                    and not credit_tool_rejected_this_turn
+                                    and any(kw in str(texto).lower() for kw in _CREDIT_TURN_KEYWORDS)):
+                                _tool_loop_cfg_kwargs["tools"] = dynamic_tools
+                            else:
+                                _tool_loop_cfg_kwargs["tools"] = []
                         response = await self._call_gemini_with_retry_async(
                             chat.send_message,
                             response_parts,
