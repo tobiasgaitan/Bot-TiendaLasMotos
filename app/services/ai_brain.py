@@ -2278,6 +2278,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 search_catalog_called = False
                 catalog_returned_results = False
                 catalog_models_found = []
+                response_parts = []
                 
                 while turns < max_turns:
                     elapsed_pcc_s = time.monotonic() - pcc_deadline_start
@@ -2289,15 +2290,38 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         break
                     if not response.candidates or not response.candidates[0].content.parts:
                         logger.error(f"🚨 [AI FALLBACK REASON]: Empty Candidate in Turn {turns+1} for {user_name}")
-                        # [BOT-BUILD-FIX-CATALOG-SEARCH-REGRESSION-005] Retry inline antes de degradar:
-                        # un empty-candidate transitorio (safety filter espurio) NO debe sacrificar
-                        # resultados de herramientas ya obtenidos (catálogo/crédito). Patrón FIX-2B.
-                        response = await self._call_gemini_with_retry_async(
-                            chat.send_message,
-                            "[SYSTEM: Tu respuesta anterior llegó vacía. Genera AHORA la respuesta final "
+                        # [BOT-BUILD-EMPTY-CANDIDATE-021 / C-22.1] Zero-Silent-Failures:
+                        # log finish_reason / prompt_feedback / safety del empty para trazabilidad forense.
+                        try:
+                            if response.candidates:
+                                c = response.candidates[0]
+                                logger.error(
+                                    f"🔬 [EMPTY-CANDIDATE FORENSIC] finish_reason={c.finish_reason} "
+                                    f"safety_ratings={c.safety_ratings}"
+                                )
+                            if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
+                                pf = response.prompt_feedback
+                                logger.error(
+                                    f"🔬 [EMPTY-CANDIDATE FEEDBACK] block_reason={pf.block_reason} "
+                                    f"safety_ratings={pf.safety_ratings}"
+                                )
+                        except Exception as _diag_err:
+                            logger.exception(f"⚠️ [EMPTY-CANDIDATE DIAG] Error extrayendo metadatos: {_diag_err}")
+                        # [BOT-BUILD-FIX-CATALOG-SEARCH-REGRESSION-005] Patrón FIX-2B ampliado:
+                        # [BOT-BUILD-EMPTY-CANDIDATE-021 / C-22.1] Reenvío de response_parts + nudge
+                        # para que el historial curado del SDK contenga los function_response y el
+                        # modelo pueda construir la recomendación con los datos del catálogo.
+                        # Si response_parts está vacío (empty en Turn 1), enviar solo el nudge.
+                        _retry_nudge = types.Part.from_text(
+                            text="[SYSTEM: Tu respuesta anterior llegó vacía. Genera AHORA la respuesta final "
                             "al usuario usando ÚNICAMENTE los resultados de las herramientas ya ejecutadas. "
                             "PROHIBIDO volver a invocar search_catalog; construye la recomendación con el "
-                            "⭐ TOP RESULT, precio ($) e imagen Markdown.]",
+                            "⭐ TOP RESULT, precio ($) e imagen Markdown.]"
+                        )
+                        _retry_payload = response_parts + [_retry_nudge] if response_parts else [_retry_nudge]
+                        response = await self._call_gemini_with_retry_async(
+                            chat.send_message,
+                            _retry_payload,
                             config=types.GenerateContentConfig(temperature=0.1, tools=[])
                         )
                         if not response.candidates or not response.candidates[0].content.parts:
@@ -2700,6 +2724,22 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     search_results += "\n\n[SYSTEM: BYPASS GREETING: Un elemento del catálogo ha sido recuperado en caliente. Tienes ESTRICTAMENTE PROHIBIDO saludar, dar la bienvenida, decir 'Hola' o presentarte. Empieza tu respuesta directamente con la información de la motocicleta.]"
                                 else:
                                     logger.info(f"🆕 [FIRST CONTACT SHIELD] Tool search_catalog returned results but skip_greeting={skip_greeting}. Mandatory greeting enforced.")
+                                # [BOT-BUILD-EMPTY-CANDIDATE-021 / C-22.2] Directriz anti-deadlock turn-scoped:
+                                # cuando el usuario menciona crédito, la EXCEPCIÓN de PASO 2 del prompt
+                                # (ejecutar calculate_credit_score inmediatamente) puede provocar
+                                # UNEXPECTED_TOOL_CALL en Turn 2 → empty candidate. Esta directriz
+                                # turn-scoped (SOLO en este function_response, NUNCA en juan_pablo_personality)
+                                # neutraliza el dead-lock en el turno actual; PASO 2 sigue vivo para turnos
+                                # siguientes (fase ≥ PHASE_2 con moto canónica).
+                                _credit_keywords = ("crédito", "credito", "cuota", "financia", "mensualidad")
+                                if phase == "PHASE_1_PROFILING" and any(kw in str(texto).lower() for kw in _credit_keywords):
+                                    search_results += (
+                                        "\n\n[DIRECTRIZ DE TURNO — MÁXIMA PRIORIDAD: completa ÚNICAMENTE el PASO 1 "
+                                        "en ESTA respuesta: saludo (si aplica), ⭐ TOP RESULT, precio ($), imagen "
+                                        "Markdown y UNA pregunta de cierre. NO invoques calculate_credit_score "
+                                        "en este turno: la simulación de crédito corre en el turno siguiente "
+                                        "cuando el usuario pida el valor exacto de las cuotas.]"
+                                    )
                                 if prospect_data is not None and matches:
                                     # [BOT-BUILD-EGRESS-CANON-015] Stash ephemeral TOP RESULT metadata for
                                     # deterministic egress image injection and alignment guardrails.
@@ -3411,13 +3451,13 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             top_name = "(información no disponible)"
         extra_parts = [x for x in [
             f"Ficha Tecnica: {top_name}" if top_name else "",
-            f"⭐ Recomendación TOP: {top_name}" if top_name else "",
             f"💰 Precio: {top_price}" if top_price else "",
+            f"⭐ Recomendación TOP: {top_name}" if top_name else "",
             f"![{top_name or 'Moto recomendada'}]({top_image})" if top_image else "",
         ] if x]
         fallback = self._fallback_response(texto, history, reason="empty_candidate")
         if extra_parts:
-            fallback = f"{fallback}\n\n" + "\n".join(extra_parts)
+            fallback = f"{fallback}\n" + "\n".join(extra_parts)
         return fallback
 
     def _fallback_response(self, texto: str, history: list = [], reason: str = "system_error") -> str:

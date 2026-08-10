@@ -145,12 +145,31 @@ async def test_empty_candidate_in_turn_recovers_via_inline_retry():
     # Aserción 2: la respuesta recuperada (con la moto) llegó al usuario
     assert "APACHE RTR 200" in res
 
-    # Aserción 3: el retry inline se ejecutó exactamente una vez con el nudge
+    # Aserción 3: el retry inline se ejecutó exactamente una vez con el payload reparado
+    # [BOT-BUILD-EMPTY-CANDIDATE-021 / C-22.1] El payload es response_parts + nudge
+    # (lista de types.Part), no el string crudo anterior. Extraemos textos y asertamos
+    # que el function_response y el nudge están presentes.
     assert len(gemini_calls) == 3, (
         f"Se esperaban 3 llamadas a Gemini (inicial + tool-result + retry), hubo {len(gemini_calls)}"
     )
-    nudge_msg = gemini_calls[2][1] if len(gemini_calls[2]) > 1 else ""
-    assert "respuesta anterior llegó vacía" in nudge_msg
+    retry_payload = gemini_calls[2][1] if len(gemini_calls[2]) > 1 else None
+    assert isinstance(retry_payload, list), (
+        f"Payload del retry debe ser lista de Parts, es {type(retry_payload)}"
+    )
+    texts_in_payload = [
+        p.text for p in retry_payload if hasattr(p, 'text') and p.text
+    ]
+    nudge_text = "".join(texts_in_payload)
+    assert "respuesta anterior llegó vacía" in nudge_text, (
+        f"Nudge no encontrado en el payload del retry: '{nudge_text[:200]}'"
+    )
+    has_function_response = any(
+        hasattr(p, 'function_response') and p.function_response
+        for p in retry_payload
+    )
+    assert has_function_response, (
+        "El payload del retry reparado DEBE contener el function_response del catálogo"
+    )
 
 
 # ---------------------------------------------------------------------------
