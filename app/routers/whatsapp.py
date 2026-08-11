@@ -129,8 +129,26 @@ def _evaluate_skip_greeting(current_history: list, prospect_data: Optional[Dict[
     exists = bool(prospect_data and prospect_data.get("exists", False))
     newly_created = not exists
 
+    # [BOT-BUILD-SALUDO-027 / C5-048] Reset boundary (defensive): the first user
+    # turn after a reset command must greet regardless of the 12h recency window.
+    # In the happy path /reset wipes the whole history via clear_memory (incl. the
+    # persisted command itself), so the empty-history branch already forces the
+    # greeting and this frontier is inert. It only fires in the residual scenario
+    # where the purge partially failed and a warm pre-reset window + a leftover
+    # reset command survive. Detection uses the persisted user command (exact-match
+    # on the SSOT set accepted as session-reset by the router), not the model
+    # confirmation (sent via Meta API without save_message — never in history).
+    reset_idx = -1
+    for i, msg in enumerate(current_history or []):
+        if isinstance(msg, dict) and msg.get("role") == "user" and \
+           str(msg.get("content", "")).strip().lower() in ("reset", "/reset"):
+            reset_idx = i
+    if reset_idx >= 0:
+        logger.info(f"🆕 [RESET-FRONTIER] reset command at history idx {reset_idx}; scoping to post-reset window.")
+    scoped_history = (current_history or [])[reset_idx + 1:] if reset_idx >= 0 else (current_history or [])
+
     legitimate_user_messages = []
-    for msg in (current_history or []):
+    for msg in scoped_history:
         if msg.get("role") == "user":
             content = msg.get("content", "").strip()
             content_lower = content.lower()

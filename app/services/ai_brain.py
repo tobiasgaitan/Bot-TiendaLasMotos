@@ -2311,6 +2311,15 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 catalog_models_found = []
                 response_parts = []
                 credit_tool_rejected_this_turn = False
+                _greeting_clause = (
+                    "Si es el primer contacto del usuario, saluda cálidamente presentándote como Juan Pablo "
+                    "antes de la información de la moto. "
+                    if not skip_greeting else ""
+                )
+                _closing_clause = (
+                    "Finaliza con la pregunta de cierre canónica del PASO 1: ¿Con quién tengo el gusto?"
+                    if not (prospect_data or {}).get("nombre") else ""
+                )
                 
                 while turns < max_turns:
                     elapsed_pcc_s = time.monotonic() - pcc_deadline_start
@@ -2819,7 +2828,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     logger.warning("🔄 [TOOL REJECTION] Repeated calculate_credit_score attempt — forcing text completion.")
                                     response_parts.append(types.Part.from_function_response(
                                         name=f_name,
-                                        response={"error": "Acción denegada (repetida): completa el PASO 1 AHORA con el ⭐ TOP RESULT, precio ($), imagen Markdown y la línea literal 'Ficha Tecnica: <modelo>'. Sin más herramientas."}
+                                        response={"error": "Acción denegada (repetida): completa el PASO 1 AHORA con el ⭐ TOP RESULT, precio ($), imagen Markdown y la línea literal 'Ficha Tecnica: <modelo>'. Sin más herramientas. "
+                                            + _greeting_clause
+                                            + _closing_clause}
                                     ))
                                     continue
                                 credit_tool_rejected_this_turn = True
@@ -2830,7 +2841,9 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     "OBLIGATORIO: Debes identificar primero la moto de interés mediante la herramienta search_catalog, "
                                     "y mostrar el precio exacto, el enlace de imagen y la línea literal 'Ficha Tecnica: <modelo>' tal como la devolvió el catálogo al usuario "
                                     "antes de poder realizar cualquier perfilamiento de crédito. "
-                                    "El estudio de crédito está estrictamente denegado en esta fase inicial."
+                                    "El estudio de crédito está estrictamente denegado en esta fase inicial. "
+                                    + _greeting_clause
+                                    + _closing_clause
                                 )
                                 logger.warning(f"🛑 [TOOL REJECTION] calculate_credit_score invoked in PHASE_1_PROFILING. Rejecting for LLM.")
                                 response_parts.append(types.Part.from_function_response(

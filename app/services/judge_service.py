@@ -198,10 +198,10 @@ class JudgeService:
         [BOT-BUILD-ETAPA3-POST-RESET-C9-GRACE-001] Cuenta los mensajes legítimos de
         usuario en el historial, excluyendo comandos y mensajes de control/sistema.
 
-        Semántica IDÉNTICA a `_evaluate_skip_greeting` del router de WhatsApp
-        (alineación BOT-206): se excluyen 'reset', '/reset', '/update',
-        '/refresh_catalog', cualquier comando con prefijo '/', las notas
-        '[System Note:' y los mensajes de reinicio de sesión.
+        Semántica heredada de `_evaluate_skip_greeting` del router de WhatsApp,
+        sin la frontera de reset (ver C5-049): se excluyen 'reset', '/reset',
+        '/update', '/refresh_catalog', cualquier comando con prefijo '/', las
+        notas '[System Note:' y los mensajes de reinicio de sesión.
 
         Defensivo: ignora entradas no-dict (el historial es una fuente externa).
         """
