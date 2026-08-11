@@ -721,6 +721,49 @@ La FAQ no avanza el embudo. {one_shot}
 
         return 0.0
 
+    @staticmethod
+    def _format_gemini_error_body(e: Exception, cap: int = 800) -> str:
+        """
+        [BOT-BUILD-SALVAGE-CAP-028 / ZSF] Serializa el cuerpo de un error HTTP
+        de Gemini en UNA sola línea, acotada y sin PII. Nunca lanza; si todo
+        fallback falla, emite un resumen mínimo del tipo/código/status.
+        """
+        def _fallback() -> str:
+            code = getattr(e, "code", None)
+            status = getattr(e, "status", None)
+            message = getattr(e, "message", None)
+            parts = [type(e).__name__]
+            if code is not None:
+                parts.append(f"code={code}")
+            if status is not None:
+                parts.append(f"status={status}")
+            if message is not None:
+                parts.append(f"message={str(message)[:200]!r}")
+            return f"{' '.join(parts)} body_unavailable=True"
+
+        try:
+            body = None
+            details = getattr(e, "details", None)
+            if isinstance(details, (dict, list)):
+                body = json.dumps(details, ensure_ascii=False, default=str)
+            else:
+                resp = getattr(e, "response", None)
+                text = getattr(resp, "text", None)
+                if isinstance(text, str):
+                    body = text
+                else:
+                    body = getattr(e, "message", None)
+
+            if not body:
+                return _fallback()
+
+            body = " ".join(str(body).split())
+            if len(body) > cap:
+                body = body[:cap] + f"…[truncated {len(body)}→{cap}]"
+            return body
+        except Exception:
+            return _fallback()
+
     async def _call_gemini_with_retry_async(self, func, *args, **kwargs):
         """
         Resiliencia de Red (Async): Implementa reintentos con Exponential Backoff
@@ -764,10 +807,9 @@ La FAQ no avanza el embudo. {one_shot}
 
                 # [Zero-Silent-Failures] Final retry failure or non-retryable error
                 logger.exception(f"🚨 [GEMINI ASYNC ERROR] Final failure in _call_gemini_with_retry_async: {e}")
-                if hasattr(e, "response") and hasattr(e.response, "text"):
-                    logger.error(f"🚨 [GEMINI HTTP DETAIL] Response text: {e.response.text}")
-                elif hasattr(e, "message"):
-                    logger.error(f"🚨 [GEMINI ERROR MESSAGE] Message: {e.message}")
+                logger.error(
+                    f"🚨 [GEMINI HTTP DETAIL] {self._format_gemini_error_body(e)}"
+                )
 
                 raise e
 
@@ -3510,20 +3552,25 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
         user_name: str = "",
     ) -> str:
         """
-        [BOT-BUILD-PCC-VALID-026 / Palanca b] Canonical PASO 1 caption rebuilt
-        deterministically from the Top Result stash when the post-rejection
-        C-23 text turn fails PCC validation.
+        [BOT-BUILD-PCC-VALID-026 / Palanca b] [BOT-BUILD-SALVAGE-CAP-028]
+        Canonical PASO 1 caption rebuilt deterministically from the Top Result
+        stash when the post-rejection C-23 text turn fails PCC validation.
 
         Includes the literal 'Ficha Tecnica:' prefix and Markdown image.
         The currency price line is included when the Top Result stash provides
-        a non-empty price; otherwise omitted.  (run_checker is not re-run on
+        a non-empty price; otherwise omitted. (run_checker is not re-run on
         this last-resort path — the validation budget is already exhausted.)
 
-        Saludo and cierre verbatim canonical: no invented voice.
+        Saludo cálido canónico de Juan Pablo se presenta SIEMPRE (personalizado
+        si tenemos nombre, genérico en primer contacto). Joiner "\\n" mantiene
+        paridad con Fix-3 de BOT-BUILD-EMPTY-CANDIDATE-021 y asegura que el
+        caption canónico entra en el contrato 4 líneas/350 chars post-egreso.
         """
         parts = []
         if user_name and user_name != "desconocido":
             parts.append(f"¡Hola {user_name}! Soy Juan Pablo, asesor de Tienda Las Motos.")
+        else:
+            parts.append("¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos.")
         if top_name:
             parts.append(f"Ficha Tecnica: {top_name}")
         if top_price:
@@ -3531,7 +3578,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
         if top_image:
             parts.append(f"![{top_name}]({top_image})")
         parts.append("¿Con quién tengo el gusto?")
-        return "\n\n".join(parts)
+        return "\n".join(parts)
 
     def _build_pcc_fallback(
         self,
