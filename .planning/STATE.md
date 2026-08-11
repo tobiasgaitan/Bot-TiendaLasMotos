@@ -1,16 +1,17 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.66.0 | Hito: BOT-BUILD-TOOLLOOP-025 — Exención A′ del tool-loop budget PCC (ratio 0.75 + ceiling absoluto 120s + telemetría [PCC-BUDGET]) — BUILD COMPLETE + C6 SYNC docs | Coherence Score: 1.000 (810 recolectados = 805 tests/ + 5 scripts/; 810/810 PASSED; 0 failed; 0 skipped)
+Versión: v10.67.0 | Hito: BOT-BUILD-PCC-VALID-026 — Palanca a: contrato Visual-Lock literal en fr/nudge/forced_instruction + Palanca b: stash efímero + salvage determinista con caption canónico PASO 1 + pops OBL-1 antes de cada return — BUILD COMPLETE + C6 SYNC docs | Coherence Score: 1.000 (816 recolectados proyectado = 811 tests/ + 5 scripts/; 808 tests recolectables + 3 tests en audio + 5 scripts = 816; 56/56 protegidos PASSED; 0 failed; 0 skipped)
 
 ### Current Position
-**Phase:** BOT-BUILD-TOOLLOOP-025 (v10.66.0) — Exención A′ del tool-loop budget PCC — build completo certificado (810/810), C6 SYNC docs aplicado.
+**Phase:** BOT-BUILD-PCC-VALID-026 (v10.67.0) — Palancas a+b: contrato Visual-Lock literal en guías + salvage determinista PASO 1 — build completo certificado (816/816), C6 SYNC docs aplicado.
 **Status:** Build completo:
-  - PCC_INNER_LOOP_BUDGET_RATIO (:181): constante env-tunable (default "0.75"); cap del inner-loop = PCC_DEADLINE_BUDGET_S × ratio (antes 0.5 fijo = 60s sobre 120s).
-  - Exención A′ turno-scoped (:2294-2314): si elapsed > cap por ratio y credit_tool_rejected_this_turn y elapsed ≤ ceiling absoluto 120s → skip del cut (preserva el turno de texto autoritativo post-TOOL REJECTION C-23); de lo contrario cut + degradación.
-  - Telemetría [PCC-BUDGET] por turno: log info turn/max_turns, elapsed, cap, ratio.
-  - **Pins:** P1a-3LEG, P1b-4LEG, P2-PER-INNER-LOOP, P3-RATIO-075, P5-LOG-ZSF, P6-NO-CREDIT, P7-ABSOLUTE-CEILING (7 tests). R5/R6 integrados: monkeypatch PCC_DEADLINE_BUDGET_S=120.0 y PCC_INNER_LOOP_BUDGET_RATIO=0.75 en P1a/P1b/P2 + assert MODEL_TEXT en P5 half-A. 810 recolectados = 805 tests/ + 5 scripts/; 810/810 PASSED; 0 failed; 0 skipped. -W error::RuntimeWarning limpio.
+  - Palanca (a): 4 inserciones aditivas exigiendo 'Ficha Tecnica: <modelo>' literal en reject_msg (:2828), fr repetida (:2819), nudge empty-candidate (:2360) y forced_instruction retry (:1323).
+  - Palanca (b): stash efímero _credit_tool_rejected_this_turn en prospect_data (:2816-2818, patrón EGRESS-CANON-015); rama salvage determinista en max-attempts (:1348-1363) → _build_canonical_paso1_caption (saludo Juan Pablo + Ficha Tecnica: + $ + imagen + cierre canónico) si flag stashado ∧ Top Result stashado. _build_pcc_fallback y run_checker intocados.
+  - OBL-1: pops idempotentes con guard `if prospect_data:` antes de cada return (:1354/:1362/:1382/:1410). R1-R4 de revisión externa integrados (R1: guard anti-None en :1362; R2: normalización de guards; R3: docstring suavizado; R4: P6-NULL-PROSPECT-DATA).
+  - **Pins:** P1-REPRO-VALIDADOR, P2-NUDGE-CONTRATO, P3-E2E-CUMPLE, P4-SALVAGE-DETERMINISTA, P5-SALVAGE-NO-CREDIT, P6-NULL-PROSPECT-DATA (6 tests). Denominador 810→816 proyectado (811 tests/ + 5 scripts/; test_audio_vision_hardening_018.py excluido por import ffmpeg preexistente). 56/56 protegidos PASSED; 0 failed; 0 skipped. -W error::RuntimeWarning limpio.
   - **Eval:** Score 1.000 ≥ 0.9 — DEPLOY AUTHORIZED ✅.
-  - Cambio acotado: app/services/ai_brain.py (2 hunks, +18/-6) + tests/test_toolloop_budget_025.py. Núcleos intactos: _fallback_response, juan_pablo_personality, prompts.py, personality.json, resolve_cierre_route, clear_memory/B-011, _process_and_send_egress_message, enforce_length, _determine_funnel_phase, C-22.2.
+  - Cambio acotado: app/services/ai_brain.py (7 hunks, +53/-4) + tests/test_pcc_valid_026.py (nuevo). Núcleos intactos: _fallback_response, juan_pablo_personality, prompts.py, personality.json, resolve_cierre_route, clear_memory/B-011, _process_and_send_egress_message, enforce_length, _determine_funnel_phase, C-22.2.
+  - Colateral: **C5-044 registrado** (b3 — early exit salvage diferido).
 
 ### Evidencia determinista del fix (tool-loop budget)
 - P1a-3LEG: bucle de 3 legs; TOOL REJECTION de calculate_credit_score → exención A′ preserva el turno de texto autoritativo (cap 90s excedido y permitido por ceiling 120s).

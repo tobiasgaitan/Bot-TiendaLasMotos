@@ -1319,7 +1319,8 @@ La FAQ no avanza el embudo. {one_shot}
                         forced_instruction = (
                             f"ERROR: La respuesta generada anteriormente falló la validación del catálogo y precio. "
                             f"Detalles: {validation['report']['expected_behavior']}. "
-                            f"Asegúrate de incluir siempre el precio con '$' y la imagen/enlace de la moto en formato markdown."
+                            f"Asegúrate de incluir siempre el precio con '$', la imagen/enlace de la moto en formato markdown "
+                            f"y el prefijo literal 'Ficha Tecnica: <modelo>' tal como la devolvió el catálogo."
                         )
                         forced_temp = 0.1
                         continue  # Force immediate retry with temperature 0.1
@@ -1344,6 +1345,21 @@ La FAQ no avanza el embudo. {one_shot}
                             except Exception as _pcc_err:
                                 logger.exception(f"⚠️ [PCC-LOOP-017] Error recuperando precio del Top Result: {_pcc_err}")
                                 _top_price = ""
+                        if prospect_data and prospect_data.get("_credit_tool_rejected_this_turn") and _top_name:
+                            logger.warning(
+                                f"🛟 [PCC SALVAGE] C-23 post-rejection text turn failed validation "
+                                f"{max_validation_attempts}x — rebuilding canonical PASO 1 caption "
+                                f"from Top Result stash."
+                            )
+                            prospect_data.pop("_credit_tool_rejected_this_turn", None)
+                            return self._build_canonical_paso1_caption(
+                                top_name=_top_name,
+                                top_price=_top_price,
+                                top_image=_top_image,
+                                user_name=prospect_data.get("nombre", ""),
+                            )
+                        if prospect_data:
+                            prospect_data.pop("_credit_tool_rejected_this_turn", None)
                         return self._build_pcc_fallback(
                             texto, history,
                             top_name=_top_name,
@@ -1363,6 +1379,8 @@ La FAQ no avanza el embudo. {one_shot}
                         )
                     validated_text = CerebroIA._validate_output(final_text)
                     final_text = CerebroIA._ensure_soat_anchor(validated_text)
+                    if prospect_data:
+                        prospect_data.pop("_credit_tool_rejected_this_turn", None)
                     return final_text
             else:
                 if not final_text or not final_text.strip():
@@ -1389,6 +1407,8 @@ La FAQ no avanza el embudo. {one_shot}
                         top_price=_top_price,
                     )
                 validated_text = CerebroIA._validate_output(final_text)
+                if prospect_data:
+                    prospect_data.pop("_credit_tool_rejected_this_turn", None)
                 return validated_text
         except HabeasDataBypassInterrupt as hdbi:
             logger.info(f"🛡️ [HABEAS-BYPASS] Cortocircuito limpio ejecutado. Propagando al router.")
@@ -2340,7 +2360,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             "al usuario usando ÚNICAMENTE los resultados de las herramientas ya ejecutadas. "
                             "PROHIBIDO volver a invocar search_catalog ni calculate_credit_score en este turno; "
                             "construye la recomendación con el "
-                            "⭐ TOP RESULT, precio ($) e imagen Markdown.]"
+                            "⭐ TOP RESULT, precio ($), imagen Markdown y el prefijo literal 'Ficha Tecnica:'.]"
                         )
                         _retry_payload = response_parts + [_retry_nudge] if response_parts else [_retry_nudge]
                         response = await self._call_gemini_with_retry_async(
@@ -2799,14 +2819,17 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     logger.warning("🔄 [TOOL REJECTION] Repeated calculate_credit_score attempt — forcing text completion.")
                                     response_parts.append(types.Part.from_function_response(
                                         name=f_name,
-                                        response={"error": "Acción denegada (repetida): completa el PASO 1 AHORA con el ⭐ TOP RESULT, precio ($) e imagen Markdown. Sin más herramientas."}
+                                        response={"error": "Acción denegada (repetida): completa el PASO 1 AHORA con el ⭐ TOP RESULT, precio ($), imagen Markdown y la línea literal 'Ficha Tecnica: <modelo>'. Sin más herramientas."}
                                     ))
                                     continue
                                 credit_tool_rejected_this_turn = True
+                                if prospect_data is not None:
+                                    prospect_data["_credit_tool_rejected_this_turn"] = True
                                 reject_msg = (
                                     "Acción denegada: La herramienta calculate_credit_score no puede ser utilizada en PHASE_1_PROFILING. "
                                     "OBLIGATORIO: Debes identificar primero la moto de interés mediante la herramienta search_catalog, "
-                                    "y mostrar el precio exacto y el enlace de imagen al usuario antes de poder realizar cualquier perfilamiento de crédito. "
+                                    "y mostrar el precio exacto, el enlace de imagen y la línea literal 'Ficha Tecnica: <modelo>' tal como la devolvió el catálogo al usuario "
+                                    "antes de poder realizar cualquier perfilamiento de crédito. "
                                     "El estudio de crédito está estrictamente denegado en esta fase inicial."
                                 )
                                 logger.warning(f"🛑 [TOOL REJECTION] calculate_credit_score invoked in PHASE_1_PROFILING. Rejecting for LLM.")
@@ -3465,6 +3488,37 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             r"de acuerdo|est[aá] bien|[👍✅👌🆗✔☑💯])",
             text,
         ))
+
+    def _build_canonical_paso1_caption(
+        self,
+        top_name: str = "",
+        top_price: str = "",
+        top_image: str = "",
+        user_name: str = "",
+    ) -> str:
+        """
+        [BOT-BUILD-PCC-VALID-026 / Palanca b] Canonical PASO 1 caption rebuilt
+        deterministically from the Top Result stash when the post-rejection
+        C-23 text turn fails PCC validation.
+
+        Includes the literal 'Ficha Tecnica:' prefix and Markdown image.
+        The currency price line is included when the Top Result stash provides
+        a non-empty price; otherwise omitted.  (run_checker is not re-run on
+        this last-resort path — the validation budget is already exhausted.)
+
+        Saludo and cierre verbatim canonical: no invented voice.
+        """
+        parts = []
+        if user_name and user_name != "desconocido":
+            parts.append(f"¡Hola {user_name}! Soy Juan Pablo, asesor de Tienda Las Motos.")
+        if top_name:
+            parts.append(f"Ficha Tecnica: {top_name}")
+        if top_price:
+            parts.append(f"💰 Precio: {top_price}")
+        if top_image:
+            parts.append(f"![{top_name}]({top_image})")
+        parts.append("¿Con quién tengo el gusto?")
+        return "\n\n".join(parts)
 
     def _build_pcc_fallback(
         self,
