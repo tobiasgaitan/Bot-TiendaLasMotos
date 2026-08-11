@@ -178,6 +178,7 @@ _CREDIT_TURN_KEYWORDS = ("crédito", "credito", "cuota", "financia", "mensualida
 GEMINI_CALL_TIMEOUT_S = 18.0
 GEMINI_TIMEOUT_BUDGET_S = float(os.getenv("GEMINI_TIMEOUT_BUDGET_S", "75.0"))
 PCC_DEADLINE_BUDGET_S = float(os.getenv("PCC_DEADLINE_BUDGET_S", "120.0"))
+PCC_INNER_LOOP_BUDGET_RATIO = float(os.getenv("PCC_INNER_LOOP_BUDGET_RATIO", "0.75"))
 
 BLIND_CREDIT_DEFAULTS: Dict[str, str] = {
     "entidad": "Brilla de Gases",
@@ -2293,12 +2294,23 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                 
                 while turns < max_turns:
                     elapsed_pcc_s = time.monotonic() - pcc_deadline_start
-                    if elapsed_pcc_s > PCC_DEADLINE_BUDGET_S * 0.5:
-                        logger.warning(
-                            f"⏱️ [PCC-DEADLINE] Inner loop cut at turn {turns+1}: "
-                            f"elapsed={elapsed_pcc_s:.1f}s > 50% of budget ({PCC_DEADLINE_BUDGET_S}s). Degrading."
-                        )
-                        break
+                    logger.info(
+                        f"⏱️ [PCC-BUDGET] turn {turns+1}/{max_turns} "
+                        f"elapsed={elapsed_pcc_s:.1f}s cap={PCC_DEADLINE_BUDGET_S * PCC_INNER_LOOP_BUDGET_RATIO:.0f}s "
+                        f"ratio={PCC_INNER_LOOP_BUDGET_RATIO}"
+                    )
+                    if elapsed_pcc_s > PCC_DEADLINE_BUDGET_S * PCC_INNER_LOOP_BUDGET_RATIO:
+                        if credit_tool_rejected_this_turn and elapsed_pcc_s <= PCC_DEADLINE_BUDGET_S:
+                            logger.warning(
+                                f"⏱️ [PCC-DEADLINE] Exemption: post-rejection text turn (C-23) "
+                                f"— cap skipped at turn {turns+1}"
+                            )
+                        else:
+                            logger.warning(
+                                f"⏱️ [PCC-DEADLINE] Inner loop cut at turn {turns+1}: "
+                                f"elapsed={elapsed_pcc_s:.1f}s > {PCC_INNER_LOOP_BUDGET_RATIO*100:.0f}% of budget ({PCC_DEADLINE_BUDGET_S}s). Degrading."
+                            )
+                            break
                     if not response.candidates or not response.candidates[0].content.parts:
                         logger.error(f"🚨 [AI FALLBACK REASON]: Empty Candidate in Turn {turns+1} for {user_name}")
                         # [BOT-BUILD-EMPTY-CANDIDATE-021 / C-22.1] Zero-Silent-Failures:
