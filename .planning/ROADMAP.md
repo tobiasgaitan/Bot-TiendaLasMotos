@@ -76,9 +76,15 @@
 | O1 | Erradicación colección huérfana `catalog_items` (v10.52.1) | Completed | 2026-08-05 |
 | DASH-008 | Extensión score_resultado a media/fallback del Juez (v10.53.0) | Completed | 2026-08-05 |
 | REG-009 | Fix temporal R1∧R2 auto-fill forma_pago (v10.53.1) | Completed | 2026-08-06 |
-| EGRESS-CANON-015 | Egreso determinista de imagen y modelo (v10.58.0) | Build Complete | 2026-08-09 |
-| PCC-LOOP-017 | Cierre bucle guard PCC + fallback honesto Top Result (v10.60.0) | Build Complete | 2026-08-09 |
-| FUNNEL-SKIP-014 | Cierre incidente salto de fase post-reset (v10.57.0) | Build Complete | 2026-08-09 |
+| EGRESS-CANON-015 | Egreso determinista de imagen y modelo (v10.58.0) | Completed | 2026-08-09 |
+| PCC-LOOP-017 | Cierre bucle guard PCC + fallback honesto Top Result (v10.60.0) | Completed | 2026-08-09 |
+| DEADLOCK-PERSISTENT-022 | Cierre dead-lock PASO 2 + freeze fase por turno (v10.64.0 + RF v10.64.1) | Completed | 2026-08-10 |
+| DEADLINE-BUDGET-023 | Deadline dinámico frío/caliente + min-instances=1 (v10.65.0) | Completed | 2026-08-10 |
+| TOOLLOOP-025 | Exención A′ tool-loop budget PCC, ratio 0.75 + ceiling 120s (v10.66.0) | Completed | 2026-08-10 |
+| PCC-VALID-026 | Contrato Visual-Lock en fr/nudge/forced + salvage canónico (v10.67.0) | Completed | 2026-08-10 |
+| SALUDO-027 | Saludo cálido post-rechazo C-23 + frontera reset (v10.68.0) | Completed | 2026-08-11 |
+| SALVAGE-CAP-028 | Caption salvage 4 líneas + log ZSF HTTP Gemini (v10.69.0) | Completed | 2026-08-11 |
+| FUNNEL-SKIP-014 | Cierre incidente salto de fase post-reset (v10.57.0) | Completed | 2026-08-09 |
 | 5 | Resolución de la Concurrencia y Aislamiento de Código Legado | Pending | - |
 | 6 | Blindaje Conductual del Agente e Integridad del Embudo | Pending | - |
 | 7 | Sincronización GSD, Certificación de Coherencia y Despliegue | Pending | - |
@@ -117,4 +123,4 @@
 | 1 | Similitud Multimodal e Integración | Completed | 2026-07-11 |
 
 ---
-*Last updated: 2026-08-09*
+*Last updated: 2026-08-12*

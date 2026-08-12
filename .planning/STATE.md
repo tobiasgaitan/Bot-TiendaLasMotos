@@ -23,6 +23,13 @@ Versión: v10.69.0 | Hito: BOT-BUILD-SALVAGE-CAP-028 — Refuerzo del caption ca
 
 ### Colaterales abiertos
 - **C5-052:** greeting whitespace-only en `_build_canonical_paso1_caption` (preexistente, ruta `str(user_name or "").strip()`); evaluar normalización.
+- **C5-037 (HIGH #1):** precio $ extirpado por coerción de egreso (enforce_length 4 líneas/350 chars) en happy path PASO 1 con crédito: imagen llega, precio no → Directiva #3 (Visual-Lock) violada en capa visible. Siguiente paso: ticket BOT-PLAN a OPENCODE PLANNER.
+- **C5-050 + C5-039 (HIGH #2, raíz única):** cliente genai instanciado por request (whatsapp.py :906/:1308/:1406 → ai_brain.py :274) amplifica 429 RESOURCE_EXHAUSTED en Turn 1 y latencia/cuota. Enfoque: singleton/pool + forense del cuerpo 429.
+- **C5-045:** gate F5 debe exigir explícitamente 0 failed en stdout antes del push (exit-code del deploy-gate no basta).
+- **C5-046:** flaky tests/test_regression_203.py::test_raider_125_helper_path_414444.
+- **C5-047:** pregunta de identidad "¿con quién tengo el gusto?" fuera de orden en PASO 1 con crédito.
+- **C5-058:** perímetro M4-003 del Maestro decía 817+5=822; CURADO en este WARP-SYNC a 824+5=829.
+- **C5-059:** snapshot KB Documento Maestro.docx queda desactualizado tras este WARP-SYNC (header F5 + perímetro); realinear en el próximo hito documental (gobernanza C5-054: el repo vivo prevalece).
 - **C5-053:** alertas externas por eliminación del tag `[GEMINI ERROR MESSAGE]` en Fix-B (0 referencias restantes en repo; no verificables, observación pasiva).
 - **C5-028:** enriquecer _build_pcc_fallback con summary del catálogo.
 - **C5-031 (H4):** revisar GEMINI_CALL_TIMEOUT_S (18s → Turn 1 TimeoutError en frío).
@@ -36,10 +43,10 @@ Versión: v10.69.0 | Hito: BOT-BUILD-SALVAGE-CAP-028 — Refuerzo del caption ca
 - ~~**C5-041:** CERRADO — minScale=1 físico en Cloud Run confirmado en revisión 00447; header de consola stale (cosmético).~~
 
 **Previous:** BOT-BUILD-PCC-VALID-026 (v10.67.0) — Palancas a+b: Visual-Lock + salvage determinista
-**Next:** F5 (prueba en vivo: /reset → "doble propósito a crédito" → happy path + "¿cuánto queda la cuota?" → PASO 2/3/4). Luego C5-028/C5-031 bajo decisión de Tobias.
+**Next:** BOT-PLAN-C5-037 vía OPENCODE PLANNER (Visual-Lock visible: precio $ extirpado por enforce_length en happy path PASO 1). Cola: C5-050+C5-039 singleton genai, pruebas E2E reales, observabilidad beta, C5-045, colaterales abiertos, Wave B.
 
 ### Tooling local (MCP, sin bump documental — BOT-BUILD-GRAPHIFY-MCP-024)
 - `graphify-backend` MCP registrado en ~/.config/opencode/opencode.json (bloque local vía /opt/homebrew/bin/uv + graphifyy 0.9.38 + graph.json; timeout 30000; enabled true). Invariante serena intacto (SHA-256 canónico 24545b4f…bbffc). Completado: reinicio + panel MCP verificado (graphify-backend Connected + serena Connected) + graph_stats coherente con GRAPH_REPORT.md — 2026-08-11.
 
 ---
-*Last updated: 2026-08-11*
+*Last updated: 2026-08-12*
