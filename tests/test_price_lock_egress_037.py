@@ -19,6 +19,7 @@ from app.routers.whatsapp import (
     _coerce_caption_price_lock,
     _pipeline_egress,
     _send_whatsapp_image,
+    _split_ficha_price_line,
 )
 
 
@@ -312,3 +313,196 @@ def test_p10_merge_anchor_ignores_bare_dollar_decoy():
     assert len(out.splitlines()) <= 4, f"excede 4 líneas: {out!r}"
     assert len(out) <= 350, f"excede 350 chars: {len(out)}"
     assert "¿Con quién tengo el gusto?" in out
+
+
+# ──────────────── P11-H3-PROSA-UNICA (R1.4 anti-decoy) ────────────────
+
+def test_p11_h3_prosa_unica_linea_dollar():
+    """
+    R1.4: precio en prosa sin emoji 💰 ni keyword 'precio', siendo la ÚNICA
+    línea $ y con Ficha presente → debe anclarse a la Ficha y sobrevivir.
+    Mordida: eliminar la rama R1.4 (unicidad) → P11 FAIL.
+    """
+    caption = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
+        "¡Claro que tenemos crédito directo! 🏍️\n"
+        "Ficha Tecnica: VICTORY NEW LIFE 125\n"
+        "La NEW LIFE 125 es perfecta para la ciudad y arranca en $7.690.000 lista para financiar.\n"
+        "¿Con quién tengo el gusto?"
+    )
+    out = _coerce_caption_price_lock(caption, turn_id="P11")
+
+    assert len(out.splitlines()) <= 4, f"excede 4 líneas: {out!r}"
+    assert len(out) <= 350, f"excede 350 chars: {len(out)}"
+    assert "Ficha Tecnica: VICTORY NEW LIFE 125" in out
+    assert re.search(r"\$\d+", out), f"precio perdido: {out!r}"
+    assert "¿Con quién tengo el gusto?" in out
+
+
+# ──────────────── P12-H2-FICHA-EMBEBIDA (R2 split) ────────────────
+
+def test_p12_h2_ficha_parrafo_con_precio_embebido():
+    """
+    R2: Ficha Tecnica como párrafo largo con 'Precio: $X' embebido al final.
+    p_idx == f_idx en el helper original; el split compacto debe preservar
+    modelo + precio. Mordida: eliminar R2 → P12 FAIL.
+    """
+    ficha_larga = (
+        "Ficha Tecnica: VICTORY NEW LIFE 125 — Motor 124.8 cm3 monocilindrico 4 tiempos SOHC, "
+        "potencia 11.1 hp @ 8000 rpm, torque 10.9 Nm @ 6000 rpm, frenos de disco con CBS, "
+        "suspension delantera telescopica e invertida, tanque 11 L, consumo aprox. 52 km/l, "
+        "peso 127 kg, garantia extendida de fabrica, colores disponibles negro y blanco. "
+        "Precio: $7.690.000 (incluye SOAT, Matrícula, y tramites)"
+    )
+    caption = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
+        "¡Claro que tenemos crédito directo, estrenarla es muy fácil! 🏍️\n"
+        f"{ficha_larga}\n"
+        "¿Con quién tengo el gusto?"
+    )
+    out = _coerce_caption_price_lock(caption, turn_id="P12")
+
+    assert len(out.splitlines()) <= 4, f"excede 4 líneas: {out!r}"
+    assert len(out) <= 350, f"excede 350 chars: {len(out)}"
+    assert "Ficha Tecnica: VICTORY NEW LIFE 125" in out
+    assert re.search(r"\$7[\.,]?690[\.,]?000", out), f"precio perdido: {out!r}"
+    assert "¿Con quién tengo el gusto?" in out
+
+
+def test_p12b_h2_ficha_degenerate_model_cond2():
+    """
+    COND-2: delimitador degenerado imposible de extraer modelo. El fallback
+    del split NUNCA emite 'Ficha Tecnica:  ·' y SIEMPRE conserva 💰 Precio.
+    """
+    caption = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
+        "Ficha Tecnica: — disponible por $7.690.000 (incluye SOAT, Matrícula, y tramites)\n"
+        "¿Con quién tengo el gusto?"
+    )
+    out = _coerce_caption_price_lock(caption, turn_id="P12b")
+
+    assert "Ficha Tecnica:  ·" not in out, f"prefijo vacío prohibido: {out!r}"
+    assert re.search(r"\$7[\.,]?690[\.,]?000", out), f"precio perdido: {out!r}"
+    assert len(out.splitlines()) <= 4
+    assert len(out) <= 350
+
+
+# ──────────────── P13-MULTI-DOLLAR-AMBIGUO ────────────────
+
+def test_p13_multi_dollar_ambiguous_stays_t3(caplog):
+    """
+    Múltiples líneas $ sin 💰 ni keyword 'precio', ambas fuera de la ventana
+    de 4 líneas, deben quedar en T3; el merge no debe pegar un decoy.
+    Mordida: anclar siempre la primera $ → P13 FAIL.
+    """
+    caption = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
+        "Ficha Tecnica: TVS RAIDER 125\n"
+        "Te doy toda la info de financiación\n"
+        "Cuotas desde $200.000 con crédito directo\n"
+        "Seguro todo riesgo $350.000 anual\n"
+        "¿Con quién tengo el gusto?"
+    )
+    with caplog.at_level(logging.WARNING):
+        out = _coerce_caption_price_lock(caption, turn_id="P13")
+
+    assert out == egress_guard.enforce_length(caption)
+    assert "🚨 [PRICE-LOCK]" in caplog.text
+    assert "reason=multi_dollar_ambiguous" in caplog.text
+    assert "$200.000" not in out and "$350.000" not in out
+
+
+# ──────────────── P15-PRECIOS-PLURAL (Finding 1 hardener) ────────────────
+
+def test_p15_precios_plural_keyword_multi_dollar():
+    """
+    R1.2 plural: caption multi-$ sin 💰, donde la línea real usa 'Precios'
+    (plural). Debe anclarse a la Ficha y sobrevivir; el decoy de cuotas no.
+    Mordida: revertir a \bprecio\b (sin plural) → P15 FAIL (T3 ambiguo).
+    """
+    caption = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
+        "Ficha Tecnica: VICTORY NEW LIFE 125\n"
+        "Te doy toda la info de financiación\n"
+        "Cuotas desde $200.000 con crédito directo\n"
+        "Precios especiales: $6.790.000 (incluye SOAT, Matrícula, y tramites)\n"
+        "¿Con quién tengo el gusto?"
+    )
+    out = _coerce_caption_price_lock(caption, turn_id="P15")
+
+    assert re.search(r"\$6[\.,]?790[\.,]?000", out), f"precio real perdido: {out!r}"
+    assert "$200.000" not in out, f"decoy pegado: {out!r}"
+    assert len(out.splitlines()) <= 4, f"excede 4 líneas: {out!r}"
+    assert len(out) <= 350, f"excede 350 chars: {len(out)}"
+    assert "¿Con quién tengo el gusto?" in out
+
+
+# ──────────────── P16-FICHA-TEXT-FIRST + nits (Finding 2 hardener) ────────────────
+
+def test_p16_ficha_text_first_cond2_plus_nits():
+    """
+    COND-2 text-first: ficha con summary técnico (sin delimitador real tras
+    el 'modelo') y Precio embebido al final. No debe emitir 'Ficha Tecnica:'
+    con etiqueta basura; precio viaja como línea 💰 Precio: desnuda.
+    Nit A: token de precio nunca termina en punto de oración.
+    Nit B: '(Incluye ...)' con mayúscula inicial viaja.
+    Mordida: quitar requisito de delimitador → P16 FAIL (etiqueta basura).
+    """
+    ficha_text_first = (
+        "Ficha Tecnica: Motor 124.8 cm3 monocilindrico 4 tiempos SOHC, potencia 11.1 hp @ 8000 rpm, "
+        "torque 10.9 Nm @ 6000 rpm, frenos de disco con CBS, suspension telescopica, tanque 11 L, "
+        "consumo aprox. 52 km/l, peso 127 kg, garantia extendida de fabrica, colores negro y blanco. "
+        "Precio: $7.690.000 (Incluye SOAT y Matrícula)"
+    )
+    caption = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
+        "¡Claro que tenemos crédito directo, estrenarla es muy fácil! 🏍️\n"
+        f"{ficha_text_first}\n"
+        "¿Con quién tengo el gusto?"
+    )
+    assert len(caption) > 350, "precondición: caption debe exceder 350 chars"
+
+    out = _coerce_caption_price_lock(caption, turn_id="P16")
+
+    assert len(out.splitlines()) <= 4, f"excede 4 líneas: {out!r}"
+    assert len(out) <= 350, f"excede 350 chars: {len(out)}"
+    assert re.search(r"\$7[\.,]?690[\.,]?000", out), f"precio perdido: {out!r}"
+    assert "Ficha Tecnica: Motor 124" not in out, f"etiqueta basura emitida: {out!r}"
+    assert "💰 Precio: $7.690.000 (Incluye SOAT y Matrícula)" in out
+
+    # Nit A: token de precio nunca absorbe el punto final de oración.
+    out_b = _split_ficha_price_line(["Ficha Tecnica: — cuesta $8.900.000. listo"], 0)
+    assert "$8.900.000" in out_b, f"precio no viaja: {out_b!r}"
+    assert "$8.900.000." not in out_b, f"punto final pegado al monto: {out_b!r}"
+
+
+# ──────────────── P14-REGRESSION-GUARD ────────────────
+
+@pytest.mark.parametrize(
+    "caption,expect_price_survives,expect_byte_identical,expected_reason",
+    [
+        # T0 byte-identico (cabe en 4 líneas, $ sobrevive sin intervención)
+        ("Ficha Tecnica: X\n💰 Precio: $1.000\n¿Con quién tengo el gusto?", True, True, None),
+        # P1/P2-like: rescate activo (>$ línea se pierde, helper la salva)
+        ("Linea A\nLinea B\nFicha Tecnica: X\n💰 Precio: $1.000\n¿Con quién tengo el gusto?", True, False, None),
+        # P5: sin precio, T0 byte-identico
+        ("Linea A\n¿Con quién tengo el gusto?", False, True, None),
+        # COND-1: $ único SIN Ficha, fuera de ventana → T3 (R1.4 no dispara sin f_idx)
+        ("Linea A\nLinea B\nLinea C\n$1.000 es el valor\n¿Con quién tengo el gusto?", False, True, "no_ficha_line"),
+    ],
+)
+def test_p14_regression_guard_invariants(
+    caption, expect_price_survives, expect_byte_identical, expected_reason, caplog
+):
+    """Guardas de no-regresión: invarianzas del wrapper v2 vs v10.70.0."""
+    with caplog.at_level(logging.WARNING):
+        out = _coerce_caption_price_lock(caption, turn_id="P14")
+
+    has_price = bool(re.search(r"\$\d+", out))
+    assert has_price == expect_price_survives, (
+        f"invariante de precio rota: caption={caption!r} out={out!r}"
+    )
+    if expect_byte_identical:
+        assert out == egress_guard.enforce_length(caption)
+    if expected_reason:
+        assert f"reason={expected_reason}" in caplog.text

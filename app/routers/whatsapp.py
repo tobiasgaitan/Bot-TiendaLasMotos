@@ -2601,38 +2601,103 @@ def _ensure_visual_lock(
     return image_url, model_name
 
 
+_PRICE_RE = re.compile(r"\$\d+")
+# [BOT-BUILD-PRICE-LOCK2-037] nit A: nunca capturar punto final de oración;
+# nit B: "(Incluye ...)" con mayúscula inicial también viaja.
+_PRICE_AMOUNT_RE = re.compile(r"\$[\d.,]*\d(?:\s*\((?i:incluye)[^)]*\))?")
+# COND-2: modelo aceptado sólo si hay delimitador real (—/–/-) tras él.
+_FICHA_MODEL_RE = re.compile(r"Ficha Tecnica:\s*([^—–\-.,$]+?)\s*[—–-]")
+_PRECIO_KW_RE = re.compile(r"(?i)\bprecios?\b")
+
+
 def _caption_has_price(text: str) -> bool:
-    return bool(re.search(r"\$\d+", text)) if text else False
+    return bool(_PRICE_RE.search(text)) if text else False
+
+
+def _price_line_indices(lines: list[str]) -> list[int]:
+    r"""Índices de líneas que contienen un monto $\d+."""
+    return [i for i, ln in enumerate(lines) if _PRICE_RE.search(ln)]
+
+
+def _split_ficha_price_line(lines: list[str], idx: int) -> str:
+    """
+    [BOT-BUILD-PRICE-LOCK2-037 / R2] Reescribe una línea Ficha que contiene
+    el precio embebido (párrafo largo) como línea compacta Visual-Lock.
+    COND-2: si no se puede extraer el modelo, nunca emite 'Ficha Tecnica:  ·';
+    se conserva siempre 💰 Precio.
+    """
+    line = lines[idx]
+    price_m = _PRICE_AMOUNT_RE.search(line)
+    model_m = _FICHA_MODEL_RE.search(line)
+    price = price_m.group(0).strip() if price_m else ""
+    model = model_m.group(1).strip() if model_m and model_m.group(1).strip() else ""
+    new_lines = lines[:]
+    if model:
+        new_lines[idx] = f"Ficha Tecnica: {model} · 💰 Precio: {price}"
+    else:
+        # COND-2: fallback sin modelo; preservamos el precio sin prefijo vacío.
+        new_lines[idx] = f"💰 Precio: {price}"
+    return "\n".join(new_lines)
+
+
+def _price_lock_failure_reason(caption: str) -> str:
+    """Razón forense de T3 (sin PII)."""
+    lines = caption.split("\n")
+    dollar = _price_line_indices(lines)
+    f_idx = next((i for i, ln in enumerate(lines) if "Ficha Tecnica:" in ln), None)
+    if not dollar:
+        return "no_price_line"
+    if f_idx is None:
+        return "no_ficha_line"
+    if len(dollar) > 1:
+        return "multi_dollar_ambiguous"
+    return "no_compact_anchor"
 
 
 def _price_lock_merge(caption: str, price_first: bool = False) -> str:
     """
-    [BOT-BUILD-PRICE-LOCK-037] Fusiona la línea de precio en la línea de
+    [BOT-BUILD-PRICE-LOCK2-037] Fusiona la línea de precio en la línea de
     Ficha Técnica, reduciendo en una línea el caption y anclando el precio a
     una línea de alta prioridad que sobrevive a la ventana de 4 líneas.
+
+    R1 ranking:
+      1) línea canónica "💰 Precio: ...".
+      2) línea con keyword "precio(s)" + monto.
+      3) R2: línea Ficha que contiene el monto (p_idx==f_idx) → split compacto.
+      4) R1.4: exactamente UNA línea $ con f_idx presente (anti-decoy).
+      5) múltiples $ sin anclas canónicas → sin merge.
     """
     if not caption:
         return caption
     lines = caption.split("\n")
-    # 1) Línea canónica "💰 Precio: ..." (contrato Visual-Lock).
-    # 2) Fallback: línea con keyword "precio" + monto (evita pegar montos
-    #    ajenos como "Cuotas desde $200.000").
-    p_idx = None
-    for i, ln in enumerate(lines):
-        if "💰" in ln and re.search(r"\$\d+", ln):
-            p_idx = i
-            break
-    if p_idx is None:
-        for i, ln in enumerate(lines):
-            if re.search(r"(?i)precio", ln) and re.search(r"\$\d+", ln):
-                p_idx = i
-                break
     f_idx = next(
         (i for i, ln in enumerate(lines) if "Ficha Tecnica:" in ln),
         None,
     )
+    dollar_idxs = _price_line_indices(lines)
+    if not dollar_idxs:
+        return caption
+
+    # R1.1: canónica 💰
+    p_idx = next((i for i in dollar_idxs if "💰" in lines[i]), None)
+
+    # R1.2: keyword "precio(s)" (singular o plural).
+    if p_idx is None:
+        p_idx = next((i for i in dollar_idxs if _PRECIO_KW_RE.search(lines[i])), None)
+
+    # R2: precio embebido en la línea Ficha (p_idx==f_idx o ficha con $ sin keyword).
+    if p_idx is not None and p_idx == f_idx:
+        return _split_ficha_price_line(lines, f_idx)
+    if p_idx is None and f_idx is not None and f_idx in dollar_idxs:
+        return _split_ficha_price_line(lines, f_idx)
+
+    # R1.4: anti-decoy por unicidad — SOLO si hay Ficha (COND-1).
+    if p_idx is None and len(dollar_idxs) == 1 and f_idx is not None:
+        p_idx = dollar_idxs[0]
+
     if p_idx is None or f_idx is None or p_idx == f_idx:
         return caption
+
     ficha_line = lines[f_idx].rstrip()
     price_line = lines[p_idx].strip()
     if price_first:
@@ -2655,9 +2720,9 @@ def _coerce_caption_price_lock(
 
     Tiers:
       T0: enforce_length normal; byte-idéntico si el precio sobrevive o no existe.
-      T1: merge Ficha-first · 💰 (resuelve corte por líneas, M1).
+      T1: merge Ficha-first · 💰 (resuelve corte por líneas, M1; incluye R2 split).
       T2: merge price-first (resuelve corte por chars con Ficha larga, M2).
-      T3: residual — log forense, comportamiento actual (nunca peor que hoy).
+      T3: residual — log forense con reason, comportamiento actual (nunca peor).
     """
     try:
         if not _caption_has_price(caption):
@@ -2680,10 +2745,11 @@ def _coerce_caption_price_lock(
                     )
                     return merged_post
 
+        reason = _price_lock_failure_reason(caption)
         logger.warning(
             f"🚨 [PRICE-LOCK] turn_id={turn_id or 'N/A'} "
             f"residual: price present pre-coercion but lost post-coercion "
-            f"and no Ficha/💰 anchors available to compact; "
+            f"reason={reason}; "
             f"{original_chars}→{len(post)} chars"
         )
         return post

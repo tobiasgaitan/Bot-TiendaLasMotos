@@ -1,9 +1,9 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.69.0 | Hito: BOT-BUILD-SALVAGE-CAP-028 — Refuerzo del caption canónico PASO 1 en rama salvage de PCC + blindaje forense ZSF del log HTTP de Gemini — BUILD COMPLETE + C6 SYNC docs | Coherence Score: 1.000 (829 recolectados físico = 824 tests/ + 5 scripts/; 829/829 PASSED; 0 failed; 0 skipped)
+Versión: v10.71.0 | Hito: BOT-BUILD-PRICE-LOCK-037 — Backstop PRICE-LOCK v2 en pipeline de egreso (cierre definitivo C5-037) — BUILD COMPLETE + C6 SYNC docs | Coherence Score: 1.000 (849 recolectados físico = 844 tests/ + 5 scripts/; 849/849 PASSED; 0 failed; 0 skipped)
 
 ### Current Position
-**Phase:** BOT-BUILD-SALVAGE-CAP-028 (v10.69.0) — Fix A: caption salvage con saludo genérico + joiner `\n` paridad Fix-3 021; Fix B: serializador ZSF del log HTTP de Gemini — build completo certificado (829/829), C6 SYNC docs aplicado.
+**Phase:** BOT-BUILD-PRICE-LOCK-037 (v10.71.0) — Backstop PRICE-LOCK v2: wrapper idempotente sobre enforce_length (T0/T1/T2/T3) + R2 split Ficha-párrafo + R1.4 unicidad + regexes plural/delimitador/punto-final/incluye-case en app/routers/whatsapp.py; 16 pines (P1-P16) + 10 mordidas. C4 intacto. Cierre de negocio pendiente de prueba en vivo.
 **Status:** Build completo:
   - Fix A: `_build_canonical_paso1_caption` (~:3547) — joiner `\\n\\n`→`\\n` + saludo genérico "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos." para nombre vacío/desconocido.
   - Fix B: `_format_gemini_error_body` (~:725 helper + ~:811 call site) — `e.details`→`json.dumps`, fallback `e.response.text`/`e.message`/`str(e)` con `str(message)[:200]`, colapso a 1 línea, cap ~800 con marca truncado, rama final no-vacía, try/except total.
@@ -23,7 +23,12 @@ Versión: v10.69.0 | Hito: BOT-BUILD-SALVAGE-CAP-028 — Refuerzo del caption ca
 
 ### Colaterales abiertos
 - **C5-052:** greeting whitespace-only en `_build_canonical_paso1_caption` (preexistente, ruta `str(user_name or "").strip()`); evaluar normalización.
-- **C5-037 (HIGH #1):** precio $ extirpado por coerción de egreso (enforce_length 4 líneas/350 chars) en happy path PASO 1 con crédito: imagen llega, precio no → Directiva #3 (Visual-Lock) violada en capa visible. Siguiente paso: ticket BOT-PLAN a OPENCODE PLANNER.
+- **C5-037:** CERRADO EN BETA (v10.71.0) — backstop PRICE-LOCK v2; cierre de negocio pendiente de prueba en vivo (criterio: caption con 💰 visible + imagen en escenario "moto automática a crédito").
+- **C5-060:** text-only path PASO 1 con crédito (URL-Lock reject sin sustituto) decapita $ en _send_whatsapp_message :2782 sin wrapper. Diferido.
+- **C5-061:** getter chains de ai_brain.py prefieren price (int) sobre formatted_price en 7 sitios → 💰 sin $ en rutas deterministas salvage/fallback. Requiere orden literal C-29.
+- **C5-062:** CERRADO — espejo STATE/ROADMAP de v10.70.0 y tags faltantes curados en este WARP-SYNC (tag retroactivo v10.70.0 en 3f41148 + v10.71.0).
+- **C5-063:** sin log del caption pre-coerción verbatim (forense de egreso ciego al contenido). Diferido; R3 mitiga con reason de T3.
+- **C5-064:** _price_lock_failure_reason emite no_compact_anchor cuando el ancla existió pero fue truncada; etiqueta propuesta anchor_merged_but_truncated. Diferido (forense-only).
 - **C5-050 + C5-039 (HIGH #2, raíz única):** cliente genai instanciado por request (whatsapp.py :906/:1308/:1406 → ai_brain.py :274) amplifica 429 RESOURCE_EXHAUSTED en Turn 1 y latencia/cuota. Enfoque: singleton/pool + forense del cuerpo 429.
 - **C5-045:** gate F5 debe exigir explícitamente 0 failed en stdout antes del push (exit-code del deploy-gate no basta).
 - **C5-046:** flaky tests/test_regression_203.py::test_raider_125_helper_path_414444.
@@ -42,8 +47,8 @@ Versión: v10.69.0 | Hito: BOT-BUILD-SALVAGE-CAP-028 — Refuerzo del caption ca
 - **C5-049:** paridad judge vs router — el juez no acota a post-reset (docstring soft-claimed); evaluar espejar frontier o añadir pins dedicados.
 - ~~**C5-041:** CERRADO — minScale=1 físico en Cloud Run confirmado en revisión 00447; header de consola stale (cosmético).~~
 
-**Previous:** BOT-BUILD-PCC-VALID-026 (v10.67.0) — Palancas a+b: Visual-Lock + salvage determinista
-**Next:** BOT-PLAN-C5-037 vía OPENCODE PLANNER (Visual-Lock visible: precio $ extirpado por enforce_length en happy path PASO 1). Cola: C5-050+C5-039 singleton genai, pruebas E2E reales, observabilidad beta, C5-045, colaterales abiertos, Wave B.
+**Previous:** BOT-BUILD-SALVAGE-CAP-028 (v10.69.0) — Caption salvage 4 líneas + log ZSF HTTP Gemini
+**Next:** C5-050+C5-039 (singleton cliente genai, HIGH #2) vía OPENCODE PLANNER. C5-061 (getter chains formatted_price-first en ai_brain.py) pendiente de orden literal C-29 de Tobias.
 
 ### Tooling local (MCP, sin bump documental — BOT-BUILD-GRAPHIFY-MCP-024)
 - `graphify-backend` MCP registrado en ~/.config/opencode/opencode.json (bloque local vía /opt/homebrew/bin/uv + graphifyy 0.9.38 + graph.json; timeout 30000; enabled true). Invariante serena intacto (SHA-256 canónico 24545b4f…bbffc). Completado: reinicio + panel MCP verificado (graphify-backend Connected + serena Connected) + graph_stats coherente con GRAPH_REPORT.md — 2026-08-11.
