@@ -2332,7 +2332,13 @@ async def _pipeline_egress(
                                 # Caption v6.3.1: "Mira esta [Moto]"
                                 caption = f"Mira esta {moto_name}\n\n{response_text}"
                                 logger.info(f"📸 Sending Phase-Gate dynamic image: {image_url} for {moto_name}")
-                                await _send_whatsapp_image(user_phone, image_url, caption=caption, phone_number_id=phone_number_id)
+                                await _send_whatsapp_image(
+                                    user_phone,
+                                    image_url,
+                                    caption=caption,
+                                    phone_number_id=phone_number_id,
+                                    turn_id=turn_id,
+                                )
 
                                 # Save to history and stop
                                 if memory_service_module.memory_service:
@@ -2408,13 +2414,19 @@ async def _pipeline_egress(
                 # payload; leaving the token would show the wrong model URL.
                 caption = re.sub(r'!\[[\s\S]*?\]\s*\((https?://[^\s\)]+)\)', '', cleaned_response_text)
                 caption = re.sub(r'\[IMAGE:\s*(https?://[^\s\]]+)\]', '', caption).strip()
-                caption = egress_guard.enforce_length(caption)
+                caption = _coerce_caption_price_lock(caption, turn_id=turn_id)
                 logger.info(
                     f"🖼️ [EGRESS-FORENSIC] turn_id={turn_id} Strategy A canonical injection: "
                     f"image_url={catalog_top_image} top_name={catalog_top_name} reason={inject_reason}"
                 )
                 assert catalog_top_image is not None, "[EGRESS-CANON] catalog_top_image must be set to inject"
-                await _send_whatsapp_image(user_phone, catalog_top_image, caption=caption, phone_number_id=phone_number_id)
+                await _send_whatsapp_image(
+                    user_phone,
+                    catalog_top_image,
+                    caption=caption,
+                    phone_number_id=phone_number_id,
+                    turn_id=turn_id,
+                )
                 if memory_service_module.memory_service:
                     if score_marker:
                         await memory_service_module.memory_service.persist_credit_score_result(user_phone, score_marker, response_text)
@@ -2587,6 +2599,100 @@ def _ensure_visual_lock(
     if not image_url:
         return None
     return image_url, model_name
+
+
+def _caption_has_price(text: str) -> bool:
+    return bool(re.search(r"\$\d+", text)) if text else False
+
+
+def _price_lock_merge(caption: str, price_first: bool = False) -> str:
+    """
+    [BOT-BUILD-PRICE-LOCK-037] Fusiona la línea de precio en la línea de
+    Ficha Técnica, reduciendo en una línea el caption y anclando el precio a
+    una línea de alta prioridad que sobrevive a la ventana de 4 líneas.
+    """
+    if not caption:
+        return caption
+    lines = caption.split("\n")
+    # 1) Línea canónica "💰 Precio: ..." (contrato Visual-Lock).
+    # 2) Fallback: línea con keyword "precio" + monto (evita pegar montos
+    #    ajenos como "Cuotas desde $200.000").
+    p_idx = None
+    for i, ln in enumerate(lines):
+        if "💰" in ln and re.search(r"\$\d+", ln):
+            p_idx = i
+            break
+    if p_idx is None:
+        for i, ln in enumerate(lines):
+            if re.search(r"(?i)precio", ln) and re.search(r"\$\d+", ln):
+                p_idx = i
+                break
+    f_idx = next(
+        (i for i, ln in enumerate(lines) if "Ficha Tecnica:" in ln),
+        None,
+    )
+    if p_idx is None or f_idx is None or p_idx == f_idx:
+        return caption
+    ficha_line = lines[f_idx].rstrip()
+    price_line = lines[p_idx].strip()
+    if price_first:
+        merged = f"{price_line} · {ficha_line}"
+    else:
+        merged = f"{ficha_line} · {price_line}"
+    lines[f_idx] = merged
+    del lines[p_idx]
+    return "\n".join(lines)
+
+
+def _coerce_caption_price_lock(
+    caption: str,
+    turn_id: Optional[str] = None,
+) -> str:
+    r"""
+    [BOT-BUILD-PRICE-LOCK-037] Wrapper price-aware de enforce_length.
+    Protege Visual-Lock asegurando que, si el caption original contiene un
+    precio ($\d+), la coerción de egreso (4 líneas/350 chars) no lo extirpe.
+
+    Tiers:
+      T0: enforce_length normal; byte-idéntico si el precio sobrevive o no existe.
+      T1: merge Ficha-first · 💰 (resuelve corte por líneas, M1).
+      T2: merge price-first (resuelve corte por chars con Ficha larga, M2).
+      T3: residual — log forense, comportamiento actual (nunca peor que hoy).
+    """
+    try:
+        if not _caption_has_price(caption):
+            return egress_guard.enforce_length(caption)
+
+        original_chars = len(caption)
+        post = egress_guard.enforce_length(caption)
+        if _caption_has_price(post):
+            return post
+
+        for price_first in (False, True):
+            candidate = _price_lock_merge(caption, price_first=price_first)
+            if candidate != caption:
+                merged_post = egress_guard.enforce_length(candidate)
+                if _caption_has_price(merged_post):
+                    logger.info(
+                        f"🛡️ [PRICE-LOCK] turn_id={turn_id or 'N/A'} "
+                        f"tier={'T2' if price_first else 'T1'} "
+                        f"pre={original_chars}→{len(merged_post)} chars"
+                    )
+                    return merged_post
+
+        logger.warning(
+            f"🚨 [PRICE-LOCK] turn_id={turn_id or 'N/A'} "
+            f"residual: price present pre-coercion but lost post-coercion "
+            f"and no Ficha/💰 anchors available to compact; "
+            f"{original_chars}→{len(post)} chars"
+        )
+        return post
+    except Exception as e:
+        logger.exception(
+            f"❌ [PRICE-LOCK] turn_id={turn_id or 'N/A'} helper failed: {e}"
+        )
+        # Zero-Silent-Failures: caer a la coerción estándar, nunca peor que hoy.
+        return egress_guard.enforce_length(caption)
 
 
 async def _persist_catalog_moto_hint(
@@ -2818,7 +2924,15 @@ async def _send_whatsapp_message(to_phone: str, message_text: str, phone_number_
         logger.exception(f"❌ Error Genérico: El mensaje se persistirá en Firestore pero falló la entrega a Meta. Detalle: {e}")
         return False
 
-async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "", phone_number_id: Optional[str] = None, *, meta_sender=None) -> bool:
+async def _send_whatsapp_image(
+    to_phone: str,
+    image_url: str,
+    caption: str = "",
+    phone_number_id: Optional[str] = None,
+    *,
+    meta_sender=None,
+    turn_id: Optional[str] = None,
+) -> bool:
     """Send Image via WhatsAppService.
 
     [BOT-BUILD-ETAPA3-WAVE03-DI-SEAMS-001] `meta_sender` opcional (keyword-only):
@@ -2845,7 +2959,7 @@ async def _send_whatsapp_image(to_phone: str, image_url: str, caption: str = "",
         return False
     image_url = safe_image_url
     if caption:
-        caption = egress_guard.enforce_length(caption)
+        caption = _coerce_caption_price_lock(caption, turn_id=turn_id)
     try:
         await meta_sender.send_image_message(to_phone, image_url, caption, phone_number_id=phone_number_id)
         return True
