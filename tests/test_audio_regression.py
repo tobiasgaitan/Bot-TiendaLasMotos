@@ -476,7 +476,6 @@ async def test_audio_service_live_integration():
             vertexai=True,
             project="test-project",
             location="us-central1",
-            credentials=mock_creds
         )
 
 

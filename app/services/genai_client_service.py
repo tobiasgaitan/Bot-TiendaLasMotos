@@ -20,6 +20,7 @@ respetando las guardas `if not self.client:` de los consumidores.
 """
 
 import asyncio
+import hashlib
 import logging
 import os
 import threading
@@ -44,6 +45,10 @@ _SHARED_CLIENTS: Dict[str, Any] = {}
 _CLIENT_LOCKS: Dict[str, threading.Lock] = {}
 _CLIENT_ASYNC_LOCKS: Dict[str, asyncio.Lock] = {}
 _CLIENT_CREATION_TIMES: Dict[str, float] = {}
+# Contadores de reuso: telemetría orientativa. Los incrementos en el fast path
+# no están sincronizados para evitar contención por lock en cada request; bajo
+# concurrencia pueden perderse algunos conteos, pero nunca afectan la identidad
+# del cliente compartido.
 _CLIENT_REUSE_COUNTS: Dict[str, int] = {}
 
 
@@ -56,7 +61,10 @@ def _client_key(
 ) -> str:
     """Clave determinística para cachear variantes del cliente."""
     if api_key:
-        return f"api_key:{api_key[:4]}***"
+        # Hash completo de la clave: evita colisiones por prefijo compartido
+        # y nunca filtra el valor real en logs (se loguea solo el hash).
+        key_hash = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:12]
+        return f"api_key:{key_hash}"
     creds_id = id(credentials) if credentials is not None else "adc"
     return f"vertex:{project}:{location}:{creds_id}"
 

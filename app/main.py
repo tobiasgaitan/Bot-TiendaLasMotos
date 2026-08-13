@@ -69,6 +69,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# [BOT-BUILD-GENAI-SINGLETON-050-R3 / R12a]
+# WHY: El warm-up asíncrono del cliente GenAI tiene un timeout único. Centralizarlo
+# evita números mágicos duplicados y mantiene los tests sincronizados por construcción.
+_GENAI_WARMUP_TIMEOUT_S = 30.0
+
 
 # [BOT-BACKEND-BUGFIX-CONTAINER-CRASH-188]
 # WHY: Module-level initialization of Firestore/Secret Manager was executing
@@ -93,6 +98,7 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Auteco Las Motos Backend...")
     app.state.catalog_ready = False
     app.state.genai_client_ready = False
+    app.state.genai_client_failed = False
 
     # [BOT-BUILD-DEUDA-OTEL-03-06] Telemetry status report (zero I/O, non-blocking).
     from app.utils.observability import LANGFUSE_ENABLED
@@ -251,25 +257,57 @@ async def _run_deferred_initialization(app: FastAPI) -> None:
         except Exception as mem_error:
             logger.error(f"❌ [DEFERRED-INIT] Failed to initialize Memory Service: {str(mem_error)}", exc_info=True)
 
-        # [BOT-BUILD-GENAI-SINGLETON-050] Warm-up shared GenAI client.
+        # [BOT-BUILD-GENAI-SINGLETON-050-R2] Warm-up shared GenAI client.
         # Fail-closed: if the shared client cannot be created, keep catalog_ready=False
         # so the existing webhook guard in app/routers/whatsapp.py rejects with HTTP 503.
-        try:
-            logger.info("🧠 [DEFERRED-INIT] Warming up shared GenAI client...")
-            await asyncio.to_thread(
+        # Anti-zombie: shield the to_thread task and, on timeout, await natural completion
+        # (mirror of the catalog init recovery pattern 30 lines above).
+        genai_client = None
+        genai_task = asyncio.create_task(
+            asyncio.to_thread(
                 get_shared_genai_client,
                 vertexai=True,
                 project="tiendalasmotos",
                 location="us-central1",
             )
-            app.state.genai_client_ready = True
-            logger.info("✅ [DEFERRED-INIT] Shared GenAI client ready.")
+        )
+        try:
+            logger.info("🧠 [DEFERRED-INIT] Warming up shared GenAI client...")
+            genai_client = await asyncio.wait_for(
+                asyncio.shield(genai_task), timeout=_GENAI_WARMUP_TIMEOUT_S
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "⚠️ [DEFERRED-INIT-TIMEOUT] GenAI warm-up exceeded 30s. "
+                "Awaiting natural completion to avoid zombie state."
+            )
+            try:
+                genai_client = await genai_task
+            except Exception as timeout_completion_error:
+                logger.exception(
+                    f"❌ [DEFERRED-INIT-TIMEOUT-FAIL] GenAI warm-up failed after timeout: "
+                    f"{timeout_completion_error}. catalog_ready remains False."
+                )
+                app.state.genai_client_failed = True
+                return
         except Exception as genai_error:
             logger.exception(
                 f"❌ [DEFERRED-INIT-CRITICAL] Failed to warm up shared GenAI client: {genai_error}. "
                 "catalog_ready remains False; webhook will reject with HTTP 503."
             )
+            app.state.genai_client_failed = True
             return
+
+        if genai_client is None:
+            logger.error(
+                "❌ [DEFERRED-INIT-CRITICAL] Shared GenAI client unavailable (factory returned None). "
+                "catalog_ready remains False; webhook will reject with HTTP 503."
+            )
+            app.state.genai_client_failed = True
+            return
+
+        app.state.genai_client_ready = True
+        logger.info("✅ [DEFERRED-INIT] Shared GenAI client ready.")
 
         # Atomic commit: all references and catalog_ready flag are flipped together.
         app.state.config_loader = config_loader_obj
@@ -344,12 +382,19 @@ def health_check():
     """
     catalog_ready = getattr(app.state, "catalog_ready", False)
     genai_client_ready = getattr(app.state, "genai_client_ready", False)
+    genai_client_failed = getattr(app.state, "genai_client_failed", False)
     if not catalog_ready or not genai_client_ready:
+        detail = (
+            "GenAI client initialization failed"
+            if genai_client_failed
+            else "Catalog initialization in progress"
+        )
         return {
             "status": "starting",
-            "detail": "Catalog initialization in progress",
+            "detail": detail,
             "catalog_ready": catalog_ready,
             "genai_client_ready": genai_client_ready,
+            "genai_client_failed": genai_client_failed,
             "service": "Auteco Las Motos Backend",
             "v6_config": None
         }
@@ -391,6 +436,7 @@ def health_check():
         "catalog_items": catalog_items_count,
         "catalog_ready": catalog_ready,
         "genai_client_ready": genai_client_ready,
+        "genai_client_failed": genai_client_failed,
         "storage_bucket": storage_bucket_name,
         "v6_config": v6_config
     }

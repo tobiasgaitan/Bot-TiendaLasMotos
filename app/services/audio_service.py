@@ -52,9 +52,11 @@ class AudioService:
                 import google.auth
                 from google.auth.exceptions import DefaultCredentialsError
                 
-                credentials, project = None, None
+                # credentials se resuelve internamente por el SDK de genai (R2);
+                # conservamos google.auth.default() únicamente para obtener project.
+                _credentials, project = None, None
                 try:
-                    credentials, project = google.auth.default()
+                    _credentials, project = google.auth.default()
                 except DefaultCredentialsError:
                     pass
                 
@@ -68,14 +70,16 @@ class AudioService:
                     self._model_id = "gemini-2.5-flash"
                     logger.info(f"🎤 AudioService initialized with {self._model_id} via Gemini Developer API (API Key)")
                 else:
+                    # [BOT-BUILD-GENAI-SINGLETON-050-R] No pasamos credentials=;
+                    # el SDK resuelve ADC internamente y esto estabiliza la clave de cache
+                    # (evita un cliente nuevo por cada AudioService/=request de audio).
                     self.client = get_shared_genai_client(
                         vertexai=True,
                         project=project,
                         location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
-                        credentials=credentials,
                     )
                     self._model_id = "gemini-2.5-flash"
-                    logger.info(f"🎤 AudioService initialized with {self._model_id} via google-genai (Vertex AI + Explicit ADC)")
+                    logger.info(f"🎤 AudioService initialized with {self._model_id} via google-genai (Vertex AI + ADC)")
             except (DefaultCredentialsError, APIError) as e:
                 logger.exception("❌ Error de credenciales o API gRPC al inicializar el cliente de AudioService")
                 if hasattr(e, 'response') and hasattr(e.response, 'text'):

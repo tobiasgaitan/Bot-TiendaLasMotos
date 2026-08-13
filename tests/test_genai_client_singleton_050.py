@@ -13,6 +13,7 @@ P5c Forense ignora e.message con PII.
 P6  Reset: reset_shared_clients() fuerza creación de nuevo cliente.
 P7  Audio dual-key: api_key y vertex generan clientes cacheados distintos.
 P8  Thread-safety: 50 threads concurrentes -> 1 sola creación, mismo objeto.
+P9  Async factory: get_shared_genai_client_async() rehusa el mismo cliente.
 
 NOTA DE AUDITORÍA: estos tests usan monkeypatch (no patch) para no incrementar
 el conteo de grep patch-genai-Client en tests/, que debe quedar en 11
@@ -25,6 +26,7 @@ from unittest.mock import MagicMock, patch
 
 from app.services.genai_client_service import (
     get_shared_genai_client,
+    get_shared_genai_client_async,
     reset_shared_clients,
     format_gemini_error_structured,
 )
@@ -218,7 +220,7 @@ def test_p7_audio_dual_key_caches_separate_clients(mock_genai_client_cls):
     assert c_vertex is vertex_mock
     assert c_api is not c_vertex
     assert mock_genai_client_cls.call_count == 2
-    # La clave API nunca debe aparecer verbatim en logs (la fábrica la enmascara)
+    # La clave API nunca debe aparecer verbatim en logs (la fábrica la hashea)
 
 
 # -----------------------------------------------------------------------------
@@ -242,4 +244,22 @@ def test_p8_thread_safe_single_creation_under_load(mock_genai_client_cls):
         t.join()
 
     assert all(c is mock_client for c in results)
+    assert mock_genai_client_cls.call_count == 1
+
+
+# -----------------------------------------------------------------------------
+# P9 — Async factory reusa el cliente y no bloquea el event loop
+# -----------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_p9_async_factory_reuses_client(mock_genai_client_cls):
+    """get_shared_genai_client_async() retorna el mismo cliente y lo loggea como reuso."""
+    mock_client = MagicMock()
+    mock_genai_client_cls.return_value = mock_client
+
+    c1 = await get_shared_genai_client_async()
+    c2 = await get_shared_genai_client_async()
+
+    assert c1 is mock_client
+    assert c2 is mock_client
+    assert c1 is c2
     assert mock_genai_client_cls.call_count == 1

@@ -812,7 +812,7 @@ La FAQ no avanza el embudo. {one_shot}
                     f"🚨 [GEMINI HTTP DETAIL] {self._format_gemini_error_body(e)}"
                 )
                 logger.error(
-                    f"🚨 [GEMINI 429 FORENSIC] {format_gemini_error_structured(e)}"
+                    f"🚨 [GEMINI ERROR FORENSIC] {format_gemini_error_structured(e)}"
                 )
 
                 raise e
