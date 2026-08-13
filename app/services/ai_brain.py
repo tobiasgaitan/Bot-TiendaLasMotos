@@ -18,6 +18,7 @@ from app.core.exceptions import HabeasDataBypassInterrupt
 from app.services.credit_faq_taxonomy import is_abstract_credit_faq, classify_credit_turn, TurnIntent
 from app.services.faq_service import get_faq_answer, get_location_info
 from app.services.scoring_service import is_gas_affirmative
+from app.services.genai_client_service import get_shared_genai_client, format_gemini_error_structured
 
 logger = logging.getLogger(__name__)
 
@@ -274,11 +275,11 @@ class CerebroIA:
         # Initialize GenAI Client if available
         if SDK_AVAILABLE:
             try:
-                # Use unified google-genai client for Vertex AI
-                self.client = genai.Client(
-                    vertexai=True, 
-                    project="tiendalasmotos", 
-                    location="us-central1"
+                # [BOT-BUILD-GENAI-SINGLETON-050] Reuse shared genai client singleton.
+                self.client = get_shared_genai_client(
+                    vertexai=True,
+                    project="tiendalasmotos",
+                    location="us-central1",
                 )
                 
                 # [CONFIG INJECTION v1.3.2]
@@ -809,6 +810,9 @@ La FAQ no avanza el embudo. {one_shot}
                 logger.exception(f"🚨 [GEMINI ASYNC ERROR] Final failure in _call_gemini_with_retry_async: {e}")
                 logger.error(
                     f"🚨 [GEMINI HTTP DETAIL] {self._format_gemini_error_body(e)}"
+                )
+                logger.error(
+                    f"🚨 [GEMINI 429 FORENSIC] {format_gemini_error_structured(e)}"
                 )
 
                 raise e

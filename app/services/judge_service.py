@@ -14,6 +14,7 @@ from datetime import datetime
 from app.services.financial_service import financial_service
 from app.services.scoring_service import scoring_service
 from app.core.config import settings
+from app.services.genai_client_service import get_shared_genai_client
 
 logger = logging.getLogger(__name__)
 
@@ -45,15 +46,15 @@ class JudgeService:
         
         if SDK_AVAILABLE:
             try:
-                # Optimized for Vertex AI
-                self._client = genai.Client(
+                # [BOT-BUILD-GENAI-SINGLETON-050] Reuse shared genai client singleton.
+                self._client = get_shared_genai_client(
                     vertexai=True,
                     project="tiendalasmotos",
-                    location="us-central1"
+                    location="us-central1",
                 )
                 logger.info("⚖️ JudgeService semantic client initialized (v2.5 Flash)")
             except Exception as e:
-                logger.error(f"❌ Failed to initialize GenAI Client for Judge: {e}")
+                logger.exception(f"❌ Failed to initialize GenAI Client for Judge: {e}")
 
     async def analyze_response(
         self, 

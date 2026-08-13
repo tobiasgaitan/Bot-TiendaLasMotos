@@ -11,7 +11,7 @@ def test_vision_service_initialization():
     
     mock_genai_client = MagicMock()
     
-    with patch("app.services.vision_service.genai.Client", return_value=mock_genai_client) as mock_client_class:
+    with patch("app.services.genai_client_service.genai.Client", return_value=mock_genai_client) as mock_client_class:
         service = VisionService(db=mock_db)
         
         # 1. Assert that service._model_id is gemini-2.5-flash
@@ -39,7 +39,7 @@ async def test_vision_service_null_payload_error():
     mock_response.text = None
     mock_genai_client.models.generate_content.return_value = mock_response
     
-    with patch("app.services.vision_service.genai.Client", return_value=mock_genai_client), \
+    with patch("app.services.genai_client_service.genai.Client", return_value=mock_genai_client), \
          patch("app.services.vision_service.logger.exception") as mock_log_exception:
         
         service = VisionService(db=mock_db)

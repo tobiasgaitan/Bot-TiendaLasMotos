@@ -60,6 +60,7 @@ FinanceConfigLoader = LazyProxy("app.services.config_loader", "FinanceConfigLoad
 storage_service = LazyProxy("app.services.storage_service", "storage_service")
 catalog_service = LazyProxy("app.services.catalog_service", "catalog_service")
 init_memory_service = LazyProxy("app.services.memory_service", "init_memory_service")
+get_shared_genai_client = LazyProxy("app.services.genai_client_service", "get_shared_genai_client")
 
 # Configure logging
 logging.basicConfig(
@@ -91,6 +92,7 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting Auteco Las Motos Backend...")
     app.state.catalog_ready = False
+    app.state.genai_client_ready = False
 
     # [BOT-BUILD-DEUDA-OTEL-03-06] Telemetry status report (zero I/O, non-blocking).
     from app.utils.observability import LANGFUSE_ENABLED
@@ -249,6 +251,26 @@ async def _run_deferred_initialization(app: FastAPI) -> None:
         except Exception as mem_error:
             logger.error(f"❌ [DEFERRED-INIT] Failed to initialize Memory Service: {str(mem_error)}", exc_info=True)
 
+        # [BOT-BUILD-GENAI-SINGLETON-050] Warm-up shared GenAI client.
+        # Fail-closed: if the shared client cannot be created, keep catalog_ready=False
+        # so the existing webhook guard in app/routers/whatsapp.py rejects with HTTP 503.
+        try:
+            logger.info("🧠 [DEFERRED-INIT] Warming up shared GenAI client...")
+            await asyncio.to_thread(
+                get_shared_genai_client,
+                vertexai=True,
+                project="tiendalasmotos",
+                location="us-central1",
+            )
+            app.state.genai_client_ready = True
+            logger.info("✅ [DEFERRED-INIT] Shared GenAI client ready.")
+        except Exception as genai_error:
+            logger.exception(
+                f"❌ [DEFERRED-INIT-CRITICAL] Failed to warm up shared GenAI client: {genai_error}. "
+                "catalog_ready remains False; webhook will reject with HTTP 503."
+            )
+            return
+
         # Atomic commit: all references and catalog_ready flag are flipped together.
         app.state.config_loader = config_loader_obj
         app.state.db = db_obj
@@ -321,11 +343,13 @@ def health_check():
     Once ready, it reports 'healthy' with the version and status info.
     """
     catalog_ready = getattr(app.state, "catalog_ready", False)
-    if not catalog_ready:
+    genai_client_ready = getattr(app.state, "genai_client_ready", False)
+    if not catalog_ready or not genai_client_ready:
         return {
             "status": "starting",
             "detail": "Catalog initialization in progress",
-            "catalog_ready": False,
+            "catalog_ready": catalog_ready,
+            "genai_client_ready": genai_client_ready,
             "service": "Auteco Las Motos Backend",
             "v6_config": None
         }
@@ -366,6 +390,7 @@ def health_check():
         "version": "6.0.0",
         "catalog_items": catalog_items_count,
         "catalog_ready": catalog_ready,
+        "genai_client_ready": genai_client_ready,
         "storage_bucket": storage_bucket_name,
         "v6_config": v6_config
     }

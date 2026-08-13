@@ -446,7 +446,7 @@ async def test_audio_service_live_integration():
     mock_client_instance.models.list.return_value = [MagicMock()]
     
     with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_api_key", "GOOGLE_GENAI_USE_VERTEXAI": "false"}), \
-         patch("app.services.audio_service.genai.Client", return_value=mock_client_instance) as mock_client_cls:
+         patch("app.services.genai_client_service.genai.Client", return_value=mock_client_instance) as mock_client_cls:
         
         service = AudioService()
         assert service._model_id == "gemini-2.5-flash", "model_id no coincide con la constante unificada en el canal de API Key"
@@ -464,7 +464,7 @@ async def test_audio_service_live_integration():
     
     with patch.dict(os.environ, {"GOOGLE_GENAI_USE_VERTEXAI": "true", "GOOGLE_CLOUD_PROJECT": "test-project", "GOOGLE_CLOUD_LOCATION": "us-central1"}), \
          patch("google.auth.default", return_value=(mock_creds, "test-project")), \
-         patch("app.services.audio_service.genai.Client", return_value=mock_client_instance_vertex) as mock_client_cls_vertex:
+         patch("app.services.genai_client_service.genai.Client", return_value=mock_client_instance_vertex) as mock_client_cls_vertex:
         
         service_vertex = AudioService()
         assert service_vertex._model_id == "gemini-2.5-flash", "model_id no coincide con la constante unificada en el canal de Vertex AI"

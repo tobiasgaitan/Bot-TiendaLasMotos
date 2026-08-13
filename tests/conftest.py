@@ -206,6 +206,21 @@ def isolate_router_globals():
     whatsapp_module.message_buffer = saved_buffer
 
 
+@pytest.fixture(autouse=True)
+def isolate_genai_shared_clients():
+    """[H-ARNÉS-4 / F7] Aislamiento del singleton de clientes genai compartidos.
+
+    Productores neutralizados: tests que parchean genai_client_service.genai.Client
+    y crean clientes compartidos (CerebroIA, VisionService, AudioService, JudgeService).
+    Setup+teardown llaman reset_shared_clients() para evitar contaminación cruzada
+    entre tests, independientemente del orden de ejecución.
+    ZSF: reset directo, sin try/except.
+    """
+    from app.services.genai_client_service import reset_shared_clients
+    reset_shared_clients()
+    yield
+    reset_shared_clients()
+
 @pytest.fixture
 def mock_prospect_data():
     """Fixture de datos de prospecto para pruebas de anclaje CRM."""

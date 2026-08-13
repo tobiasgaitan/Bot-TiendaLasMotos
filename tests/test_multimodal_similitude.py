@@ -527,7 +527,7 @@ def test_vision_service_catalog_serialization_anti_null_masking():
         {"id": "bad_item_2", "name": "Victory Neo", "image_url": ""}
     ]
 
-    with patch("app.services.vision_service.genai.Client", return_value=mock_genai_client), \
+    with patch("app.services.genai_client_service.genai.Client", return_value=mock_genai_client), \
          patch("app.services.vision_service.logger.warning") as mock_log_warning:
 
         service = VisionService(db=mock_db)
@@ -665,7 +665,7 @@ async def test_incoming_image_webhook_multimodal_similitude_flow():
              patch("app.routers.whatsapp.storage_service.download_media", AsyncMock(return_value=b"dummy_bytes")), \
              patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_http_post, \
              patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
-             patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+             patch("app.services.genai_client_service.genai.Client", return_value=mock_client), \
              patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
              patch("app.services.ai_brain.SDK_AVAILABLE", True), \
              patch.object(whatsapp.catalog_service, "_items", items), \
@@ -821,7 +821,7 @@ async def _run_image_caption_flow(caption: str, summary: str, llm_text: str):
              patch("app.routers.whatsapp.storage_service.download_media", AsyncMock(return_value=b"dummy_bytes")), \
              patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_http_post, \
              patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
-             patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+             patch("app.services.genai_client_service.genai.Client", return_value=mock_client), \
              patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
              patch("app.services.ai_brain.SDK_AVAILABLE", True), \
              patch.object(cs_mod.catalog_service, "_items", items), \

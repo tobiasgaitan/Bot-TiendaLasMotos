@@ -492,7 +492,7 @@ async def test_meta_payload_leak_prevention_and_bypass():
          patch.object(config_service, "get_financial_matrix", return_value=brilla_config['rows']), \
          patch.object(config_service, "get_financial_config", return_value=brilla_config), \
          patch.object(config_service, "get_registration_cost", return_value=760000.0), \
-         patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+         patch("app.services.genai_client_service.genai.Client", return_value=mock_client), \
          patch("app.services.ai_brain.SDK_AVAILABLE", True):
          
         mock_settings.whatsapp_app_secret = None  # Bypass signature verification
@@ -1223,7 +1223,7 @@ async def test_whatsapp_reaction_payload_direct_legal_acceptance():
          patch("app.routers.whatsapp.judge_service") as mock_judge, \
          patch("app.services.whatsapp_service.whatsapp_service.send_text_message", side_effect=mock_send_text), \
          patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
-         patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+         patch("app.services.genai_client_service.genai.Client", return_value=mock_client), \
          patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
          patch("app.services.ai_brain.SDK_AVAILABLE", True):
 
@@ -1461,7 +1461,7 @@ async def test_whatsapp_image_url_with_complex_query_params_regression():
          patch("app.routers.whatsapp.judge_service") as mock_judge, \
          patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_http_post, \
          patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
-         patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+         patch("app.services.genai_client_service.genai.Client", return_value=mock_client), \
          patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
          patch("app.services.ai_brain.SDK_AVAILABLE", True):
 
@@ -1610,7 +1610,7 @@ async def test_incoming_image_webhook_egress_unification():
          patch("app.routers.whatsapp.storage_service.download_media", AsyncMock(return_value=b"dummy_image_data")), \
          patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_http_post, \
          patch("app.services.whatsapp_service.whatsapp_service.mark_as_read", AsyncMock()), \
-         patch("app.services.ai_brain.genai.Client", return_value=mock_client), \
+         patch("app.services.genai_client_service.genai.Client", return_value=mock_client), \
          patch("app.services.ai_brain.LANGFUSE_AVAILABLE", False), \
          patch("app.services.ai_brain.SDK_AVAILABLE", True):
 

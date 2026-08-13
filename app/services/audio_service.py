@@ -14,6 +14,8 @@ from typing import Optional
 import ffmpeg
 import time
 
+from app.services.genai_client_service import get_shared_genai_client
+
 GEMINI_CALL_TIMEOUT_S = 18.0
 
 logger = logging.getLogger(__name__)
@@ -59,15 +61,18 @@ class AudioService:
                 project = os.getenv("GOOGLE_CLOUD_PROJECT", project or "tiendali_las_motos")
                 
                 if api_key and not use_vertex:
-                    self.client = genai.Client(api_key=api_key)
+                    self.client = get_shared_genai_client(
+                        vertexai=False,
+                        api_key=api_key,
+                    )
                     self._model_id = "gemini-2.5-flash"
                     logger.info(f"🎤 AudioService initialized with {self._model_id} via Gemini Developer API (API Key)")
                 else:
-                    self.client = genai.Client(
+                    self.client = get_shared_genai_client(
                         vertexai=True,
                         project=project,
                         location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
-                        credentials=credentials
+                        credentials=credentials,
                     )
                     self._model_id = "gemini-2.5-flash"
                     logger.info(f"🎤 AudioService initialized with {self._model_id} via google-genai (Vertex AI + Explicit ADC)")
