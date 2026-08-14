@@ -4,14 +4,14 @@ Versión: v10.73.0 | Hito: BOT-BUILD-PRICE-LOCK-T3-074 — Rescue T3 en PRICE-LO
 
 ### Current Position
 **Phase:** BOT-BUILD-PRICE-LOCK-T3-074 (v10.73.0) — Rescue T3 (_price_lock_rescue_top4) en _coerce_caption_price_lock: línea compacta Ficha·💰 inyectada en top-4 cuando T0/T1/T2 pierden el precio (price-only si sin modelo; prohibido 'Ficha Tecnica:  ·' vacío); _price_lock_failure_reason emite anchor_merged_but_truncated (cierra C5-064). whatsapp.py zona mutable; C4 intacto; pines P17-P22 + mordidas (revert R1 → P22 FAIL; rescue off → P17/P18/P19 FAIL). CERRADO EN VIVO 2026-08-14 12:06 p.m. GMT-5: escenario 'moto automática a crédito', $8.329.000 visible post-coerción (rescue T3 price-only, caso COND-1), 0×429; colateral cosmético C5-076 registrado.
-**Status:** Build completo (v10.72.0):
-  - **Objetivo:** cerrar C5-050+C5-039 (HIGH #2): cliente GenAI instanciado por request amplificaba 429 RESOURCE_EXHAUSTED en Turn 1 y latencia/cuota (whatsapp.py :906/:1308/:1406 → ai_brain.py :274).
-  - **Implementación:** app/services/genai_client_service.py — singleton cache por clave determinística (_client_key), locks sync/async, telemetría _CLIENT_REUSE_COUNTS; app/main.py — warm-up asíncrono en _run_deferred_initialization con _GENAI_WARMUP_TIMEOUT_S=30.0, asyncio.shield + wait_for, recuperación anti-zombie, app.state.genai_client_failed y /health enriquecido; app/services/ai_brain.py + app/services/audio_service.py — consumidores al cliente compartido, resolución ADC sin credentials= para estabilizar clave de cache, tag log `[GEMINI ERROR FORENSIC]`.
-  - **Pins:** tests/test_genai_client_singleton_050.py P1–P9 (+ P5b/P5c): share same client, factory patched, ZSF None-on-error, reuse log, 429 forense sin PII, reset identity, audio dual-key, thread-safe, async reuse. tests/test_genai_client_warmup_050.py P10a/P10b: timeout 30s + natural completion success → genai_client_ready=True; timeout + failure → fail-closed real, no zombie.
-  - **Eval:** Score 1.000 ≥ 0.9 — DEPLOY AUTHORIZED ✅. Deploy Cloud Run run 31668757288 (#465), 2026-08-13T04:59:17Z, success.
-  - **Verificación en vivo:** 2026-08-14 02:50Z — cliente compartido ♻️ age_s=78345s, 0×429 RESOURCE_EXHAUSTED, /health sano.
-  - **Cambio acotado:** app/services/genai_client_service.py (singleton cache/locks/telemetría), app/main.py (~60 líneas warm-up/health), app/services/ai_brain.py (1 edit tag log + ADC), app/services/audio_service.py (ADC), tests/test_genai_client_singleton_050.py (+22 líneas), tests/test_genai_client_warmup_050.py (nuevo, 114 líneas). Núcleos intactos: juan_pablo_personality, prompts.py, _fallback_response, run_checker, enforce_length, _build_pcc_fallback, egress_guard_service.py, PCC.
-  - **Colaterales descubiertos en vivo:** C5-067..C5-074 (ver bloque Colaterales abiertos).
+**Status:** CERRADO EN VIVO (v10.73.0):
+  - **Objetivo:** cerrar C5-074+C5-064 (PRICE-LOCK-T3): el $ sobrevive a enforce_length en la variante residual del caption + etiqueta forense anchor_merged_but_truncated cuando el merge existió pero se perdió post-coerción.
+  - **Implementación:** app/routers/whatsapp.py — _price_lock_rescue_top4 (línea compacta 'Ficha Tecnica: <modelo> · 💰 Precio: <monto>' inyectada en top-4 cuando T0/T1/T2 pierden el precio; price-only si sin modelo; prohibido 'Ficha Tecnica:  ·' vacío) consumida por _coerce_caption_price_lock (T3); _price_lock_failure_reason emite anchor_merged_but_truncated (cierra C5-064).
+  - **Pins:** tests/test_price_lock_egress_037.py P17-P22 (P22 greeting-filter determinista). Mordidas: revert R1 → P22 FAIL; rescue off → P17/P18/P19 FAIL.
+  - **Eval:** Score 1.000 ≥ 0.9 — DEPLOY AUTHORIZED ✅. Beta run #466, commit 46f3a94, push 2026-08-14.
+  - **Verificación en vivo:** 2026-08-14 12:06 p.m. GMT-5 — escenario 'moto automática a crédito': $8.329.000 visible post-coerción (rescue T3 price-only, caso COND-1), 0×429.
+  - **Cambio acotado:** app/routers/whatsapp.py (zona mutable) + tests/test_price_lock_egress_037.py. Sin orden literal; C4 intacto. Núcleos intactos: enforce_length, egress_guard_service.py, ai_brain.py, juan_pablo_personality, prompts.py, _fallback_response, run_checker, _build_pcc_fallback, PCC.
+  - **Colaterales descubiertos en vivo:** C5-075 (prefijo 💰 duplicado), C5-076 (rescue T3 price-only sin nombre de modelo; DIFERIDO).
 
 ### Evidencia determinista del fix (tool-loop budget)
 - P1a-3LEG: bucle de 3 legs; TOOL REJECTION de calculate_credit_score → exención A′ preserva el turno de texto autoritativo (cap 90s excedido y permitido por ceiling 120s).
@@ -61,7 +61,7 @@ Versión: v10.73.0 | Hito: BOT-BUILD-PRICE-LOCK-T3-074 — Rescue T3 en PRICE-LO
 - ~~**C5-041:** CERRADO — minScale=1 físico en Cloud Run confirmado en revisión 00447; header de consola stale (cosmético).~~
 
 **Previous:** BOT-BUILD-GENAI-SINGLETON-050 (v10.72.0) — Singleton cliente GenAI compartido + warm-up anti-zombie (cierre C5-050/C5-039).
-**Next:** bundle C-29 (C5-061+C5-065, AGUARDA ORDEN LITERAL de Tobias) → E2E WhatsApp → observabilidad (C5-066, C5-071) → C5-045 → colaterales C5-067..C5-073, C5-075. C-30 agotada; C-31 sin emitir (no requerida para 074: whatsapp.py zona mutable).
+**Next:** bundle C-29 (C5-061+C5-065, AGUARDA ORDEN LITERAL de Tobias) → E2E WhatsApp → observabilidad (C5-066, C5-071) → C5-045 → colaterales C5-067..C5-073, C5-075, C5-076. C-30 agotada; C-31 sin emitir (no requerida para 074: whatsapp.py zona mutable).
 
 ### Tooling local (MCP, sin bump documental — BOT-BUILD-GRAPHIFY-MCP-024)
 - `graphify-backend` MCP registrado en ~/.config/opencode/opencode.json (bloque local vía /opt/homebrew/bin/uv + graphifyy 0.9.38 + graph.json; timeout 30000; enabled true). Invariante serena intacto (SHA-256 canónico 24545b4f…bbffc). Completado: reinicio + panel MCP verificado (graphify-backend Connected + serena Connected) + graph_stats coherente con GRAPH_REPORT.md — 2026-08-11.
