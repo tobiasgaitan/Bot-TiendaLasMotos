@@ -2686,8 +2686,19 @@ def _price_lock_rescue_top4(caption: str) -> Optional[str]:
         for ln in lines
         if "Ficha Tecnica:" not in ln and price not in ln and "💰 Precio:" not in ln
     ]
+    # [BOT-BUILD-PRICE-LOCK-T3-074+RF / R1] greeting_survives es determinista:
+    # el saludo solo se descarta de filtered por posición si realmente pasó el
+    # filtro. Si el saludo contiene alguno de los marcadores excluidos (p. ej.
+    # "💰 Precio:" literal sin dígitos), no asumimos que filtered[0] == greeting.
+    greeting_survives = (
+        greeting is not None
+        and "Ficha Tecnica:" not in greeting
+        and price not in greeting
+        and "💰 Precio:" not in greeting
+    )
     if greeting is not None and filtered:
-        rescue_lines = [greeting, compact] + filtered[1:]
+        rest = filtered[1:] if greeting_survives else filtered
+        rescue_lines = [greeting, compact] + rest
     else:
         rescue_lines = [compact] + filtered
 
@@ -2714,6 +2725,10 @@ def _price_lock_failure_reason(caption: str) -> str:
     merge_existed = merge_ficha_first != caption or merge_price_first != caption
     if merge_existed:
         return "anchor_merged_but_truncated"
+    # [BOT-BUILD-PRICE-LOCK-T3-074+RF / R3] Defensivo: con 1 línea $ + Ficha
+    # presente, _price_lock_merge siempre modifica el caption (R1.1/R1.2/R1.4
+    # o R2), por lo que esta rama es inalcanzable en la práctica. Se conserva
+    # como taxonomía estable de razones T3 y guardian ante refactor futuro.
     return "no_compact_anchor"
 
 

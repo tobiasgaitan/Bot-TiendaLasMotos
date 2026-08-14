@@ -513,7 +513,7 @@ def test_p14_regression_guard_invariants(
 # ──────────────── P17-P21: T3 RESCUE (BOT-BUILD-PRICE-LOCK-T3-074) ────────────────
 
 
-def test_p17_live_repro_383_254_rescue_preserves_price():
+def test_p17_live_repro_383_254_rescue_preserves_price(caplog):
     """
     Reproducción estructural SIN PII del evento en vivo 2026-08-14 02:50Z:
     caption con saludo, blurb crediticio extenso, Ficha Tecnica con summary
@@ -535,8 +535,10 @@ def test_p17_live_repro_383_254_rescue_preserves_price():
     )
     assert len(caption) >= 380, f"precondición longitud: {len(caption)}"
 
-    out = _coerce_caption_price_lock(caption, turn_id="P17")
+    with caplog.at_level(logging.INFO):
+        out = _coerce_caption_price_lock(caption, turn_id="P17")
 
+    assert "tier=T3-rescue" in caplog.text, "P17 debe ejecutar T3-rescue"
     assert len(out.splitlines()) <= 4, f"excede 4 líneas: {out!r}"
     assert len(out) <= 350, f"excede 350 chars: {len(out)}"
     assert re.search(r"\$6[\.,]?790[\.,]?000", out), f"precio perdido: {out!r}"
@@ -544,7 +546,7 @@ def test_p17_live_repro_383_254_rescue_preserves_price():
     assert "¿Con quién tengo el gusto?" in out
 
 
-def test_p18_t3_ficha_off_window():
+def test_p18_t3_ficha_off_window(caplog):
     """
     La línea Ficha Tecnica queda fuera de las primeras 4 líneas; T1/T2 no
     logran anclar el precio a una línea dentro de la ventana. T3-rescue lo
@@ -559,8 +561,10 @@ def test_p18_t3_ficha_off_window():
         "💰 Precio: $7.690.000 (incluye SOAT, Matrícula, y tramites)\n"
         "¿Con quién tengo el gusto?"
     )
-    out = _coerce_caption_price_lock(caption, turn_id="P18")
+    with caplog.at_level(logging.INFO):
+        out = _coerce_caption_price_lock(caption, turn_id="P18")
 
+    assert "tier=T3-rescue" in caplog.text, "P18 debe ejecutar T3-rescue"
     assert len(out.splitlines()) <= 4, f"excede 4 líneas: {out!r}"
     assert len(out) <= 350, f"excede 350 chars: {len(out)}"
     assert re.search(r"\$7[\.,]?690[\.,]?000", out), f"precio perdido: {out!r}"
@@ -568,10 +572,12 @@ def test_p18_t3_ficha_off_window():
     assert "¿Con quién tengo el gusto?" in out
 
 
-def test_p19_t3_char_truncation_rescue_keeps_full_amount():
+def test_p19_t3_char_truncation_rescue_keeps_full_amount(caplog):
     """
     La línea fusionada T1/T2 supera el presupuesto de caracteres y truncaría
     el monto; T3-rescue usa una línea compacta que no se corta a mitad.
+    El input fuerza el rescue: dos blurbs largos empujan la línea fusionada
+    más allá del budget de caracteres, por lo que T1/T2 pierden el precio.
     """
     ficha_larga = (
         "Ficha Tecnica: VICTORY NEW LIFE 125 — Motor 124.8 cc monocilíndrico 4T SOHC "
@@ -582,12 +588,16 @@ def test_p19_t3_char_truncation_rescue_keeps_full_amount():
     caption = (
         "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
         "¡Claro que tenemos crédito directo, estrenarla es muy fácil! 🏍️\n"
+        "Te doy toda la info de financiación para que armes el plan perfecto con cuotas cómodas y aprobación inmediata.\n"
+        "Además, el crédito incluye seguro de deuda y opción de refinanciación sin comisiones ocultas.\n"
         f"{ficha_larga}\n"
         "💰 Precio: $7.690.000 (incluye SOAT, Matrícula, y tramites)\n"
         "¿Con quién tengo el gusto?"
     )
-    out = _coerce_caption_price_lock(caption, turn_id="P19")
+    with caplog.at_level(logging.INFO):
+        out = _coerce_caption_price_lock(caption, turn_id="P19")
 
+    assert "tier=T3-rescue" in caplog.text, "P19 debe ejecutar T3-rescue"
     assert len(out.splitlines()) <= 4, f"excede 4 líneas: {out!r}"
     assert len(out) <= 350, f"excede 350 chars: {len(out)}"
     assert "💰 Precio: $7.690.000" in out, f"monto truncado: {out!r}"
@@ -661,3 +671,33 @@ def test_p21_no_regression_other_paths():
         "¿Con quién tengo el gusto?"
     )
     assert _coerce_caption_price_lock(no_ficha, turn_id="P21-NOFICHA") == egress_guard.enforce_length(no_ficha)
+
+
+def test_p22_greeting_with_literal_price_prefix_excluded(caplog):
+    """
+    [BOT-BUILD-PRICE-LOCK-T3-074+RF / R1] El saludo puede contener el prefijo
+    literal "💰 Precio:" sin dígitos (salida no canónica del modelo). El rescue
+    no debe asumir que filtered[0] == greeting y descartar una línea de
+    contenido legítima. Colateral documentado: C5-075 (prefijo duplicado,
+    cosmético).
+    """
+    caption = (
+        "¡Hola! 💰 Precio: especial de lanzamiento\n"
+        "Línea de contexto uno que debe sobrevivir\n"
+        "Te doy toda la info de financiación para que armes el plan perfecto.\n"
+        "Con este crédito las cuotas son muy cómodas y el proceso es 100% digital.\n"
+        "Ficha Tecnica: TVS RAIDER 125 — ficha técnica\n"
+        "💰 Precio: $6.790.000 (incluye SOAT, Matrícula, y tramites)\n"
+        "¿Con quién tengo el gusto?"
+    )
+    with caplog.at_level(logging.INFO):
+        out = _coerce_caption_price_lock(caption, turn_id="P22")
+
+    assert "tier=T3-rescue" in caplog.text, "P22 debe ejecutar T3-rescue"
+    assert len(out.splitlines()) <= 4, f"excede 4 líneas: {out!r}"
+    assert len(out) <= 350, f"excede 350 chars: {len(out)}"
+    assert "Línea de contexto uno que debe sobrevivir" in out, (
+        f"línea de contenido descartada erróneamente: {out!r}"
+    )
+    assert re.search(r"\$6[\.,]?790[\.,]?000", out), f"precio perdido: {out!r}"
+    assert "¿Con quién tengo el gusto?" in out
