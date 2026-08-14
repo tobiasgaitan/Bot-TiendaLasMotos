@@ -2640,6 +2640,61 @@ def _split_ficha_price_line(lines: list[str], idx: int) -> str:
     return "\n".join(new_lines)
 
 
+def _price_lock_rescue_top4(caption: str) -> Optional[str]:
+    """
+    [BOT-BUILD-PRICE-LOCK-T3-074 / Opción A] Rescue de última línea para T3.
+    Cuando T0/T1/T2 pierden el precio, construye una línea compacta canónica
+    con modelo + precio y la inyecta dentro de las primeras 4 líneas del
+    caption, luego reaplica enforce_length. COND-1: si no hay modelo, inyecta
+    línea price-only; PROHIBIDO emitir 'Ficha Tecnica:  ·'.
+
+    Rescate solo para casos no ambiguos: exactamente 1 línea $ y presencia de
+    'Ficha Tecnica:' (preserva el comportamiento T3 de captions sin Ficha).
+    """
+    if not caption:
+        return None
+    lines = caption.split("\n")
+    if len(_price_line_indices(lines)) != 1:
+        return None
+    f_idx = next((i for i, ln in enumerate(lines) if "Ficha Tecnica:" in ln), None)
+    if f_idx is None:
+        return None
+
+    price_m = _PRICE_AMOUNT_RE.search(caption)
+    if not price_m:
+        return None
+    price = price_m.group(0).strip()
+
+    model_m = _FICHA_MODEL_RE.search(lines[f_idx])
+    model = model_m.group(1).strip() if model_m and model_m.group(1).strip() else ""
+    if model:
+        compact = f"Ficha Tecnica: {model} · 💰 Precio: {price}"
+    else:
+        compact = f"💰 Precio: {price}"
+
+    # Detectar saludo canónico en la primera línea para conservar tono.
+    greeting = None
+    if lines and (
+        "Hola" in lines[0]
+        or "Juan Pablo" in lines[0]
+        or lines[0].strip().startswith("¡")
+    ):
+        greeting = lines[0]
+
+    filtered = [
+        ln
+        for ln in lines
+        if "Ficha Tecnica:" not in ln and price not in ln and "💰 Precio:" not in ln
+    ]
+    if greeting is not None and filtered:
+        rescue_lines = [greeting, compact] + filtered[1:]
+    else:
+        rescue_lines = [compact] + filtered
+
+    rescue_caption = "\n".join(rescue_lines)
+    return egress_guard.enforce_length(rescue_caption)
+
+
 def _price_lock_failure_reason(caption: str) -> str:
     """Razón forense de T3 (sin PII)."""
     lines = caption.split("\n")
@@ -2651,6 +2706,14 @@ def _price_lock_failure_reason(caption: str) -> str:
         return "no_ficha_line"
     if len(dollar) > 1:
         return "multi_dollar_ambiguous"
+
+    # [BOT-BUILD-PRICE-LOCK-T3-074] Distinguir entre "no hubo merge posible"
+    # y "el merge existió pero se perdió post-coerción" (cierra C5-064).
+    merge_ficha_first = _price_lock_merge(caption, price_first=False)
+    merge_price_first = _price_lock_merge(caption, price_first=True)
+    merge_existed = merge_ficha_first != caption or merge_price_first != caption
+    if merge_existed:
+        return "anchor_merged_but_truncated"
     return "no_compact_anchor"
 
 
@@ -2714,7 +2777,7 @@ def _coerce_caption_price_lock(
     turn_id: Optional[str] = None,
 ) -> str:
     r"""
-    [BOT-BUILD-PRICE-LOCK-037] Wrapper price-aware de enforce_length.
+    [BOT-BUILD-PRICE-LOCK-037 + T3-074] Wrapper price-aware de enforce_length.
     Protege Visual-Lock asegurando que, si el caption original contiene un
     precio ($\d+), la coerción de egreso (4 líneas/350 chars) no lo extirpe.
 
@@ -2722,7 +2785,7 @@ def _coerce_caption_price_lock(
       T0: enforce_length normal; byte-idéntico si el precio sobrevive o no existe.
       T1: merge Ficha-first · 💰 (resuelve corte por líneas, M1; incluye R2 split).
       T2: merge price-first (resuelve corte por chars con Ficha larga, M2).
-      T3: residual — log forense con reason, comportamiento actual (nunca peor).
+      T3: rescue top-4 con línea compacta canónica; si no es posible, log forense.
     """
     try:
         if not _caption_has_price(caption):
@@ -2744,6 +2807,16 @@ def _coerce_caption_price_lock(
                         f"pre={original_chars}→{len(merged_post)} chars"
                     )
                     return merged_post
+
+        # [BOT-BUILD-PRICE-LOCK-T3-074] Rescue Opción A: inyectar línea compacta
+        # canónica dentro de las primeras 4 líneas antes de aceptar la pérdida.
+        rescue = _price_lock_rescue_top4(caption)
+        if rescue is not None and _caption_has_price(rescue):
+            logger.info(
+                f"🛡️ [PRICE-LOCK] turn_id={turn_id or 'N/A'} "
+                f"tier=T3-rescue pre={original_chars}→{len(rescue)} chars"
+            )
+            return rescue
 
         reason = _price_lock_failure_reason(caption)
         logger.warning(

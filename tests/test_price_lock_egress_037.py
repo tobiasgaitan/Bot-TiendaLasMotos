@@ -18,6 +18,8 @@ from app.services import egress_guard_service as egress_guard
 from app.routers.whatsapp import (
     _coerce_caption_price_lock,
     _pipeline_egress,
+    _price_lock_failure_reason,
+    _price_lock_rescue_top4,
     _send_whatsapp_image,
     _split_ficha_price_line,
 )
@@ -506,3 +508,156 @@ def test_p14_regression_guard_invariants(
         assert out == egress_guard.enforce_length(caption)
     if expected_reason:
         assert f"reason={expected_reason}" in caplog.text
+
+
+# ──────────────── P17-P21: T3 RESCUE (BOT-BUILD-PRICE-LOCK-T3-074) ────────────────
+
+
+def test_p17_live_repro_383_254_rescue_preserves_price():
+    """
+    Reproducción estructural SIN PII del evento en vivo 2026-08-14 02:50Z:
+    caption con saludo, blurb crediticio extenso, Ficha Tecnica con summary
+    largo, 💰 Precio y cierre; T0/T1/T2 pierden el $; T3-rescue lo conserva.
+    """
+    ficha_larga = (
+        "Ficha Tecnica: TVS RAIDER 125 — Motor 124.8 cc monocilíndrico 4T SOHC, "
+        "potencia 11.38 hp @ 7500 rpm, torque 11.2 Nm @ 6000 rpm, frenos de disco "
+        "con CBS, suspensión invertida, tanque 10 L, consumo aprox. 55 km/l, "
+        "garantía extendida de fábrica, colores disponibles."
+    )
+    caption = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
+        "¡Claro que tenemos crédito directo, estrenarla es muy fácil! 🏍️\n"
+        "Te doy toda la info de financiación para que armes el plan perfecto.\n"
+        f"{ficha_larga}\n"
+        "💰 Precio: $6.790.000 (incluye SOAT, Matrícula, y tramites)\n"
+        "¿Con quién tengo el gusto?"
+    )
+    assert len(caption) >= 380, f"precondición longitud: {len(caption)}"
+
+    out = _coerce_caption_price_lock(caption, turn_id="P17")
+
+    assert len(out.splitlines()) <= 4, f"excede 4 líneas: {out!r}"
+    assert len(out) <= 350, f"excede 350 chars: {len(out)}"
+    assert re.search(r"\$6[\.,]?790[\.,]?000", out), f"precio perdido: {out!r}"
+    assert "Ficha Tecnica: TVS RAIDER 125" in out
+    assert "¿Con quién tengo el gusto?" in out
+
+
+def test_p18_t3_ficha_off_window():
+    """
+    La línea Ficha Tecnica queda fuera de las primeras 4 líneas; T1/T2 no
+    logran anclar el precio a una línea dentro de la ventana. T3-rescue lo
+    inyecta junto al saludo y sobrevive.
+    """
+    caption = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
+        "¡Claro que tenemos crédito directo! 🏍️\n"
+        "Te doy toda la info de financiación para que armes el plan perfecto.\n"
+        "Con este crédito las cuotas son muy cómodas y el proceso es 100% digital.\n"
+        "Ficha Tecnica: VICTORY NEW LIFE 125 — ficha técnica completa\n"
+        "💰 Precio: $7.690.000 (incluye SOAT, Matrícula, y tramites)\n"
+        "¿Con quién tengo el gusto?"
+    )
+    out = _coerce_caption_price_lock(caption, turn_id="P18")
+
+    assert len(out.splitlines()) <= 4, f"excede 4 líneas: {out!r}"
+    assert len(out) <= 350, f"excede 350 chars: {len(out)}"
+    assert re.search(r"\$7[\.,]?690[\.,]?000", out), f"precio perdido: {out!r}"
+    assert "Ficha Tecnica: VICTORY NEW LIFE 125" in out
+    assert "¿Con quién tengo el gusto?" in out
+
+
+def test_p19_t3_char_truncation_rescue_keeps_full_amount():
+    """
+    La línea fusionada T1/T2 supera el presupuesto de caracteres y truncaría
+    el monto; T3-rescue usa una línea compacta que no se corta a mitad.
+    """
+    ficha_larga = (
+        "Ficha Tecnica: VICTORY NEW LIFE 125 — Motor 124.8 cc monocilíndrico 4T SOHC "
+        "potencia 11.1 hp @ 8000 rpm torque 10.9 Nm @ 6000 rpm frenos de disco con CBS "
+        "suspensión delantera telescópica e invertida tanque 11 L consumo 52 km/l "
+        "peso 127 kg garantía extendida colores negro y blanco."
+    )
+    caption = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
+        "¡Claro que tenemos crédito directo, estrenarla es muy fácil! 🏍️\n"
+        f"{ficha_larga}\n"
+        "💰 Precio: $7.690.000 (incluye SOAT, Matrícula, y tramites)\n"
+        "¿Con quién tengo el gusto?"
+    )
+    out = _coerce_caption_price_lock(caption, turn_id="P19")
+
+    assert len(out.splitlines()) <= 4, f"excede 4 líneas: {out!r}"
+    assert len(out) <= 350, f"excede 350 chars: {len(out)}"
+    assert "💰 Precio: $7.690.000" in out, f"monto truncado: {out!r}"
+    assert "¿Con quién tengo el gusto?" in out
+
+
+def test_p20_forensic_label_anchor_merged_but_truncated():
+    """
+    C5-064: _price_lock_failure_reason debe distinguir entre 'no hubo merge'
+    y 'merge existió pero se perdió post-coerción'.
+    """
+    merge_exists_but_truncated = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
+        "¡Claro que tenemos crédito directo! 🏍️\n"
+        "Te doy toda la info de financiación para que armes el plan perfecto.\n"
+        "Ficha Tecnica: TVS RAIDER 125\n"
+        "💰 Precio: $6.790.000 (incluye SOAT, Matrícula, y tramites)\n"
+        "¿Con quién tengo el gusto?"
+    )
+    no_merge_possible = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
+        "Línea de contexto adicional\n"
+        "Otra línea de contexto\n"
+        "$6.790.000 es el precio de la moto\n"
+        "¿Con quién tengo el gusto?"
+    )
+
+    assert _price_lock_failure_reason(merge_exists_but_truncated) == "anchor_merged_but_truncated"
+    assert _price_lock_failure_reason(no_merge_possible) == "no_ficha_line"
+
+
+def test_p21_no_regression_other_paths():
+    """
+    Verificación explícita de que T0, paths sin precio y T1/T2 exitosos no
+    cambian de comportamiento tras introducir T3-rescue.
+    """
+    # T0 byte-idéntico
+    t0 = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos.\n"
+        "Ficha Tecnica: Victory MRX 125\n"
+        "💰 Precio: $5.000.000\n"
+        "¿Con quién tengo el gusto?"
+    )
+    assert _coerce_caption_price_lock(t0, turn_id="P21-T0") == egress_guard.enforce_length(t0)
+
+    # Sin precio
+    no_price = "¡Hola! Soy Juan Pablo.\n¿Con quién tengo el gusto?"
+    assert _coerce_caption_price_lock(no_price, turn_id="P21-NO$") == egress_guard.enforce_length(no_price)
+
+    # T1/T2 exitoso (P1/P2-like)
+    t1 = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
+        "¡Claro que tenemos crédito! Te presento la ⭐ TOP RESULT:\n"
+        "Ficha Tecnica: TVS RAIDER 125\n"
+        "💰 Precio: $6.790.000 (incluye SOAT, Matrícula, y tramites)\n"
+        f"![TVS RAIDER 125]({IMG_URL})\n"
+        "¿Con quién tengo el gusto?"
+    )
+    caption_t1, _ = _pipeline_replica(t1)
+    out_t1 = _coerce_caption_price_lock(caption_t1, turn_id="P21-T1")
+    assert re.search(r"\$6[\.,]?790[\.,]?000", out_t1)
+    assert "Ficha Tecnica: TVS RAIDER 125" in out_t1
+    assert "¿Con quién tengo el gusto?" in out_t1
+
+    # T3-rescue no se dispara cuando no hay Ficha (preserva P8)
+    no_ficha = (
+        "¡Hola! Soy Juan Pablo, asesor de Tienda Las Motos. 😊\n"
+        "Línea de contexto adicional número dos\n"
+        "Línea de contexto adicional número tres\n"
+        "$6.790.000 es el precio de la moto\n"
+        "¿Con quién tengo el gusto?"
+    )
+    assert _coerce_caption_price_lock(no_ficha, turn_id="P21-NOFICHA") == egress_guard.enforce_length(no_ficha)
