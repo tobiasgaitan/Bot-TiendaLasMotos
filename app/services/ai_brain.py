@@ -22,6 +22,10 @@ from app.services.genai_client_service import get_shared_genai_client, format_ge
 
 logger = logging.getLogger(__name__)
 
+# [BOT-BUILD-C29-075 / R2] Detector normalizado de mencion SOAT para
+# idempotencia del anchor; cubre variantes de casing/puntuacion del modelo.
+_SOAT_MENTION_RE = re.compile(r"\bsoat\b", re.IGNORECASE)
+
 # Use the new unified google-genai SDK
 try:
     from google import genai
@@ -1383,10 +1387,7 @@ La FAQ no avanza el embudo. {one_shot}
                                 _top_matches = self._catalog_service.search_items(_top_name)
                                 if _top_matches:
                                     _top_price = (
-                                        _top_matches[0].get("price")
-                                        or _top_matches[0].get("formatted_price")
-                                        or _top_matches[0].get("precio")
-                                        or ""
+                                        CerebroIA._canonical_top_price(_top_matches[0])
                                     )
                             except Exception as _pcc_err:
                                 logger.exception(f"⚠️ [PCC-LOOP-017] Error recuperando precio del Top Result: {_pcc_err}")
@@ -1438,10 +1439,7 @@ La FAQ no avanza el embudo. {one_shot}
                             _top_matches = self._catalog_service.search_items(_top_name)
                             if _top_matches:
                                 _top_price = (
-                                    _top_matches[0].get("price")
-                                    or _top_matches[0].get("formatted_price")
-                                    or _top_matches[0].get("precio")
-                                    or ""
+                                    CerebroIA._canonical_top_price(_top_matches[0])
                                 )
                         except Exception as _pcc_err:
                             logger.exception(f"⚠️ [PCC-LOOP-017] Error recuperando precio del Top Result: {_pcc_err}")
@@ -1462,16 +1460,20 @@ La FAQ no avanza el embudo. {one_shot}
 
     @staticmethod
     def _ensure_soat_anchor(text: str) -> str:
+        """
+        [BOT-BUILD-C29-075 / R2] Ancla SOAT idempotente. Si el texto ya
+        menciona SOAT en cualquier forma canónica o no canónica, no appendea
+        nada; de lo contrario, adjunta PRICE_PACKAGE_ANCHOR al primer $ visto.
+        """
         if not text or not isinstance(text, str):
             return text
-        if "incluye SOAT" in text:
+        if _SOAT_MENTION_RE.search(text):
             return text
-        price_match = re.search(r'\$[\d.,]+\b', text)
+        price_match = re.search(r"\$[\d.,]+\b", text)
         if price_match:
             from app.services.catalog_service import PRICE_PACKAGE_ANCHOR
-            if PRICE_PACKAGE_ANCHOR not in text:
-                replacement = f"{price_match.group(0)} {PRICE_PACKAGE_ANCHOR}"
-                text = text[:price_match.start()] + replacement + text[price_match.end():]
+            replacement = f"{price_match.group(0)} {PRICE_PACKAGE_ANCHOR}"
+            text = text[:price_match.start()] + replacement + text[price_match.end():]
         return text
 
     @staticmethod
@@ -2238,7 +2240,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             texto, history,
                             top_name=_top.get("name", ""),
                             top_image=_top.get("image_url") or _top.get("imagen_url") or "",
-                            top_price=_top.get("price") or _top.get("formatted_price") or _top.get("precio") or "",
+                            top_price=CerebroIA._canonical_top_price(_top),
                         )
                     return self._fallback_response(texto, history)
 
@@ -2264,7 +2266,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                             texto, history,
                             top_name=_top.get("name", ""),
                             top_image=_top.get("image_url") or _top.get("imagen_url") or "",
-                            top_price=_top.get("price") or _top.get("formatted_price") or _top.get("precio") or "",
+                            top_price=CerebroIA._canonical_top_price(_top),
                         )
                     return self._fallback_response(texto, history)
 
@@ -2342,7 +2344,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     texto, history,
                                     top_name=_top.get("name", ""),
                                     top_image=_top.get("image_url") or _top.get("imagen_url") or "",
-                                    top_price=_top.get("price") or _top.get("formatted_price") or _top.get("precio") or "",
+                                    top_price=CerebroIA._canonical_top_price(_top),
                                 )
                             return self._fallback_response(texto, history)
                 except Exception as e:
@@ -2433,7 +2435,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     texto, history,
                                     top_name=_top.get("name", ""),
                                     top_image=_top.get("image_url") or _top.get("imagen_url") or "",
-                                    top_price=_top.get("price") or _top.get("formatted_price") or _top.get("precio") or "",
+                                    top_price=CerebroIA._canonical_top_price(_top),
                                 )
                             return self._fallback_response(texto, history)
                         continue
@@ -2452,7 +2454,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                     _top = matches[0]
                                     _top_name = _top.get("name", "")
                                     _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
-                                    _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
+                                    _top_price = CerebroIA._canonical_top_price(_top)
                                     return self._build_pcc_fallback(
                                         texto, history,
                                         top_name=_top_name,
@@ -2576,7 +2578,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                                 _top = matches[0]
                                 _top_name = _top.get("name", "")
                                 _top_image = _top.get("image_url") or _top.get("imagen_url") or ""
-                                _top_price = _top.get("price") or _top.get("formatted_price") or _top.get("precio") or ""
+                                _top_price = CerebroIA._canonical_top_price(_top)
                                 return self._build_pcc_fallback(
                                     texto, history,
                                     top_name=_top_name,
@@ -3330,7 +3332,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
                         texto, history,
                         top_name=_top.get("name", ""),
                         top_image=_top.get("image_url") or _top.get("imagen_url") or "",
-                        top_price=_top.get("price") or _top.get("formatted_price") or _top.get("precio") or "",
+                        top_price=CerebroIA._canonical_top_price(_top),
                     )
                 return self._fallback_response(texto, history)
             
@@ -3547,6 +3549,45 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             r"de acuerdo|est[aá] bien|[👍✅👌🆗✔☑💯])",
             text,
         ))
+
+    @staticmethod
+    def _canonical_top_price(item: Dict[str, Any]) -> str:
+        """
+        [BOT-BUILD-C29-075-RF2 / R1'] SSOT para el precio del Top Result en
+        rutas deterministas salvage/fallback. Alineado con
+        CatalogService._rehydrate_formatted_price: recompute primero desde
+        price numerico (>0), luego formatted_price, luego price string y
+        finalmente precio. El recompute es exception-safe (COND-RF2-1).
+        """
+        if not item:
+            return ""
+
+        price = item.get("price")
+        is_numeric = isinstance(price, (int, float)) and not isinstance(price, bool)
+        if is_numeric and price > 0:
+            try:
+                from app.services.catalog_service import CatalogService
+                return CatalogService.build_commercial_price(
+                    price=price,
+                    cc=item.get("cc"),
+                    category=item.get("category"),
+                )
+            except Exception as exc:
+                # COND-RF2-1: un item malformado no debe tumbar el fallback.
+                logger.exception(
+                    f"⚠️ [C29-RF2] build_commercial_price falló para price={price}: {exc}"
+                )
+        if is_numeric and price <= 0:
+            # R1'': 0/negativo se trata como ausente de precio para no fabricar
+            # un monto desde solo costos de registro.
+            price = None
+
+        formatted = item.get("formatted_price")
+        if formatted:
+            return str(formatted)
+        if price:
+            return str(price)
+        return str(item.get("precio") or "")
 
     def _build_canonical_paso1_caption(
         self,

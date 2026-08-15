@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
 ## Tasks Completadas (v10.47.5+)
+- [x] **BOT-BUILD-C29-075 (v10.74.0): Normalización SSOT del 💰 en rutas deterministas + ancla SOAT idempotente (cierre C5-061/C5-065, registro C5-077)** [Orden literal C-29: app/services/ai_brain.py — helper _canonical_top_price (recompute-first vía build_commercial_price, exception-safe, guard price>0) reemplaza 9 getter chains int-over-formatted + _ensure_soat_anchor idempotente (_SOAT_MENTION_RE \bsoat\b, PRICE_PACKAGE_ANCHOR); tests/test_c29_salvage_price_soat_074.py (8 pines P1-P7+P3b + mordidas M1'-M5). Review externa F3.5 (sign-off P3b + RF-2) + F4.5-bis DIFF APTO D1-D9. C4 intacto fuera de orden literal. **Certificación: 876 recolectados = 871 tests/ + 5 scripts/; 876/876 PASSED; 0 failed; Score 1.000.** Colateral: C5-077.]
 - [x] **BOT-BUILD-PRICE-LOCK-T3-074 (v10.73.0): Rescue T3 en PRICE-LOCK — $ sobrevive a enforce_length en variante residual + etiqueta forense anchor_merged_but_truncated (cierre C5-074/C5-064)** [whatsapp.py: _price_lock_rescue_top4 + T3 rescue + etiqueta; tests P17-P22. Zona mutable; sin orden literal; C4 intacto. Delta-review externa + RF R1-R3. **Certificación: 868 recolectados = 863 tests/ + 5 scripts/; 868/868 PASSED; Score 1.000.** Colateral: C5-075.]
 - [x] **BOT-BUILD-GENAI-SINGLETON-050 (v10.72.0): Singleton cliente GenAI compartido + warm-up anti-zombie en lifespan — cierre definitivo de C5-050/C5-039 (HIGH #2)** [Orden literal C-30: app/services/genai_client_service.py (singleton cache + locks + telemetría), app/main.py (warm-up anti-zombie + /health), app/services/ai_brain.py/audio_service.py (consumidores compartidos), tests/test_genai_client_singleton_050.py + tests/test_genai_client_warmup_050.py]. Causa raíz: cliente genai instanciado por request amplificaba 429 RESOURCE_EXHAUSTED en Turn 1 y latencia/cuota. Verificación en vivo 2026-08-14 02:50Z: 0×429, /health sano. **Certificación: 862 items puntuables físico (857 tests/ + 5 scripts/); 862/862 PASSED; 0 failed; 0 skipped; Score 1.000.** Colaterales: C5-067..C5-074.
 - [x] **BOT-BUILD-PRICE-LOCK-037 (v10.71.0): Backstop PRICE-LOCK v2 en pipeline de egreso — cierre definitivo de C5-037** [app/routers/whatsapp.py: _coerce_caption_price_lock (T0-T3) + _price_lock_merge (R1/R1.4/R2) + _split_ficha_price_line + regexes (?i)\bprecios?\b / delimitador real / \$[\d.,]*\d + (?i:incluye); swaps Z2/Z3; tests/test_price_lock_egress_037.py (P1-P16)]. Causa raíz: enforce_length decapitaba el $ del caption PASO 1 con crédito sin backstop análogo al de imagen (CANON-015); v2 cierra H2 (Ficha-párrafo con precio embebido) y H3 ($ en prosa única). Review externa en 3 pasadas (findings 1-3 cerrados/diferidos). C4 intacto. **Certificación: 849 (844 tests/ + 5 scripts/); 849/849 PASSED; 0 failed; Score 1.000.** Colaterales: C5-060, C5-061 (C-29), C5-063, C5-064.
@@ -90,6 +91,7 @@
 | PRICE-LOCK-037 | Backstop PRICE-LOCK v2 en egreso: cierre C5-037 (v10.71.0) | Completed | 2026-08-12 |
 | GENAI-SINGLETON-050 | Singleton cliente GenAI compartido + warm-up anti-zombie (v10.72.0) | Completed | 2026-08-13 |
 | PRICE-LOCK-T3-074 | Rescue T3 PRICE-LOCK + etiqueta forense (v10.73.0) | Completed | 2026-08-14 |
+| C29-075 | Normalización SSOT 💰 + ancla SOAT idempotente (v10.74.0) | Completed | 2026-08-15 |
 | FUNNEL-SKIP-014 | Cierre incidente salto de fase post-reset (v10.57.0) | Completed | 2026-08-09 |
 | 5 | Resolución de la Concurrencia y Aislamiento de Código Legado | Pending | - |
 | 6 | Blindaje Conductual del Agente e Integridad del Embudo | Pending | - |
@@ -129,4 +131,4 @@
 | 1 | Similitud Multimodal e Integración | Completed | 2026-07-11 |
 
 ---
-*Last updated: 2026-08-14*
+*Last updated: 2026-08-15*

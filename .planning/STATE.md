@@ -1,17 +1,18 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.73.0 | Hito: BOT-BUILD-PRICE-LOCK-T3-074 — Rescue T3 en PRICE-LOCK: $ sobrevive a enforce_length en variante residual + etiqueta forense anchor_merged_but_truncated (cierre C5-074/C5-064) — BUILD COMPLETE + C6 SYNC docs | Coherence Score: 1.000 (868 recolectados físico = 863 tests/ + 5 scripts/; 868/868 PASSED; 0 failed; 0 skipped)
+Versión: v10.74.0 | Hito: BOT-BUILD-C29-075 — Normalización SSOT del 💰 en rutas deterministas (recompute-first + guard price>0) + ancla SOAT idempotente (cierre C5-061/C5-065, registro C5-077) — BUILD COMPLETE + C6 SYNC docs | Coherence Score: 1.000 (876 recolectados físico = 871 tests/ + 5 scripts/; 876/876 PASSED; 0 failed; 0 skipped)
 
 ### Current Position
-**Phase:** BOT-BUILD-PRICE-LOCK-T3-074 (v10.73.0) — Rescue T3 (_price_lock_rescue_top4) en _coerce_caption_price_lock: línea compacta Ficha·💰 inyectada en top-4 cuando T0/T1/T2 pierden el precio (price-only si sin modelo; prohibido 'Ficha Tecnica:  ·' vacío); _price_lock_failure_reason emite anchor_merged_but_truncated (cierra C5-064). whatsapp.py zona mutable; C4 intacto; pines P17-P22 + mordidas (revert R1 → P22 FAIL; rescue off → P17/P18/P19 FAIL). CERRADO EN VIVO 2026-08-14 12:06 p.m. GMT-5: escenario 'moto automática a crédito', $8.329.000 visible post-coerción (rescue T3 price-only, caso COND-1), 0×429; colateral cosmético C5-076 registrado.
-**Status:** CERRADO EN VIVO (v10.73.0):
-  - **Objetivo:** cerrar C5-074+C5-064 (PRICE-LOCK-T3): el $ sobrevive a enforce_length en la variante residual del caption + etiqueta forense anchor_merged_but_truncated cuando el merge existió pero se perdió post-coerción.
-  - **Implementación:** app/routers/whatsapp.py — _price_lock_rescue_top4 (línea compacta 'Ficha Tecnica: <modelo> · 💰 Precio: <monto>' inyectada en top-4 cuando T0/T1/T2 pierden el precio; price-only si sin modelo; prohibido 'Ficha Tecnica:  ·' vacío) consumida por _coerce_caption_price_lock (T3); _price_lock_failure_reason emite anchor_merged_but_truncated (cierra C5-064).
-  - **Pins:** tests/test_price_lock_egress_037.py P17-P22 (P22 greeting-filter determinista). Mordidas: revert R1 → P22 FAIL; rescue off → P17/P18/P19 FAIL.
-  - **Eval:** Score 1.000 ≥ 0.9 — DEPLOY AUTHORIZED ✅. Beta run #466, commit 46f3a94, push 2026-08-14.
-  - **Verificación en vivo:** 2026-08-14 12:06 p.m. GMT-5 — escenario 'moto automática a crédito': $8.329.000 visible post-coerción (rescue T3 price-only, caso COND-1), 0×429.
-  - **Cambio acotado:** app/routers/whatsapp.py (zona mutable) + tests/test_price_lock_egress_037.py. Sin orden literal; C4 intacto. Núcleos intactos: enforce_length, egress_guard_service.py, ai_brain.py, juan_pablo_personality, prompts.py, _fallback_response, run_checker, _build_pcc_fallback, PCC.
-  - **Colaterales descubiertos en vivo:** C5-075 (prefijo 💰 duplicado), C5-076 (rescue T3 price-only sin nombre de modelo; DIFERIDO).
+**Phase:** BOT-BUILD-C29-075 (v10.74.0) — _canonical_top_price en ai_brain.py (precedencia SSOT: price numérico>0 → build_commercial_price recompute en try/except exception-safe + logger.exception sin PII → formatted_price → price string → precio → '') reemplaza 9 getter chains int-over-formatted; _ensure_soat_anchor idempotente (_SOAT_MENTION_RE \bsoat\b IGNORECASE; mención → retorno byte-idéntico; append solo si \$[\d.,]+\b y sin mención; PRICE_PACKAGE_ANCHOR SSOT). Orden literal C-29; C4 intacto; 8 pines P1-P7+P3b + mordidas M1'/M1''/M2/M5/M3/M4. Review externa F3.5 (sign-off P3b + RF-2) + F4.5-bis DIFF APTO D1-D9. Eval 876/876 Score 1.000.
+**Status:** BUILD COMPLETE (v10.74.0):
+  - **Objetivo:** cerrar C5-061 (💰 sin $ en rutas deterministas salvage/fallback por getter chains int-over-formatted en 9 sitios) + C5-065 (ancla SOAT duplicada visible por pre-check literal evadible).
+  - **Implementación:** app/services/ai_brain.py — helper _canonical_top_price (recompute-first exception-safe, guard price>0) en 9 call sites (L1390, L1442, L2243, L2269, L2347, L2438, L2457, L2581, L3335) + _ensure_soat_anchor idempotente con _SOAT_MENTION_RE y PRICE_PACKAGE_ANCHOR.
+  - **Pins:** tests/test_c29_salvage_price_soat_074.py P1-P7+P3b (8 pines). Mordidas: M1' formatted-first → P2 FAIL; M1'' sin guard price>0 → P7 FAIL; M2/M5 check débil → P3/P3b FAIL; M3 sin append → P4 FAIL; M4 inline reintroducida → P6 FAIL.
+  - **Eval:** Score 1.000 ≥ 0.9 — DEPLOY AUTHORIZED ✅. 876/876 PASSED; collect-only 876 (871 tests/ + 5 scripts/).
+  - **Review externa:** F3.5 (findings 1-4: sign-off P3b + RF-2 recompute-first/guard/nits) + F4.5-bis DIFF APTO (D1-D9 OK, SIN HALLAZGOS).
+  - **Cambio acotado:** app/services/ai_brain.py + tests/test_c29_salvage_price_soat_074.py bajo orden literal C-29. Núcleos intactos: juan_pablo_personality, prompts.py, _fallback_response, enforce_length, egress_guard_service.py, whatsapp.py.
+  - **Colaterales:** C5-077 (getter chain int-over-formatted en L2728, builder de contexto LLM; fuera de scope C-29).
+
 
 ### Evidencia determinista del fix (tool-loop budget)
 - P1a-3LEG: bucle de 3 legs; TOOL REJECTION de calculate_credit_score → exención A′ preserva el turno de texto autoritativo (cap 90s excedido y permitido por ceiling 120s).
@@ -26,11 +27,11 @@ Versión: v10.73.0 | Hito: BOT-BUILD-PRICE-LOCK-T3-074 — Rescue T3 en PRICE-LO
 - **C5-052:** greeting whitespace-only en `_build_canonical_paso1_caption` (preexistente, ruta `str(user_name or "").strip()`); evaluar normalización.
 - **C5-037:** CERRADO EN VIVO 2026-08-12 (v10.71.0) — backstop PRICE-LOCK v2; prueba en vivo ✅ 6:24 p.m.: precio $8.329.000 visible + imagen + Ficha + cierre (escenario "moto automática a crédito").
 - **C5-060:** text-only path PASO 1 con crédito (URL-Lock reject sin sustituto) decapita $ en _send_whatsapp_message :2782 sin wrapper. Diferido.
-- **C5-061:** getter chains de ai_brain.py prefieren price (int) sobre formatted_price en 7 sitios → 💰 sin $ en rutas deterministas salvage/fallback. Requiere orden literal C-29.
+- **C5-061:** CERRADO (v10.74.0) — getter chains de ai_brain.py preferían price (int) sobre formatted_price en 9 sitios (redefinido 7→9 con evidencia física: L1390, L1442, L2243, L2269, L2347, L2438, L2457, L2581, L3335) → 💰 sin $ en rutas deterministas. Cerrado vía _canonical_top_price (recompute-first + guard price>0) bajo orden literal C-29.
 - **C5-062:** CERRADO — espejo STATE/ROADMAP de v10.70.0 y tags faltantes curados en este WARP-SYNC (tag retroactivo v10.70.0 en 3f41148 + v10.71.0).
 - **C5-063:** sin log del caption pre-coerción verbatim (forense de egreso ciego al contenido). Diferido; R3 mitiga con reason de T3.
 - **C5-064:** CERRADO (v10.73.0) — _price_lock_failure_reason emite anchor_merged_but_truncated cuando el merge existió pero se perdió post-coerción; no_compact_anchor solo sin merge posible. Verificado por mordida P20 + log en vivo.
-- **C5-065:** ancla SOAT duplicada visible: _ensure_soat_anchor añade "(SOAT, Matrícula y trámites incluidos)" aunque el modelo ya la emitió. Requiere orden literal C-29 (toca ai_brain.py). Diferido.
+- **C5-065:** CERRADO (v10.74.0) — ancla SOAT duplicada visible por pre-check literal case-sensitive evadible. Cerrado vía _SOAT_MENTION_RE (\bsoat\b IGNORECASE) idempotente bajo orden literal C-29; contrato P3b pineado (sign-off Finding 1).
 - **C5-066:** otel trace_exporter ERROR "Failed to export span batch"; sin impacto de negocio. Incluir en monitoreo Beta. Diferido.
 - **C5-050 + C5-039:** CERRADO EN VIVO 2026-08-14 (v10.72.0) — cliente genai por-request reemplazado por singleton compartido + warm-up anti-zombie; verificación en vivo 02:50Z: 0×429, /health sano.
 - **C5-067** (LOW): ROADMAP.md aún lista colaterales de PRICE-LOCK-037 sin C5-065/C5-066 (micro-deriva documental). Diferido.
@@ -43,6 +44,7 @@ Versión: v10.73.0 | Hito: BOT-BUILD-PRICE-LOCK-T3-074 — Rescue T3 en PRICE-LO
 - **C5-074:** CERRADO EN VIVO (v10.73.0) — Rescue T3 _price_lock_rescue_top4 + pines P17-P22 (P22 greeting-filter determinista). Prueba en vivo 2026-08-14 12:06 p.m. GMT-5 (Beta run #466): $8.329.000 visible post-coerción, rescue T3 operando, 0×429.
 - **C5-075** (LOW): prefijo '💰 Precio:' duplicado en saludo no-canónico que ya lo contiene — cosmético, fuera de scope, documentado en P22.
 - **C5-076** (LOW): Rescue T3 price-only sin nombre de modelo en el texto. Detección: prueba en vivo v10.73.0, turno 2026-08-14 12:06 p.m. GMT-5 (escenario "Hola, quiero una moto automática a crédito"): _FICHA_MODEL_RE no matcheó y _price_lock_rescue_top4 inyectó solo la línea "💰 Precio: $8.329.000 (incluye SOAT, Matrícula, y trámites)" (caso COND-1 price-only del build 074); la imagen llegó vía CANON-015 pero el caption no nombra la moto ni lleva "Ficha Tecnica: <modelo>". PASO 1 pide información detallada + imagen + precio; el texto cumple precio pero omite el detalle del modelo. Impacto cosmético-comercial; sin pérdida de $ ni regresión. Adyacentes: C5-075 (prefijo 💰 duplicado), familia C5-060/C5-064. Estado propuesto: DIFERIDO (cola P5 de colaterales). Evidencia física: captura WhatsApp 12:06 p.m. (caption sin modelo + imagen Victory New Life) + commit 46f3a94 (v10.73.0) en origin/beta.
+- **C5-077** (LOW): getter chain int-over-formatted en L2728 (builder de contexto LLM, callback search_catalog) — mismo anti-patrón de C5-061 alimentando contexto del modelo, no la línea 💰 de egreso. Fuera de scope C-29 y fuera del universo vigilado de P6. Diferido.
 - **C5-045:** gate F5 debe exigir explícitamente 0 failed en stdout antes del push (exit-code del deploy-gate no basta).
 - **C5-046:** flaky tests/test_regression_203.py::test_raider_125_helper_path_414444.
 - **C5-047:** pregunta de identidad "¿con quién tengo el gusto?" fuera de orden en PASO 1 con crédito.
@@ -60,8 +62,8 @@ Versión: v10.73.0 | Hito: BOT-BUILD-PRICE-LOCK-T3-074 — Rescue T3 en PRICE-LO
 - **C5-049:** paridad judge vs router — el juez no acota a post-reset (docstring soft-claimed); evaluar espejar frontier o añadir pins dedicados.
 - ~~**C5-041:** CERRADO — minScale=1 físico en Cloud Run confirmado en revisión 00447; header de consola stale (cosmético).~~
 
-**Previous:** BOT-BUILD-GENAI-SINGLETON-050 (v10.72.0) — Singleton cliente GenAI compartido + warm-up anti-zombie (cierre C5-050/C5-039).
-**Next:** bundle C-29 (C5-061+C5-065, AGUARDA ORDEN LITERAL de Tobias) → E2E WhatsApp → observabilidad (C5-066, C5-071) → C5-045 → colaterales C5-067..C5-073, C5-075, C5-076. C-30 agotada; C-31 sin emitir (no requerida para 074: whatsapp.py zona mutable).
+**Previous:** BOT-BUILD-PRICE-LOCK-T3-074 (v10.73.0) — Rescue T3 PRICE-LOCK + etiqueta forense anchor_merged_but_truncated (cierre C5-074/C5-064).
+**Next:** E2E WhatsApp → observabilidad (C5-066, C5-071) → C5-045 → colaterales C5-067..C5-073, C5-075, C5-076, C5-077. C-29 ejecutada y agotada (v10.74.0); C-30 agotada.
 
 ### Tooling local (MCP, sin bump documental — BOT-BUILD-GRAPHIFY-MCP-024)
 - `graphify-backend` MCP registrado en ~/.config/opencode/opencode.json (bloque local vía /opt/homebrew/bin/uv + graphifyy 0.9.38 + graph.json; timeout 30000; enabled true). Invariante serena intacto (SHA-256 canónico 24545b4f…bbffc). Completado: reinicio + panel MCP verificado (graphify-backend Connected + serena Connected) + graph_stats coherente con GRAPH_REPORT.md — 2026-08-11.
