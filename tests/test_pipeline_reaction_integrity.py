@@ -49,6 +49,7 @@ def _reaction_payload(emoji: str = "👍") -> dict:
 def _build_buffer_mock(*, is_active: bool = True, aggregated=None) -> MagicMock:
     buffer = MagicMock()
     buffer.add_message = AsyncMock(return_value=True)
+    buffer.clear_messages = AsyncMock()
     buffer.is_task_active = MagicMock(return_value=is_active)
     buffer.get_aggregated_message = AsyncMock(return_value=aggregated)
     buffer.clear_buffer = AsyncMock()

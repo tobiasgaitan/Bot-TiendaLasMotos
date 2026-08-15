@@ -137,6 +137,38 @@ class AgenticOrchestrator:
             or (is_faq_intent and not has_moto_interest)
         ) and not is_purchase_intent
 
+        # [BOT-BUILD-BUFFER-PCC-076 / Fix B] PHASE_2_HABEAS_DATA post-habeas con
+        # identidad pendiente: la instruccion de fase prohibe explicitamente
+        # incluir precios ($) e imagenes (![]). El validador PCC estricto
+        # ($ + imagen + Ficha) es incompatible con ese contrato, asi que se
+        # fuerza bypass, pero SOLO cuando la respuesta es una pregunta legitima
+        # de recoleccion de identidad (evita dejar pasar respuestas con oferta).
+        pd = prospect_data or {}
+        identity_pending_post_habeas = (
+            pd.get("habeas_data_accepted") is True
+            and (
+                not (pd.get("nombre") or "").strip()
+                or not (pd.get("ciudad") or "").strip()
+            )
+        )
+
+        def _is_identity_collection_prompt(response: str) -> bool:
+            if not response or "?" not in response:
+                return False
+            lowered = response.lower()
+            if not (pd.get("ciudad") or "").strip() and any(
+                kw in lowered for kw in ("ciudad", "donde", "ubicado", "vives", "escribes", "ubicacion", "ubicación")
+            ):
+                return True
+            if not (pd.get("nombre") or "").strip() and any(
+                kw in lowered for kw in ("nombre", "llamas", "como te llamas", "tu nombre")
+            ):
+                return True
+            return False
+
+        if identity_pending_post_habeas and _is_identity_collection_prompt(bot_response):
+            return {"success": True, "bypass_strict": True, "report": {}}
+
         phone = (prospect_data or {}).get("phone") or "unknown"
         logger.info(
             f"🔍 [PCC-FORENSIC] turn_id={trace_id!r} phone={phone} "

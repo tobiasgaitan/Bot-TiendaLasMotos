@@ -337,6 +337,7 @@ async def test_mvi5_orchestrator_delegates_media_branch_with_seam_propagation():
 
     buffer = MagicMock()
     buffer.add_message = AsyncMock(return_value=True)
+    buffer.clear_messages = AsyncMock()
 
     with patch("app.routers.whatsapp._ensure_services", new_callable=AsyncMock), \
          patch("app.routers.whatsapp._pipeline_media_vision", mock_pipeline), \

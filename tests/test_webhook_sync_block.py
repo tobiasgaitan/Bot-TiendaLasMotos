@@ -422,6 +422,7 @@ async def test_dynamic_greeting_evaluation_across_all_branches():
     # Mock debounce logic to avoid blocking tests
     mock_message_buffer = AsyncMock()
     mock_message_buffer.add_message = AsyncMock(return_value=True)
+    mock_message_buffer.clear_messages = AsyncMock()
     mock_message_buffer.get_aggregated_message = AsyncMock(return_value=None)
     mock_message_buffer.is_task_active = MagicMock(return_value=True)
     mock_message_buffer.debounce_seconds = 0.01
@@ -658,6 +659,7 @@ async def test_inferred_state_reset_consistency():
     
     mock_message_buffer = AsyncMock()
     mock_message_buffer.add_message = AsyncMock(return_value=True)
+    mock_message_buffer.clear_messages = AsyncMock()
     mock_message_buffer.get_aggregated_message = MagicMock(return_value=None)
     mock_message_buffer.is_task_active = MagicMock(return_value=True)
     mock_message_buffer.clear_buffer = AsyncMock()

@@ -124,6 +124,18 @@ class MessageBuffer:
             
             return True
 
+    async def clear_messages(self, wa_id: str) -> None:
+        """
+        Drain only the text aggregation buffer for a user.
+
+        Preserves active task tracking and WAMID registries so that a
+        text/audio/image message is processed with its own body and does not
+        leak into a later reaction turn.
+        """
+        lock = self._get_lock(wa_id)
+        async with lock:
+            self._buffers.pop(wa_id, None)
+
     async def register_wamid(self, wa_id: str, task_id: str) -> bool:
         """
         Register a message ID (wamid) as processed without adding text to the buffer.

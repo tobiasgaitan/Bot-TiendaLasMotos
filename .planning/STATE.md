@@ -1,8 +1,18 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.74.0 | Hito: BOT-BUILD-C29-075 — Normalización SSOT del 💰 en rutas deterministas (recompute-first + guard price>0) + ancla SOAT idempotente (cierre C5-061/C5-065, registro C5-077) — BUILD COMPLETE + C6 SYNC docs | Coherence Score: 1.000 (876 recolectados físico = 871 tests/ + 5 scripts/; 876/876 PASSED; 0 failed; 0 skipped)
+Versión: v10.75.0 | Hito: BOT-BUILD-BUFFER-PCC-076 — Drenaje reaccion-puro en message_buffer + bypass PCC estrecho por identidad pendiente post-habeas (registro C5-078 como colateral diferido) — BUILD COMPLETE | Coherence Score: 1.000 (881 recolectados físico = 876 tests/ + 5 scripts/; 881/881 PASSED; 0 failed; 0 skipped)
 
 ### Current Position
+**Phase:** BOT-BUILD-BUFFER-PCC-076 (v10.75.0) — `clear_messages(wa_id)` en `app/services/message_buffer.py` drena `_buffers` preservando `_active_tasks` y WAMID registries; drenaje de frontera en `app/routers/whatsapp.py` solo para `msg_type != "reaction"`; bypass PCC estrecho en `app/services/agentic_loop_service.py` para `PHASE_2_HABEAS_DATA` post-habeas con identidad pendiente y `bot_response` pregunta legítima de recolección de identidad. 5 pines P1-P5 + mordidas M1'/M1''/M2/M3. Eval 881/881 Score 1.000.
+**Status:** BUILD COMPLETE (v10.75.0):
+  - **Objetivo:** cerrar la re-agregación de mensajes previos en un turno de reacción 👍 (Fix A) y la colisión `PHASE_2_HABEAS_DATA` × PCC estricto que exige $/imagen mientras la instrucción de fase los prohíbe (Fix B).
+  - **Implementación:** `app/services/message_buffer.py` — `async def clear_messages(wa_id)`; `app/routers/whatsapp.py` — `await message_buffer.clear_messages(user_phone)` bajo `if msg_type != "reaction"`; `app/services/agentic_loop_service.py` — `identity_pending_post_habeas` + `_is_identity_collection_prompt(bot_response)`.
+  - **Pins:** `tests/test_reaction_buffer_phase_bypass_076.py` P1-P5 (5 pines). Mordidas: M1' borrar active_task → P1 FAIL; M1'' comentar drenaje frontera → P5 FAIL; M2 bypass sin chequeo de prompt → P3b FAIL; M3 ignorar habeas_data_accepted → P4 FAIL.
+  - **Eval:** Score 1.000 ≥ 0.9 — DEPLOY AUTHORIZED ✅. 881/881 PASSED; collect-only 881 (876 tests/ + 5 scripts/).
+  - **Cambio acotado:** 3 archivos de producción + 17 archivos de tests con mocks de `message_buffer` (una línea `.clear_messages = AsyncMock()` por mock) + test nuevo. C4 intacto: sin toques a `ai_brain.py`, `prompts.py`, `personality.json`, `_fallback_response`, `enforce_length`, `egress_guard_service.py`.
+  - **Colaterales:** C5-078 (`_build_pcc_fallback` ciego a fase; podría emitir $/imagen en `PHASE_2_HABEAS_DATA`; DIFERIDO).
+
+### Posición anterior
 **Phase:** BOT-BUILD-C29-075 (v10.74.0) — _canonical_top_price en ai_brain.py (precedencia SSOT: price numérico>0 → build_commercial_price recompute en try/except exception-safe + logger.exception sin PII → formatted_price → price string → precio → '') reemplaza 9 getter chains int-over-formatted; _ensure_soat_anchor idempotente (_SOAT_MENTION_RE \bsoat\b IGNORECASE; mención → retorno byte-idéntico; append solo si \$[\d.,]+\b y sin mención; PRICE_PACKAGE_ANCHOR SSOT). Orden literal C-29; C4 intacto; 8 pines P1-P7+P3b + mordidas M1'/M1''/M2/M5/M3/M4. Review externa F3.5 (sign-off P3b + RF-2) + F4.5-bis DIFF APTO D1-D9. Eval 876/876 Score 1.000.
 **Status:** BUILD COMPLETE (v10.74.0):
   - **Objetivo:** cerrar C5-061 (💰 sin $ en rutas deterministas salvage/fallback por getter chains int-over-formatted en 9 sitios) + C5-065 (ancla SOAT duplicada visible por pre-check literal evadible).
@@ -45,6 +55,7 @@ Versión: v10.74.0 | Hito: BOT-BUILD-C29-075 — Normalización SSOT del 💰 en
 - **C5-075** (LOW): prefijo '💰 Precio:' duplicado en saludo no-canónico que ya lo contiene — cosmético, fuera de scope, documentado en P22.
 - **C5-076** (LOW): Rescue T3 price-only sin nombre de modelo en el texto. Detección: prueba en vivo v10.73.0, turno 2026-08-14 12:06 p.m. GMT-5 (escenario "Hola, quiero una moto automática a crédito"): _FICHA_MODEL_RE no matcheó y _price_lock_rescue_top4 inyectó solo la línea "💰 Precio: $8.329.000 (incluye SOAT, Matrícula, y trámites)" (caso COND-1 price-only del build 074); la imagen llegó vía CANON-015 pero el caption no nombra la moto ni lleva "Ficha Tecnica: <modelo>". PASO 1 pide información detallada + imagen + precio; el texto cumple precio pero omite el detalle del modelo. Impacto cosmético-comercial; sin pérdida de $ ni regresión. Adyacentes: C5-075 (prefijo 💰 duplicado), familia C5-060/C5-064. Estado propuesto: DIFERIDO (cola P5 de colaterales). Evidencia física: captura WhatsApp 12:06 p.m. (caption sin modelo + imagen Victory New Life) + commit 46f3a94 (v10.73.0) en origin/beta.
 - **C5-077** (LOW): getter chain int-over-formatted en L2728 (builder de contexto LLM, callback search_catalog) — mismo anti-patrón de C5-061 alimentando contexto del modelo, no la línea 💰 de egreso. Fuera de scope C-29 y fuera del universo vigilado de P6. Diferido.
+- **C5-078** (LOW): `_build_pcc_fallback` en `ai_brain.py` es ciego a fase: si se activa durante `PHASE_2_HABEAS_DATA` post-habeas con identidad pendiente, puede emitir una respuesta con $/imagen, violando la instrucción de fase. Mitigado por el bypass estrecho de PCC-076 en `agentic_loop_service.py` para respuestas de recolección de identidad, pero el fallback en sí no fue modificado (requeriría orden literal C4). Diferido; monitorear en Beta.
 - **C5-045:** gate F5 debe exigir explícitamente 0 failed en stdout antes del push (exit-code del deploy-gate no basta).
 - **C5-046:** flaky tests/test_regression_203.py::test_raider_125_helper_path_414444.
 - **C5-047:** pregunta de identidad "¿con quién tengo el gusto?" fuera de orden en PASO 1 con crédito.
@@ -63,10 +74,10 @@ Versión: v10.74.0 | Hito: BOT-BUILD-C29-075 — Normalización SSOT del 💰 en
 - ~~**C5-041:** CERRADO — minScale=1 físico en Cloud Run confirmado en revisión 00447; header de consola stale (cosmético).~~
 
 **Previous:** BOT-BUILD-PRICE-LOCK-T3-074 (v10.73.0) — Rescue T3 PRICE-LOCK + etiqueta forense anchor_merged_but_truncated (cierre C5-074/C5-064).
-**Next:** E2E WhatsApp → observabilidad (C5-066, C5-071) → C5-045 → colaterales C5-067..C5-073, C5-075, C5-076, C5-077. C-29 ejecutada y agotada (v10.74.0); C-30 agotada.
+**Next:** E2E WhatsApp → observabilidad (C5-066, C5-071) → C5-045 → colaterales C5-067..C5-073, C5-075, C5-076, C5-077, C5-078. C-29 ejecutada y agotada (v10.74.0); C-30 agotada.
 
 ### Tooling local (MCP, sin bump documental — BOT-BUILD-GRAPHIFY-MCP-024)
 - `graphify-backend` MCP registrado en ~/.config/opencode/opencode.json (bloque local vía /opt/homebrew/bin/uv + graphifyy 0.9.38 + graph.json; timeout 30000; enabled true). Invariante serena intacto (SHA-256 canónico 24545b4f…bbffc). Completado: reinicio + panel MCP verificado (graphify-backend Connected + serena Connected) + graph_stats coherente con GRAPH_REPORT.md — 2026-08-11.
 
 ---
-*Last updated: 2026-08-15*
+*Last updated: 2026-08-16*

@@ -168,6 +168,7 @@ async def run_router_turn(msg_data, cerebro_factory, prospect, history, *, audio
          patch("app.routers.whatsapp._ensure_services", AsyncMock()):
 
         mock_buffer.add_message = AsyncMock(return_value=True)
+        mock_buffer.clear_messages = AsyncMock()
         mock_buffer.debounce_seconds = 0
         mock_buffer.is_task_active = MagicMock(return_value=True)
         mock_buffer.get_aggregated_message = AsyncMock(return_value=None)

@@ -33,6 +33,7 @@ async def test_trace_propagation_context_update():
          
         # Simulate add_message returning False to trigger early exit (idempotency check)
         mock_message_buffer.add_message = AsyncMock(return_value=False)
+        mock_message_buffer.clear_messages = AsyncMock()
         
         # We also need a mock background tasks
         mock_bg_tasks = MagicMock()

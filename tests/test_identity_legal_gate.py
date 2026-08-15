@@ -186,6 +186,7 @@ class TestIdentityLegalGate(unittest.TestCase):
             mock_cerebro_class.return_value = mock_cerebro
             
             mock_message_buffer.add_message = AsyncMock(return_value=True)
+            mock_message_buffer.clear_messages = AsyncMock()
             mock_wa_service.mark_as_read = AsyncMock(return_value=True)
             mock_send_wa.return_value = True
 
@@ -271,6 +272,7 @@ class TestIdentityLegalGate(unittest.TestCase):
         mock_cerebro_class.return_value = mock_cerebro
         
         mock_message_buffer.add_message = AsyncMock(return_value=True)
+        mock_message_buffer.clear_messages = AsyncMock()
         mock_message_buffer.is_task_active = MagicMock(return_value=True)
         mock_message_buffer.get_aggregated_message = AsyncMock(return_value=None)
         mock_message_buffer.clear_buffer = AsyncMock()
@@ -362,6 +364,7 @@ class TestIdentityLegalGate(unittest.TestCase):
             mock_cerebro_class.return_value = mock_cerebro
             
             mock_message_buffer.add_message = AsyncMock(return_value=True)
+            mock_message_buffer.clear_messages = AsyncMock()
             mock_wa_service.mark_as_read = AsyncMock(return_value=True)
             mock_send_wa.return_value = True
 
@@ -448,6 +451,7 @@ class TestIdentityLegalGate(unittest.TestCase):
                     mock_cerebro_class.return_value = mock_cerebro
                     
                     mock_message_buffer.add_message = AsyncMock(return_value=True)
+                    mock_message_buffer.clear_messages = AsyncMock()
                     mock_wa_service.mark_as_read = AsyncMock(return_value=True)
                     mock_send_wa.return_value = True
 
@@ -522,6 +526,7 @@ class TestIdentityLegalGate(unittest.TestCase):
         
         with patch("app.routers.whatsapp.VisionService", return_value=mock_vision_instance):
             mock_message_buffer.add_message = AsyncMock(return_value=True)
+            mock_message_buffer.clear_messages = AsyncMock()
             mock_wa_service.mark_as_read = AsyncMock(return_value=True)
             mock_send_wa.return_value = True
 
@@ -607,6 +612,7 @@ class TestIdentityLegalGate(unittest.TestCase):
         mock_cerebro_class.return_value = mock_cerebro
 
         mock_message_buffer.add_message = AsyncMock(return_value=True)
+        mock_message_buffer.clear_messages = AsyncMock()
         mock_message_buffer.is_task_active = MagicMock(return_value=True)
         mock_message_buffer.get_aggregated_message = AsyncMock(return_value=None)
         mock_message_buffer.clear_buffer = AsyncMock()
@@ -690,6 +696,7 @@ class TestIdentityLegalGate(unittest.TestCase):
         mock_cerebro_class.return_value = mock_cerebro
 
         mock_message_buffer.add_message = AsyncMock(return_value=True)
+        mock_message_buffer.clear_messages = AsyncMock()
         mock_message_buffer.is_task_active = MagicMock(return_value=True)
         mock_message_buffer.get_aggregated_message = AsyncMock(return_value=None)
         mock_message_buffer.clear_buffer = AsyncMock()

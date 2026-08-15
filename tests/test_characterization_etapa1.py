@@ -108,6 +108,7 @@ def _build_impl_mocks(cerebro_response: str):
 
     mock_message_buffer = AsyncMock()
     mock_message_buffer.add_message = AsyncMock(return_value=True)
+    mock_message_buffer.clear_messages = AsyncMock()
     mock_message_buffer.is_task_active = MagicMock(return_value=True)
     mock_message_buffer.clear_buffer = AsyncMock()
     mock_message_buffer.debounce_seconds = 0.01

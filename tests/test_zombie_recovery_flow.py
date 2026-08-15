@@ -57,6 +57,7 @@ async def test_handle_message_background_zombie_recovery():
     
     mock_message_buffer = AsyncMock()
     mock_message_buffer.add_message = AsyncMock(return_value=True)
+    mock_message_buffer.clear_messages = AsyncMock()
     
     mock_config_loader = MagicMock()
     mock_catalog = MagicMock()
@@ -175,6 +176,7 @@ async def test_handle_message_background_post_reset_recovery():
 
     mock_message_buffer = AsyncMock()
     mock_message_buffer.add_message = AsyncMock(return_value=True)
+    mock_message_buffer.clear_messages = AsyncMock()
 
     mock_config_loader = MagicMock()
     mock_catalog = MagicMock()

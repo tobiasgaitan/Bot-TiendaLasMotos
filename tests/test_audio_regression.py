@@ -262,6 +262,7 @@ async def test_audio_lineage_post_reset_no_desertion():
          patch("app.routers.whatsapp._ensure_services", AsyncMock()):
 
         mock_buffer.add_message = AsyncMock(return_value=True)
+        mock_buffer.clear_messages = AsyncMock()
         mock_buffer.debounce_seconds = 0
         mock_buffer.is_task_active = MagicMock(return_value=True)
 
@@ -397,6 +398,7 @@ async def test_audio_post_reset_credit_intent_no_fallback():
          patch("app.routers.whatsapp._ensure_services", AsyncMock()):
 
         mock_buffer.add_message = AsyncMock(return_value=True)
+        mock_buffer.clear_messages = AsyncMock()
         mock_buffer.debounce_seconds = 0
         mock_buffer.is_task_active = MagicMock(return_value=True)
 
@@ -571,6 +573,7 @@ async def test_audio_fuzzy_alignment_rader():
          patch("app.routers.whatsapp._ensure_services", AsyncMock()):
 
         mock_buffer.add_message = AsyncMock(return_value=True)
+        mock_buffer.clear_messages = AsyncMock()
         mock_buffer.debounce_seconds = 0
         mock_buffer.is_task_active = MagicMock(return_value=True)
 

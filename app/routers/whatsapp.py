@@ -842,6 +842,13 @@ async def _handle_message_background_impl(
             logger.warning(f"🔄 Duplicate WAMID ignored: {msg_id_unique}")
             return
 
+        # [BOT-BUILD-BUFFER-PCC-076 / Fix A] Los mensajes de texto/audio/imagen
+        # se procesan con su propio message_body; si quedan en el buffer,
+        # un turno de reaccion posterior los re-agrega y contamina la inferencia.
+        # Solo las reacciones legitiman agregacion, asi que drenamos el resto.
+        if msg_type != "reaction":
+            await message_buffer.clear_messages(user_phone)
+
         # --- PROTOCOLO READ-FIRST (PRIORIDAD 1) ---
         # Marcamos como leído ANTES de cualquier lógica para evitar el 'check gris'
         # y confirmar a Meta que el webhook fue recibido.

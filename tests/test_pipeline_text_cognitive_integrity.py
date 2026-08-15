@@ -327,6 +327,7 @@ async def test_tci5_orchestrator_delegates_text_branch_and_egresses_returned_tex
     mock_egress = AsyncMock(return_value=True)
     buffer = MagicMock()
     buffer.add_message = AsyncMock(return_value=True)
+    buffer.clear_messages = AsyncMock()
 
     with patch("app.routers.whatsapp._ensure_services", new_callable=AsyncMock), \
          patch("app.routers.whatsapp._pipeline_text_cognitive", mock_pipeline), \

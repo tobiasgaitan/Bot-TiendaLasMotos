@@ -88,6 +88,7 @@ def _build_ms_mock(prospect: dict | None = None) -> MagicMock:
 def _build_buffer_mock() -> MagicMock:
     buffer = MagicMock()
     buffer.add_message = AsyncMock(return_value=True)
+    buffer.clear_messages = AsyncMock()
     buffer.is_task_active = MagicMock(return_value=True)
     buffer.get_aggregated_message = AsyncMock(return_value=None)
     buffer.clear_buffer = AsyncMock()

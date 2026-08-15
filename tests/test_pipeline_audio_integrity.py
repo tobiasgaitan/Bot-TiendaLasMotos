@@ -360,6 +360,7 @@ async def test_ai5_orchestrator_delegates_audio_branch_and_egresses_returned_tex
 
     buffer = MagicMock()
     buffer.add_message = AsyncMock(return_value=True)
+    buffer.clear_messages = AsyncMock()
 
     with patch("app.routers.whatsapp._ensure_services", new_callable=AsyncMock), \
          patch("app.routers.whatsapp._pipeline_audio", mock_pipeline), \

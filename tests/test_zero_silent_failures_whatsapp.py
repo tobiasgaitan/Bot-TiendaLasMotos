@@ -32,6 +32,7 @@ async def test_whatsapp_save_message_propagates_logic_error():
     mock_db.project = "tiendalasmotos"
     mock_message_buffer = AsyncMock()
     mock_message_buffer.add_message = AsyncMock(return_value=True)
+    mock_message_buffer.clear_messages = AsyncMock()
     mock_config_loader = MagicMock()
     mock_catalog = MagicMock()
     mock_config_service = MagicMock()
@@ -85,6 +86,7 @@ async def test_whatsapp_save_message_handles_network_error():
     mock_db.project = "tiendalasmotos"
     mock_message_buffer = AsyncMock()
     mock_message_buffer.add_message = AsyncMock(return_value=True)
+    mock_message_buffer.clear_messages = AsyncMock()
     mock_config_loader = MagicMock()
     mock_catalog = MagicMock()
     mock_config_service = MagicMock()
@@ -139,6 +141,7 @@ async def test_whatsapp_handle_message_structured_forensic_logging():
     mock_db.project = "tiendalasmotos"
     mock_message_buffer = AsyncMock()
     mock_message_buffer.add_message = AsyncMock(return_value=True)
+    mock_message_buffer.clear_messages = AsyncMock()
     mock_config_loader = MagicMock()
     mock_catalog = MagicMock()
     mock_config_service = MagicMock()
@@ -217,6 +220,7 @@ async def test_whatsapp_handle_message_habeas_data_bypass_interrupt():
     mock_db.project = "tiendalasmotos"
     mock_message_buffer = AsyncMock()
     mock_message_buffer.add_message = AsyncMock(return_value=True)
+    mock_message_buffer.clear_messages = AsyncMock()
     mock_config_loader = MagicMock()
     mock_catalog = MagicMock()
     mock_config_service = MagicMock()

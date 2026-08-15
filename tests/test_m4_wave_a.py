@@ -376,6 +376,7 @@ async def test_reset_handler_differentiated_feedback_when_delete_fails(caplog):
 
     mock_message_buffer = AsyncMock()
     mock_message_buffer.add_message = AsyncMock(return_value=True)
+    mock_message_buffer.clear_messages = AsyncMock()
     mock_message_buffer.get_aggregated_message = MagicMock(return_value=None)
     mock_message_buffer.is_task_active = MagicMock(return_value=True)
     mock_message_buffer.clear_buffer = AsyncMock()
