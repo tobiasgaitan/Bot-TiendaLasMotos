@@ -14,7 +14,7 @@ from typing import Optional
 import ffmpeg
 import time
 
-from app.services.genai_client_service import get_shared_genai_client
+from app.services.llm_client_service import get_shared_llm_client, get_active_model_id
 
 GEMINI_CALL_TIMEOUT_S = 18.0
 
@@ -63,22 +63,22 @@ class AudioService:
                 project = os.getenv("GOOGLE_CLOUD_PROJECT", project or "tiendali_las_motos")
                 
                 if api_key and not use_vertex:
-                    self.client = get_shared_genai_client(
+                    self.client = get_shared_llm_client(
                         vertexai=False,
                         api_key=api_key,
                     )
-                    self._model_id = "gemini-2.5-flash"
+                    self._model_id = get_active_model_id("multimodal")
                     logger.info(f"🎤 AudioService initialized with {self._model_id} via Gemini Developer API (API Key)")
                 else:
                     # [BOT-BUILD-GENAI-SINGLETON-050-R] No pasamos credentials=;
                     # el SDK resuelve ADC internamente y esto estabiliza la clave de cache
                     # (evita un cliente nuevo por cada AudioService/=request de audio).
-                    self.client = get_shared_genai_client(
+                    self.client = get_shared_llm_client(
                         vertexai=True,
                         project=project,
                         location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
                     )
-                    self._model_id = "gemini-2.5-flash"
+                    self._model_id = get_active_model_id("multimodal")
                     logger.info(f"🎤 AudioService initialized with {self._model_id} via google-genai (Vertex AI + ADC)")
             except (DefaultCredentialsError, APIError) as e:
                 logger.exception("❌ Error de credenciales o API gRPC al inicializar el cliente de AudioService")

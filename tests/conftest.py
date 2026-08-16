@@ -217,8 +217,11 @@ def isolate_genai_shared_clients():
     ZSF: reset directo, sin try/except.
     """
     from app.services.genai_client_service import reset_shared_clients
+    from app.services.llm_client_service import reset_shared_llm_clients
+    reset_shared_llm_clients()
     reset_shared_clients()
     yield
+    reset_shared_llm_clients()
     reset_shared_clients()
 
 @pytest.fixture

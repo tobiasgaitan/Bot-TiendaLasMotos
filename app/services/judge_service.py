@@ -14,7 +14,7 @@ from datetime import datetime
 from app.services.financial_service import financial_service
 from app.services.scoring_service import scoring_service
 from app.core.config import settings
-from app.services.genai_client_service import get_shared_genai_client
+from app.services.llm_client_service import get_shared_llm_client, get_active_model_id
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +41,13 @@ class JudgeService:
             cerebro_ia: The AI brain instance to reuse its model client.
         """
         self.cerebro_ia = cerebro_ia
-        self._model_id = "gemini-2.5-flash"
+        self._model_id = get_active_model_id("text")
         self._client = None
         
         if SDK_AVAILABLE:
             try:
                 # [BOT-BUILD-GENAI-SINGLETON-050] Reuse shared genai client singleton.
-                self._client = get_shared_genai_client(
+                self._client = get_shared_llm_client(
                     vertexai=True,
                     project="tiendalasmotos",
                     location="us-central1",

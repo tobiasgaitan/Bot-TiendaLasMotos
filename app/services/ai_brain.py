@@ -18,7 +18,8 @@ from app.core.exceptions import HabeasDataBypassInterrupt
 from app.services.credit_faq_taxonomy import is_abstract_credit_faq, classify_credit_turn, TurnIntent
 from app.services.faq_service import get_faq_answer, get_location_info
 from app.services.scoring_service import is_gas_affirmative
-from app.services.genai_client_service import get_shared_genai_client, format_gemini_error_structured
+from app.services.genai_client_service import format_gemini_error_structured
+from app.services.llm_client_service import get_shared_llm_client, get_active_model_id
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +261,7 @@ class CerebroIA:
         """
         self._config_loader = config_loader
         self._catalog_service = catalog_service
-        self._model_id = "gemini-2.5-flash" # Default stable versioning
+        self._model_id = get_active_model_id("multimodal") # Default stable versioning (env-resolved)
         self.motor_financiero = None  # Will be injected
         self._model = None
         self._chat_history = {} # In-memory small cache for last turn context
@@ -279,8 +280,8 @@ class CerebroIA:
         # Initialize GenAI Client if available
         if SDK_AVAILABLE:
             try:
-                # [BOT-BUILD-GENAI-SINGLETON-050] Reuse shared genai client singleton.
-                self.client = get_shared_genai_client(
+                # [BOT-BUILD-MIGRATE-QWEN-079] Dual-provider LLM facade (dormido por defecto).
+                self.client = get_shared_llm_client(
                     vertexai=True,
                     project="tiendalasmotos",
                     location="us-central1",

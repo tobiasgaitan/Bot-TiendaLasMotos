@@ -73,7 +73,9 @@ def test_p1_cerebro_instances_share_same_client(mock_genai_client_cls):
         cerebro_b = CerebroIA()
 
     assert cerebro_a.client is cerebro_b.client
-    assert cerebro_a.client is mock_client
+    # BOT-BUILD-MIGRATE-QWEN-079: CerebroIA ahora usa DualProviderClient facade;
+    # el backend Gemini real es el mock_client pineado.
+    assert cerebro_a.client._gemini_sync is mock_client
 
 
 # -----------------------------------------------------------------------------

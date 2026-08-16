@@ -13,7 +13,7 @@ import time
 
 from google.cloud import firestore
 
-from app.services.genai_client_service import get_shared_genai_client
+from app.services.llm_client_service import get_shared_llm_client, get_active_model_id
 
 GEMINI_CALL_TIMEOUT_S = 18.0
 
@@ -44,12 +44,12 @@ class VisionService:
         if GENAI_AVAILABLE:
             try:
                 # [BOT-BUILD-GENAI-SINGLETON-050] Reuse shared genai client singleton.
-                self.client = get_shared_genai_client(
+                self.client = get_shared_llm_client(
                     vertexai=True,
                     project=self._db.project,  # Re-using project ID from Firestore client
                     location="us-central1",    # Default location, can be moved to env
                 )
-                self._model_id = "gemini-2.5-flash"
+                self._model_id = get_active_model_id("multimodal")
                 logger.info(f"👁️ VisionService initialized with {self._model_id} via google-genai"
                             f"{' [TELEMETRY ENABLED]' if self._telemetry_enabled else ''}")
             except Exception as e:
