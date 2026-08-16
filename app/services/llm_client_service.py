@@ -910,7 +910,7 @@ class DualProviderChat:
                     f"🔄 [DUAL FAILOVER] provider=dashscope→gemini reason={reason} "
                     f"forensic={format_qwen_error_structured(e)}"
                 )
-                return await self._failover_to_gemini(contents, config, reason=reason)
+                return await self._failover_to_gemini(contents, config, reason=reason, original_exception=e)
             logger.exception("❌ [LLM CLIENT] Qwen call failed (non-retriable)")
             logger.error(f"🚨 [QWEN FORENSIC] {format_qwen_error_structured(e)}")
             raise
@@ -938,14 +938,17 @@ class DualProviderChat:
         self._history.append({"role": "model", "parts": gemini_parts, "tool_calls": []})
         return response
 
-    async def _failover_to_gemini(self, contents: Any, config: Any, reason: str) -> Any:
+    async def _failover_to_gemini(
+        self, contents: Any, config: Any, reason: str, original_exception: Optional[Exception] = None
+    ) -> Any:
         """Reintenta contra Gemini con el payload google-types original."""
         gemini = await self._facade._get_gemini_async()
         if gemini is None:
             raise RuntimeError(f"Qwen failed ({reason}) and Gemini backend not available")
+        forensic_error = original_exception if original_exception is not None else RuntimeError(reason)
         logger.warning(
             f"🔄 [DUAL FAILOVER] provider=dashscope→gemini reason={reason} "
-            f"forensic={format_qwen_error_structured(RuntimeError(reason))}"
+            f"forensic={format_qwen_error_structured(forensic_error)}"
         )
         # Reconstruir contents como lista de Content para Gemini
         conversation = self._to_gemini_contents(contents)
