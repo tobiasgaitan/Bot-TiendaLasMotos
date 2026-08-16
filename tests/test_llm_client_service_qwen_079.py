@@ -376,12 +376,14 @@ async def test_t7_dual_failover_to_gemini(qwen_env, monkeypatch, caplog):
             assert response.text == "fallback desde gemini"
             mock_gemini.aio.models.generate_content.assert_awaited_once()
             _, kwargs = mock_gemini.aio.models.generate_content.call_args
-            assert kwargs["model"] == "qwen-omni-turbo"
+            # F1.5: failover DEBE usar el model ID de Gemini, no el de Qwen.
+            assert kwargs["model"] == "gemini-2.5-flash"
             assert kwargs["contents"] == ["prompt"]
             assert kwargs["config"] is not None
 
     assert "[DUAL FAILOVER]" in caplog.text
     assert "provider=dashscope→gemini" in caplog.text
+    assert "forensic=" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -444,6 +446,34 @@ async def test_t9_context_budget_trims_and_failover(qwen_env, monkeypatch, caplo
     final_messages = captured_messages[-1]
     assert final_messages[-1]["role"] == "user"
     assert long_msg in str(final_messages)
+
+    # F1.5 (NB-c): el annex/directive de transporte con role=system nunca es
+    # eviccionado. En modo nativo sin schema no hay system; forzamos emulated.
+    reset_shared_llm_clients()
+    reset_shared_clients()
+    captured_system_test: List[Dict[str, Any]] = []
+    monkeypatch.setenv("QWEN_TOOLCALL_MODE", "emulated")
+
+    async def _capture_system_test(*args, **kwargs):
+        captured_system_test.append(kwargs["json"]["messages"])
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = _openai_response_json(content="ok")
+        mock_response.raise_for_status.return_value = None
+        return mock_response
+
+    with patch("httpx.AsyncClient.post", _capture_system_test):
+        facade = await get_shared_llm_client_async()
+        chat = facade.aio.chats.create(model="qwen-omni-turbo")
+        for i in range(5):
+            await chat.send_message(f"mensaje preservado {i}")
+        long_msg2 = "y" * 80_000
+        await chat.send_message(long_msg2)
+
+    final_system_test = captured_system_test[-1]
+    assert final_system_test[0]["role"] == "system"
+    assert "TRANSPORT TOOLCALL DIRECTIVE" in final_system_test[0]["content"]
+    assert long_msg2 in str(final_system_test)
 
     # Turno actual solo excede presupuesto → failover a Gemini
     gemini_response = _gemini_response(text="gemini por exceso")
@@ -801,3 +831,175 @@ def test_t17_rama_b_directive_not_in_prompt_assets():
 
     assert directive not in prompts_text
     assert directive not in personality_text
+
+
+# ---------------------------------------------------------------------------
+# T18 — Chat: turno actual exactamente una vez; function_response → tool válido
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_t18_chat_current_turn_exactly_once_and_tool_message(qwen_env, monkeypatch):
+    """T18: send_message no duplica el turno actual y convierte function_response a role='tool'."""
+    monkeypatch.setattr(
+        "app.services.llm_client_service.is_qwen_enabled", lambda: True
+    )
+    monkeypatch.setenv("QWEN_TOOLCALL_MODE", "native")
+
+    captured: List[List[Dict[str, Any]]] = []
+    counter = 0
+
+    def _async_response(data):
+        m = MagicMock()
+        m.status_code = 200
+        m.json.return_value = data
+        m.raise_for_status.return_value = None
+        return m
+
+    async def _side_effect(*args, **kwargs):
+        nonlocal counter
+        captured.append(kwargs["json"]["messages"])
+        counter += 1
+        if counter == 1:
+            return _async_response(
+                _openai_response_json(
+                    tool_calls=[
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "search_catalog",
+                                "arguments": json.dumps({"query": "Apache 160"}),
+                            },
+                        }
+                    ]
+                )
+            )
+        return _async_response(_openai_response_json(content="La Apache cuesta $8M"))
+
+    with patch("httpx.AsyncClient.post", side_effect=_side_effect):
+        facade = await get_shared_llm_client_async()
+        chat = facade.aio.chats.create(model="qwen-omni-turbo")
+
+        await chat.send_message("busco Apache 160")
+        await chat.send_message(
+            [
+                types.Part.from_function_response(
+                    name="search_catalog",
+                    response={"result": "Apache 160 disponible"},
+                )
+            ]
+        )
+        response = await chat.send_message("cuánto cuesta")
+        assert response.text == "La Apache cuesta $8M"
+
+    second_turn = captured[1]
+    tool_msgs = [m for m in second_turn if m.get("role") == "tool"]
+    assert len(tool_msgs) == 1
+    assert json.loads(tool_msgs[0]["content"]) == {"result": "Apache 160 disponible"}
+
+    # El turno actual (function_response) no debe aparecer como content tipo inválido
+    for msg in second_turn:
+        content = msg.get("content")
+        if isinstance(content, list):
+            for frag in content:
+                assert frag.get("type") != "function_response"
+
+    # El prompt del usuario aparece exactamente una vez en todo el payload
+    payload_text = json.dumps(captured[-1], ensure_ascii=False)
+    assert payload_text.count("busco Apache 160") == 1
+
+
+# ---------------------------------------------------------------------------
+# T19 — Failover usa GEMINI_MODEL_ID en los 3 caminos
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_t19_failover_uses_gemini_model_id(qwen_env, monkeypatch):
+    """T19: todas las patas de failover envían el model ID de Gemini, no el de Qwen."""
+    monkeypatch.setenv("GEMINI_MODEL_ID", "gemini-2.5-flash-test")
+    monkeypatch.setattr(
+        "app.services.llm_client_service.is_qwen_enabled", lambda: True
+    )
+
+    gemini_response = _gemini_response(text="fallback")
+
+    # Camino async generate_content
+    with patch("httpx.AsyncClient.post", side_effect=httpx.TimeoutException("timeout")):
+        with patch(
+            "app.services.genai_client_service.genai.Client"
+        ) as mock_client_class:
+            mock_gemini = MagicMock()
+            mock_gemini.aio.models.generate_content = AsyncMock(return_value=gemini_response)
+            mock_client_class.return_value = mock_gemini
+
+            facade = await get_shared_llm_client_async()
+            await facade.aio.models.generate_content(
+                model="qwen-omni-turbo",
+                contents="hola",
+            )
+            _, kwargs = mock_gemini.aio.models.generate_content.call_args
+            assert kwargs["model"] == "gemini-2.5-flash-test"
+
+    # Camino chat send_message
+    reset_shared_llm_clients()
+    reset_shared_clients()
+    with patch("httpx.AsyncClient.post", side_effect=httpx.TimeoutException("timeout")):
+        with patch(
+            "app.services.genai_client_service.genai.Client"
+        ) as mock_client_class:
+            mock_gemini = MagicMock()
+            mock_gemini.aio.models.generate_content = AsyncMock(return_value=gemini_response)
+            mock_client_class.return_value = mock_gemini
+
+            facade = await get_shared_llm_client_async()
+            chat = facade.aio.chats.create(model="qwen-omni-turbo")
+            await chat.send_message("hola chat")
+            _, kwargs = mock_gemini.aio.models.generate_content.call_args
+            assert kwargs["model"] == "gemini-2.5-flash-test"
+
+    # Camino sync generate_content
+    reset_shared_llm_clients()
+    reset_shared_clients()
+    monkeypatch.setenv("QWEN_CALL_TIMEOUT_S", "1")
+    with patch("httpx.Client.post", side_effect=httpx.TimeoutException("timeout")):
+        with patch(
+            "app.services.genai_client_service.genai.Client"
+        ) as mock_client_class:
+            mock_gemini = MagicMock()
+            mock_gemini.models.generate_content = MagicMock(return_value=gemini_response)
+            mock_client_class.return_value = mock_gemini
+
+            facade = get_shared_llm_client()
+            facade.models.generate_content(
+                model="qwen-omni-turbo",
+                contents="hola sync",
+            )
+            _, kwargs = mock_gemini.models.generate_content.call_args
+            assert kwargs["model"] == "gemini-2.5-flash-test"
+
+
+# ---------------------------------------------------------------------------
+# T20 — Rama B: .text nunca devuelve el envelope JSON crudo
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_t20_rama_b_text_not_raw_envelope(qwen_env, monkeypatch):
+    """T20: Rama B parsea 'final' y text es el contenido limpio, no el JSON."""
+    monkeypatch.setattr(
+        "app.services.llm_client_service.is_qwen_enabled", lambda: True
+    )
+    monkeypatch.setenv("QWEN_TOOLCALL_MODE", "emulated")
+
+    response_data = _openai_response_json(
+        content=json.dumps({"final": "Texto limpio de Rama B"})
+    )
+
+    with patch("httpx.AsyncClient.post", _make_mock_post(response_data)):
+        facade = await get_shared_llm_client_async()
+        response = await facade.aio.models.generate_content(
+            model="qwen-omni-turbo",
+            contents="resume",
+            config=types.GenerateContentConfig(temperature=0.2),
+        )
+
+        assert response.text == "Texto limpio de Rama B"
+        parts = response.candidates[0].content.parts
+        assert parts[0].text == "Texto limpio de Rama B"
+        assert not getattr(parts[0], "function_call", None)

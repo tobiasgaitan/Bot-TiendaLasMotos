@@ -101,12 +101,27 @@ def get_active_model_id(role: str = "multimodal") -> str:
 # ---------------------------------------------------------------------------
 # Lectura del flag runtime (Firestore + env fallback)
 # ---------------------------------------------------------------------------
+_FLAG_DB_CLIENT: Any = None
+_FLAG_DB_LOCK = threading.Lock()
+
+
+def _get_flag_db_client() -> Any:
+    """Cliente Firestore cacheado a nivel módulo para el poll del flag."""
+    global _FLAG_DB_CLIENT
+    if _FLAG_DB_CLIENT is not None:
+        return _FLAG_DB_CLIENT
+    with _FLAG_DB_LOCK:
+        if _FLAG_DB_CLIENT is None:
+            from google.cloud import firestore
+
+            _FLAG_DB_CLIENT = firestore.Client()
+        return _FLAG_DB_CLIENT
+
+
 def _read_qwen_flag_from_firestore() -> Optional[bool]:
     """Lee qwen_enabled de Firestore. Retorna None si no puede leer."""
     try:
-        from google.cloud import firestore
-
-        db = firestore.Client()
+        db = _get_flag_db_client()
         doc = db.collection("llm_runtime").document("global").get()
         if doc.exists:
             return bool(doc.to_dict().get("qwen_enabled", False))
@@ -364,15 +379,18 @@ def _build_openai_messages(
     if system_extras:
         messages.append({"role": "system", "content": "\n".join(system_extras)})
 
-    # Historial previo (solo modo chat)
+    # Historial (solo modo chat). NOTA F1.5: el historial YA incluye el turno
+    # actual — send_message lo appenda a _history antes de invocar este builder.
+    # Anexar `contents` aquí duplicaría el turno y lo haría por el camino naíf
+    # de _contents_to_openai_messages (function_response → tipo OpenAI inválido).
     if chat_history is not None:
         messages.extend(chat_history.to_openai_messages())
-    elif history:
-        messages.extend(history)
-
-    # Turno actual
-    current_messages = _contents_to_openai_messages(contents)
-    messages.extend(current_messages)
+    else:
+        if history:
+            messages.extend(history)
+        # Turno actual (single-shot sin chat: generate_content directo)
+        current_messages = _contents_to_openai_messages(contents)
+        messages.extend(current_messages)
 
     return messages, schema_dict
 
@@ -404,7 +422,16 @@ def _trim_history_to_budget(
         recortables = len(messages) - current_turn_count
         if recortables <= 0:
             break
-        messages.pop(0)
+        # Eviccionar el mensaje más antiguo NO-system: los annex/directive de
+        # transporte (role=system) sobreviven siempre (Bug NB-c).
+        evict_idx = None
+        for i in range(recortables):
+            if messages[i].get("role") != "system":
+                evict_idx = i
+                break
+        if evict_idx is None:
+            break
+        messages.pop(evict_idx)
         trimmed = True
     return messages, trimmed
 
@@ -533,9 +560,16 @@ def _parse_openai_response(
     candidates_tokens = usage.get("completion_tokens", 0) or 0
     total_tokens = usage.get("total_tokens", 0) or 0
 
-    text = content if not tool_calls and not any(p.get("type") == "function_call" for p in parts) else None
-    if text is None and parts and parts[0].get("type") == "text":
-        text = parts[0].get("text")
+    has_fc = any(p.get("type") == "function_call" for p in parts)
+    if emulated_toolcall:
+        # Rama B: el texto SIEMPRE deriva de las parts parseadas; jamás del
+        # envelope JSON crudo (Bug F3).
+        text_segments = [p.get("text", "") for p in parts if p.get("type") == "text"]
+        text = "".join(text_segments) if text_segments else None
+    else:
+        text = content if not tool_calls and not has_fc else None
+        if text is None and parts and parts[0].get("type") == "text":
+            text = parts[0].get("text")
 
     return _ResponseShim(
         text=text,
@@ -657,6 +691,11 @@ def _qwen_base_url() -> str:
 
 def _qwen_model() -> str:
     return os.getenv("QWEN_PRIMARY_MODEL", "qwen-omni-turbo")
+
+
+def _gemini_model() -> str:
+    """Model ID del backend Gemini (fallback). Env-parametrizado (H4)."""
+    return os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash")
 
 
 def _call_qwen_sync(
@@ -826,6 +865,10 @@ class DualProviderChat:
 
     async def send_message(self, contents: Any, config: Any = None) -> Any:
         """Envía un turno y retorna respuesta google-genai-shapped."""
+        # F1.5: medir el historial ANTES de append para poder contar cuántos
+        # mensajes OpenAI aporta el turno actual después de la conversión.
+        prev_turn_messages = len(self.to_openai_messages())
+
         # Agregar turno actual al historial
         current_parts = _normalize_parts(contents)
         self._history.append({"role": "user", "parts": current_parts})
@@ -842,7 +885,8 @@ class DualProviderChat:
             emulated_toolcall=emulated,
         )
 
-        current_turn_count = len(_contents_to_openai_messages(contents))
+        # El turno actual ya está dentro de chat_history; cuenta por delta.
+        current_turn_count = len(self.to_openai_messages()) - prev_turn_messages
         messages, trimmed = _trim_history_to_budget(messages, current_turn_count)
         if trimmed:
             logger.info("✂️ [QWEN CONTEXT] history_trimmed old_messages to fit 33K budget")
@@ -862,9 +906,13 @@ class DualProviderChat:
         except Exception as e:
             retriable, reason = _is_retriable_qwen_error(e)
             if retriable:
-                logger.warning(f"🔄 [DUAL FAILOVER] provider=dashscope→gemini reason={reason}")
+                logger.warning(
+                    f"🔄 [DUAL FAILOVER] provider=dashscope→gemini reason={reason} "
+                    f"forensic={format_qwen_error_structured(e)}"
+                )
                 return await self._failover_to_gemini(contents, config, reason=reason)
             logger.exception("❌ [LLM CLIENT] Qwen call failed (non-retriable)")
+            logger.error(f"🚨 [QWEN FORENSIC] {format_qwen_error_structured(e)}")
             raise
 
         shim = _parse_openai_response(openai_response, emulated_toolcall=emulated)
@@ -895,11 +943,14 @@ class DualProviderChat:
         gemini = await self._facade._get_gemini_async()
         if gemini is None:
             raise RuntimeError(f"Qwen failed ({reason}) and Gemini backend not available")
-        logger.warning(f"🔄 [DUAL FAILOVER] provider=dashscope→gemini reason={reason}")
+        logger.warning(
+            f"🔄 [DUAL FAILOVER] provider=dashscope→gemini reason={reason} "
+            f"forensic={format_qwen_error_structured(RuntimeError(reason))}"
+        )
         # Reconstruir contents como lista de Content para Gemini
         conversation = self._to_gemini_contents(contents)
         response = await gemini.aio.models.generate_content(
-            model=self._model,
+            model=_gemini_model(),
             contents=conversation,
             config=config,
         )
@@ -1061,12 +1112,16 @@ class DualProviderClient:
         except Exception as e:
             retriable, reason = _is_retriable_qwen_error(e)
             if retriable:
-                logger.warning(f"🔄 [DUAL FAILOVER] provider=dashscope→gemini reason={reason}")
+                logger.warning(
+                    f"🔄 [DUAL FAILOVER] provider=dashscope→gemini reason={reason} "
+                    f"forensic={format_qwen_error_structured(e)}"
+                )
                 gemini = self._get_gemini_sync()
                 if gemini is None:
                     raise RuntimeError(f"Qwen failed ({reason}) and Gemini backend not available")
-                return gemini.models.generate_content(model=model, contents=contents, config=config)
+                return gemini.models.generate_content(model=_gemini_model(), contents=contents, config=config)
             logger.exception("❌ [LLM CLIENT] Qwen sync call failed (non-retriable)")
+            logger.error(f"🚨 [QWEN FORENSIC] {format_qwen_error_structured(e)}")
             raise
 
         return _parse_openai_response(openai_response, emulated_toolcall=emulated)
@@ -1094,12 +1149,16 @@ class DualProviderClient:
         except Exception as e:
             retriable, reason = _is_retriable_qwen_error(e)
             if retriable:
-                logger.warning(f"🔄 [DUAL FAILOVER] provider=dashscope→gemini reason={reason}")
+                logger.warning(
+                    f"🔄 [DUAL FAILOVER] provider=dashscope→gemini reason={reason} "
+                    f"forensic={format_qwen_error_structured(e)}"
+                )
                 gemini = await self._get_gemini_async()
                 if gemini is None:
                     raise RuntimeError(f"Qwen failed ({reason}) and Gemini backend not available")
-                return await gemini.aio.models.generate_content(model=model, contents=contents, config=config)
+                return await gemini.aio.models.generate_content(model=_gemini_model(), contents=contents, config=config)
             logger.exception("❌ [LLM CLIENT] Qwen async call failed (non-retriable)")
+            logger.error(f"🚨 [QWEN FORENSIC] {format_qwen_error_structured(e)}")
             raise
 
         return _parse_openai_response(openai_response, emulated_toolcall=emulated)
@@ -1190,8 +1249,9 @@ async def get_shared_llm_client_async(
 
 def reset_shared_llm_clients() -> None:
     """Hook de aislamiento para tests."""
-    global _SHARED_LLM_CLIENTS
+    global _SHARED_LLM_CLIENTS, _FLAG_DB_CLIENT
     _SHARED_LLM_CLIENTS.clear()
     _CLIENT_ASYNC_LOCKS.clear()
+    _FLAG_DB_CLIENT = None
     _invalidate_qwen_flag_cache()
     logger.debug("[LLM CLIENT] Shared LLM clients reset (test-only)")
