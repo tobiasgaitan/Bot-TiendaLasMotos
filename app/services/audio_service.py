@@ -66,6 +66,7 @@ class AudioService:
                     self.client = get_shared_llm_client(
                         vertexai=False,
                         api_key=api_key,
+                        role="multimodal",
                     )
                     self._model_id = get_active_model_id("multimodal")
                     logger.info(f"🎤 AudioService initialized with {self._model_id} via Gemini Developer API (API Key)")
@@ -77,6 +78,7 @@ class AudioService:
                         vertexai=True,
                         project=project,
                         location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                        role="multimodal",
                     )
                     self._model_id = get_active_model_id("multimodal")
                     logger.info(f"🎤 AudioService initialized with {self._model_id} via google-genai (Vertex AI + ADC)")

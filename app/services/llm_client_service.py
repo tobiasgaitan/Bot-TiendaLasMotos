@@ -92,9 +92,9 @@ def _qwen_timeout_default() -> float:
 
 
 def get_active_model_id(role: str = "multimodal") -> str:
-    """Retorna el modelo activo según el flag runtime."""
+    """Retorna el modelo activo según el flag runtime y el rol."""
     if is_qwen_enabled():
-        return os.getenv("QWEN_PRIMARY_MODEL", "qwen-omni-turbo")
+        return _qwen_model(role=role)
     return os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash")
 
 
@@ -689,8 +689,11 @@ def _qwen_base_url() -> str:
     return os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1").rstrip("/")
 
 
-def _qwen_model() -> str:
-    return os.getenv("QWEN_PRIMARY_MODEL", "qwen-omni-turbo")
+def _qwen_model(role: str = "multimodal") -> str:
+    """Modelo Qwen según rol: agentic → turbo; multimodal → omni-turbo."""
+    if role == "agentic":
+        return os.getenv("QWEN_AGENTIC_MODEL", os.getenv("QWEN_PRIMARY_MODEL", "qwen-turbo"))
+    return os.getenv("QWEN_MULTIMODAL_MODEL", os.getenv("QWEN_PRIMARY_MODEL", "qwen-omni-turbo"))
 
 
 def _gemini_model() -> str:
@@ -699,10 +702,13 @@ def _gemini_model() -> str:
 
 
 def _call_qwen_sync(
-    messages: List[Dict[str, Any]], params: Dict[str, Any], timeout: float
+    messages: List[Dict[str, Any]],
+    params: Dict[str, Any],
+    timeout: float,
+    role: str = "multimodal",
 ) -> Dict[str, Any]:
     payload = {
-        "model": _qwen_model(),
+        "model": _qwen_model(role=role),
         "messages": messages,
         **params,
     }
@@ -717,10 +723,13 @@ def _call_qwen_sync(
 
 
 async def _call_qwen_async(
-    messages: List[Dict[str, Any]], params: Dict[str, Any], timeout: float
+    messages: List[Dict[str, Any]],
+    params: Dict[str, Any],
+    timeout: float,
+    role: str = "multimodal",
 ) -> Dict[str, Any]:
     payload = {
-        "model": _qwen_model(),
+        "model": _qwen_model(role=role),
         "messages": messages,
         **params,
     }
@@ -742,7 +751,7 @@ class DualProviderChat:
 
     def __init__(self, facade: "DualProviderClient", model: Optional[str] = None):
         self._facade = facade
-        self._model = model or get_active_model_id()
+        self._model = model or get_active_model_id(role=facade._role)
         self._history: List[Dict[str, Any]] = []  # turns con role, parts, tool_calls
         self._gemini_chat: Any = None
 
@@ -902,7 +911,7 @@ class DualProviderChat:
 
         timeout = _qwen_timeout_default()
         try:
-            openai_response = await _call_qwen_async(messages, params, timeout)
+            openai_response = await _call_qwen_async(messages, params, timeout, role=self._facade._role)
         except Exception as e:
             retriable, reason = _is_retriable_qwen_error(e)
             if retriable:
@@ -1057,15 +1066,17 @@ class DualProviderClient:
         self,
         gemini_sync: Optional[Any] = None,
         gemini_async: Optional[Any] = None,
+        role: str = "multimodal",
     ):
         self._gemini_sync = gemini_sync
         self._gemini_async = gemini_async
+        self._role = role
         self.models = _ModelsSync(self)
         self.aio = _AioNamespace(self)
 
     @property
     def _model_id(self) -> str:
-        return get_active_model_id()
+        return get_active_model_id(role=self._role)
 
     def __getattr__(self, name: str) -> Any:
         if name.startswith("_"):
@@ -1111,7 +1122,7 @@ class DualProviderClient:
             params.pop("tools", None)
 
         try:
-            openai_response = _call_qwen_sync(messages, params, _qwen_timeout_default())
+            openai_response = _call_qwen_sync(messages, params, _qwen_timeout_default(), role=self._role)
         except Exception as e:
             retriable, reason = _is_retriable_qwen_error(e)
             if retriable:
@@ -1148,7 +1159,7 @@ class DualProviderClient:
             params.pop("tools", None)
 
         try:
-            openai_response = await _call_qwen_async(messages, params, _qwen_timeout_default())
+            openai_response = await _call_qwen_async(messages, params, _qwen_timeout_default(), role=self._role)
         except Exception as e:
             retriable, reason = _is_retriable_qwen_error(e)
             if retriable:
@@ -1182,11 +1193,13 @@ def get_shared_llm_client(
     project: Optional[str] = "tiendalasmotos",
     location: Optional[str] = "us-central1",
     credentials: Any = None,
+    role: str = "multimodal",
 ) -> DualProviderClient:
     """Fábrica sync del facade dual."""
     from app.services.genai_client_service import _client_key
 
-    key = _client_key(vertexai, api_key, project, location, credentials)
+    base_key = _client_key(vertexai, api_key, project, location, credentials)
+    key = f"{base_key}|role={role}"
     client = _SHARED_LLM_CLIENTS.get(key)
     if client is not None:
         return client
@@ -1202,7 +1215,7 @@ def get_shared_llm_client(
             location=location,
             credentials=credentials,
         )
-        client = DualProviderClient(gemini_sync=gemini_sync)
+        client = DualProviderClient(gemini_sync=gemini_sync, role=role)
         _SHARED_LLM_CLIENTS[key] = client
         return client
 
@@ -1213,11 +1226,13 @@ async def get_shared_llm_client_async(
     project: Optional[str] = "tiendalasmotos",
     location: Optional[str] = "us-central1",
     credentials: Any = None,
+    role: str = "multimodal",
 ) -> DualProviderClient:
     """Fábrica async del facade dual."""
     from app.services.genai_client_service import _client_key
 
-    key = _client_key(vertexai, api_key, project, location, credentials)
+    base_key = _client_key(vertexai, api_key, project, location, credentials)
+    key = f"{base_key}|role={role}"
     client = _SHARED_LLM_CLIENTS.get(key)
     if client is not None:
         return client
@@ -1245,7 +1260,7 @@ async def get_shared_llm_client_async(
             location,
             credentials,
         )
-        client = DualProviderClient(gemini_sync=gemini_sync, gemini_async=gemini_async)
+        client = DualProviderClient(gemini_sync=gemini_sync, gemini_async=gemini_async, role=role)
         _SHARED_LLM_CLIENTS[key] = client
         return client
 

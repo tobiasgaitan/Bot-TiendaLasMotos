@@ -1048,3 +1048,127 @@ async def test_t20_rama_b_text_not_raw_envelope(qwen_env, monkeypatch):
         parts = response.candidates[0].content.parts
         assert parts[0].text == "Texto limpio de Rama B"
         assert not getattr(parts[0], "function_call", None)
+
+
+# ---------------------------------------------------------------------------
+# T21 — get_active_model_id honra el rol (C5-098 cerrado)
+# ---------------------------------------------------------------------------
+def test_t21_get_active_model_id_honors_role(qwen_env, monkeypatch):
+    """T21: get_active_model_id resuelve modelo por rol; fallback conservador."""
+    monkeypatch.setattr("app.services.llm_client_service.is_qwen_enabled", lambda: True)
+
+    # Env explícito por rol
+    monkeypatch.setenv("QWEN_AGENTIC_MODEL", "qwen-turbo-agentic")
+    monkeypatch.setenv("QWEN_MULTIMODAL_MODEL", "qwen-omni-multimodal")
+    assert get_active_model_id("agentic") == "qwen-turbo-agentic"
+    assert get_active_model_id("multimodal") == "qwen-omni-multimodal"
+    assert get_active_model_id("unknown") == "qwen-omni-multimodal"  # fallback conservador
+
+    # Fallback a QWEN_PRIMARY_MODEL cuando no hay env por rol
+    monkeypatch.delenv("QWEN_AGENTIC_MODEL", raising=False)
+    monkeypatch.delenv("QWEN_MULTIMODAL_MODEL", raising=False)
+    assert get_active_model_id("agentic") == "qwen-omni-turbo"  # QWEN_PRIMARY_MODEL
+
+    # Flag Qwen apagado → Gemini sin importar rol
+    monkeypatch.setattr("app.services.llm_client_service.is_qwen_enabled", lambda: False)
+    assert get_active_model_id("agentic") == "gemini-2.5-flash"
+
+
+# ---------------------------------------------------------------------------
+# T22 — cache del facade por rol; backend Gemini compartido; payload model por rol
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_t22_facade_cache_per_role_shared_gemini_backend(qwen_env, monkeypatch):
+    """T22: dos facades por rol, un único cliente Gemini subyacente; payload model por rol."""
+    monkeypatch.setattr("app.services.llm_client_service.is_qwen_enabled", lambda: True)
+    monkeypatch.setenv("QWEN_AGENTIC_MODEL", "qwen-turbo")
+    monkeypatch.setenv("QWEN_MULTIMODAL_MODEL", "qwen-omni-turbo")
+
+    gemini_constructor_calls = []
+
+    def _mock_client_constructor(*args, **kwargs):
+        gemini_constructor_calls.append(1)
+        m = MagicMock()
+        m.aio.models.generate_content = AsyncMock(return_value=_gemini_response("gemini"))
+        m.models.generate_content = MagicMock(return_value=_gemini_response("gemini"))
+        return m
+
+    captured = []
+
+    async def _fake_post(*args, **kwargs):
+        captured.append(kwargs["json"])
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = _openai_response_json(content="ok")
+        resp.raise_for_status.return_value = None
+        return resp
+
+    with patch("app.services.genai_client_service.genai.Client", side_effect=_mock_client_constructor):
+        with patch("httpx.AsyncClient.post", side_effect=_fake_post):
+            facade_agentic = await get_shared_llm_client_async(role="agentic")
+            facade_multi = await get_shared_llm_client_async(role="multimodal")
+            assert facade_agentic is not facade_multi
+            assert facade_agentic._role == "agentic"
+            assert facade_multi._role == "multimodal"
+
+            await facade_agentic.aio.models.generate_content(model="ignored", contents="hola")
+            await facade_multi.aio.models.generate_content(model="ignored", contents="hola")
+
+    assert sum(gemini_constructor_calls) == 1  # mismo backend Gemini subyacente compartido
+    assert captured[0]["model"] == "qwen-turbo"
+    assert captured[1]["model"] == "qwen-omni-turbo"
+
+
+# ---------------------------------------------------------------------------
+# T23 — DualProviderChat hereda el rol del facade
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_t23_chat_inherits_facade_role(qwen_env, monkeypatch):
+    """T23: chats creados sin model heredan el rol del facade en el payload."""
+    monkeypatch.setattr("app.services.llm_client_service.is_qwen_enabled", lambda: True)
+    monkeypatch.setenv("QWEN_AGENTIC_MODEL", "qwen-turbo")
+    monkeypatch.setenv("QWEN_MULTIMODAL_MODEL", "qwen-omni-turbo")
+
+    captured = []
+
+    async def _fake_post(*args, **kwargs):
+        captured.append(kwargs["json"])
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = _openai_response_json(content="ok")
+        resp.raise_for_status.return_value = None
+        return resp
+
+    with patch("httpx.AsyncClient.post", side_effect=_fake_post):
+        facade_agentic = await get_shared_llm_client_async(role="agentic")
+        chat_a = facade_agentic.aio.chats.create()
+        await chat_a.send_message("hola agentic")
+
+        facade_multi = await get_shared_llm_client_async(role="multimodal")
+        chat_m = facade_multi.aio.chats.create()
+        await chat_m.send_message("hola multimodal")
+
+    assert captured[0]["model"] == "qwen-turbo"
+    assert captured[1]["model"] == "qwen-omni-turbo"
+
+
+# ---------------------------------------------------------------------------
+# T24 — Failover DUAL usa GEMINI_MODEL_ID independientemente del rol
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_t24_failover_uses_gemini_model_id_regardless_of_role(qwen_env, monkeypatch):
+    """T24: el failover a Gemini envía GEMINI_MODEL_ID aunque el facade tenga rol agentic."""
+    monkeypatch.setenv("GEMINI_MODEL_ID", "gemini-2.5-flash-role")
+    monkeypatch.setattr("app.services.llm_client_service.is_qwen_enabled", lambda: True)
+    gemini_response = _gemini_response(text="fallback")
+
+    with patch("httpx.AsyncClient.post", side_effect=httpx.TimeoutException("timeout")):
+        with patch("app.services.genai_client_service.genai.Client") as mock_client_class:
+            mock_gemini = MagicMock()
+            mock_gemini.aio.models.generate_content = AsyncMock(return_value=gemini_response)
+            mock_client_class.return_value = mock_gemini
+
+            facade = await get_shared_llm_client_async(role="agentic")
+            await facade.aio.models.generate_content(model="qwen-turbo", contents="hola")
+            _, kwargs = mock_gemini.aio.models.generate_content.call_args
+            assert kwargs["model"] == "gemini-2.5-flash-role"

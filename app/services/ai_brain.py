@@ -261,7 +261,7 @@ class CerebroIA:
         """
         self._config_loader = config_loader
         self._catalog_service = catalog_service
-        self._model_id = get_active_model_id("multimodal") # Default stable versioning (env-resolved)
+        self._model_id = get_active_model_id("agentic") # Default stable versioning (env-resolved)
         self.motor_financiero = None  # Will be injected
         self._model = None
         self._chat_history = {} # In-memory small cache for last turn context
@@ -285,6 +285,7 @@ class CerebroIA:
                     vertexai=True,
                     project="tiendalasmotos",
                     location="us-central1",
+                    role="agentic",
                 )
                 
                 # [CONFIG INJECTION v1.3.2]

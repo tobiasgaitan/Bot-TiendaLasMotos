@@ -41,9 +41,9 @@ class JudgeService:
             cerebro_ia: The AI brain instance to reuse its model client.
         """
         self.cerebro_ia = cerebro_ia
-        self._model_id = get_active_model_id("text")
+        self._model_id = get_active_model_id("agentic")
         self._client = None
-        
+
         if SDK_AVAILABLE:
             try:
                 # [BOT-BUILD-GENAI-SINGLETON-050] Reuse shared genai client singleton.
@@ -51,6 +51,7 @@ class JudgeService:
                     vertexai=True,
                     project="tiendalasmotos",
                     location="us-central1",
+                    role="agentic",
                 )
                 logger.info("⚖️ JudgeService semantic client initialized (v2.5 Flash)")
             except Exception as e:

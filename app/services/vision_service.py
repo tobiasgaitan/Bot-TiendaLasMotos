@@ -48,6 +48,7 @@ class VisionService:
                     vertexai=True,
                     project=self._db.project,  # Re-using project ID from Firestore client
                     location="us-central1",    # Default location, can be moved to env
+                    role="multimodal",
                 )
                 self._model_id = get_active_model_id("multimodal")
                 logger.info(f"👁️ VisionService initialized with {self._model_id} via google-genai"
