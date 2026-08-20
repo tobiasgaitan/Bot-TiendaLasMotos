@@ -141,19 +141,15 @@ def is_qwen_enabled() -> bool:
     with _flag_lock:
         now = time.monotonic()
         if _flag_cache_value is not None and (now - _flag_cache_time) < _QWEN_FLAG_TTL_S:
-            logger.info(f"🔁 [QWEN FLAG] cache hit value={_flag_cache_value} age={now - _flag_cache_time:.1f}s")
             return _flag_cache_value
 
     val = _read_qwen_flag_from_firestore()
-    logger.info(f"🔁 [QWEN FLAG] firestore_read val={val}")
     if val is None:
         val = _env_bool("QWEN_ENABLED", False)
-        logger.info(f"🔁 [QWEN FLAG] env fallback val={val}")
 
     with _flag_lock:
         _flag_cache_value = val
         _flag_cache_time = time.monotonic()
-    logger.info(f"🔁 [QWEN FLAG] resolved val={val}")
     return val
 
 
