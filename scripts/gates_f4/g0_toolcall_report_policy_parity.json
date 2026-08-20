@@ -1,0 +1,205 @@
+{
+  "status": "ROJO",
+  "policy_parity": true,
+  "divergences_a": 1,
+  "divergences_b": 1,
+  "cases": [
+    {
+      "case": 1,
+      "prompt": "Busco una Apache 160",
+      "baseline": {
+        "tool": "search_catalog",
+        "args": {
+          "query": "Apache 160"
+        },
+        "ok": true
+      },
+      "rama_a": {
+        "tool": "search_catalog",
+        "args": {
+          "query": "Apache 160"
+        },
+        "ok": true
+      },
+      "verdict": "RAMA_A_PASS"
+    },
+    {
+      "case": 2,
+      "prompt": "Quiero ver motos deportivas",
+      "baseline": {
+        "tool": "search_catalog",
+        "args": {
+          "query": "deportivas"
+        },
+        "ok": true
+      },
+      "rama_a": {
+        "tool": "search_catalog",
+        "args": {
+          "query": "deportivas"
+        },
+        "ok": true
+      },
+      "verdict": "RAMA_A_PASS"
+    },
+    {
+      "case": 3,
+      "prompt": "¿Tienen NKD 125?",
+      "baseline": {
+        "tool": "search_catalog",
+        "args": {
+          "query": "NKD 125"
+        },
+        "ok": true
+      },
+      "rama_a": {
+        "tool": "search_catalog",
+        "args": {
+          "query": "NKD 125"
+        },
+        "ok": true
+      },
+      "verdict": "RAMA_A_PASS"
+    },
+    {
+      "case": 4,
+      "prompt": "Dame opciones de moto doble propósito",
+      "baseline": {
+        "tool": "search_catalog",
+        "args": {
+          "query": "doble propósito"
+        },
+        "ok": true
+      },
+      "rama_a": {
+        "tool": "search_catalog",
+        "args": {
+          "query": "doble propósito"
+        },
+        "ok": true
+      },
+      "verdict": "RAMA_A_PASS"
+    },
+    {
+      "case": 5,
+      "prompt": "Moto para ciudad 150cc",
+      "baseline": {
+        "tool": "search_catalog",
+        "args": {
+          "query": "moto ciudad 150cc"
+        },
+        "ok": true
+      },
+      "rama_a": {
+        "tool": "search_catalog",
+        "args": {
+          "query": "Moto para ciudad 150cc"
+        },
+        "ok": true
+      },
+      "verdict": "RAMA_A_PASS"
+    },
+    {
+      "case": 6,
+      "prompt": "Gano 2 millones, gasto 800 mil, soy empleado. ¿Cuánto me prestan?",
+      "baseline": {
+        "tool": "calculate_credit_score",
+        "args": {
+          "gastos_mensuales": "800 mil",
+          "ocupacion": "empleado",
+          "ingresos_mensuales": "2 millones"
+        },
+        "ok": true
+      },
+      "rama_a": {
+        "tool": "calculate_credit_score",
+        "args": {
+          "gastos_mensuales": "800000",
+          "ingresos_mensuales": "2000000",
+          "ocupacion": "empleado"
+        },
+        "ok": true
+      },
+      "verdict": "RAMA_A_PASS"
+    },
+    {
+      "case": 7,
+      "prompt": "Mis ingresos son 3 mínimos y gastos 1 mínimo. Quiero crédito.",
+      "baseline": {
+        "tool": null,
+        "args": {},
+        "ok": true
+      },
+      "rama_a": {
+        "tool": null,
+        "args": {},
+        "ok": true
+      },
+      "verdict": "RAMA_A_PASS"
+    },
+    {
+      "case": 8,
+      "prompt": "Gano 5 palos y gasto 2 palos, independiente. Score crediticio?",
+      "baseline": {
+        "tool": "calculate_credit_score",
+        "args": {
+          "ocupacion": "independiente",
+          "gastos_mensuales": "2,000,000",
+          "ingresos_mensuales": "5,000,000"
+        },
+        "ok": true
+      },
+      "rama_a": {
+        "tool": null,
+        "args": {},
+        "ok": true
+      },
+      "rama_b": {
+        "tool": null,
+        "args": {},
+        "ok": true
+      },
+      "verdict": "FAIL"
+    },
+    {
+      "case": 9,
+      "prompt": "Busco una moto para trabajo y quiero saber si me dan crédito. Gano 2.5 millones, gasto 1 millón.",
+      "baseline": {
+        "tool": "calculate_credit_score",
+        "args": {
+          "ingresos_mensuales": "2.5 millones",
+          "gastos_mensuales": "1 millón"
+        },
+        "ok": true
+      },
+      "rama_a": {
+        "tool": "calculate_credit_score",
+        "args": {
+          "gastos_mensuales": "1 millón",
+          "ingresos_mensuales": "2.5 millones"
+        },
+        "ok": true
+      },
+      "verdict": "RAMA_A_PASS"
+    },
+    {
+      "case": 10,
+      "prompt": "Necesito una moto 125 para delivery y cuota mensual baja. Gano 1.8 millones.",
+      "baseline": {
+        "tool": "search_catalog",
+        "args": {
+          "query": "moto 125 delivery"
+        },
+        "ok": true
+      },
+      "rama_a": {
+        "tool": "search_catalog",
+        "args": {
+          "query": "125 delivery"
+        },
+        "ok": true
+      },
+      "verdict": "RAMA_A_PASS"
+    }
+  ]
+}
