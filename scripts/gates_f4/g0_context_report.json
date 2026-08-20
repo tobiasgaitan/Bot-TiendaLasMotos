@@ -6,7 +6,7 @@
       "case": "context_recall_5turns",
       "ok": true,
       "detail": {
-        "final_answer": "¡Perfecto, Esteban! 😊\n\n### ✅ **Resumen:**\n\n- **Nombre:** Esteban Salazar  \n- **Ciudad:** Armenia  \n- **Tipo de moto que buscas:** Moto doble propósito (para uso en **ciudad y campo**)  \n- **Prioridad:** Económica  \n- **Forma de pago:** A crédito  \n- **Documentos:** Se revisaron los papeles necesarios (incluyendo comprobante de vivienda)\n\n---\n\n¿Te gustaría que te ayude a **encontrar opciones concretas** en tu zona o incluso a **calcular cuotas** según un presupuesto? ¡Estoy aquí para ayudarte! 🏍️💰",
+        "final_answer": "Claro, resumen rápido:\n\n- **Nombre**: Esteban Salazar\n- **Ciudad**: Armenia\n- **Tipo de Moto**: Moto doble propósito\n\n¿Hay algo más en lo que pueda ayudarte?",
         "expected_tokens": [
           "esteban",
           "armenia",
@@ -19,8 +19,8 @@
       "case": "max_output_2048",
       "ok": true,
       "detail": {
-        "completion_tokens": 703,
-        "word_count": 421,
+        "completion_tokens": 718,
+        "word_count": 423,
         "max_output_tokens": 2048
       },
       "error": null

@@ -1,5 +1,5 @@
 """
-G0-AUDIO-VISION: gate de audio e imagen contra Qwen (qwen-omni-turbo).
+G0-AUDIO-VISION: gate de audio e imagen contra Qwen (qwen-omni-turbo, rol multimodal).
 Mecanismo certificado BOT-PLAN-GATES-OVERRIDE-080:
   - Patch local de app.services.llm_client_service.is_qwen_enabled para la llamada Qwen.
   - Retry ante ConnectError/ReadTimeout.
@@ -7,6 +7,7 @@ Cotas:
   - Audio: WAV mono ≤ 2 min.
   - Imagen: JPEG/WebP inline.
   - Registro del tamaño de payload inline para comparación con uso vivo.
+  - Modalidades separadas (C5-109); el caso combinado es solo registro de payload.
 """
 from __future__ import annotations
 
@@ -42,6 +43,8 @@ def _bootstrap_env() -> None:
     os.environ.setdefault("QWEN_TURBO_API_KEY", _load_secret("QWEN_TURBO_API_KEY"))
     os.environ.setdefault("QWEN_BASE_URL", _load_secret("QWEN_BASE_URL"))
     os.environ.setdefault("QWEN_PRIMARY_MODEL", "qwen-omni-turbo")
+    os.environ.setdefault("QWEN_AGENTIC_MODEL", "qwen-turbo")
+    os.environ.setdefault("QWEN_MULTIMODAL_MODEL", "qwen-omni-turbo")
     os.environ.setdefault("QWEN_CALL_TIMEOUT_S", "120")
 
 
@@ -119,9 +122,9 @@ async def _case_image_description() -> AVResult:
     image_bytes = _make_png_image(width=64, height=64)
     image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/png")
 
-    facade = await get_shared_llm_client_async()
+    facade = await get_shared_llm_client_async(role="multimodal")
     response = await facade.aio.models.generate_content(
-        model=os.environ["QWEN_PRIMARY_MODEL"],
+        model=os.environ["QWEN_MULTIMODAL_MODEL"],
         contents=["Describe la imagen en una sola palabra.", image_part],
         config=types.GenerateContentConfig(temperature=0.1),
     )
@@ -145,9 +148,9 @@ async def _case_audio_description() -> AVResult:
     audio_bytes = _make_wav(duration_s=duration_s, tone=True)
     audio_part = types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
 
-    facade = await get_shared_llm_client_async()
+    facade = await get_shared_llm_client_async(role="multimodal")
     response = await facade.aio.models.generate_content(
-        model=os.environ["QWEN_PRIMARY_MODEL"],
+        model=os.environ["QWEN_MULTIMODAL_MODEL"],
         contents=[audio_part, "Describe lo que escuchas."],
         config=types.GenerateContentConfig(temperature=0.1),
     )
@@ -173,9 +176,9 @@ async def _case_combined_payload_size() -> AVResult:
     image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/png")
     audio_part = types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
 
-    facade = await get_shared_llm_client_async()
+    facade = await get_shared_llm_client_async(role="multimodal")
     response = await facade.aio.models.generate_content(
-        model=os.environ["QWEN_PRIMARY_MODEL"],
+        model=os.environ["QWEN_MULTIMODAL_MODEL"],
         contents=["Aquí hay una imagen y un audio.", image_part, audio_part],
         config=types.GenerateContentConfig(temperature=0.1),
     )
@@ -196,7 +199,7 @@ async def _case_combined_payload_size() -> AVResult:
 async def main() -> int:
     _bootstrap_env()
     print("=" * 60)
-    print("G0-AUDIO-VISION: audio e imagen Qwen (qwen-omni-turbo)")
+    print("G0-AUDIO-VISION: audio e imagen Qwen (qwen-omni-turbo, rol multimodal)")
     print("=" * 60)
 
     results: List[Dict[str, Any]] = []

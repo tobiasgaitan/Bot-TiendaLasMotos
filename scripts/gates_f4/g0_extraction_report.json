@@ -1,7 +1,7 @@
 {
-  "status": "VERDE",
-  "failures": 0,
-  "divergences": 0,
+  "status": "ROJO",
+  "failures": 1,
+  "divergences": 1,
   "cases": [
     {
       "case": 1,
@@ -29,13 +29,13 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"María Gómez de Medellín está interesada en la TVS Sport 100 y aceptó la política de privacidad.\",\n  \"extracted\": {\n    \"nombre\": \"María Gómez\",\n    \"ciudad\": \"Medellín\",\n    \"moto_interest\": \"TVS Sport 100\",\n    \"habeas_data_accepted\": true,\n    \"habeas_data_accepted_sent\": true,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"María Gómez de Medellín está interesada en la TVS Sport 100 y aceptó el tratamiento de datos.\",\n  \"extracted\": {\n    \"nombre\": \"María Gómez\",\n    \"ciudad\": \"Medellín\",\n    \"moto_interest\": \"TVS Sport 100\",\n    \"habeas_data_accepted\": true,\n    \"habeas_data_accepted_sent\": true,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "qwen": {
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Usuario aceptó la política de privacidad, se registró nombre, ciudad y moto de interés.\",\n  \"extracted\": {\n    \"nombre\": \"María Gómez\",\n    \"ciudad\": \"Medellín\",\n    \"moto_interest\": \"TVS Sport 100\",\n    \"habeas_data_accepted\": true,\n    \"habeas_data_accepted_sent\": true,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"Usuario aceptó la política de privacidad, se registró el nombre, ciudad y moto de interés.\",\n  \"extracted\": {\n    \"nombre\": \"María Gómez\",\n    \"ciudad\": \"Medellín\",\n    \"moto_interest\": \"TVS Sport 100\",\n    \"habeas_data_accepted\": true,\n    \"habeas_data_accepted_sent\": true,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "verdict": "PASS"
     },
@@ -47,13 +47,13 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"El usuario no está seguro sobre la autorización del tratamiento de datos.\",\n  \"extracted\": {\n    \"nombre\": \"\",\n    \"ciudad\": \"\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": true,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"El usuario no está seguro de autorizar el tratamiento de datos.\",\n  \"extracted\": {\n    \"nombre\": \"\",\n    \"ciudad\": \"\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": true,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "qwen": {
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Usuario no autorizó el tratamiento de datos.\",\n  \"extracted\": {\n    \"nombre\": \"\",\n    \"ciudad\": \"\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"Usuario no autorizó el tratamiento de datos y mostró dudas.\",\n  \"extracted\": {\n    \"nombre\": \"\",\n    \"ciudad\": \"\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "verdict": "PASS"
     },
@@ -65,13 +65,13 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Carlos Ruiz de Cali busca moto para delivery, gana 2 millones y gasta 800 mil.\",\n  \"extracted\": {\n    \"nombre\": \"Carlos Ruiz\",\n    \"ciudad\": \"Cali\",\n    \"moto_interest\": \"moto para delivery\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"2000000\",\n    \"gastos_mensuales\": \"800000\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"El usuario Carlos Ruiz de Cali busca una moto para delivery, menciona ingresos de 2 millones y gastos de 800 mil.\",\n  \"extracted\": {\n    \"nombre\": \"Carlos Ruiz\",\n    \"ciudad\": \"Cali\",\n    \"moto_interest\": \"delivery\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"2000000\",\n    \"gastos_mensuales\": \"800000\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "qwen": {
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Carlos Ruiz, de Cali, busca moto para delivery con ingresos de 2 millones y gastos de 800 mil.\",\n  \"extracted\": {\n    \"nombre\": \"Carlos Ruiz\",\n    \"ciudad\": \"Cali\",\n    \"moto_interest\": \"moto para delivery\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"2000000\",\n    \"gastos_mensuales\": \"800000\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"Carlos Ruiz, de Cali, busca moto para delivery. Gana 2 millones y gasta 800 mil.\",\n  \"extracted\": {\n    \"nombre\": \"Carlos Ruiz\",\n    \"ciudad\": \"Cali\",\n    \"moto_interest\": \"moto para delivery\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"2000000\",\n    \"gastos_mensuales\": \"800000\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "verdict": "PASS"
     },
@@ -101,7 +101,7 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Pedro Vargas, independiente de Bucaramanga, interesado en la TVS Sport 100.\",\n  \"extracted\": {\n    \"nombre\": \"Pedro Vargas\",\n    \"ciudad\": \"Bucaramanga\",\n    \"moto_interest\": \"TVS Sport 100\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"null\",\n    \"ocupacion\": \"Independiente\",\n    \"datacredito\": \"null\",\n    \"vivienda\": \"null\",\n    \"servicios_publicos\": \"null\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"null\",\n    \"ponytail_status\": \"null\",\n    \"ponytail_score\": \"null\",\n    \"ingresos_mensuales\": \"null\",\n    \"gastos_mensuales\": \"null\",\n    \"plan_celular\": \"null\",\n    \"tiene_gas_natural\": \"null\",\n    \"mora_y_paz_salvo\": \"null\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"Pedro Vargas, independiente de Bucaramanga, interesado en la TVS Sport 100.\",\n  \"extracted\": {\n    \"nombre\": \"Pedro Vargas\",\n    \"ciudad\": \"Bucaramanga\",\n    \"moto_interest\": \"TVS Sport 100\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"Independiente\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "qwen": {
         "ok": true,
@@ -119,7 +119,7 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"El usuario, Luisa Fernández de Manizales, empleada, busca una moto automática.\",\n  \"extracted\": {\n    \"nombre\": \"Luisa Fernández\",\n    \"ciudad\": \"Manizales\",\n    \"moto_interest\": \"moto automática\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"Empleada\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"El usuario se identificó como Luisa Fernández, empleada en Manizales, interesada en una moto automática.\",\n  \"extracted\": {\n    \"nombre\": \"Luisa Fernández\",\n    \"ciudad\": \"Manizales\",\n    \"moto_interest\": \"moto automática\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"Empleada\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "qwen": {
         "ok": true,
@@ -137,13 +137,13 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"El usuario Andrés Muñoz de Pereira está interesado en la Apache 160 y afirma estar al día en Datacrédito.\",\n  \"extracted\": {\n    \"nombre\": \"Andrés Muñoz\",\n    \"ciudad\": \"Pereira\",\n    \"moto_interest\": \"Apache 160\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"Al día\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"El usuario Andrés Muñoz de Pereira está interesado en la Apache 160 y reporta estar al día en Datacrédito.\",\n  \"extracted\": {\n    \"nombre\": \"Andrés Muñoz\",\n    \"ciudad\": \"Pereira\",\n    \"moto_interest\": \"Apache 160\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"Al día\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "qwen": {
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Andrés Muñoz de Pereira, interesado en la Apache 160, al día en datacrédito.\",\n  \"extracted\": {\n    \"nombre\": \"Andrés Muñoz\",\n    \"ciudad\": \"Pereira\",\n    \"moto_interest\": \"Apache 160\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"al día\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"Andrés Muñoz de Pereira muestra interés en la Apache 160 y menciona que está al día en datacrédito.\",\n  \"extracted\": {\n    \"nombre\": \"Andrés Muñoz\",\n    \"ciudad\": \"Pereira\",\n    \"moto_interest\": \"Apache 160\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"al día\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "verdict": "PASS"
     },
@@ -155,13 +155,13 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"El usuario se identifica como Diana Torres de Cúcuta, vive en arriendo y busca una moto 125.\",\n  \"extracted\": {\n    \"nombre\": \"Diana Torres\",\n    \"ciudad\": \"Cúcuta\",\n    \"moto_interest\": \"moto 125\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"Arriendo\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"El usuario se llama Diana Torres, vive en arriendo en Cúcuta y busca una moto 125.\",\n  \"extracted\": {\n    \"nombre\": \"Diana Torres\",\n    \"ciudad\": \"Cúcuta\",\n    \"moto_interest\": \"moto 125\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"Arriendo\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "qwen": {
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Diana Torres, de Cúcuta, busca una moto 125 y vive en arriendo.\",\n  \"extracted\": {\n    \"nombre\": \"Diana Torres\",\n    \"ciudad\": \"Cúcuta\",\n    \"moto_interest\": \"moto 125\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"arriendo\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"Diana Torres, de Cúcuta, busca una moto 125.\",\n  \"extracted\": {\n    \"nombre\": \"Diana Torres\",\n    \"ciudad\": \"Cúcuta\",\n    \"moto_interest\": \"moto 125\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"arriendo\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "verdict": "PASS"
     },
@@ -173,13 +173,13 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"El usuario Javier Díaz de Villavicencio está interesado en la moto NKD 125 a crédito con 0 inicial.\",\n  \"extracted\": {\n    \"nombre\": \"Javier Díaz\",\n    \"ciudad\": \"Villavicencio\",\n    \"moto_interest\": \"NKD 125\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"Crédito - 0 inicial\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"El usuario Javier Díaz de Villavicencio está interesado en la NKD 125 a crédito con 0 inicial.\",\n  \"extracted\": {\n    \"nombre\": \"Javier Díaz\",\n    \"ciudad\": \"Villavicencio\",\n    \"moto_interest\": \"NKD 125\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"Crédito - 0 inicial\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "qwen": {
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Usuario Javier Díaz de Villavicencio interesado en NKD 125 a crédito con 0 inicial.\",\n  \"extracted\": {\n    \"nombre\": \"Javier Díaz\",\n    \"ciudad\": \"Villavicencio\",\n    \"moto_interest\": \"NKD 125\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"Crédito - 0 inicial\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"Javier Díaz de Villavicencio muestra interés en la NKD 125 a crédito con 0 inicial.\",\n  \"extracted\": {\n    \"nombre\": \"Javier Díaz\",\n    \"ciudad\": \"Villavicencio\",\n    \"moto_interest\": \"NKD 125\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"Crédito - 0 inicial\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "verdict": "PASS"
     },
@@ -191,13 +191,13 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"El usuario se identifica como Patricia Morales de Pasto y expresa interés en pagar la moto de contado.\",\n  \"extracted\": {\n    \"nombre\": \"Patricia Morales\",\n    \"ciudad\": \"Pasto\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"Contado\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"El usuario se identifica como Patricia Morales de Pasto y expresa su intención de pagar la moto de contado.\",\n  \"extracted\": {\n    \"nombre\": \"Patricia Morales\",\n    \"ciudad\": \"Pasto\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"Contado\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "qwen": {
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Patricia Morales de Pasto muestra interés en pagar una moto de contado.\",\n  \"extracted\": {\n    \"nombre\": \"Patricia Morales\",\n    \"ciudad\": \"Pasto\",\n    \"moto_interest\": \"moto\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"contado\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"Patricia Morales de Pasto muestra interés en pagar la moto de contado.\",\n  \"extracted\": {\n    \"nombre\": \"Patricia Morales\",\n    \"ciudad\": \"Pasto\",\n    \"moto_interest\": \"moto\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"contado\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "verdict": "PASS"
     },
@@ -215,7 +215,7 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Roberto Castro de Ibagué, interesado en moto para trabajo, tiene plan postpago.\",\n  \"extracted\": {\n    \"nombre\": \"Roberto Castro\",\n    \"ciudad\": \"Ibagué\",\n    \"moto_interest\": \"moto para trabajo\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"Sí\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"Usuario se identificó como Roberto Castro de Ibagué, mencionó tener plan postpago y expresó interés en una moto para trabajo.\",\n  \"extracted\": {\n    \"nombre\": \"Roberto Castro\",\n    \"ciudad\": \"Ibagué\",\n    \"moto_interest\": \"moto para trabajo\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"Sí\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "verdict": "PASS"
     },
@@ -245,13 +245,13 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"El usuario se identifica como Esteban Salazar de Armenia y menciona una mora pasada con paz y salvo.\",\n  \"extracted\": {\n    \"nombre\": \"Esteban Salazar\",\n    \"ciudad\": \"Armenia\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"Mora pasada con paz y salvo\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"Tuve una mora hace 2 años pero tengo paz y salvo.\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"El usuario Esteban Salazar de Armenia mencionó que tuvo una mora hace 2 años pero ya cuenta con paz y salvo.\",\n  \"extracted\": {\n    \"nombre\": \"Esteban Salazar\",\n    \"ciudad\": \"Armenia\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"Paz y salvo\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"Mora con paz y salvo\"\n  }\n}"
       },
       "qwen": {
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Usuario se llama Esteban Salazar de Armenia, tuvo una mora hace 2 años pero tiene paz y salvo.\",\n  \"extracted\": {\n    \"nombre\": \"Esteban Salazar\",\n    \"ciudad\": \"Armenia\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"Tuvo una mora hace 2 años pero tiene paz y salvo\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"Esteban Salazar de Armenia mencionó tener una mora hace 2 años pero actualmente tiene paz y salvo.\",\n  \"extracted\": {\n    \"nombre\": \"Esteban Salazar\",\n    \"ciudad\": \"Armenia\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"Tiene paz y salvo\"\n  }\n}"
       },
       "verdict": "PASS"
     },
@@ -281,13 +281,13 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"El usuario Miguel Ángel de Riohacha mostró interés en la TVS Sport 100, después de preguntar inicialmente por una Boxer 100.\",\n  \"extracted\": {\n    \"nombre\": \"Miguel Ángel\",\n    \"ciudad\": \"Riohacha\",\n    \"moto_interest\": \"Boxer 100\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"null\",\n    \"ocupacion\": \"null\",\n    \"datacredito\": \"null\",\n    \"vivienda\": \"null\",\n    \"servicios_publicos\": \"null\",\n    \"moto_confirmada\": true,\n    \"cedula_usuario\": \"null\",\n    \"ponytail_status\": \"null\",\n    \"ponytail_score\": \"null\",\n    \"ingresos_mensuales\": \"null\",\n    \"gastos_mensuales\": \"null\",\n    \"plan_celular\": \"null\",\n    \"tiene_gas_natural\": \"null\",\n    \"mora_y_paz_salvo\": \"null\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"El usuario Miguel Ángel de Riohacha mostró interés inicial en la Boxer 100 y luego confirmó interés en la TVS Sport 100.\",\n  \"extracted\": {\n    \"nombre\": \"Miguel Ángel\",\n    \"ciudad\": \"Riohacha\",\n    \"moto_interest\": \"Boxer 100\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": true,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "qwen": {
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Usuario interesado en la TVS Sport 100, nombre Miguel Ángel de Riohacha.\",\n  \"extracted\": {\n    \"nombre\": \"Miguel Ángel\",\n    \"ciudad\": \"Riobacha\",\n    \"moto_interest\": \"Boxer 100\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"Usuario interesado en la TVS Sport 100, nombre Miguel Ángel de Riohacha.\",\n  \"extracted\": {\n    \"nombre\": \"Miguel Ángel\",\n    \"ciudad\": \"Riohacha\",\n    \"moto_interest\": \"TVS Sport 100\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": true,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "verdict": "PASS"
     },
@@ -305,7 +305,7 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Usuario se identificó con nombre, ciudad y cédula, y mencionó interés en moto doble propósito.\",\n  \"extracted\": {\n    \"nombre\": \"Sergio Ortiz\",\n    \"ciudad\": \"Valledupar\",\n    \"moto_interest\": \"moto doble propósito\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"1234567890\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"Usuario se identificó como Sergio Ortiz de Valledupar, mencionó su cédula y expresó interés en una moto doble propósito.\",\n  \"extracted\": {\n    \"nombre\": \"Sergio Ortiz\",\n    \"ciudad\": \"Valledupar\",\n    \"moto_interest\": \"moto doble propósito\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"1234567890\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "verdict": "PASS"
     },
@@ -316,18 +316,18 @@
       "baseline": {
         "ok": true,
         "missing": [],
-        "failed": [
-          "servicios_publicos"
-        ],
-        "raw": "{\n  \"summary\": \"El usuario se identifica como Camila Herrera de Popayán y menciona que tiene gas natural y plan de celular a su nombre.\",\n  \"extracted\": {\n    \"nombre\": \"Camila Herrera\",\n    \"ciudad\": \"Popayán\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"Sí\",\n    \"tiene_gas_natural\": \"Sí\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario se identifica como Camila Herrera de Popayán y menciona tener gas natural y plan de celular a su nombre.\",\n  \"extracted\": {\n    \"nombre\": \"Camila Herrera\",\n    \"ciudad\": \"Popayán\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"Gas natural, plan de celular\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"Sí\",\n    \"tiene_gas_natural\": \"Sí\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "qwen": {
         "ok": true,
         "missing": [],
-        "failed": [],
-        "raw": "{\n  \"summary\": \"Camila Herrera de Popayán mencionó tener gas natural y plan de celular a su nombre.\",\n  \"extracted\": {\n    \"nombre\": \"Camila Herrera\",\n    \"ciudad\": \"Popayán\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"Gas Natural, Plan Celular\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"Sí\",\n    \"tiene_gas_natural\": \"Sí\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "failed": [
+          "servicios_publicos"
+        ],
+        "raw": "{\"summary\": \"Usuario proporcionó nombre, ciudad, y mencionó tener gas natural y plan de celular.\", \"extracted\": {\"nombre\": \"Camila Herrera\", \"ciudad\": \"Popayán\", \"moto_interest\": \"\", \"habeas_data_accepted\": false, \"habeas_data_accepted_sent\": false, \"forma_pago\": \"\", \"ocupacion\": \"\", \"datacredito\": \"\", \"vivienda\": \"\", \"servicios_publicos\": \"Sí\", \"moto_confirmada\": false, \"cedula_usuario\": \"\", \"ponytail_status\": \"\", \"ponytail_score\": \"\", \"ingresos_mensuales\": \"\", \"gastos_mensuales\": \"\", \"plan_celular\": \"Sí\", \"tiene_gas_natural\": \"Sí\", \"mora_y_paz_salvo\": \"\"}}"
       },
-      "verdict": "PASS"
+      "verdict": "FAIL"
     },
     {
       "case": 19,
@@ -355,13 +355,13 @@
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"El usuario se identificó como Fernando Beltrán de Neiva, pensionado, con ingresos de 1.5 millones.\",\n  \"extracted\": {\n    \"nombre\": \"Fernando Beltrán\",\n    \"ciudad\": \"Neiva\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"Pensionado\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"1500000\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"El usuario Fernando Beltrán de Neiva, pensionado, mencionó ingresos de 1.5 millones.\",\n  \"extracted\": {\n    \"nombre\": \"Fernando Beltrán\",\n    \"ciudad\": \"Neiva\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"Pensionado\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"1500000\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "qwen": {
         "ok": true,
         "missing": [],
         "failed": [],
-        "raw": "{\n  \"summary\": \"Usuario se identificó como Fernando Beltrán, pensionado, con ingresos de 1.5 millones.\",\n  \"extracted\": {\n    \"nombre\": \"Fernando Beltrán\",\n    \"ciudad\": \"Neiva\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"Pensionado\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"1500000\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+        "raw": "{\n  \"summary\": \"Usuario proporcionó nombre, ciudad, moto de interés y datos de ingresos.\",\n  \"extracted\": {\n    \"nombre\": \"Fernando Beltrán\",\n    \"ciudad\": \"Neiva\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"Pensionado\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"1500000\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
       },
       "verdict": "PASS"
     }

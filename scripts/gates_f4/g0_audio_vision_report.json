@@ -1,6 +1,6 @@
 {
   "status": "ROJO",
-  "failures": 1,
+  "failures": 2,
   "cases": [
     {
       "case": "image_jpeg_description",
@@ -14,14 +14,9 @@
     },
     {
       "case": "audio_wav_description",
-      "ok": true,
-      "detail": {
-        "response": "Escucho el sonido de un **timbre de teléfono antiguo o clásico**.\n\nEs el sonido característico de un teléfono fijo, con ese tono metálico y repetitivo, como un \"brrrring-brrrring\". Es el sonido de una llamada entrante en un teléfono de línea fija tradicional.",
-        "duration_s": 2,
-        "audio_bytes": 64044,
-        "audio_b64_len": 85392
-      },
-      "error": null
+      "ok": false,
+      "detail": {},
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://ws-dym7z6vnes22cbxg.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
     },
     {
       "case": "combined_image_audio",

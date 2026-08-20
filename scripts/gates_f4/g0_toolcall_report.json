@@ -1,7 +1,7 @@
 {
   "status": "ROJO",
-  "divergences_a": 9,
-  "divergences_b": 9,
+  "divergences_a": 2,
+  "divergences_b": 2,
   "cases": [
     {
       "case": 1,
@@ -14,16 +14,13 @@
         "ok": true
       },
       "rama_a": {
-        "tool": null,
-        "args": {},
+        "tool": "search_catalog",
+        "args": {
+          "query": "Apache 160"
+        },
         "ok": true
       },
-      "rama_b": {
-        "tool": null,
-        "args": {},
-        "ok": true
-      },
-      "verdict": "FAIL"
+      "verdict": "RAMA_A_PASS"
     },
     {
       "case": 2,
@@ -36,16 +33,13 @@
         "ok": true
       },
       "rama_a": {
-        "tool": null,
-        "args": {},
+        "tool": "search_catalog",
+        "args": {
+          "query": "deportivas"
+        },
         "ok": true
       },
-      "rama_b": {
-        "tool": "search_motos_deportivas",
-        "args": {},
-        "ok": true
-      },
-      "verdict": "FAIL"
+      "verdict": "RAMA_A_PASS"
     },
     {
       "case": 3,
@@ -58,18 +52,13 @@
         "ok": true
       },
       "rama_a": {
-        "tool": null,
-        "args": {},
-        "ok": true
-      },
-      "rama_b": {
-        "tool": "search_product",
+        "tool": "search_catalog",
         "args": {
-          "product_id": "NKD 125"
+          "query": "NKD 125"
         },
         "ok": true
       },
-      "verdict": "FAIL"
+      "verdict": "RAMA_A_PASS"
     },
     {
       "case": 4,
@@ -82,16 +71,13 @@
         "ok": true
       },
       "rama_a": {
-        "tool": null,
-        "args": {},
+        "tool": "search_catalog",
+        "args": {
+          "query": "doble propósito"
+        },
         "ok": true
       },
-      "rama_b": {
-        "tool": null,
-        "args": {},
-        "ok": true
-      },
-      "verdict": "FAIL"
+      "verdict": "RAMA_A_PASS"
     },
     {
       "case": 5,
@@ -104,16 +90,13 @@
         "ok": true
       },
       "rama_a": {
-        "tool": null,
-        "args": {},
+        "tool": "search_catalog",
+        "args": {
+          "query": "Moto para ciudad 150cc"
+        },
         "ok": true
       },
-      "rama_b": {
-        "tool": null,
-        "args": {},
-        "ok": true
-      },
-      "verdict": "FAIL"
+      "verdict": "RAMA_A_PASS"
     },
     {
       "case": 6,
@@ -121,23 +104,22 @@
       "baseline": {
         "tool": "calculate_credit_score",
         "args": {
+          "ingresos_mensuales": "2000000",
           "gastos_mensuales": "800000",
-          "ocupacion": "empleado",
-          "ingresos_mensuales": "2000000"
+          "ocupacion": "empleado"
         },
         "ok": true
       },
       "rama_a": {
-        "tool": null,
-        "args": {},
+        "tool": "calculate_credit_score",
+        "args": {
+          "gastos_mensuales": "800000",
+          "ingresos_mensuales": "2000000",
+          "ocupacion": "empleado"
+        },
         "ok": true
       },
-      "rama_b": {
-        "tool": null,
-        "args": {},
-        "ok": true
-      },
-      "verdict": "FAIL"
+      "verdict": "RAMA_A_PASS"
     },
     {
       "case": 7,
@@ -148,11 +130,23 @@
         "ok": true
       },
       "rama_a": {
-        "tool": null,
-        "args": {},
+        "tool": "calculate_credit_score",
+        "args": {
+          "gastos_mensuales": "1",
+          "ingresos_mensuales": "3",
+          "ocupacion": "desconocida"
+        },
         "ok": true
       },
-      "verdict": "RAMA_A_PASS"
+      "rama_b": {
+        "tool": "calcular_credito",
+        "args": {
+          "ingresos": 3,
+          "gastos": 1
+        },
+        "ok": true
+      },
+      "verdict": "FAIL"
     },
     {
       "case": 8,
@@ -160,26 +154,22 @@
       "baseline": {
         "tool": "calculate_credit_score",
         "args": {
-          "ingresos_mensuales": "5,000,000",
-          "gastos_mensuales": "2,000,000",
-          "ocupacion": "independiente"
+          "gastos_mensuales": "2000000",
+          "ocupacion": "independiente",
+          "ingresos_mensuales": "5000000"
         },
         "ok": true
       },
       "rama_a": {
-        "tool": null,
-        "args": {},
-        "ok": true
-      },
-      "rama_b": {
-        "tool": "score_credit",
+        "tool": "calculate_credit_score",
         "args": {
-          "gains": 5,
-          "losses": 2
+          "gastos_mensuales": "2",
+          "ingresos_mensuales": "5",
+          "ocupacion": "independiente"
         },
         "ok": true
       },
-      "verdict": "FAIL"
+      "verdict": "RAMA_A_PASS"
     },
     {
       "case": 9,
@@ -193,15 +183,19 @@
         "ok": true
       },
       "rama_a": {
-        "tool": null,
-        "args": {},
+        "tool": "calculate_credit_score",
+        "args": {
+          "gastos_mensuales": "1 millón",
+          "ingresos_mensuales": "2.5 millones",
+          "ocupacion": "trabajo"
+        },
         "ok": true
       },
       "rama_b": {
-        "tool": "creditCheck",
+        "tool": "calcular_credito",
         "args": {
-          "income": 2500000,
-          "expenses": 1000000
+          "ingreso_mensual": 2500000,
+          "gasto_mensual": 1000000
         },
         "ok": true
       },
@@ -213,27 +207,18 @@
       "baseline": {
         "tool": "search_catalog",
         "args": {
-          "query": "moto 125 delivery"
+          "query": "moto 125 para delivery"
         },
         "ok": true
       },
       "rama_a": {
-        "tool": null,
-        "args": {},
-        "ok": true
-      },
-      "rama_b": {
-        "tool": "search_vehicles",
+        "tool": "search_catalog",
         "args": {
-          "price_range": "low",
-          "mileage": "new",
-          "category": "motorcycle",
-          "capacity": "125cc",
-          "use_case": "delivery"
+          "query": "125 delivery"
         },
         "ok": true
       },
-      "verdict": "FAIL"
+      "verdict": "RAMA_A_PASS"
     }
   ]
 }

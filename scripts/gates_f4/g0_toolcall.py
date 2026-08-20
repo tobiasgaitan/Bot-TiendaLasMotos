@@ -1,5 +1,5 @@
 """
-G0-TOOLCALL: gate funcional de tool-calling contra Qwen (qwen-omni-turbo, Rama A nativa).
+G0-TOOLCALL: gate funcional de tool-calling contra Qwen (qwen-turbo, Rama A nativa, rol agentic).
 Mecanismo certificado BOT-PLAN-GATES-OVERRIDE-080:
   - Patch local de app.services.llm_client_service.is_qwen_enabled para la llamada Qwen.
   - Baseline Gemini usa el flag real de Firestore (false → Gemini).
@@ -42,6 +42,8 @@ def _bootstrap_env() -> None:
     os.environ.setdefault("QWEN_TURBO_API_KEY", _load_secret("QWEN_TURBO_API_KEY"))
     os.environ.setdefault("QWEN_BASE_URL", _load_secret("QWEN_BASE_URL"))
     os.environ.setdefault("QWEN_PRIMARY_MODEL", "qwen-omni-turbo")
+    os.environ.setdefault("QWEN_AGENTIC_MODEL", "qwen-turbo")
+    os.environ.setdefault("QWEN_MULTIMODAL_MODEL", "qwen-omni-turbo")
     os.environ.setdefault("QWEN_CALL_TIMEOUT_S", "60")
 
 
@@ -148,8 +150,10 @@ async def _call_provider(
     for attempt in range(retries):
         reset_shared_llm_clients()
         try:
-            facade = await get_shared_llm_client_async()
-            model = os.environ["QWEN_PRIMARY_MODEL"] if provider == "qwen" else _gemini_model()
+            facade = await get_shared_llm_client_async(
+                role="agentic" if provider == "qwen" else "multimodal"
+            )
+            model = os.environ["QWEN_AGENTIC_MODEL"] if provider == "qwen" else _gemini_model()
 
             config = types.GenerateContentConfig(temperature=0.2, tools=tools)
 
@@ -199,7 +203,7 @@ def _same_tool_call(a: ToolCallResult, b: ToolCallResult) -> bool:
 async def main() -> int:
     _bootstrap_env()
     print("=" * 60)
-    print("G0-TOOLCALL: tool-calling Qwen (qwen-omni-turbo) vs Gemini")
+    print("G0-TOOLCALL: tool-calling Qwen (qwen-turbo, rol agentic) vs Gemini")
     print("=" * 60)
 
     results: List[Dict[str, Any]] = []

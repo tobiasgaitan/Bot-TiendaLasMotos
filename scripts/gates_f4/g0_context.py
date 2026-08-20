@@ -1,5 +1,5 @@
 """
-G0-CONTEXT: gate de ventana de contexto y límite de salida contra Qwen (qwen-turbo).
+G0-CONTEXT: gate de ventana de contexto y límite de salida contra Qwen (qwen-omni-turbo, rol multimodal).
 Mecanismo certificado BOT-PLAN-GATES-OVERRIDE-080:
   - Patch local de app.services.llm_client_service.is_qwen_enabled para la llamada Qwen.
   - Retry ante ConnectError/ReadTimeout.
@@ -35,7 +35,9 @@ def _bootstrap_env() -> None:
     os.environ.setdefault("QWEN_OMNI_API_KEY", _load_secret("QWEN_OMNI_API_KEY"))
     os.environ.setdefault("QWEN_TURBO_API_KEY", _load_secret("QWEN_TURBO_API_KEY"))
     os.environ.setdefault("QWEN_BASE_URL", _load_secret("QWEN_BASE_URL"))
-    os.environ.setdefault("QWEN_PRIMARY_MODEL", "qwen-turbo")
+    os.environ.setdefault("QWEN_PRIMARY_MODEL", "qwen-omni-turbo")
+    os.environ.setdefault("QWEN_AGENTIC_MODEL", "qwen-turbo")
+    os.environ.setdefault("QWEN_MULTIMODAL_MODEL", "qwen-omni-turbo")
     os.environ.setdefault("QWEN_CALL_TIMEOUT_S", "60")
 
 
@@ -66,8 +68,8 @@ async def _run_case(name: str, runner, retries: int = 3) -> ContextResult:
 
 async def _case_context_recall() -> ContextResult:
     """Chat de 5 turnos; la pregunta final requiere recordar datos del primer turno."""
-    facade = await get_shared_llm_client_async()
-    chat = facade.aio.chats.create(model=os.environ["QWEN_PRIMARY_MODEL"])
+    facade = await get_shared_llm_client_async(role="multimodal")
+    chat = facade.aio.chats.create(model=os.environ["QWEN_MULTIMODAL_MODEL"])
 
     conversation = [
         ("user", "Hola, soy Esteban Salazar de Armenia. Busco una moto doble propósito."),
@@ -109,9 +111,9 @@ async def _case_max_output_2048() -> ContextResult:
     """Solicita una respuesta larga con max_output_tokens=2048 y verifica uso."""
     from google.genai import types
 
-    facade = await get_shared_llm_client_async()
+    facade = await get_shared_llm_client_async(role="multimodal")
     response = await facade.aio.models.generate_content(
-        model=os.environ["QWEN_PRIMARY_MODEL"],
+        model=os.environ["QWEN_MULTIMODAL_MODEL"],
         contents=(
             "Genera un resumen detallado de las ventajas de las motocicletas de bajo cilindraje "
             "para uso urbano en Colombia. Mínimo 500 palabras."
@@ -138,7 +140,7 @@ async def _case_max_output_2048() -> ContextResult:
 async def main() -> int:
     _bootstrap_env()
     print("=" * 60)
-    print("G0-CONTEXT: contexto y max output Qwen (qwen-turbo)")
+    print("G0-CONTEXT: contexto y max output Qwen (qwen-omni-turbo, rol multimodal)")
     print("=" * 60)
 
     results: List[Dict[str, Any]] = []
