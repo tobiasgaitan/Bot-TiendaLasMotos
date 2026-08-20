@@ -202,8 +202,11 @@ def _same_tool_call(a: ToolCallResult, b: ToolCallResult) -> bool:
 
 async def main() -> int:
     _bootstrap_env()
+    policy_parity = os.getenv("G0_POLICY_PARITY", "0") == "1"
     print("=" * 60)
     print("G0-TOOLCALL: tool-calling Qwen (qwen-turbo, rol agentic) vs Gemini")
+    if policy_parity:
+        print("MODO POLICY_PARITY: Rama A debe coincidir con baseline en los 10 casos (Rama B = evidencia)")
     print("=" * 60)
 
     results: List[Dict[str, Any]] = []
@@ -242,8 +245,14 @@ async def main() -> int:
             print(f"  Qwen Rama B     -> tool={qwen_b.tool_name} args={qwen_b.tool_args} ok={qwen_b.ok}")
             case_result["rama_b"] = {"tool": qwen_b.tool_name, "args": qwen_b.tool_args, "ok": qwen_b.ok}
             if qwen_b.ok and _same_tool_call(baseline, qwen_b):
-                case_result["verdict"] = "RAMA_B_PASS"
-                print("  -> RAMA B OK")
+                if policy_parity:
+                    case_result["verdict"] = "RAMA_B_EVIDENCE_FAIL"
+                    divergences_b += 1
+                    print("  -> RAMA B OK pero POLICY_PARITY: Rama A diverge -> FAIL")
+                    stop = True
+                else:
+                    case_result["verdict"] = "RAMA_B_PASS"
+                    print("  -> RAMA B OK")
             else:
                 divergences_b += 1
                 case_result["verdict"] = "FAIL"
@@ -261,7 +270,7 @@ async def main() -> int:
     print("=" * 60)
 
     with open("scripts/gates_f4/g0_toolcall_report.json", "w", encoding="utf-8") as f:
-        json.dump({"status": status, "divergences_a": divergences_a, "divergences_b": divergences_b, "cases": results}, f, ensure_ascii=False, indent=2)
+        json.dump({"status": status, "policy_parity": policy_parity, "divergences_a": divergences_a, "divergences_b": divergences_b, "cases": results}, f, ensure_ascii=False, indent=2)
     print("Reporte guardado en scripts/gates_f4/g0_toolcall_report.json")
     return 1 if status == "ROJO" else 0
 

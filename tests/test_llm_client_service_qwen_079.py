@@ -27,6 +27,8 @@ from app.services.genai_client_service import reset_shared_clients
 from app.services.genai_client_service import get_shared_genai_client
 from app.services.llm_client_service import (
     DualProviderClient,
+    _is_plausible_cop_amount,
+    _maybe_reprompt_after_suppression_sync,
     _parse_openai_response,
     format_qwen_error_structured,
     get_active_model_id,
@@ -1379,6 +1381,230 @@ async def test_t28_toolcall_rules_annex(qwen_env, monkeypatch):
         )
         content = captured[0]["messages"][0]["content"]
         assert "[TRANSPORT TOOLCALL RULES]" not in content
+
+
+# ---------------------------------------------------------------------------
+# T32 — TOOL-SUPPRESS: suprime calculate_credit_score con monto no plausible
+# ---------------------------------------------------------------------------
+def test_t32_suppresses_invalid_numeric_toolcall(caplog):
+    """T32: fc con ingresos='3 mínimos' se suprime y re-prompt devuelve texto."""
+    invalid_args = {"ingresos_mensuales": "3 mínimos", "gastos_mensuales": "1 mínimo"}
+    shim1 = _parse_openai_response(
+        _openai_response_json(
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "calculate_credit_score",
+                        "arguments": json.dumps(invalid_args),
+                    },
+                }
+            ]
+        ),
+        tools=[],
+    )
+
+    clarification_response = _openai_response_json(content="¿Cuál es tu ingreso mensual exacto?")
+    with caplog.at_level(logging.INFO):
+        with patch("app.services.llm_client_service._call_qwen_sync") as mock_call:
+            mock_call.return_value = clarification_response
+            final = _maybe_reprompt_after_suppression_sync(
+                messages=[{"role": "user", "content": "hola"}],
+                params={"model": "qwen-turbo"},
+                timeout=30.0,
+                role="agentic",
+                shim=shim1,
+                emulated=False,
+                tools=[],
+            )
+
+    assert mock_call.call_count == 1
+    reprompt_messages = mock_call.call_args[0][0]
+    assert any("[TRANSPORT TOOLCALL SUPPRESSED]" in m.get("content", "") for m in reprompt_messages)
+    assert not any(getattr(p, "function_call", None) is not None for p in final.candidates[0].content.parts)
+    assert any("¿Cuál es tu ingreso mensual exacto?" in str(p.text) for p in final.candidates[0].content.parts)
+    assert any(
+        "[TOOL-SUPPRESS] tool=calculate_credit_score field=ingresos_mensuales" in rec.message
+        and "3 mínimos" not in rec.message
+        for rec in caplog.records
+    )
+
+
+# ---------------------------------------------------------------------------
+# T33 — TOOL-SUPPRESS: preserva monto plausible, sin re-prompt
+# ---------------------------------------------------------------------------
+def test_t33_preserves_valid_numeric_toolcall():
+    """T33: fc con ingresos='2500000' no se suprime."""
+    valid_args = {"ingresos_mensuales": "2500000", "gastos_mensuales": "1000000"}
+    shim = _parse_openai_response(
+        _openai_response_json(
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "calculate_credit_score",
+                        "arguments": json.dumps(valid_args),
+                    },
+                }
+            ]
+        ),
+        tools=[],
+    )
+
+    with patch("app.services.llm_client_service._call_qwen_sync") as mock_call:
+        final = _maybe_reprompt_after_suppression_sync(
+            messages=[{"role": "user", "content": "hola"}],
+            params={"model": "qwen-turbo"},
+            timeout=30.0,
+            role="agentic",
+            shim=shim,
+            emulated=False,
+            tools=[],
+        )
+
+    assert mock_call.call_count == 0
+    fc = final.candidates[0].content.parts[0].function_call
+    assert fc.args.get("ingresos_mensuales") == "2500000"
+
+
+# ---------------------------------------------------------------------------
+# T34 — TOOL-SUPPRESS: excepción del validador → fail-open
+# ---------------------------------------------------------------------------
+def test_t34_validator_exception_fail_open(caplog):
+    """T34: si el validador explota, no se suprime (fail-open) y se loguea warning."""
+    invalid_args = {"ingresos_mensuales": "3 mínimos"}
+    shim = _parse_openai_response(
+        _openai_response_json(
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "calculate_credit_score",
+                        "arguments": json.dumps(invalid_args),
+                    },
+                }
+            ]
+        ),
+        tools=[],
+    )
+
+    with caplog.at_level(logging.WARNING):
+        with patch("app.services.llm_client_service._is_plausible_cop_amount", side_effect=RuntimeError("boom")):
+            final = _maybe_reprompt_after_suppression_sync(
+                messages=[{"role": "user", "content": "hola"}],
+                params={"model": "qwen-turbo"},
+                timeout=30.0,
+                role="agentic",
+                shim=shim,
+                emulated=False,
+                tools=[],
+            )
+
+    fc = final.candidates[0].content.parts[0].function_call
+    assert fc.args.get("ingresos_mensuales") == "3 mínimos"
+    assert any("validator_error fail_open" in rec.message for rec in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# T35 — TOOL-SUPPRESS: Rama B emulada sin supresión
+# ---------------------------------------------------------------------------
+def test_t35_emulated_mode_no_suppression():
+    """T35: Rama B con montos inválidos no dispara supresión."""
+    emulated_content = json.dumps(
+        {"tool_call": {"name": "calculate_credit_score", "args": {"ingresos_mensuales": "3 mínimos"}}}
+    )
+    shim = _parse_openai_response(
+        _openai_response_json(content=emulated_content),
+        emulated_toolcall=True,
+        tools=[],
+    )
+
+    with patch("app.services.llm_client_service._call_qwen_sync") as mock_call:
+        final = _maybe_reprompt_after_suppression_sync(
+            messages=[{"role": "user", "content": "hola"}],
+            params={"model": "qwen-turbo"},
+            timeout=30.0,
+            role="agentic",
+            shim=shim,
+            emulated=True,
+            tools=[],
+        )
+
+    assert mock_call.call_count == 0
+    fc = final.candidates[0].content.parts[0].function_call
+    assert fc.args.get("ingresos_mensuales") == "3 mínimos"
+
+
+# ---------------------------------------------------------------------------
+# T36 — TOOL-SUPPRESS: 2ª respuesta sigue inválida → fail-open
+# ---------------------------------------------------------------------------
+def test_t36_second_response_invalid_fail_open(caplog):
+    """T36: si la 2ª respuesta aún tiene fc inválido, fail-open sin 3er intento."""
+    invalid_args = {"ingresos_mensuales": "3 mínimos"}
+    shim1 = _parse_openai_response(
+        _openai_response_json(
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "calculate_credit_score",
+                        "arguments": json.dumps(invalid_args),
+                    },
+                }
+            ]
+        ),
+        tools=[],
+    )
+    shim2 = _parse_openai_response(
+        _openai_response_json(
+            tool_calls=[
+                {
+                    "id": "call_2",
+                    "type": "function",
+                    "function": {
+                        "name": "calculate_credit_score",
+                        "arguments": json.dumps(invalid_args),
+                    },
+                }
+            ]
+        ),
+        tools=[],
+    )
+
+    with caplog.at_level(logging.WARNING):
+        with patch(
+            "app.services.llm_client_service._call_qwen_sync",
+            return_value=_openai_response_json(
+                tool_calls=[
+                    {
+                        "id": "call_2",
+                        "type": "function",
+                        "function": {
+                            "name": "calculate_credit_score",
+                            "arguments": json.dumps(invalid_args),
+                        },
+                    }
+                ]
+            ),
+        ) as mock_call:
+            final = _maybe_reprompt_after_suppression_sync(
+                messages=[{"role": "user", "content": "hola"}],
+                params={"model": "qwen-turbo"},
+                timeout=30.0,
+                role="agentic",
+                shim=shim1,
+                emulated=False,
+                tools=[],
+            )
+
+    assert mock_call.call_count == 1
+    fc = final.candidates[0].content.parts[0].function_call
+    assert fc.args.get("ingresos_mensuales") == "3 mínimos"
+    assert any("retry_failed fail_open" in rec.message for rec in caplog.records)
 
 
 # ---------------------------------------------------------------------------

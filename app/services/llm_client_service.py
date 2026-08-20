@@ -26,6 +26,7 @@ import base64
 import json
 import logging
 import os
+import re
 import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -641,6 +642,145 @@ def _prune_ungrounded_args(
 
 
 # ---------------------------------------------------------------------------
+# [BOT-BUILD-TOOLCALL-HARDEN-085] Guard numérico para Rama A Qwen
+# ---------------------------------------------------------------------------
+_MIN_PLAUSIBLE_COP = 100_000
+_COP_RELATIVE_MARKERS = {"minimo", "mínimo", "smlv", "salario"}
+_COP_MULTIPLIERS = {
+    "millon": 1_000_000,
+    "millón": 1_000_000,
+    "millones": 1_000_000,
+    "palos": 1_000_000,
+}
+
+_TOOLCALL_SUPPRESSION_DIRECTIVE = (
+    "[TRANSPORT TOOLCALL SUPPRESSED] "
+    "La llamada a calculate_credit_score fue suprimida porque ingresos_mensuales o gastos_mensuales "
+    "no son montos absolutos plausibles en COP. "
+    "Pide al usuario la cifra mensual exacta en pesos colombianos (solo números) antes de calcular, "
+    "o continúa sin calcular si el usuario no la puede dar."
+)
+
+
+def _is_plausible_cop_amount(value: Any) -> bool:
+    """
+    Valida si un monto es una cantidad absoluta plausible en COP.
+    - Rechaza valores relativos (mínimo, SMLV, salario).
+    - Acepta multiplicadores léxicos (millón/millones/palos).
+    - Umbral configurable _MIN_PLAUSIBLE_COP.
+    - Fail-open: ante cualquier error interno retorna True para no romper llamadas válidas.
+    """
+    try:
+        s = str(value).lower().strip()
+        if not s:
+            return True  # ausencia no se valida aquí
+        if any(marker in s for marker in _COP_RELATIVE_MARKERS):
+            return False
+        # Extraer primer token numérico, tolerando separadores de miles/decimales.
+        m = re.search(r"\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?", s.replace(" ", ""))
+        if not m:
+            return False
+        num_str = m.group(0)
+        # Normalizar: si hay coma y no punto, coma es separador decimal; si hay ambos, coma es miles.
+        if "," in num_str and "." not in num_str:
+            num_str = num_str.replace(",", ".")
+        else:
+            num_str = num_str.replace(",", "")
+        amount = float(num_str)
+        multiplier = 1
+        for word, mult in _COP_MULTIPLIERS.items():
+            if word in s:
+                multiplier = mult
+                break
+        return amount * multiplier >= _MIN_PLAUSIBLE_COP
+    except Exception:
+        return True
+
+
+def _find_invalid_numeric_toolcall(stored_tool_calls: List[Dict[str, Any]]) -> Optional[Tuple[str, str]]:
+    """Busca args numéricos inválidos en calculate_credit_score. Retorna (tool, field) o None."""
+    try:
+        for tc in stored_tool_calls:
+            if tc.get("name") == "calculate_credit_score":
+                args = tc.get("args") or {}
+                for field in ("ingresos_mensuales", "gastos_mensuales"):
+                    value = args.get(field)
+                    if value is not None and str(value).strip() != "" and not _is_plausible_cop_amount(value):
+                        return tc.get("name"), field
+        return None
+    except Exception as e:
+        logger.warning(f"🌿 [TOOL-SUPPRESS] validator_error fail_open error={type(e).__name__}")
+        return None
+
+
+def _maybe_reprompt_after_suppression_sync(
+    messages: List[Dict[str, Any]],
+    params: Dict[str, Any],
+    timeout: float,
+    role: str,
+    shim: _ResponseShim,
+    emulated: bool,
+    tools: Optional[List[Any]],
+) -> _ResponseShim:
+    """
+    Si Rama A Qwen emitió calculate_credit_score con montos no plausibles, re-prompt
+    una sola vez con directiva de transporte. Fail-open ante error o re-incidencia.
+    """
+    if emulated:
+        return shim
+    invalid = _find_invalid_numeric_toolcall(shim._tool_calls)
+    if invalid is None:
+        return shim
+    tool_name, field = invalid
+    logger.info(f"🔧 [TOOL-SUPPRESS] tool={tool_name} field={field} reason=implausible_absolute_amount")
+    reprompt_messages = list(messages)
+    reprompt_messages.append({"role": "system", "content": _TOOLCALL_SUPPRESSION_DIRECTIVE})
+    try:
+        openai_response2 = _call_qwen_sync(reprompt_messages, params, timeout, role=role)
+    except Exception as e:
+        logger.warning(f"🌿 [TOOL-SUPPRESS] retry_error fail_open error={type(e).__name__}")
+        return shim
+    shim2 = _parse_openai_response(openai_response2, emulated_toolcall=emulated, tools=tools)
+    invalid2 = _find_invalid_numeric_toolcall(shim2._tool_calls)
+    if invalid2 is None:
+        return shim2
+    logger.warning(f"🌿 [TOOL-SUPPRESS] retry_failed fail_open tool={invalid2[0]} field={invalid2[1]}")
+    return shim2
+
+
+async def _maybe_reprompt_after_suppression_async(
+    messages: List[Dict[str, Any]],
+    params: Dict[str, Any],
+    timeout: float,
+    role: str,
+    shim: _ResponseShim,
+    emulated: bool,
+    tools: Optional[List[Any]],
+) -> _ResponseShim:
+    """Versión async de _maybe_reprompt_after_suppression_sync."""
+    if emulated:
+        return shim
+    invalid = _find_invalid_numeric_toolcall(shim._tool_calls)
+    if invalid is None:
+        return shim
+    tool_name, field = invalid
+    logger.info(f"🔧 [TOOL-SUPPRESS] tool={tool_name} field={field} reason=implausible_absolute_amount")
+    reprompt_messages = list(messages)
+    reprompt_messages.append({"role": "system", "content": _TOOLCALL_SUPPRESSION_DIRECTIVE})
+    try:
+        openai_response2 = await _call_qwen_async(reprompt_messages, params, timeout, role=role)
+    except Exception as e:
+        logger.warning(f"🌿 [TOOL-SUPPRESS] retry_error fail_open error={type(e).__name__}")
+        return shim
+    shim2 = _parse_openai_response(openai_response2, emulated_toolcall=emulated, tools=tools)
+    invalid2 = _find_invalid_numeric_toolcall(shim2._tool_calls)
+    if invalid2 is None:
+        return shim2
+    logger.warning(f"🌿 [TOOL-SUPPRESS] retry_failed fail_open tool={invalid2[0]} field={invalid2[1]}")
+    return shim2
+
+
+# ---------------------------------------------------------------------------
 # Parsing de respuestas Qwen
 # ---------------------------------------------------------------------------
 def _parse_openai_response(
@@ -1072,7 +1212,11 @@ class DualProviderChat:
             logger.error(f"🚨 [QWEN FORENSIC] {format_qwen_error_structured(e)}")
             raise
 
-        shim = _parse_openai_response(openai_response, emulated_toolcall=emulated, tools=getattr(config, "tools", None) if config else None)
+        tools = getattr(config, "tools", None) if config else None
+        shim = _parse_openai_response(openai_response, emulated_toolcall=emulated, tools=tools)
+        shim = await _maybe_reprompt_after_suppression_async(
+            messages, params, timeout, self._facade._role, shim, emulated, tools
+        )
         self._history.append(
             {"role": "model", "parts": _response_shim_to_parts(shim), "tool_calls": shim._tool_calls}
         )
@@ -1292,7 +1436,11 @@ class DualProviderClient:
             logger.error(f"🚨 [QWEN FORENSIC] {format_qwen_error_structured(e)}")
             raise
 
-        return _parse_openai_response(openai_response, emulated_toolcall=emulated, tools=getattr(config, "tools", None) if config else None)
+        tools = getattr(config, "tools", None) if config else None
+        shim = _parse_openai_response(openai_response, emulated_toolcall=emulated, tools=tools)
+        return _maybe_reprompt_after_suppression_sync(
+            messages, params, _qwen_timeout_default(), self._role, shim, emulated, tools
+        )
 
     async def _generate_content_async(self, model: str, contents: Any, config: Any = None) -> Any:
         if not await is_qwen_enabled_async():
@@ -1335,7 +1483,11 @@ class DualProviderClient:
             logger.error(f"🚨 [QWEN FORENSIC] {format_qwen_error_structured(e)}")
             raise
 
-        return _parse_openai_response(openai_response, emulated_toolcall=emulated, tools=getattr(config, "tools", None) if config else None)
+        tools = getattr(config, "tools", None) if config else None
+        shim = _parse_openai_response(openai_response, emulated_toolcall=emulated, tools=tools)
+        return await _maybe_reprompt_after_suppression_async(
+            messages, params, _qwen_timeout_default(), self._role, shim, emulated, tools
+        )
 
 
 # ---------------------------------------------------------------------------
