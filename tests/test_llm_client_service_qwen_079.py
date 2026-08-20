@@ -27,6 +27,7 @@ from app.services.genai_client_service import reset_shared_clients
 from app.services.genai_client_service import get_shared_genai_client
 from app.services.llm_client_service import (
     DualProviderClient,
+    _parse_openai_response,
     format_qwen_error_structured,
     get_active_model_id,
     get_shared_llm_client,
@@ -1378,3 +1379,153 @@ async def test_t28_toolcall_rules_annex(qwen_env, monkeypatch):
         )
         content = captured[0]["messages"][0]["content"]
         assert "[TRANSPORT TOOLCALL RULES]" not in content
+
+
+# ---------------------------------------------------------------------------
+# T29 — ARG-PRUNE: poda arg opcional fuera del léxico permitido
+# ---------------------------------------------------------------------------
+def test_t29_prunes_ungrounded_optional_arg(caplog):
+    """T29: Rama A Qwen poda ocupacion='trabajo' (opcional, fuera de léxico)."""
+    tools = [
+        {
+            "function_declarations": [
+                {
+                    "name": "calculate_credit_score",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "ingresos_mensuales": {"type": "string"},
+                            "gastos_mensuales": {"type": "string"},
+                            "ocupacion": {"type": "string"},
+                        },
+                        "required": ["ingresos_mensuales", "gastos_mensuales"],
+                    },
+                }
+            ]
+        }
+    ]
+    tool_calls = [
+        {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "calculate_credit_score",
+                "arguments": json.dumps(
+                    {
+                        "ingresos_mensuales": "2500000",
+                        "gastos_mensuales": "1000000",
+                        "ocupacion": "trabajo",
+                    }
+                ),
+            },
+        }
+    ]
+    with caplog.at_level(logging.INFO):
+        shim = _parse_openai_response(
+            _openai_response_json(tool_calls=tool_calls), tools=tools
+        )
+    assert len(shim.candidates[0].content.parts) == 1
+    fc = shim.candidates[0].content.parts[0].function_call
+    assert fc.name == "calculate_credit_score"
+    assert set(fc.args.keys()) == {"ingresos_mensuales", "gastos_mensuales"}
+    assert "ocupacion" not in fc.args
+    assert any(
+        "[ARG-PRUNE] tool=calculate_credit_score field=ocupacion" in rec.message
+        and "trabajo" not in rec.message
+        for rec in caplog.records
+    )
+
+
+# ---------------------------------------------------------------------------
+# T30 — ARG-PRUNE: preserva arg opcional dentro del léxico
+# ---------------------------------------------------------------------------
+def test_t30_preserves_grounded_optional_arg():
+    """T30: Rama A Qwen preserva ocupacion='independiente' (dentro de léxico)."""
+    tools = [
+        {
+            "function_declarations": [
+                {
+                    "name": "calculate_credit_score",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "ingresos_mensuales": {"type": "string"},
+                            "gastos_mensuales": {"type": "string"},
+                            "ocupacion": {"type": "string"},
+                        },
+                        "required": ["ingresos_mensuales", "gastos_mensuales"],
+                    },
+                }
+            ]
+        }
+    ]
+    tool_calls = [
+        {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "calculate_credit_score",
+                "arguments": json.dumps(
+                    {
+                        "ingresos_mensuales": "5000000",
+                        "gastos_mensuales": "2000000",
+                        "ocupacion": "independiente",
+                    }
+                ),
+            },
+        }
+    ]
+    shim = _parse_openai_response(
+        _openai_response_json(tool_calls=tool_calls), tools=tools
+    )
+    fc = shim.candidates[0].content.parts[0].function_call
+    assert fc.args.get("ocupacion") == "independiente"
+
+
+# ---------------------------------------------------------------------------
+# T31 — ARG-PRUNE: no poda propiedades requeridas; Rama B intacta
+# ---------------------------------------------------------------------------
+def test_t31_required_arg_and_rama_b_untouched():
+    """T31: requerida con valor fuera de léxico NO se poda; Rama B sin pruning."""
+    tools = [
+        {
+            "function_declarations": [
+                {
+                    "name": "calculate_credit_score",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"ocupacion": {"type": "string"}},
+                        "required": ["ocupacion"],
+                    },
+                }
+            ]
+        }
+    ]
+    tool_calls = [
+        {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "calculate_credit_score",
+                "arguments": json.dumps({"ocupacion": "trabajo"}),
+            },
+        }
+    ]
+    shim_native = _parse_openai_response(
+        _openai_response_json(tool_calls=tool_calls), tools=tools
+    )
+    fc_native = shim_native.candidates[0].content.parts[0].function_call
+    assert fc_native.args.get("ocupacion") == "trabajo"
+
+    # Rama B emulada: sin pruning
+    shim_emulated = _parse_openai_response(
+        _openai_response_json(
+            content=json.dumps(
+                {"tool_call": {"name": "calculate_credit_score", "args": {"ocupacion": "trabajo"}}}
+            )
+        ),
+        emulated_toolcall=True,
+        tools=tools,
+    )
+    fc_emulated = shim_emulated.candidates[0].content.parts[0].function_call
+    assert fc_emulated.args.get("ocupacion") == "trabajo"

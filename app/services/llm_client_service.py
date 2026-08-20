@@ -564,10 +564,89 @@ class _SimpleFunctionCall:
 
 
 # ---------------------------------------------------------------------------
+# [BOT-BUILD-TOOLCALL-FB1-084] Post-proceso de args Rama A Qwen
+# ---------------------------------------------------------------------------
+_ALLOWED_OCCUPATION_VALUES: Set[str] = {
+    "empleado",
+    "empleado fijo",
+    "independiente",
+    "informal",
+    "desempleado",
+    "obra",
+    "indefinido",
+    "fijo",
+}
+
+# Validadores declarativos para propiedades NO requeridas de tools.
+# Un arg opcional que no pase el validador se poda ANTES de retornar el fc,
+# cerrando inferencias espurias sin tocar prompts/personality (C4 intacto).
+_ARG_PRUNE_VALIDATORS: Dict[str, Dict[str, Callable[[Any], bool]]] = {
+    "calculate_credit_score": {
+        "ocupacion": lambda v: str(v).strip().lower() in _ALLOWED_OCCUPATION_VALUES,
+        "ocupacion_y_contrato": lambda v: str(v).strip().lower() in _ALLOWED_OCCUPATION_VALUES,
+    },
+}
+
+
+def _extract_required_fields(tools: Optional[List[Any]]) -> Dict[str, Set[str]]:
+    """Extrae las propiedades requeridas por tool name desde config.tools."""
+    required: Dict[str, Set[str]] = {}
+    if not tools:
+        return required
+    for tool in tools:
+        if isinstance(tool, dict):
+            declarations = tool.get("function_declarations") or []
+        else:
+            declarations = getattr(tool, "function_declarations", None) or []
+        for fd in declarations:
+            if isinstance(fd, dict):
+                name = fd.get("name")
+                params = fd.get("parameters") or {}
+            else:
+                name = getattr(fd, "name", None)
+                params = getattr(fd, "parameters", None) or {}
+            if isinstance(params, dict):
+                req = params.get("required") or []
+            else:
+                req = getattr(params, "required", None) or []
+            if name:
+                required[name] = set(req)
+    return required
+
+
+def _prune_ungrounded_args(
+    tool_name: str,
+    args: Dict[str, Any],
+    required: Set[str],
+) -> Dict[str, Any]:
+    """
+    Poda args opcionales que no pasen el validador declarativo de su campo.
+    NUNCA poda propiedades requeridas. Log ZSF sin valor crudo (PII-safe).
+    """
+    validators = _ARG_PRUNE_VALIDATORS.get(tool_name, {})
+    pruned: Dict[str, Any] = {}
+    for key, value in args.items():
+        if key in required:
+            pruned[key] = value
+            continue
+        validator = validators.get(key)
+        if validator is None:
+            pruned[key] = value
+            continue
+        if validator(value):
+            pruned[key] = value
+        else:
+            logger.info(f"🌿 [ARG-PRUNE] tool={tool_name} field={key} reason=not_in_allowed_lexicon")
+    return pruned
+
+
+# ---------------------------------------------------------------------------
 # Parsing de respuestas Qwen
 # ---------------------------------------------------------------------------
 def _parse_openai_response(
-    openai_response: Dict[str, Any], emulated_toolcall: bool = False
+    openai_response: Dict[str, Any],
+    emulated_toolcall: bool = False,
+    tools: Optional[List[Any]] = None,
 ) -> _ResponseShim:
     """Convierte respuesta OpenAI/Qwen a shim google-genai."""
     choice = openai_response.get("choices", [{}])[0]
@@ -596,6 +675,7 @@ def _parse_openai_response(
             parts.append({"type": "text", "text": content})
     else:
         # Rama A / texto normal
+        required_by_tool = _extract_required_fields(tools)
         if content:
             parts.append({"type": "text", "text": content})
         for tc in tool_calls:
@@ -607,6 +687,8 @@ def _parse_openai_response(
                     args = json.loads(arguments)
                 except Exception:
                     args = {}
+                # [BOT-BUILD-TOOLCALL-FB1-084] Poda args opcionales inferidos.
+                args = _prune_ungrounded_args(name, args, required_by_tool.get(name, set()))
                 parts.append({"type": "function_call", "_function_call": {"name": name, "args": args}})
                 stored_tool_calls.append(
                     {
@@ -990,7 +1072,7 @@ class DualProviderChat:
             logger.error(f"🚨 [QWEN FORENSIC] {format_qwen_error_structured(e)}")
             raise
 
-        shim = _parse_openai_response(openai_response, emulated_toolcall=emulated)
+        shim = _parse_openai_response(openai_response, emulated_toolcall=emulated, tools=getattr(config, "tools", None) if config else None)
         self._history.append(
             {"role": "model", "parts": _response_shim_to_parts(shim), "tool_calls": shim._tool_calls}
         )
@@ -1210,7 +1292,7 @@ class DualProviderClient:
             logger.error(f"🚨 [QWEN FORENSIC] {format_qwen_error_structured(e)}")
             raise
 
-        return _parse_openai_response(openai_response, emulated_toolcall=emulated)
+        return _parse_openai_response(openai_response, emulated_toolcall=emulated, tools=getattr(config, "tools", None) if config else None)
 
     async def _generate_content_async(self, model: str, contents: Any, config: Any = None) -> Any:
         if not await is_qwen_enabled_async():
@@ -1253,7 +1335,7 @@ class DualProviderClient:
             logger.error(f"🚨 [QWEN FORENSIC] {format_qwen_error_structured(e)}")
             raise
 
-        return _parse_openai_response(openai_response, emulated_toolcall=emulated)
+        return _parse_openai_response(openai_response, emulated_toolcall=emulated, tools=getattr(config, "tools", None) if config else None)
 
 
 # ---------------------------------------------------------------------------
