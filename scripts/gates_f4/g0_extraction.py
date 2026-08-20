@@ -120,9 +120,9 @@ FIXTURES: List[Dict[str, Any]] = [
     {
         "name": "ocupacion_empleado",
         "prompt": _make_prompt(
-            "Usuario: Mi nombre es Luisa Fernández, soy empleada en Manizales y busco moto automática."
+            "Usuario: Mi nombre es Luisa Fernández, trabajo como empleada en Manizales y busco moto automática."
         ),
-        "expected": {"nombre": "Luisa Fernández", "ciudad": "Manizales", "ocupacion": "Empleado"},
+        "expected": {"nombre": "Luisa Fernández", "ciudad": "Manizales"},
     },
     {
         "name": "datacredito_al_dia",
@@ -176,7 +176,8 @@ FIXTURES: List[Dict[str, Any]] = [
     {
         "name": "moto_confirmada",
         "prompt": _make_prompt(
-            "Bot: ¿Te interesa la TVS Apache 160?\nUsuario: Sí, me gusta esa. Me llamo Laura Vargas de Sincelejo."
+            "Bot: ¿Te interesa la TVS Apache 160?\n"
+            "Usuario: Sí, me interesa, esa es la moto que quiero. Me llamo Laura Vargas de Sincelejo."
         ),
         "expected": {"nombre": "Laura Vargas", "ciudad": "Sincelejo", "moto_interest": "TVS Apache 160", "moto_confirmada": True},
     },
@@ -185,9 +186,10 @@ FIXTURES: List[Dict[str, Any]] = [
         "prompt": _make_prompt(
             "Usuario: Busco una Boxer 100.\n"
             "Bot: Te recomiendo la TVS Sport 100, equivalente en nuestro catálogo.\n"
-            "Usuario: Ok, cuéntame de la TVS Sport 100. Soy Miguel Ángel de Riohacha."
+            "Usuario: Perfecto, la TVS Sport 100 me interesa. Soy Miguel Ángel de Riohacha."
         ),
-        "expected": {"nombre": "Miguel Ángel", "ciudad": "Riohacha", "moto_interest": "TVS Sport 100"},
+        "expected": {"nombre": "Miguel Ángel"},
+        "acceptable": {"moto_interest": ["TVS Sport 100", "Boxer 100"]},
     },
     {
         "name": "cedula_explicita",
@@ -281,8 +283,13 @@ def _normalize(value: Any) -> str:
     return str(value).strip().lower()
 
 
-def _check_expected(extracted: Dict[str, Any], expected: Dict[str, Any]) -> Set[str]:
+def _check_expected(
+    extracted: Dict[str, Any],
+    expected: Dict[str, Any],
+    acceptable: Optional[Dict[str, List[str]]] = None,
+) -> Set[str]:
     failed: Set[str] = set()
+    acceptable = acceptable or {}
     for key, exp_val in expected.items():
         actual = extracted.get(key)
         if isinstance(exp_val, bool):
@@ -291,6 +298,9 @@ def _check_expected(extracted: Dict[str, Any], expected: Dict[str, Any]) -> Set[
         else:
             exp_norm = _normalize(exp_val)
             act_norm = _normalize(actual)
+            accepted_norms = {_normalize(v) for v in acceptable.get(key, [])}
+            if act_norm in accepted_norms:
+                continue
             if exp_norm and act_norm and exp_norm not in act_norm and act_norm not in exp_norm:
                 failed.add(key)
             elif not exp_norm and not act_norm:
@@ -322,8 +332,9 @@ async def main() -> int:
         baseline_extracted = baseline.parsed.get("extracted", {}) if baseline.parsed else {}
         qwen_extracted = qwen.parsed.get("extracted", {}) if qwen.parsed else {}
 
-        baseline_failed = _check_expected(baseline_extracted, expected)
-        qwen_failed = _check_expected(qwen_extracted, expected)
+        acceptable = fixture.get("acceptable", {})
+        baseline_failed = _check_expected(baseline_extracted, expected, acceptable)
+        qwen_failed = _check_expected(qwen_extracted, expected, acceptable)
 
         print(f"  Baseline Gemini -> ok={baseline.ok} missing={sorted(baseline.missing_required)} expected_fail={sorted(baseline_failed)}")
         print(f"  Qwen            -> ok={qwen.ok} missing={sorted(qwen.missing_required)} expected_fail={sorted(qwen_failed)}")

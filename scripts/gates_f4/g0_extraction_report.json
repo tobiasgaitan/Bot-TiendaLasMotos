@@ -1,0 +1,369 @@
+{
+  "status": "VERDE",
+  "failures": 0,
+  "divergences": 0,
+  "cases": [
+    {
+      "case": 1,
+      "name": "nombre+ciudad+moto",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nBot: ¡Hola! Soy el asistente de Tienda Las Motos. ¿En qué puedo ayudarte?\nUsuario: Hola, soy Juan Pérez de Bogotá y busco una TVS Apache 160.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario Juan Pérez de Bogotá está interesado en una TVS Apache 160.\",\n  \"extracted\": {\n    \"nombre\": \"Juan Pérez\",\n    \"ciudad\": \"Bogotá\",\n    \"moto_interest\": \"TVS Apache 160\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Usuario se identificó como Juan Pérez de Bogotá y mostró interés en una TVS Apache 160.\",\n  \"extracted\": {\n    \"nombre\": \"Juan Pérez\",\n    \"ciudad\": \"Bogotá\",\n    \"moto_interest\": \"TVS Apache 160\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 2,
+      "name": "habeas_acepta",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nBot: Para continuar necesito tu autorización. Puedes ver la política en https://tiendalasmotos.com/politica-de-privacidad ¿Aceptas?\nUsuario: Sí, acepto. Me llamo María Gómez, vivo en Medellín y quiero la TVS Sport 100.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"María Gómez de Medellín está interesada en la TVS Sport 100 y aceptó la política de privacidad.\",\n  \"extracted\": {\n    \"nombre\": \"María Gómez\",\n    \"ciudad\": \"Medellín\",\n    \"moto_interest\": \"TVS Sport 100\",\n    \"habeas_data_accepted\": true,\n    \"habeas_data_accepted_sent\": true,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Usuario aceptó la política de privacidad, se registró nombre, ciudad y moto de interés.\",\n  \"extracted\": {\n    \"nombre\": \"María Gómez\",\n    \"ciudad\": \"Medellín\",\n    \"moto_interest\": \"TVS Sport 100\",\n    \"habeas_data_accepted\": true,\n    \"habeas_data_accepted_sent\": true,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 3,
+      "name": "habeas_rechaza",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nBot: ¿Autorizas el tratamiento de datos?\nUsuario: No estoy seguro.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario no está seguro sobre la autorización del tratamiento de datos.\",\n  \"extracted\": {\n    \"nombre\": \"\",\n    \"ciudad\": \"\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": true,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Usuario no autorizó el tratamiento de datos.\",\n  \"extracted\": {\n    \"nombre\": \"\",\n    \"ciudad\": \"\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 4,
+      "name": "ingresos_gastos_palos",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Buenas, mi nombre es Carlos Ruiz, soy de Cali. Gano 2 millones y gasto 800 mil. Busco moto para delivery.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Carlos Ruiz de Cali busca moto para delivery, gana 2 millones y gasta 800 mil.\",\n  \"extracted\": {\n    \"nombre\": \"Carlos Ruiz\",\n    \"ciudad\": \"Cali\",\n    \"moto_interest\": \"moto para delivery\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"2000000\",\n    \"gastos_mensuales\": \"800000\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Carlos Ruiz, de Cali, busca moto para delivery con ingresos de 2 millones y gastos de 800 mil.\",\n  \"extracted\": {\n    \"nombre\": \"Carlos Ruiz\",\n    \"ciudad\": \"Cali\",\n    \"moto_interest\": \"moto para delivery\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"2000000\",\n    \"gastos_mensuales\": \"800000\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 5,
+      "name": "ingresos_minimos",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Me llamo Ana López, vivo en Cartagena. Gano tres mínimos y gasto uno.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario se identifica como Ana López de Cartagena, menciona que gana tres salarios mínimos y gasta uno.\",\n  \"extracted\": {\n    \"nombre\": \"Ana López\",\n    \"ciudad\": \"Cartagena\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"5117715\",\n    \"gastos_mensuales\": \"1705905\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Ana López, de Cartagena, gana tres mínimos y gasta uno.\",\n  \"extracted\": {\n    \"nombre\": \"Ana López\",\n    \"ciudad\": \"Cartagena\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"5117715\",\n    \"gastos_mensuales\": \"1705905\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 6,
+      "name": "ocupacion_independiente",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Soy Pedro Vargas, independiente en Bucaramanga. Quiero la TVS Sport 100.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Pedro Vargas, independiente de Bucaramanga, interesado en la TVS Sport 100.\",\n  \"extracted\": {\n    \"nombre\": \"Pedro Vargas\",\n    \"ciudad\": \"Bucaramanga\",\n    \"moto_interest\": \"TVS Sport 100\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"null\",\n    \"ocupacion\": \"Independiente\",\n    \"datacredito\": \"null\",\n    \"vivienda\": \"null\",\n    \"servicios_publicos\": \"null\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"null\",\n    \"ponytail_status\": \"null\",\n    \"ponytail_score\": \"null\",\n    \"ingresos_mensuales\": \"null\",\n    \"gastos_mensuales\": \"null\",\n    \"plan_celular\": \"null\",\n    \"tiene_gas_natural\": \"null\",\n    \"mora_y_paz_salvo\": \"null\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Usuario se identificó como Pedro Vargas, independiente en Bucaramanga, interesado en la TVS Sport 100.\",\n  \"extracted\": {\n    \"nombre\": \"Pedro Vargas\",\n    \"ciudad\": \"Bucaramanga\",\n    \"moto_interest\": \"TVS Sport 100\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"Independiente\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 7,
+      "name": "ocupacion_empleado",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Mi nombre es Luisa Fernández, trabajo como empleada en Manizales y busco moto automática.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario, Luisa Fernández de Manizales, empleada, busca una moto automática.\",\n  \"extracted\": {\n    \"nombre\": \"Luisa Fernández\",\n    \"ciudad\": \"Manizales\",\n    \"moto_interest\": \"moto automática\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"Empleada\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Luisa Fernández, empleada en Manizales, busca moto automática.\",\n  \"extracted\": {\n    \"nombre\": \"Luisa Fernández\",\n    \"ciudad\": \"Manizales\",\n    \"moto_interest\": \"moto automática\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"empleada\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 8,
+      "name": "datacredito_al_dia",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Soy Andrés Muñoz de Pereira. Estoy al día en datacrédito y quiero la Apache 160.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario Andrés Muñoz de Pereira está interesado en la Apache 160 y afirma estar al día en Datacrédito.\",\n  \"extracted\": {\n    \"nombre\": \"Andrés Muñoz\",\n    \"ciudad\": \"Pereira\",\n    \"moto_interest\": \"Apache 160\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"Al día\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Andrés Muñoz de Pereira, interesado en la Apache 160, al día en datacrédito.\",\n  \"extracted\": {\n    \"nombre\": \"Andrés Muñoz\",\n    \"ciudad\": \"Pereira\",\n    \"moto_interest\": \"Apache 160\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"al día\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 9,
+      "name": "vivienda_arriendo",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Me llamo Diana Torres, vivo en arriendo en Cúcuta. Busco moto 125.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario se identifica como Diana Torres de Cúcuta, vive en arriendo y busca una moto 125.\",\n  \"extracted\": {\n    \"nombre\": \"Diana Torres\",\n    \"ciudad\": \"Cúcuta\",\n    \"moto_interest\": \"moto 125\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"Arriendo\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Diana Torres, de Cúcuta, busca una moto 125 y vive en arriendo.\",\n  \"extracted\": {\n    \"nombre\": \"Diana Torres\",\n    \"ciudad\": \"Cúcuta\",\n    \"moto_interest\": \"moto 125\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"arriendo\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 10,
+      "name": "forma_pago_credito",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Hola, soy Javier Díaz de Villavicencio. Quiero la NKD 125 a crédito con 0 inicial.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario Javier Díaz de Villavicencio está interesado en la moto NKD 125 a crédito con 0 inicial.\",\n  \"extracted\": {\n    \"nombre\": \"Javier Díaz\",\n    \"ciudad\": \"Villavicencio\",\n    \"moto_interest\": \"NKD 125\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"Crédito - 0 inicial\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Usuario Javier Díaz de Villavicencio interesado en NKD 125 a crédito con 0 inicial.\",\n  \"extracted\": {\n    \"nombre\": \"Javier Díaz\",\n    \"ciudad\": \"Villavicencio\",\n    \"moto_interest\": \"NKD 125\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"Crédito - 0 inicial\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 11,
+      "name": "forma_pago_contado",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Soy Patricia Morales de Pasto. Voy a pagar la moto de contado.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario se identifica como Patricia Morales de Pasto y expresa interés en pagar la moto de contado.\",\n  \"extracted\": {\n    \"nombre\": \"Patricia Morales\",\n    \"ciudad\": \"Pasto\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"Contado\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Patricia Morales de Pasto muestra interés en pagar una moto de contado.\",\n  \"extracted\": {\n    \"nombre\": \"Patricia Morales\",\n    \"ciudad\": \"Pasto\",\n    \"moto_interest\": \"moto\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"contado\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 12,
+      "name": "plan_celular_si",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Me llamo Roberto Castro de Ibagué. Tengo plan postpago y quiero moto para trabajo.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario Roberto Castro de Ibagué tiene plan postpago y busca una moto para trabajo.\",\n  \"extracted\": {\n    \"nombre\": \"Roberto Castro\",\n    \"ciudad\": \"Ibagué\",\n    \"moto_interest\": \"moto para trabajo\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"Sí\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Roberto Castro de Ibagué, interesado en moto para trabajo, tiene plan postpago.\",\n  \"extracted\": {\n    \"nombre\": \"Roberto Castro\",\n    \"ciudad\": \"Ibagué\",\n    \"moto_interest\": \"moto para trabajo\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"Sí\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 13,
+      "name": "gas_natural_no",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Soy Natalia Ríos de Montería. No tengo gas natural a mi nombre. Busco moto 160.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario, Natalia Ríos de Montería, busca una moto 160cc y no tiene gas natural a su nombre.\",\n  \"extracted\": {\n    \"nombre\": \"Natalia Ríos\",\n    \"ciudad\": \"Montería\",\n    \"moto_interest\": \"moto 160\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"No\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Natalia Ríos de Montería busca una moto 160 y no tiene gas natural a su nombre.\",\n  \"extracted\": {\n    \"nombre\": \"Natalia Ríos\",\n    \"ciudad\": \"Montería\",\n    \"moto_interest\": \"160\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"No\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 14,
+      "name": "mora_paz_salvo",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Me llamo Esteban Salazar de Armenia. Tuve una mora hace 2 años pero tengo paz y salvo.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario se identifica como Esteban Salazar de Armenia y menciona una mora pasada con paz y salvo.\",\n  \"extracted\": {\n    \"nombre\": \"Esteban Salazar\",\n    \"ciudad\": \"Armenia\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"Mora pasada con paz y salvo\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"Tuve una mora hace 2 años pero tengo paz y salvo.\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Usuario se llama Esteban Salazar de Armenia, tuvo una mora hace 2 años pero tiene paz y salvo.\",\n  \"extracted\": {\n    \"nombre\": \"Esteban Salazar\",\n    \"ciudad\": \"Armenia\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"Tuvo una mora hace 2 años pero tiene paz y salvo\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 15,
+      "name": "moto_confirmada",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nBot: ¿Te interesa la TVS Apache 160?\nUsuario: Sí, me interesa, esa es la moto que quiero. Me llamo Laura Vargas de Sincelejo.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Usuario interesado en TVS Apache 160, se identifica como Laura Vargas de Sincelejo.\",\n  \"extracted\": {\n    \"nombre\": \"Laura Vargas\",\n    \"ciudad\": \"Sincelejo\",\n    \"moto_interest\": \"TVS Apache 160\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": true,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Laura Vargas de Sincelejo mostró interés en la TVS Apache 160.\",\n  \"extracted\": {\n    \"nombre\": \"Laura Vargas\",\n    \"ciudad\": \"Sincelejo\",\n    \"moto_interest\": \"TVS Apache 160\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": true,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 16,
+      "name": "pivot_competencia",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Busco una Boxer 100.\nBot: Te recomiendo la TVS Sport 100, equivalente en nuestro catálogo.\nUsuario: Perfecto, la TVS Sport 100 me interesa. Soy Miguel Ángel de Riohacha.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario Miguel Ángel de Riohacha mostró interés en la TVS Sport 100, después de preguntar inicialmente por una Boxer 100.\",\n  \"extracted\": {\n    \"nombre\": \"Miguel Ángel\",\n    \"ciudad\": \"Riohacha\",\n    \"moto_interest\": \"Boxer 100\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"null\",\n    \"ocupacion\": \"null\",\n    \"datacredito\": \"null\",\n    \"vivienda\": \"null\",\n    \"servicios_publicos\": \"null\",\n    \"moto_confirmada\": true,\n    \"cedula_usuario\": \"null\",\n    \"ponytail_status\": \"null\",\n    \"ponytail_score\": \"null\",\n    \"ingresos_mensuales\": \"null\",\n    \"gastos_mensuales\": \"null\",\n    \"plan_celular\": \"null\",\n    \"tiene_gas_natural\": \"null\",\n    \"mora_y_paz_salvo\": \"null\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Usuario interesado en la TVS Sport 100, nombre Miguel Ángel de Riohacha.\",\n  \"extracted\": {\n    \"nombre\": \"Miguel Ángel\",\n    \"ciudad\": \"Riobacha\",\n    \"moto_interest\": \"Boxer 100\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 17,
+      "name": "cedula_explicita",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Me llamo Sergio Ortiz de Valledupar, mi cédula es 1234567890 y busco moto doble propósito.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario se identificó como Sergio Ortiz de Valledupar, proporcionó su cédula y expresó interés en una moto doble propósito.\",\n  \"extracted\": {\n    \"nombre\": \"Sergio Ortiz\",\n    \"ciudad\": \"Valledupar\",\n    \"moto_interest\": \"doble propósito\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"1234567890\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Usuario se identificó con nombre, ciudad y cédula, y mencionó interés en moto doble propósito.\",\n  \"extracted\": {\n    \"nombre\": \"Sergio Ortiz\",\n    \"ciudad\": \"Valledupar\",\n    \"moto_interest\": \"moto doble propósito\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"1234567890\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 18,
+      "name": "servicios_publicos",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Soy Camila Herrera de Popayán. Tengo gas natural y plan de celular a mi nombre.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [
+          "servicios_publicos"
+        ],
+        "raw": "{\n  \"summary\": \"El usuario se identifica como Camila Herrera de Popayán y menciona que tiene gas natural y plan de celular a su nombre.\",\n  \"extracted\": {\n    \"nombre\": \"Camila Herrera\",\n    \"ciudad\": \"Popayán\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"Sí\",\n    \"tiene_gas_natural\": \"Sí\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Camila Herrera de Popayán mencionó tener gas natural y plan de celular a su nombre.\",\n  \"extracted\": {\n    \"nombre\": \"Camila Herrera\",\n    \"ciudad\": \"Popayán\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"Gas Natural, Plan Celular\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"Sí\",\n    \"tiene_gas_natural\": \"Sí\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 19,
+      "name": "estudiante",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Hola, soy Daniela Castaño de Tunja, estudiante, busco moto barata.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Daniela Castaño de Tunja, estudiante, busca moto barata.\",\n  \"extracted\": {\n    \"nombre\": \"Daniela Castaño\",\n    \"ciudad\": \"Tunja\",\n    \"moto_interest\": \"moto barata\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"Estudiante\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Daniela Castaño de Tunja, estudiante, busca moto barata.\",\n  \"extracted\": {\n    \"nombre\": \"Daniela Castaño\",\n    \"ciudad\": \"Tunja\",\n    \"moto_interest\": \"moto barata\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"estudiante\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": 20,
+      "name": "pensionado",
+      "prompt": "Extrae la información del prospecto en JSON estricto siguiendo el schema.\n\nHISTORIAL DE CHAT:\nUsuario: Me llamo Fernando Beltrán de Neiva, pensionado, gano 1.5 millones.\n\nÚLTIMA PREGUNTA DEL BOT: \n",
+      "baseline": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"El usuario se identificó como Fernando Beltrán de Neiva, pensionado, con ingresos de 1.5 millones.\",\n  \"extracted\": {\n    \"nombre\": \"Fernando Beltrán\",\n    \"ciudad\": \"Neiva\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"Pensionado\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"1500000\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "qwen": {
+        "ok": true,
+        "missing": [],
+        "failed": [],
+        "raw": "{\n  \"summary\": \"Usuario se identificó como Fernando Beltrán, pensionado, con ingresos de 1.5 millones.\",\n  \"extracted\": {\n    \"nombre\": \"Fernando Beltrán\",\n    \"ciudad\": \"Neiva\",\n    \"moto_interest\": \"\",\n    \"habeas_data_accepted\": false,\n    \"habeas_data_accepted_sent\": false,\n    \"forma_pago\": \"\",\n    \"ocupacion\": \"Pensionado\",\n    \"datacredito\": \"\",\n    \"vivienda\": \"\",\n    \"servicios_publicos\": \"\",\n    \"moto_confirmada\": false,\n    \"cedula_usuario\": \"\",\n    \"ponytail_status\": \"\",\n    \"ponytail_score\": \"\",\n    \"ingresos_mensuales\": \"1500000\",\n    \"gastos_mensuales\": \"\",\n    \"plan_celular\": \"\",\n    \"tiene_gas_natural\": \"\",\n    \"mora_y_paz_salvo\": \"\"\n  }\n}"
+      },
+      "verdict": "PASS"
+    }
+  ]
+}
