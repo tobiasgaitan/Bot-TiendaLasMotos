@@ -198,6 +198,39 @@ def _is_audio_mime(mime_type: str) -> bool:
     return mime_type.startswith("audio/")
 
 
+def _parts_have_audio(parts: List[Any]) -> bool:
+    """Detecta si una lista de parts contiene audio inline."""
+    for part in parts:
+        if SDK_AVAILABLE and types is not None and isinstance(part, types.Part):
+            blob = getattr(part, "inline_data", None)
+            if blob is not None and _is_audio_mime(blob.mime_type):
+                return True
+            continue
+        inline_data = getattr(part, "inline_data", None) or getattr(part, "inlineData", None)
+        if inline_data:
+            mime_type = getattr(inline_data, "mime_type", "") or getattr(inline_data, "mimeType", "")
+            if _is_audio_mime(mime_type):
+                return True
+            continue
+        if isinstance(part, dict):
+            inline_data = part.get("inline_data") or part.get("inlineData")
+            if inline_data:
+                mime_type = inline_data.get("mime_type") or inline_data.get("mimeType", "")
+                if _is_audio_mime(mime_type):
+                    return True
+    return False
+
+
+def _contents_have_audio(contents: Any) -> bool:
+    """Detecta si contents (str, Part o lista) contiene audio inline."""
+    return _parts_have_audio(_normalize_parts(contents))
+
+
+def _qwen_audio_enabled() -> bool:
+    """Guard opt-in para audio por Qwen. Default false: audio va a Gemini."""
+    return os.getenv("QWEN_AUDIO_ENABLED", "false").lower() == "true"
+
+
 def _part_to_openai_content(part: Any, index: int = 0) -> Optional[Dict[str, Any]]:
     """Convierte un google-genai Part a un fragmento de content OpenAI."""
     if not SDK_AVAILABLE or types is None:
@@ -367,6 +400,34 @@ def _build_openai_messages(
             system_extras.append(
                 "[TRANSPORT SCHEMA ANNEX] You MUST obey this JSON schema: "
                 + json.dumps(schema_dict, ensure_ascii=False)
+            )
+            # FIELD RULES: anti-booleanización de campos STRING abiertos (derivado del schema)
+            properties = schema_dict.get("properties") if isinstance(schema_dict, dict) else None
+            if properties:
+                field_rules = ["[TRANSPORT FIELD RULES]"]
+                for field_name, prop in properties.items():
+                    field_type = (prop.get("type") if isinstance(prop, dict) else "").lower()
+                    if field_type == "string":
+                        field_rules.append(
+                            f"- {field_name}: extrae el valor literal o entidad mencionada; "
+                            "PROHIBIDO colapsar a 'Sí'/'No' salvo que la descripción lo exija."
+                        )
+                    elif field_type == "boolean":
+                        field_rules.append(f"- {field_name}: responde true o false (JSON boolean).")
+                if len(field_rules) > 1:
+                    system_extras.append("\n".join(field_rules))
+
+        # TOOLCALL RULES: calibración anti-inferencia para Rama A nativa
+        tools = getattr(config, "tools", None)
+        if tools:
+            system_extras.append(
+                "[TRANSPORT TOOLCALL RULES]\n"
+                "1. Extrae como argumentos ÚNICAMENTE lo que el usuario expresó literalmente; "
+                "prohibido inferir argumentos opcionales no mencionados.\n"
+                "2. Si el usuario expresa montos en forma relativa (ej. 'mínimos', 'palos') y la "
+                "herramienta exige montos absolutos para un cálculo útil, NO invoques la herramienta; "
+                "pide la cifra absoluta.\n"
+                "3. Invoca la herramienta SOLO cuando sus argumentos obligatorios estén explícitos."
             )
 
     if emulated_toolcall:
@@ -885,6 +946,11 @@ class DualProviderChat:
         if not await is_qwen_enabled_async():
             return await self._send_via_gemini(contents, config)
 
+        # Guard de audio: contenido de audio va a Gemini salvo QWEN_AUDIO_ENABLED=true
+        history_parts = [p for turn in self._history for p in turn.get("parts", [])]
+        if (_parts_have_audio(current_parts) or _parts_have_audio(history_parts)) and not _qwen_audio_enabled():
+            return await self._send_via_gemini(contents, config)
+
         # Modo Qwen
         emulated = os.getenv("QWEN_TOOLCALL_MODE", "native").lower() == "emulated"
         messages, _ = _build_openai_messages(
@@ -936,7 +1002,7 @@ class DualProviderChat:
         if gemini is None:
             raise RuntimeError("Gemini backend not available")
         if self._gemini_chat is None:
-            self._gemini_chat = gemini.aio.chats.create(model=self._model)
+            self._gemini_chat = gemini.aio.chats.create(model=_gemini_model())
         response = await self._gemini_chat.send_message(contents, config=config)
         # Guardar parts gemini en historial (copia superficial)
         gemini_parts = []
@@ -1111,6 +1177,12 @@ class DualProviderClient:
             return gemini.models.generate_content(model=model, contents=contents, config=config)
 
         # Qwen sync path
+        if _contents_have_audio(contents) and not _qwen_audio_enabled():
+            gemini = self._get_gemini_sync()
+            if gemini is None:
+                raise RuntimeError("Gemini backend not available")
+            return gemini.models.generate_content(model=_gemini_model(), contents=contents, config=config)
+
         emulated = os.getenv("QWEN_TOOLCALL_MODE", "native").lower() == "emulated"
         messages, _ = _build_openai_messages(
             contents=contents,
@@ -1148,6 +1220,12 @@ class DualProviderClient:
             return await gemini.aio.models.generate_content(model=model, contents=contents, config=config)
 
         # Qwen async path
+        if _contents_have_audio(contents) and not _qwen_audio_enabled():
+            gemini = await self._get_gemini_async()
+            if gemini is None:
+                raise RuntimeError("Gemini backend not available")
+            return await gemini.aio.models.generate_content(model=_gemini_model(), contents=contents, config=config)
+
         emulated = os.getenv("QWEN_TOOLCALL_MODE", "native").lower() == "emulated"
         messages, _ = _build_openai_messages(
             contents=contents,

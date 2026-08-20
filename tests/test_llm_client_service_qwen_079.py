@@ -208,10 +208,15 @@ async def test_t3_config_translation_to_openai_params(qwen_env, monkeypatch):
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_t4_multimodal_contents_translation(qwen_env, monkeypatch):
-    """T4: texto, image_url data URL y audio input_audio se traducen al payload OpenAI."""
+    """T4: texto, image_url data URL y audio input_audio se traducen al payload OpenAI.
+
+    Nota: audio va a Gemini por defecto (guard de audio). Se activa QWEN_AUDIO_ENABLED
+    para certificar que la traducción input_audio sigue disponible vía opt-in.
+    """
     monkeypatch.setattr(
         "app.services.llm_client_service.is_qwen_enabled", lambda: True
     )
+    monkeypatch.setenv("QWEN_AUDIO_ENABLED", "true")
 
     image_bytes = b"fake-image-png"
     audio_bytes = b"fake-audio-wav"
@@ -797,9 +802,9 @@ async def test_t14_complex_response_schema_translation(qwen_env, monkeypatch):
         content = system_msg["content"]
         assert "TRANSPORT SCHEMA ANNEX" in content
 
-        # Extraer JSON del annex
-        start = content.find("{")
-        schema_json = content[start:]
+        # Extraer JSON del annex (aislado de FIELD RULES posteriores)
+        prefix = "[TRANSPORT SCHEMA ANNEX] You MUST obey this JSON schema: "
+        schema_json = content.split(prefix, 1)[1].split("\n[", 1)[0]
         schema = json.loads(schema_json)
         assert schema["type"] == "OBJECT"
         assert "properties" in schema
@@ -1172,3 +1177,204 @@ async def test_t24_failover_uses_gemini_model_id_regardless_of_role(qwen_env, mo
             await facade.aio.models.generate_content(model="qwen-turbo", contents="hola")
             _, kwargs = mock_gemini.aio.models.generate_content.call_args
             assert kwargs["model"] == "gemini-2.5-flash-role"
+
+
+# ---------------------------------------------------------------------------
+# T25 — Audio: por defecto va a Gemini; nunca llega a DashScope
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_t25_audio_pinned_to_gemini_by_default(qwen_env, monkeypatch):
+    """T25: contenido con audio + flag Qwen on + QWEN_AUDIO_ENABLED ausente → path Gemini."""
+    monkeypatch.setattr("app.services.llm_client_service.is_qwen_enabled", lambda: True)
+    monkeypatch.delenv("QWEN_AUDIO_ENABLED", raising=False)
+
+    audio_part = types.Part.from_bytes(data=b"fake-audio", mime_type="audio/wav")
+    gemini_response = _gemini_response(text="transcripción gemini")
+
+    httpx_calls: List[Dict[str, Any]] = []
+
+    async def _capture_post(*args, **kwargs):
+        httpx_calls.append(kwargs["json"])
+        m = MagicMock()
+        m.status_code = 200
+        m.json.return_value = _openai_response_json(content="ok")
+        m.raise_for_status.return_value = None
+        return m
+
+    with patch("httpx.AsyncClient.post", side_effect=_capture_post):
+        with patch("app.services.genai_client_service.genai.Client") as mock_client_class:
+            mock_gemini = MagicMock()
+            mock_gemini.aio.models.generate_content = AsyncMock(return_value=gemini_response)
+            mock_client_class.return_value = mock_gemini
+
+            facade = await get_shared_llm_client_async(role="multimodal")
+            response = await facade.aio.models.generate_content(
+                model="qwen-omni-turbo",
+                contents=["transcribe este audio", audio_part],
+            )
+
+            assert response.text == "transcripción gemini"
+            assert len(httpx_calls) == 0
+            _, kwargs = mock_gemini.aio.models.generate_content.call_args
+            assert kwargs["model"] == os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash")
+
+
+# ---------------------------------------------------------------------------
+# T26 — Audio opt-in a Qwen; fail-closed: flag off anula opt-in
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_t26_audio_opt_in_and_fail_closed(qwen_env, monkeypatch):
+    """T26: QWEN_AUDIO_ENABLED=true envía audio a Qwen; flag off fuerza Gemini."""
+    monkeypatch.setattr("app.services.llm_client_service.is_qwen_enabled", lambda: True)
+    monkeypatch.setenv("QWEN_AUDIO_ENABLED", "true")
+
+    audio_part = types.Part.from_bytes(data=b"fake-audio", mime_type="audio/wav")
+
+    httpx_calls: List[Dict[str, Any]] = []
+
+    async def _capture_post(*args, **kwargs):
+        httpx_calls.append(kwargs["json"])
+        m = MagicMock()
+        m.status_code = 200
+        m.json.return_value = _openai_response_json(content="ok")
+        m.raise_for_status.return_value = None
+        return m
+
+    with patch("httpx.AsyncClient.post", side_effect=_capture_post):
+        facade = await get_shared_llm_client_async(role="multimodal")
+        await facade.aio.models.generate_content(
+            model="qwen-omni-turbo",
+            contents=["transcribe", audio_part],
+        )
+        assert len(httpx_calls) == 1
+
+    # Fase 2: flag apagado anula el opt-in → Gemini
+    reset_shared_llm_clients()
+    reset_shared_clients()
+    monkeypatch.setenv("QWEN_AUDIO_ENABLED", "true")
+    monkeypatch.setattr("app.services.llm_client_service.is_qwen_enabled", lambda: False)
+    gemini_response = _gemini_response(text="gemini")
+
+    httpx_calls.clear()
+    with patch("httpx.AsyncClient.post", side_effect=_capture_post):
+        with patch("app.services.genai_client_service.genai.Client") as mock_client_class:
+            mock_gemini = MagicMock()
+            mock_gemini.aio.models.generate_content = AsyncMock(return_value=gemini_response)
+            mock_client_class.return_value = mock_gemini
+
+            facade = await get_shared_llm_client_async(role="multimodal")
+            await facade.aio.models.generate_content(
+                model="qwen-omni-turbo",
+                contents=["transcribe", audio_part],
+            )
+            assert len(httpx_calls) == 0
+
+
+# ---------------------------------------------------------------------------
+# T27 — FIELD-RULES annex derivado del schema; ausente sin schema
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_t27_field_rules_annex(qwen_env, monkeypatch):
+    """T27: FIELD-RULES presente en rama Qwen con response_schema; ausente sin schema."""
+    monkeypatch.setattr("app.services.llm_client_service.is_qwen_enabled", lambda: True)
+
+    schema = types.Schema(
+        type="OBJECT",
+        properties={
+            "name": types.Schema(type="STRING", description="Nombre del usuario"),
+            "active": types.Schema(type="BOOLEAN"),
+        },
+        required=["name"],
+    )
+
+    captured: List[Dict[str, Any]] = []
+
+    async def _capture_post(*args, **kwargs):
+        captured.append(kwargs["json"])
+        m = MagicMock()
+        m.status_code = 200
+        m.json.return_value = _openai_response_json(content="ok")
+        m.raise_for_status.return_value = None
+        return m
+
+    with patch("httpx.AsyncClient.post", side_effect=_capture_post):
+        facade = await get_shared_llm_client_async()
+        await facade.aio.models.generate_content(
+            model="qwen-turbo",
+            contents="extrae",
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=schema,
+            ),
+        )
+        content = captured[0]["messages"][0]["content"]
+        assert "[TRANSPORT FIELD RULES]" in content
+        assert "name: extrae el valor literal" in content
+        assert "active: responde true o false" in content
+
+    # Sin response_schema: no FIELD RULES
+    captured.clear()
+    with patch("httpx.AsyncClient.post", side_effect=_capture_post):
+        facade = await get_shared_llm_client_async()
+        await facade.aio.models.generate_content(
+            model="qwen-turbo",
+            contents="hola",
+            config=types.GenerateContentConfig(temperature=0.2),
+        )
+        content = captured[0]["messages"][0]["content"]
+        assert "[TRANSPORT FIELD RULES]" not in content
+
+
+# ---------------------------------------------------------------------------
+# T28 — TOOLCALL RULES annex solo con tools; ausente sin tools
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_t28_toolcall_rules_annex(qwen_env, monkeypatch):
+    """T28: TOOLCALL RULES presente solo en rama Qwen con tools."""
+    monkeypatch.setattr("app.services.llm_client_service.is_qwen_enabled", lambda: True)
+
+    tool = types.Tool(
+        function_declarations=[
+            types.FunctionDeclaration(
+                name="search_catalog",
+                description="Busca motos",
+                parameters={
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                },
+            )
+        ]
+    )
+
+    captured: List[Dict[str, Any]] = []
+
+    async def _capture_post(*args, **kwargs):
+        captured.append(kwargs["json"])
+        m = MagicMock()
+        m.status_code = 200
+        m.json.return_value = _openai_response_json(content="ok")
+        m.raise_for_status.return_value = None
+        return m
+
+    with patch("httpx.AsyncClient.post", side_effect=_capture_post):
+        facade = await get_shared_llm_client_async()
+        await facade.aio.models.generate_content(
+            model="qwen-turbo",
+            contents="busco Apache",
+            config=types.GenerateContentConfig(tools=[tool]),
+        )
+        content = captured[0]["messages"][0]["content"]
+        assert "[TRANSPORT TOOLCALL RULES]" in content
+        assert "Extrae como argumentos ÚNICAMENTE" in content
+
+    # Sin tools: no TOOLCALL RULES
+    captured.clear()
+    with patch("httpx.AsyncClient.post", side_effect=_capture_post):
+        facade = await get_shared_llm_client_async()
+        await facade.aio.models.generate_content(
+            model="qwen-turbo",
+            contents="hola",
+        )
+        content = captured[0]["messages"][0]["content"]
+        assert "[TRANSPORT TOOLCALL RULES]" not in content
