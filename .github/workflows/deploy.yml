@@ -80,7 +80,7 @@ jobs:
             --source . \
             --region us-central1 \
             --project tiendalasmotos \
-            --set-env-vars="PHONE_NUMBER_ID=${{ secrets.PHONE_NUMBER_ID }},FIRESTORE_COLLECTION=prospectos,WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }},ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }},WHATSAPP_APP_SECRET=${{ secrets.WHATSAPP_APP_SECRET }},LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }},LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }},LANGFUSE_HOST=${{ secrets.LANGFUSE_HOST }},GEMINI_COLD_CALL_TIMEOUT_S=30" \
+            --set-env-vars="PHONE_NUMBER_ID=${{ secrets.PHONE_NUMBER_ID }},FIRESTORE_COLLECTION=prospectos,WEBHOOK_VERIFY_TOKEN=${{ secrets.WEBHOOK_VERIFY_TOKEN }},ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }},WHATSAPP_APP_SECRET=${{ secrets.WHATSAPP_APP_SECRET }},LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }},LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }},LANGFUSE_HOST=https://cloud.langfuse.com,GEMINI_COLD_CALL_TIMEOUT_S=30" \
             --set-secrets="WHATSAPP_TOKEN=WHATSAPP_TOKEN:latest,QWEN_OMNI_API_KEY=QWEN_OMNI_API_KEY:latest,QWEN_TURBO_API_KEY=QWEN_TURBO_API_KEY:latest,QWEN_BASE_URL=QWEN_BASE_URL:latest" \
             --min-instances=1 \
             --allow-unauthenticated

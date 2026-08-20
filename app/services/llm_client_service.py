@@ -990,8 +990,10 @@ def _call_qwen_sync(
     timeout: float,
     role: str = "multimodal",
 ) -> Dict[str, Any]:
+    model_id = _qwen_model(role=role)
+    logger.info(f"🚀 [QWEN ROUTE] provider=dashscope model={model_id} role={role}")
     payload = {
-        "model": _qwen_model(role=role),
+        "model": model_id,
         "messages": messages,
         **params,
     }
@@ -1011,8 +1013,10 @@ async def _call_qwen_async(
     timeout: float,
     role: str = "multimodal",
 ) -> Dict[str, Any]:
+    model_id = _qwen_model(role=role)
+    logger.info(f"🚀 [QWEN ROUTE] provider=dashscope model={model_id} role={role}")
     payload = {
-        "model": _qwen_model(role=role),
+        "model": model_id,
         "messages": messages,
         **params,
     }
