@@ -135,21 +135,25 @@ def _read_qwen_flag_from_firestore() -> Optional[bool]:
 def is_qwen_enabled() -> bool:
     """
     Cache-aware, thread-safe flag reader.
-    Error/doc ausente → fallback a env QWEN_ENABLED (default false).
+    Error/doc ausente -> fallback a env QWEN_ENABLED (default false).
     """
     global _flag_cache_value, _flag_cache_time
     with _flag_lock:
         now = time.monotonic()
         if _flag_cache_value is not None and (now - _flag_cache_time) < _QWEN_FLAG_TTL_S:
+            logger.info(f"🔁 [QWEN FLAG] cache hit value={_flag_cache_value} age={now - _flag_cache_time:.1f}s")
             return _flag_cache_value
 
     val = _read_qwen_flag_from_firestore()
+    logger.info(f"🔁 [QWEN FLAG] firestore_read val={val}")
     if val is None:
         val = _env_bool("QWEN_ENABLED", False)
+        logger.info(f"🔁 [QWEN FLAG] env fallback val={val}")
 
     with _flag_lock:
         _flag_cache_value = val
         _flag_cache_time = time.monotonic()
+    logger.info(f"🔁 [QWEN FLAG] resolved val={val}")
     return val
 
 
@@ -1169,7 +1173,9 @@ class DualProviderChat:
         current_parts = _normalize_parts(contents)
         self._history.append({"role": "user", "parts": current_parts})
 
-        if not await is_qwen_enabled_async():
+        flag = await is_qwen_enabled_async()
+        logger.info(f"🚦 [QWEN ROUTE DECISION] qwen_enabled={flag} role={self._facade._role}")
+        if not flag:
             return await self._send_via_gemini(contents, config)
 
         # Guard de audio: contenido de audio va a Gemini salvo QWEN_AUDIO_ENABLED=true
