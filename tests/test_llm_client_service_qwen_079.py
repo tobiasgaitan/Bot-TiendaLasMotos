@@ -253,7 +253,7 @@ async def test_t4_multimodal_contents_translation(qwen_env, monkeypatch):
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_t5_rama_a_native_toolcalls(qwen_env, monkeypatch):
-    """T5: tools nativas se pasan; tool_calls de Qwen se mapean a parts function_call."""
+    """T5: tools nativas se pasan serializadas a JSON; tool_calls de Qwen se mapean a parts function_call."""
     monkeypatch.setattr(
         "app.services.llm_client_service.is_qwen_enabled", lambda: True
     )
@@ -299,10 +299,55 @@ async def test_t5_rama_a_native_toolcalls(qwen_env, monkeypatch):
         assert payload["tools"][0]["type"] == "function"
         assert payload["tools"][0]["function"]["name"] == "search_catalog"
 
+        # [BOT-PLAN-GATES-OVERRIDE-080] Pin reforzado: mordida contra schema sin serializar.
+        # Si _convert_tools_to_openai deja instancias types.Schema, json.dumps explota.
+        assert json.dumps(payload) is not None
+        parameters = payload["tools"][0]["function"]["parameters"]
+        assert isinstance(parameters, dict)
+        assert parameters.get("type", "").lower() == "object"
+        assert "properties" in parameters
+        assert "query" in parameters["properties"]
+        assert parameters.get("required") == ["query"]
+
         parts = response.candidates[0].content.parts
         assert len(parts) == 1
         assert parts[0].function_call.name == "search_catalog"
         assert parts[0].function_call.args == {"query": "Apache 160"}
+
+
+def test_t5b_convert_tools_to_openai_serializes_schema():
+    """T5b: _convert_tools_to_openai devuelve dicts JSON-nativos incluso cuando
+    google-genai expone types.Schema en decl.parameters."""
+    from app.services.llm_client_service import _convert_tools_to_openai
+
+    tool = types.Tool(
+        function_declarations=[
+            types.FunctionDeclaration(
+                name="calculate_credit_score",
+                description="Calcula score",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "ingresos_mensuales": {"type": "string"},
+                        "gastos_mensuales": {"type": "string"},
+                    },
+                    "required": ["ingresos_mensuales", "gastos_mensuales"],
+                },
+            )
+        ]
+    )
+    openai_tools = _convert_tools_to_openai([tool])
+    assert len(openai_tools) == 1
+    assert openai_tools[0]["type"] == "function"
+    func = openai_tools[0]["function"]
+    assert func["name"] == "calculate_credit_score"
+    # Mordida: la salida debe ser serializable por httpx/json.dumps.
+    assert json.dumps(openai_tools) is not None
+    parameters = func["parameters"]
+    assert isinstance(parameters, dict)
+    assert parameters["type"].lower() == "object"
+    assert set(parameters["properties"].keys()) == {"ingresos_mensuales", "gastos_mensuales"}
+    assert parameters["required"] == ["ingresos_mensuales", "gastos_mensuales"]
 
 
 # ---------------------------------------------------------------------------

@@ -297,7 +297,7 @@ def _convert_tools_to_openai(tools: List[Any]) -> List[Dict[str, Any]]:
                         "function": {
                             "name": decl.name or "",
                             "description": decl.description or "",
-                            "parameters": decl.parameters or {},
+                            "parameters": _serialize_response_schema(decl.parameters) or {},
                         },
                     }
                 )
