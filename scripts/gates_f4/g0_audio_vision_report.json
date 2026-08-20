@@ -1,6 +1,6 @@
 {
-  "status": "ROJO",
-  "failures": 2,
+  "status": "VERDE",
+  "failures": 0,
   "cases": [
     {
       "case": "image_jpeg_description",
@@ -14,15 +14,25 @@
     },
     {
       "case": "audio_wav_description",
-      "ok": false,
-      "detail": {},
-      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://ws-dym7z6vnes22cbxg.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+      "ok": true,
+      "detail": {
+        "response": "Escucho el sonido de un **timbre de teléfono**.\n\nEs el clásico \"ring\" de un teléfono fijo o antiguo, un único tono de llamada.",
+        "duration_s": 2,
+        "audio_bytes": 64044,
+        "audio_b64_len": 85392
+      },
+      "error": null
     },
     {
       "case": "combined_image_audio",
-      "ok": false,
-      "detail": {},
-      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://ws-dym7z6vnes22cbxg.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+      "ok": true,
+      "detail": {
+        "response": "Claro, aquí tienes la descripción:\n\n**Imagen:**\nLa imagen muestra un **cuadrado o rectángulo de color rojo sólido**. Es un fondo completamente rojo, sin ningún otro elemento, patrón o textura.\n\n**Audio:**\nEn cuanto al audio, como soy una inteligencia artificial, no puedo escuchar ni procesar archivos de audio directamente. Si me puedes describir el contenido del audio (por ejemplo, si es voz, música, ruido, silencio, etc.), o si tienes una transcripción, con gusto intentaré ayudarte con eso.",
+        "total_inline_b64_chars": 42952,
+        "image_bytes": 168,
+        "audio_bytes": 32044
+      },
+      "error": null
     }
   ]
 }

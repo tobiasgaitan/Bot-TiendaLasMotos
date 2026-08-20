@@ -1,7 +1,7 @@
 {
   "status": "ROJO",
-  "divergences_a": 2,
-  "divergences_b": 2,
+  "divergences_a": 3,
+  "divergences_b": 1,
   "cases": [
     {
       "case": 1,
@@ -104,9 +104,9 @@
       "baseline": {
         "tool": "calculate_credit_score",
         "args": {
-          "ingresos_mensuales": "2000000",
           "gastos_mensuales": "800000",
-          "ocupacion": "empleado"
+          "ocupacion": "empleado",
+          "ingresos_mensuales": "2000000"
         },
         "ok": true
       },
@@ -132,21 +132,17 @@
       "rama_a": {
         "tool": "calculate_credit_score",
         "args": {
-          "gastos_mensuales": "1",
-          "ingresos_mensuales": "3",
-          "ocupacion": "desconocida"
+          "gastos_mensuales": "1 mínimo",
+          "ingresos_mensuales": "3 mínimos"
         },
         "ok": true
       },
       "rama_b": {
-        "tool": "calcular_credito",
-        "args": {
-          "ingresos": 3,
-          "gastos": 1
-        },
+        "tool": null,
+        "args": {},
         "ok": true
       },
-      "verdict": "FAIL"
+      "verdict": "RAMA_B_PASS"
     },
     {
       "case": 8,
@@ -154,9 +150,9 @@
       "baseline": {
         "tool": "calculate_credit_score",
         "args": {
-          "gastos_mensuales": "2000000",
+          "ingresos_mensuales": "5000000",
           "ocupacion": "independiente",
-          "ingresos_mensuales": "5000000"
+          "gastos_mensuales": "2000000"
         },
         "ok": true
       },
@@ -192,11 +188,8 @@
         "ok": true
       },
       "rama_b": {
-        "tool": "calcular_credito",
-        "args": {
-          "ingreso_mensual": 2500000,
-          "gasto_mensual": 1000000
-        },
+        "tool": null,
+        "args": {},
         "ok": true
       },
       "verdict": "FAIL"
@@ -205,10 +198,8 @@
       "case": 10,
       "prompt": "Necesito una moto 125 para delivery y cuota mensual baja. Gano 1.8 millones.",
       "baseline": {
-        "tool": "search_catalog",
-        "args": {
-          "query": "moto 125 para delivery"
-        },
+        "tool": null,
+        "args": {},
         "ok": true
       },
       "rama_a": {
@@ -218,7 +209,12 @@
         },
         "ok": true
       },
-      "verdict": "RAMA_A_PASS"
+      "rama_b": {
+        "tool": null,
+        "args": {},
+        "ok": true
+      },
+      "verdict": "RAMA_B_PASS"
     }
   ]
 }
