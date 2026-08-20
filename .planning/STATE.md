@@ -1,16 +1,40 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.76.6 | Hito: BOT-BUILD-TOOLCALL-HARDEN-085 — Guard numérico + re-prompt de transporte para Rama A Qwen; caso 7-type CERRADO; paridad-de-política ROJO por inestabilidad run-to-run de Rama A turbo (caso 8); F3 sigue bloqueado a la espera de dictamen del Auditor | Coherence Score: 1.000 (918 recolectados físico = 913 tests/ + 5 scripts/; 918/918 PASSED; 0 failed; 0 skipped)
+Versión: v10.76.7 | Hito: BOT-BUILD-FLIP-QWEN-086 — F3 ejecutado: `llm_runtime/global.qwen_enabled=true` en beta; ruta Qwen verificada en vivo (PASO 1 + tool-calling); fix de `LANGFUSE_HOST` malformado; patch de prompt `PREFIJO_FICHA_TECNICA` para alinear PCC bajo Qwen; rollback drill exitoso; F4.5 monitoring pendiente | Coherence Score: 1.000 (918 recolectados físico = 913 tests/ + 5 scripts/; 918/918 PASSED; 0 failed; 0 skipped)
 
 ### Current Position
-**Phase:** BOT-BUILD-TOOLCALL-HARDEN-085 (v10.76.6) — hardening adicional del adapter `DualProviderClient` bajo orden literal 'HARDEN' de Tobias: guard numérico declarativo que suprime `calculate_credit_score` cuando `ingresos_mensuales`/`gastos_mensuales` no son montos absolutos plausibles en COP, seguido de un re-prompt de transporte (máx. 1) para pedir la cifra absoluta o continuar sin calcular. Commit A: `app/services/llm_client_service.py` — `_is_plausible_cop_amount`, `_find_invalid_numeric_toolcall`, `_maybe_reprompt_after_suppression_sync`/`_async` en los 3 call-sites Rama A Qwen; cero impacto en Rama B y Gemini; tests T32-T36. Commit B: re-ejecución de G0-TOOLCALL con `G0_POLICY_PARITY=1` (paridad-de-política: Rama A debe coincidir con baseline en los 10 casos; Rama B solo evidencia). Resultados: caso 7-type CERRADO (Rama A suprime fc con montos relativos y retorna `null`, igualando baseline); caso 8 diverge (baseline invoca `calculate_credit_score`, Rama A retorna `null` — inestabilidad run-to-run de qwen-turbo); casos 1-6, 9, 10 PASS. C4 intacto; doc `llm_runtime/global.qwen_enabled=false` intacto. Eval 918/918 Score 1.000.
-**Status:** HARDEN IMPLEMENTADO — G0-TOOLCALL PARITY ROJO (v10.76.6):
-  - **Objetivo:** cerrar el modo de fallo del caso 7-type (montos relativos en `calculate_credit_score`) mediante guard numérico de transporte, y medir la estabilidad de Rama A bajo paridad-de-política estricta.
-  - **Implementación:** Commit A — validador + supresión + re-prompt en `llm_client_service.py` + T32-T36 + modo estricto `G0_POLICY_PARITY=1` en `scripts/gates_f4/g0_toolcall.py`. Commit B — gate estricto con reporte `g0_toolcall_report_policy_parity.json`.
-  - **Pins:** T32 (fc con `ingresos_mensuales="3 mínimos"` → suprimido, re-prompt devuelve texto, log `[TOOL-SUPPRESS]` sin valor crudo); T33 (monto plausible preservado, sin re-prompt); T34 (excepción del validador → fail-open, fc preservado); T35 (Rama B emulada sin supresión); T36 (2ª respuesta inválida → fail-open sin 3er intento).
+**Phase:** BOT-BUILD-FLIP-QWEN-086 (v10.76.7) — ejecución productiva del flip a Qwen primario en beta bajo orden literal 'FLIP-AHORA'.
+- **Flag:** Firestore `llm_runtime/global.qwen_enabled=true` (beta); TTL ≤30s; hot-reload probado (false→Gemini, true→Qwen).
+- **Ruta verificada en vivo:** logs `🚦 [QWEN ROUTE DECISION] qwen_enabled=True role=agentic` + `🚀 [QWEN ROUTE] provider=dashscope model=qwen-turbo role=agentic`.
+- **PASO 1 canónico:** respuesta con precio ($), imagen Markdown y prefijo `Ficha Tecnica:`; PCC `has_price=True has_image=True has_ficha=True`.
+- **Tool-calling:** `calculate_credit_score` invocado bajo Qwen (score 460 → copy R4 de rechazo); guard numérico `[TOOL-SUPPRESS]` activo para montos implausibles, con fail-open documentado.
+- **Infra/observabilidad:** `LANGFUSE_HOST` corregido de valor malformado `[https://cloud.langfuse.com](https://cloud.langfuse.com)` a `https://cloud.langfuse.com` en `deploy.yml`/`deploy-beta.yml`; telemetría Langfuse restaurada y trazas fluyendo.
+- **Prompt:** regla `PREFIJO_FICHA_TECNICA` agregada a `app/core/personality.json`, `app/core/prompts.py` y Firestore `configuracion/juan_pablo_personality` para cerrar brecha PCC bajo Qwen; paridad repo↔Firestore restaurada.
+- **Eval:** Score 1.000 ≥ 0.9 — DEPLOY AUTHORIZED ✅. 918/918 PASSED.
+- **Pendiente:** ventana F4.5 de monitoreo (24-48h), drill de rollback documentado, y decisión de tráfico a prod.
+
+**Status:** FLIP BETA EJECUTADO — F4.5 EN CURSO (v10.76.7):
+  - **Objetivo:** ejecutar el flip de F3 a Qwen primario en beta, verificar en vivo PASO 1 + tool-calling, reparar telemetría Langfuse y estabilizar el formato de ficha técnica bajo Qwen antes del monitoreo F4.5.
+  - **Implementación:**
+    - Commits 086-A a 086-F: flip de `llm_runtime/global.qwen_enabled=true`; instrumentación y limpieza de logs de ruta Qwen en `app/services/llm_client_service.py`; corrección de `LANGFUSE_HOST` malformado en `.github/workflows/deploy.yml` y `.github/workflows/deploy-beta.yml`; patch de prompt `PREFIJO_FICHA_TECNICA` en `app/core/personality.json`, `app/core/prompts.py` y Firestore `configuracion/juan_pablo_personality`.
+  - **Verificación en vivo (beta):**
+    - `/webhook/task-processor` con `X-Task-Token: tiendalasmotos_secret_123`.
+    - PASO 1: catálogo devuelve precio, imagen Markdown y prefijo `Ficha Tecnica:` sin CATALOG_VALIDATION_FAIL.
+    - Tool-calling: `calculate_credit_score` invocado bajo Qwen (score 460, copy R4).
+    - Guard numérico: `[TOOL-SUPPRESS] reason=implausible_absolute_amount` para montos inválidos, con fail-open documentado.
+    - Rollback drill: `qwen_enabled=false` → respuesta vía Gemini en ≤30s; `qwen_enabled=true` → retorno a Qwen.
   - **Eval:** Score 1.000 ≥ 0.9 — DEPLOY AUTHORIZED ✅. 918/918 PASSED; collect-only 918 (913 tests/ + 5 scripts/).
-  - **Cambio acotado:** `app/services/llm_client_service.py` + `tests/test_llm_client_service_qwen_079.py` (T32-T36) + `scripts/gates_f4/g0_toolcall.py` (modo estricto) + `scripts/gates_f4/g0_toolcall_report_policy_parity.json` + C6 docs. C4 intacto: `app/core/prompts.py`, `app/core/personality.json`, `admin.py`, `config_loader.py`, `ai_brain.py`, workflows sin toques.
-  - **Evidencia gates:** G0-TOOLCALL `G0_POLICY_PARITY=1` ROJO (1/10: caso 8 por inestabilidad run-to-run de Rama A turbo; caso 7-type CERRADO; caso 10 PASS). F3 sigue bloqueado hasta dictamen del Auditor; prohibido relajar criterios. Caso 10-type queda sujeto a reclasificación informada (benigno/ambiguo) por Auditor/Tobias; caso 8-type queda registrado como C5-127 (inestabilidad Rama A turbo ante montos con slang).
+  - **Cambios:** `app/services/llm_client_service.py`, `app/core/personality.json`, `app/core/prompts.py`, `.github/workflows/deploy.yml`, `.github/workflows/deploy-beta.yml`, Firestore `llm_runtime/global`, Firestore `configuracion/juan_pablo_personality`.
+  - **Pendiente:** ventana F4.5 (métricas, alertas, rollback drill periódico), H14 registro de notificación a owners de dashboards Langfuse, y decisión de deploy gradual a prod.
+
+### Posición anterior (BOT-BUILD-TOOLCALL-HARDEN-085)
+**Phase:** BOT-BUILD-TOOLCALL-HARDEN-085 (v10.76.6) — hardening adicional del adapter `DualProviderClient` bajo orden literal 'HARDEN' de Tobias: guard numérico declarativo que suprime `calculate_credit_score` cuando `ingresos_mensuales`/`gastos_mensuales` no son montos absolutos plausibles en COP, seguido de un re-prompt de transporte (máx. 1). Commit A: `app/services/llm_client_service.py` — `_is_plausible_cop_amount`, `_find_invalid_numeric_toolcall`, `_maybe_reprompt_after_suppression_sync`/`_async` en los 3 call-sites Rama A Qwen; tests T32-T36. Commit B: re-ejecución de G0-TOOLCALL con `G0_POLICY_PARITY=1`. Resultados: caso 7-type CERRADO; caso 8 diverge (inestabilidad run-to-run de qwen-turbo); casos 1-6, 9, 10 PASS. C4 intacto; doc `llm_runtime/global.qwen_enabled=false` intacto. Eval 918/918 Score 1.000.
+**Status:** HARDEN IMPLEMENTADO — G0-TOOLCALL PARITY ROJO (v10.76.6):
+  - **Objetivo:** cerrar el modo de fallo del caso 7-type (montos relativos en `calculate_credit_score`) mediante guard numérico de transporte.
+  - **Implementación:** validador + supresión + re-prompt en `app/services/llm_client_service.py` + T32-T36 + modo estricto `G0_POLICY_PARITY=1`.
+  - **Pins:** T32-T36 (supresión, plausible, fail-open, Rama B, límite de reintentos).
+  - **Eval:** 918/918 PASSED; Score 1.000.
+  - **Evidencia gates:** G0-TOOLCALL `G0_POLICY_PARITY=1` ROJO (1/10: caso 8). Caso 8 registrado como C5-127; reclasificado como benigno en 086 por Auditor/Tobias.
 
 ### Posición anterior (BOT-BUILD-MIGRATE-QWEN-079 F1)
 **Phase:** BOT-BUILD-MIGRATE-QWEN-079 (v10.76.0) — adapter dual-provider dormido. Facade `DualProviderClient` en `app/services/llm_client_service.py` con routing por llamada (resuelve singleton import-time de `judge_service`), failover DUAL a Gemini, TTL polling ≤30s a Firestore `llm_runtime/global.qwen_enabled` fail-closed sin tocar `admin.py`/`config_loader.py`, ramas A/B de tool-calling bajo 4 candados H3, presupuesto contexto 33K, telemetría `[QWEN FORENSIC]`/`[DUAL FAILOVER]`. Los 4 servicios (`ai_brain`, `vision`, `judge`, `audio`) delegan al facade (~14 líneas editadas). Bindings de secretos `QWEN_OMNI_API_KEY`, `QWEN_TURBO_API_KEY`, `QWEN_BASE_URL` en workflows. C4 intacto: `app/core/prompts.py` y `app/core/personality.json` byte-idénticos. Eval 898/898 Score 1.000.
