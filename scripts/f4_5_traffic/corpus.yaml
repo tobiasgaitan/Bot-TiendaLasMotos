@@ -1,0 +1,430 @@
+# BOT-PLAN-F45-TRAFFIC-087 — Corpus sintético para ventana F4.5
+# PII 100% ficticia. Teléfonos asignados en runtime: 5737700{wave}{arm}{scenario:03}
+# Fuente: reuso adaptado de scripts/gates_f4/g0_toolcall.py, g0_extraction.py, g0_audio_vision.py
+
+meta:
+  version: "1.0"
+  source_plan: "BOT-PLAN-F45-TRAFFIC-087"
+  phone_prefix: "5737700"
+  beta_phone_number_id: "1021779847693778"
+  beta_service_name: "bot-tiendalasmotos-beta"
+  beta_base_url: "https://bot-tiendalasmotos-beta-mbdlq5hwgq-uc.a.run.app"
+  media:
+    image_scenario_id: "image_moto"
+    audio_scenario_id: "audio_moto"
+
+scenarios:
+  # ============================================================
+  # PASO 1 — Catálogo (10)
+  # ============================================================
+  - id: catalog_apache_160
+    type: paso1_catalog
+    turns:
+      - type: text
+        text: "Hola, quiero ver la ficha de la TVS Apache 160."
+
+  - id: catalog_deportivas
+    type: paso1_catalog
+    turns:
+      - type: text
+        text: "Muéstrame motos deportivas que tengan."
+
+  - id: catalog_doble_proposito
+    type: paso1_catalog
+    turns:
+      - type: text
+        text: "Dame opciones de moto doble propósito."
+
+  - id: catalog_150_ciudad
+    type: paso1_catalog
+    turns:
+      - type: text
+        text: "Busco una moto de 150cc para ciudad."
+
+  - id: catalog_125_delivery
+    type: paso1_catalog
+    turns:
+      - type: text
+        text: "Necesito una moto 125 para delivery."
+
+  - id: catalog_automatica
+    type: paso1_catalog
+    turns:
+      - type: text
+        text: "Quiero una moto automática para ciudad."
+
+  - id: catalog_sport_100
+    type: paso1_catalog
+    turns:
+      - type: text
+        text: "¿Tienen la TVS Sport 100?"
+
+  - id: catalog_nkd_competitor
+    type: paso1_catalog
+    turns:
+      - type: text
+        text: "¿Tienen NKD 125?"
+
+  - id: catalog_boxer_competitor
+    type: paso1_catalog
+    turns:
+      - type: text
+        text: "Busco una Boxer 100."
+
+  - id: catalog_trabajo
+    type: paso1_catalog
+    turns:
+      - type: text
+        text: "Busco una moto para trabajo."
+
+  # ============================================================
+  # Crédito — montos plausibles, relativos y slang (8)
+  # ============================================================
+  - id: credit_plausible_2m
+    type: credit_blind
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Gano 2 millones, gasto 800 mil, soy empleado. ¿Cuánto me prestan?"
+
+  - id: credit_combined_work
+    type: credit_blind
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Busco una moto para trabajo y quiero saber si me dan crédito. Gano 2.5 millones, gasto 1 millón."
+
+  - id: credit_relative_minimos
+    type: credit_blind
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Mis ingresos son 3 mínimos y gastos 1 mínimo. Quiero crédito."
+
+  - id: credit_slang_palos
+    type: credit_blind
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Gano 5 palos y gasto 2 palos, independiente. ¿Cuál es mi score crediticio?"
+
+  - id: credit_delivery_cuota
+    type: credit_blind
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Necesito una moto 125 para delivery y cuota mensual baja. Gano 1.8 millones."
+
+  - id: credit_apache_cuota
+    type: credit_blind
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "¿En cuánto queda la cuota mensual de la TVS Apache 160?"
+
+  - id: credit_nkd_cuota
+    type: credit_blind
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Quiero simular crédito para la NKD 125. Gano 2.2 millones, gasto 900 mil."
+
+  - id: credit_sport_cuota
+    type: credit_blind
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Me interesa la TVS Sport 100 a crédito, ¿cuál sería la cuota?"
+
+  # ============================================================
+  # MATRIZ completa multi-turno (8)
+  # ============================================================
+  - id: matriz_empleado_alto
+    type: matriz_full
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Hola, quiero la TVS Apache 160 a crédito."
+      - type: text
+        text: "Sí, acepto el tratamiento de datos."
+      - type: text
+        text: "Me llamo Juan Pérez y vivo en Bogotá."
+      - type: text
+        text: "Soy empleado con contrato indefinido."
+      - type: text
+        text: "Mis ingresos mensuales son 3 millones."
+      - type: text
+        text: "Estoy al día en datacrédito."
+      - type: text
+        text: "Mis gastos mensuales son 1 millón."
+      - type: text
+        text: "Sí, tengo recibo de gas natural a mi nombre."
+      - type: text
+        text: "Vivo en casa propia."
+      - type: text
+        text: "Sí, tengo plan celular a mi nombre."
+
+  - id: matriz_empleado_medio
+    type: matriz_full
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Hola, quiero la TVS Sport 100 a crédito."
+      - type: text
+        text: "Sí autorizo el tratamiento de mis datos."
+      - type: text
+        text: "Me llamo María Gómez y vivo en Medellín."
+      - type: text
+        text: "Soy empleada con contrato a término fijo."
+      - type: text
+        text: "Gano 2 millones mensuales."
+      - type: text
+        text: "Estoy al día en datacrédito."
+      - type: text
+        text: "Gasto 800 mil mensuales."
+      - type: text
+        text: "No tengo servicio de gas natural."
+      - type: text
+        text: "Vivo en arriendo."
+      - type: text
+        text: "No tengo plan celular a mi nombre."
+
+  - id: matriz_independiente_gas
+    type: matriz_full
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Hola, quiero una moto doble propósito a crédito."
+      - type: text
+        text: "Sí, acepto."
+      - type: text
+        text: "Soy Pedro Vargas, independiente en Bucaramanga."
+      - type: text
+        text: "Soy independiente, trabajo por mi cuenta."
+      - type: text
+        text: "Mis ingresos son 2 millones al mes."
+      - type: text
+        text: "No tengo historial en datacrédito."
+      - type: text
+        text: "Gasto 900 mil mensuales."
+      - type: text
+        text: "Sí tengo recibo de gas natural."
+      - type: text
+        text: "Vivo en casa propia."
+      - type: text
+        text: "Sí tengo plan celular a mi nombre."
+
+  - id: matriz_independiente_reportado
+    type: matriz_full
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Hola, busco moto 125 para trabajo a crédito."
+      - type: text
+        text: "Sí, autorizo."
+      - type: text
+        text: "Soy Andrés Muñoz de Pereira."
+      - type: text
+        text: "Soy independiente."
+      - type: text
+        text: "Gano 2 millones mensuales."
+      - type: text
+        text: "Tuve reportes en datacrédito hace un año."
+      - type: text
+        text: "Gasto 1 millón mensuales."
+      - type: text
+        text: "No tengo gas natural."
+      - type: text
+        text: "Vivo en arriendo."
+      - type: text
+        text: "No tengo plan celular."
+
+  - id: matriz_estudiante
+    type: matriz_full
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Hola, quiero una moto barata a crédito."
+      - type: text
+        text: "Sí, acepto el tratamiento."
+      - type: text
+        text: "Soy Daniela Castaño de Tunja."
+      - type: text
+        text: "Soy estudiante."
+      - type: text
+        text: "Gano 800 mil mensuales."
+      - type: text
+        text: "Nunca he sacado nada en datacrédito."
+      - type: text
+        text: "Gasto 400 mil mensuales."
+      - type: text
+        text: "No tengo gas natural."
+      - type: text
+        text: "Vivo en casa de mis padres."
+      - type: text
+        text: "No tengo plan celular a mi nombre."
+
+  - id: matriz_empleado_premium
+    type: matriz_full
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Hola, quiero la TVS Apache 160 a crédito."
+      - type: text
+        text: "Sí, acepto."
+      - type: text
+        text: "Me llamo Camila Herrera de Popayán."
+      - type: text
+        text: "Soy empleada con contrato indefinido."
+      - type: text
+        text: "Mis ingresos mensuales son 4 millones."
+      - type: text
+        text: "Estoy al día en datacrédito."
+      - type: text
+        text: "Gasto 1.5 millones mensuales."
+      - type: text
+        text: "Sí tengo recibo de gas natural a mi nombre."
+      - type: text
+        text: "Vivo en casa propia."
+      - type: text
+        text: "Sí tengo plan celular."
+
+  - id: matriz_pensionado
+    type: matriz_full
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Hola, quiero una moto automática a crédito."
+      - type: text
+        text: "Sí autorizo."
+      - type: text
+        text: "Soy Fernando Beltrán de Neiva."
+      - type: text
+        text: "Soy pensionado."
+      - type: text
+        text: "Mi pensión mensual es 1.5 millones."
+      - type: text
+        text: "Estoy al día en datacrédito."
+      - type: text
+        text: "Gasto 600 mil mensuales."
+      - type: text
+        text: "Sí tengo gas natural a mi nombre."
+      - type: text
+        text: "Vivo en casa propia."
+      - type: text
+        text: "No tengo plan celular."
+
+  - id: matriz_paz_salvo
+    type: matriz_full
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Hola, quiero la TVS Apache 160 a crédito."
+      - type: text
+        text: "Sí, acepto el tratamiento de datos."
+      - type: text
+        text: "Me llamo Esteban Salazar de Armenia."
+      - type: text
+        text: "Soy empleado con contrato indefinido."
+      - type: text
+        text: "Gano 1.1 millones mensuales."
+      - type: text
+        text: "Tuve una mora hace 2 años pero tengo paz y salvo."
+      - type: text
+        text: "Gasto 500 mil mensuales."
+      - type: text
+        text: "No tengo gas natural."
+      - type: text
+        text: "Vivo en arriendo."
+      - type: text
+        text: "Sí tengo plan celular a mi nombre."
+
+  # ============================================================
+  # Extracción single-turn (12)
+  # ============================================================
+  - id: extraction_nombre_ciudad_moto
+    type: extraction
+    turns:
+      - type: text
+        text: "Hola, soy Juan Pérez de Bogotá, busco TVS Apache 160."
+
+  - id: extraction_habeas
+    type: extraction
+    turns:
+      - type: text
+        text: "Sí acepto. Me llamo María Gómez, vivo en Medellín y quiero la TVS Sport 100."
+
+  - id: extraction_ingresos_gastos
+    type: extraction
+    turns:
+      - type: text
+        text: "Buenas, mi nombre es Carlos Ruiz, soy de Cali. Gano 2 millones y gasto 800 mil. Busco moto para delivery."
+
+  - id: extraction_minimos
+    type: extraction
+    turns:
+      - type: text
+        text: "Me llamo Ana López, vivo en Cartagena. Gano tres mínimos y gasto uno."
+
+  - id: extraction_independiente
+    type: extraction
+    turns:
+      - type: text
+        text: "Soy Pedro Vargas, independiente en Bucaramanga. Quiero la TVS Sport 100."
+
+  - id: extraction_empleado
+    type: extraction
+    turns:
+      - type: text
+        text: "Mi nombre es Luisa Fernández, trabajo como empleada en Manizales y busco moto automática."
+
+  - id: extraction_datacredito
+    type: extraction
+    turns:
+      - type: text
+        text: "Soy Andrés Muñoz de Pereira. Estoy al día en datacrédito y quiero la Apache 160."
+
+  - id: extraction_vivienda
+    type: extraction
+    turns:
+      - type: text
+        text: "Me llamo Diana Torres, vivo en arriendo en Cúcuta. Busco moto 125."
+
+  - id: extraction_forma_pago
+    type: extraction
+    turns:
+      - type: text
+        text: "Hola, soy Javier Díaz de Villavicencio. Quiero la NKD 125 a crédito con 0 inicial."
+
+  - id: extraction_contado
+    type: extraction
+    turns:
+      - type: text
+        text: "Soy Patricia Morales de Pasto. Voy a pagar la moto de contado."
+
+  - id: extraction_plan_celular
+    type: extraction
+    turns:
+      - type: text
+        text: "Me llamo Roberto Castro de Ibagué. Tengo plan postpago y quiero moto para trabajo."
+
+  - id: extraction_gas
+    type: extraction
+    turns:
+      - type: text
+        text: "Soy Natalia Ríos de Montería. No tengo gas natural a mi nombre. Busco moto 160."
+
+  # ============================================================
+  # Media inbound OPCIÓN-A (2)
+  # ============================================================
+  - id: image_moto
+    type: image
+    turns:
+      - type: image
+        caption: "¿Qué moto es esta?"
+
+  - id: audio_moto
+    type: audio
+    turns:
+      - type: audio
+        caption: ""
