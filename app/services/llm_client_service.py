@@ -353,6 +353,47 @@ def _convert_tools_to_openai(tools: List[Any]) -> List[Dict[str, Any]]:
     return openai_tools
 
 
+def _relax_credit_tool_for_qwen(
+    tools: Optional[List[Dict[str, Any]]],
+) -> Optional[List[Dict[str, Any]]]:
+    """
+    [BOT-BUILD-QWEN-LIVE-FIX-089 / Pin 2]
+    Relaja el schema expuesto a la ruta Qwen para calculate_credit_score.
+    El backend inyecta defaults del CRM para campos faltantes, por lo que el modelo
+    no debe esperar a que todos los argumentos esten explicitos en el ultimo turno.
+    Solo modifica la copia enviada al provider; no altera la declaracion original.
+    """
+    if not tools:
+        return tools
+    modified = False
+    out: List[Dict[str, Any]] = []
+    for tool in tools:
+        if not isinstance(tool, dict) or tool.get("type") != "function":
+            out.append(tool)
+            continue
+        func = tool.get("function", {})
+        if func.get("name") != "calculate_credit_score":
+            out.append(tool)
+            continue
+        new_tool = dict(tool)
+        new_func = dict(func)
+        params = dict(new_func.get("parameters") or {})
+        params["required"] = []
+        desc = new_func.get("description", "")
+        suffix = (
+            " El backend inyecta defaults del CRM para campos faltantes; invoca "
+            "cuando exista señal financiera o mandato de cierre, aunque no todos los "
+            "campos esten explicitos en el ultimo turno."
+        )
+        if suffix not in desc:
+            new_func["description"] = desc + suffix
+        new_func["parameters"] = params
+        new_tool["function"] = new_func
+        out.append(new_tool)
+        modified = True
+    return out if modified else tools
+
+
 def _serialize_response_schema(schema: Any) -> Optional[Dict[str, Any]]:
     """Convierte response_schema a dict JSON Schema."""
     if schema is None:
@@ -419,17 +460,51 @@ def _build_openai_messages(
                     system_extras.append("\n".join(field_rules))
 
         # TOOLCALL RULES: calibración anti-inferencia para Rama A nativa
+        # y anexo extendido de disciplina MATRIZ/CIERRE cuando se expone
+        # calculate_credit_score (BOT-BUILD-QWEN-LIVE-FIX-089).
         tools = getattr(config, "tools", None)
+        has_credit = False
         if tools:
-            system_extras.append(
-                "[TRANSPORT TOOLCALL RULES]\n"
-                "1. Extrae como argumentos ÚNICAMENTE lo que el usuario expresó literalmente; "
-                "prohibido inferir argumentos opcionales no mencionados.\n"
-                "2. Si el usuario expresa montos en forma relativa (ej. 'mínimos', 'palos') y la "
-                "herramienta exige montos absolutos para un cálculo útil, NO invoques la herramienta; "
-                "pide la cifra absoluta.\n"
-                "3. Invoca la herramienta SOLO cuando sus argumentos obligatorios estén explícitos."
-            )
+            for tool in tools:
+                if SDK_AVAILABLE and types is not None and isinstance(tool, types.Tool):
+                    names = {d.name for d in (tool.function_declarations or []) if d.name}
+                elif isinstance(tool, dict) and "function_declarations" in tool:
+                    names = {d.get("name") for d in tool.get("function_declarations", []) if d.get("name")}
+                else:
+                    names = set()
+                if "calculate_credit_score" in names:
+                    has_credit = True
+                    break
+
+        if tools:
+            if has_credit:
+                system_extras.append(
+                    "[TRANSPORT TOOLCALL RULES]\n"
+                    "1. Extrae como argumentos ÚNICAMENTE lo que el usuario expresó literalmente; "
+                    "prohibido inferir argumentos opcionales no mencionados.\n"
+                    "2. Si el usuario expresa montos en forma relativa (ej. 'mínimos', 'palos') y la "
+                    "herramienta exige montos absolutos para un cálculo útil, NO invoques la herramienta; "
+                    "pide la cifra absoluta.\n"
+                    "3. Invoca la herramienta cuando sus argumentos obligatorios estén explícitos en "
+                    "CUALQUIER turno del historial o en el checklist/CRM inyectado, o cuando el prompt "
+                    "incluya [MANDATO DE CIERRE DE FASE]. En ese caso, tu ÚNICA acción permitida es invocar "
+                    "calculate_credit_score; NO generes preguntas de perfilamiento.\n"
+                    "4. En fase de perfilamiento (cuando el prompt incluya <estado_perfilamiento>), formula "
+                    "exactamente la pregunta indicada en <siguiente_pendiente>, una sola pregunta por turno, "
+                    "sin repetir datos marcados como CAPTURADO y sin agrupar preguntas.\n"
+                    "5. Tras invocar calculate_credit_score, tu siguiente mensaje debe ser el cierre de fase "
+                    "según el puntaje (cuota/entidad/link). No reanudes el perfilamiento."
+                )
+            else:
+                system_extras.append(
+                    "[TRANSPORT TOOLCALL RULES]\n"
+                    "1. Extrae como argumentos ÚNICAMENTE lo que el usuario expresó literalmente; "
+                    "prohibido inferir argumentos opcionales no mencionados.\n"
+                    "2. Si el usuario expresa montos en forma relativa (ej. 'mínimos', 'palos') y la "
+                    "herramienta exige montos absolutos para un cálculo útil, NO invoques la herramienta; "
+                    "pide la cifra absoluta.\n"
+                    "3. Invoca la herramienta SOLO cuando sus argumentos obligatorios estén explícitos."
+                )
 
     if emulated_toolcall:
         system_extras.append(
@@ -638,6 +713,9 @@ def _prune_ungrounded_args(
             pruned[key] = value
         else:
             logger.info(f"🌿 [ARG-PRUNE] tool={tool_name} field={key} reason=not_in_allowed_lexicon")
+    removed_fields = [k for k in args if k not in pruned]
+    if removed_fields:
+        logger.info("[TOOLCALL-PRUNE] tool=%s removed=%s", tool_name, removed_fields)
     return pruned
 
 
@@ -1200,6 +1278,8 @@ class DualProviderChat:
             return await self._failover_to_gemini(contents, config, reason="current_turn_budget_exceeded")
 
         params = _config_to_openai_params(config)
+        if not emulated and params.get("tools"):
+            params["tools"] = _relax_credit_tool_for_qwen(params["tools"])
         if emulated:
             params.pop("tools", None)
 
@@ -1422,6 +1502,8 @@ class DualProviderClient:
             emulated_toolcall=emulated,
         )
         params = _config_to_openai_params(config)
+        if not emulated and params.get("tools"):
+            params["tools"] = _relax_credit_tool_for_qwen(params["tools"])
         if emulated:
             params.pop("tools", None)
 
@@ -1469,6 +1551,8 @@ class DualProviderClient:
             emulated_toolcall=emulated,
         )
         params = _config_to_openai_params(config)
+        if not emulated and params.get("tools"):
+            params["tools"] = _relax_credit_tool_for_qwen(params["tools"])
         if emulated:
             params.pop("tools", None)
 

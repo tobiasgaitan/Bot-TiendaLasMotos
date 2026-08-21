@@ -27,9 +27,13 @@ from app.services.genai_client_service import reset_shared_clients
 from app.services.genai_client_service import get_shared_genai_client
 from app.services.llm_client_service import (
     DualProviderClient,
+    _build_openai_messages,
+    _config_to_openai_params,
     _is_plausible_cop_amount,
     _maybe_reprompt_after_suppression_sync,
     _parse_openai_response,
+    _prune_ungrounded_args,
+    _relax_credit_tool_for_qwen,
     format_qwen_error_structured,
     get_active_model_id,
     get_shared_llm_client,
@@ -1755,3 +1759,140 @@ def test_t31_required_arg_and_rama_b_untouched():
     )
     fc_emulated = shim_emulated.candidates[0].content.parts[0].function_call
     assert fc_emulated.args.get("ocupacion") == "trabajo"
+
+
+# ---------------------------------------------------------------------------
+# T37 — BOT-BUILD-QWEN-LIVE-FIX-089: reglas 3-5 extendidas para calculate_credit_score
+# ---------------------------------------------------------------------------
+def test_t37_credit_tool_rules_extended_in_qwen_route():
+    """T37: reglas 3-5 del TOOLCALL annex solo cuando tools incluyen calculate_credit_score."""
+    credit_tool = types.Tool(
+        function_declarations=[
+            types.FunctionDeclaration(
+                name="calculate_credit_score",
+                description="Calcula score",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "ingresos_mensuales": {"type": "string"},
+                        "gastos_mensuales": {"type": "string"},
+                        "ocupacion": {"type": "string"},
+                    },
+                    "required": ["ingresos_mensuales", "gastos_mensuales"],
+                },
+            )
+        ]
+    )
+    config = types.GenerateContentConfig(tools=[credit_tool])
+    messages, _ = _build_openai_messages("hola", config, emulated_toolcall=False)
+    content = messages[0]["content"]
+    assert "[TRANSPORT TOOLCALL RULES]" in content
+    assert "ÚNICA acción permitida es invocar" in content
+    assert "Tras invocar calculate_credit_score" in content
+    assert "una sola pregunta por turno" in content
+
+    # Mordida: si se revierte la regla 3 extendida, este assert falla.
+    search_tool = types.Tool(
+        function_declarations=[
+            types.FunctionDeclaration(
+                name="search_catalog",
+                description="Busca motos",
+                parameters={
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                },
+            )
+        ]
+    )
+    config2 = types.GenerateContentConfig(tools=[search_tool])
+    messages2, _ = _build_openai_messages("hola", config2, emulated_toolcall=False)
+    content2 = messages2[0]["content"]
+    assert "Invoca la herramienta SOLO cuando sus argumentos obligatorios" in content2
+    assert "ÚNICA acción permitida es invocar" not in content2
+
+
+# ---------------------------------------------------------------------------
+# T38 — BOT-BUILD-QWEN-LIVE-FIX-089: schema relajado SOLO en ruta Qwen
+# ---------------------------------------------------------------------------
+def test_t38_credit_schema_relaxed_only_in_qwen_route():
+    """T38: required de calculate_credit_score se relaja solo en ruta Qwen."""
+    raw_tool = types.Tool(
+        function_declarations=[
+            types.FunctionDeclaration(
+                name="calculate_credit_score",
+                description="Calcula score",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "ocupacion_y_contrato": {"type": "string"},
+                        "ingresos_demostrables": {"type": "string"},
+                        "historial_datacredito": {"type": "string"},
+                        "ingresos_mensuales": {"type": "string"},
+                    },
+                    "required": [
+                        "ocupacion_y_contrato",
+                        "ingresos_demostrables",
+                        "historial_datacredito",
+                    ],
+                },
+            )
+        ]
+    )
+    config = types.GenerateContentConfig(tools=[raw_tool])
+    params = _config_to_openai_params(config)
+    relaxed = _relax_credit_tool_for_qwen(params["tools"])
+    func = relaxed[0]["function"]
+    assert func["parameters"]["required"] == []
+    assert "El backend inyecta defaults del CRM para campos faltantes" in func["description"]
+
+    # Mordida: el schema base (ruta Gemini o pre-relax) conserva los required originales.
+    base_required = params["tools"][0]["function"]["parameters"]["required"]
+    assert base_required == [
+        "ocupacion_y_contrato",
+        "ingresos_demostrables",
+        "historial_datacredito",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# T39 — BOT-BUILD-QWEN-LIVE-FIX-089: texto de cierre único de fase
+# ---------------------------------------------------------------------------
+def test_t39_closure_rule_text_contains_unique_action():
+    """T39: la regla de cierre exige invocar calculate_credit_score como única acción."""
+    credit_tool = types.Tool(
+        function_declarations=[
+            types.FunctionDeclaration(
+                name="calculate_credit_score",
+                description="Calcula score",
+                parameters={"type": "object", "properties": {}},
+            )
+        ]
+    )
+    config = types.GenerateContentConfig(tools=[credit_tool])
+    messages, _ = _build_openai_messages("hola", config)
+    content = messages[0]["content"]
+    assert "ÚNICA acción permitida es invocar calculate_credit_score" in content
+    assert "[MANDATO DE CIERRE DE FASE]" in content
+
+
+# ---------------------------------------------------------------------------
+# T40 — BOT-BUILD-QWEN-LIVE-FIX-089: log [TOOLCALL-PRUNE] resumen
+# ---------------------------------------------------------------------------
+def test_t40_prune_log_summary_present(caplog):
+    """T40: _prune_ungrounded_args emite [TOOLCALL-PRUNE] con campos removidos, sin valor crudo."""
+    args = {
+        "ingresos_mensuales": "2500000",
+        "gastos_mensuales": "1000000",
+        "ocupacion": "trabajo",
+    }
+    required = {"ingresos_mensuales", "gastos_mensuales"}
+    with caplog.at_level(logging.INFO):
+        pruned = _prune_ungrounded_args("calculate_credit_score", args, required)
+    assert "ocupacion" not in pruned
+    assert any(
+        "[TOOLCALL-PRUNE] tool=calculate_credit_score removed=" in rec.message
+        and "trabajo" not in rec.message
+        and "ocupacion" in rec.message
+        for rec in caplog.records
+    )
