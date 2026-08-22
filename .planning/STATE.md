@@ -1,8 +1,30 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.76.7 | Hito: BOT-BUILD-FLIP-QWEN-086 — F3 ejecutado: `llm_runtime/global.qwen_enabled=true` en beta; ruta Qwen verificada en vivo (PASO 1 + tool-calling); fix de `LANGFUSE_HOST` malformado; patch de prompt `PREFIJO_FICHA_TECNICA` para alinear PCC bajo Qwen; rollback drill exitoso; F4.5 monitoring pendiente | Coherence Score: 1.000 (918 recolectados físico = 913 tests/ + 5 scripts/; 918/918 PASSED; 0 failed; 0 skipped)
+Versión: v10.76.8 | Hito: BOT-BUILD-TOOLING-087 — MCPs Context7+CodeGraph a nivel proyecto Opencode; auditoría de MCPs globales con H1–H3 registrados C5; config global intacta (diff vacío vs bak-BOT-087); rollback <2 min; F3 certificado + F4.5 externa APROBADA | Coherence Score: 1.000 (922 recolectados físico = 917 tests/ + 5 scripts/; 922/922 PASSED; 0 failed; 0 skipped)
 
 ### Current Position
+**Phase:** BOT-BUILD-TOOLING-087 (v10.76.8) — MCPs Context7+CodeGraph a nivel proyecto Opencode bajo orden literal TOOLING-087.
+- **Scope:** `.opencode/opencode.json.example` + `.gitignore` (solo plantilla + índice gitignoreado); cero toques en `app/`, `scripts/`, `tests/`, `workflows/`.
+- **MCPs globales auditados:** H1–H3 registrados C5 — Context7 docs, CodeGraph 38 símbolos, Graphify 5162 nodos, Serena símbolos; global `~/.config/opencode/opencode.json` intacta (diff vacío vs bak-BOT-087).
+- **Infra:** rollback <2 min documentado; índice `.codegraph/` regenerable; F3 certificado.
+- **F4.5 externa:** revisión independiente APROBADA (sin bloqueantes, NB-1..5 menores).
+- **Eval:** Score 1.000 ≥ 0.9 — DEPLOY AUTHORIZED ✅. 922/922 PASSED; collect-only 922 (917 tests/ + 5 scripts/). Nota: +4 = T37–T40 de ed999e1 (BOT-BUILD-QWEN-LIVE-FIX-089, entrada documental pendiente).
+- **Pendiente:** ventana F4.5 monitoring (métricas, alertas, rollback drill periódico) y decisión de tráfico a prod.
+
+**Status:** TOOLING-087 COMPLETADO — F4.5 APROBADA (v10.76.8):
+  - **Objetivo:** integrar Context7 + CodeGraph a nivel proyecto Opencode, auditar MCPs globales y certificar F3/F4.5 sin tocar producción.
+  - **Implementación:**
+    - `.opencode/opencode.json.example` — plantilla versionada; `.gitignore` — `.codegraph/` + `!.opencode/opencode.json.example`.
+    - `MCP_USAGE_RULES.md` — matriz decisión + regla frescura `[STALE-GRAPHIFY]` con `uv run --with graphifyy graphify update .`.
+    - Commit `7eaf008` en `beta`; config global intacta; rollback drill <2 min.
+  - **Verificación:**
+    - 4 MCPs funcionales (Context7 docs versionadas, CodeGraph 38 símbolos, Graphify 5162 nodos/861 comunidades, Serena símbolos).
+    - Revisión externa F4.5 APROBADA (F3 certificado).
+  - **Eval:** Score 1.000 ≥ 0.9 — DEPLOY AUTHORIZED ✅. 922/922 PASSED; collect-only 922 (917 tests/ + 5 scripts/).
+  - **Cambios:** `.opencode/opencode.json.example`, `.gitignore`, `MCP_USAGE_RULES.md` (solo `.opencode/`); cero `app/scripts/tests/workflows`.
+  - **Pendiente:** F4.5 monitoring y cierre documental de T37–T40 en próximo hito.
+
+### Posición anterior (BOT-BUILD-FLIP-QWEN-086)
 **Phase:** BOT-BUILD-FLIP-QWEN-086 (v10.76.7) — ejecución productiva del flip a Qwen primario en beta bajo orden literal 'FLIP-AHORA'.
 - **Flag:** Firestore `llm_runtime/global.qwen_enabled=true` (beta); TTL ≤30s; hot-reload probado (false→Gemini, true→Qwen).
 - **Ruta verificada en vivo:** logs `🚦 [QWEN ROUTE DECISION] qwen_enabled=True role=agentic` + `🚀 [QWEN ROUTE] provider=dashscope model=qwen-turbo role=agentic`.
