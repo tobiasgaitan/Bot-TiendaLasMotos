@@ -62,3 +62,11 @@ graphify-out/
 node_modules/
 S-TOON-Protocol/
 .serena/
+
+# [BOT-BUILD-TOOLING-087] Índice local de CodeGraph (artefacto, no fuente)
+.codegraph/
+
+# [BOT-BUILD-TOOLING-087] Versionar SOLO la plantilla de config Opencode
+!.opencode/
+.opencode/*
+!.opencode/opencode.json.example
