@@ -1,6 +1,10 @@
 # Roadmap - Bot-TiendaLasMotos
  
 ## Tasks Completadas (v10.47.5+)
+- [x] **BOT-BUILD-HYBRID-SYNTH-094 (v10.77.0): Suite sintética E2E del HybridLLMRouter sin red ni credenciales como puerta pre-flip** [`tests/test_hybrid_router_e2e_synth.py` + `tests/test_hybrid_router_flag_factory.py` — 16 escenarios (E1/E2 happy path sync/async, F1-F4 fault-injection, R1 replay P3-EXT, L1/L2 logging ZSF, G1-G3 flag/fail-closed, C4 pin); `tests/fixtures/hybrid_replay_p3ext_20260824.json` traza live destilada; socket guard autouse (COND-1); denominador REAL 947 (942 tests/ + 5 scripts/); 947/947 PASSED; Score 1.000.]
+- [x] **BOT-SYNC-HYBRID-DOCS-093 (v10.77.0): Sincronización documental de la arquitectura híbrida DeepSeek/Gemini antes del flip del flag** [STATE.md, ROADMAP.md, docs/DOCUMENTO_MAESTRO.md actualizados con reglas de ruteo R1-R7, backstops deterministas, flag de activación y evidencia P3-EXT; `china_eval_report.json` como fuente de verdad; 931/931 PASSED; Score 1.000.]
+- [x] **BOT-BUILD-LLMROUTER-FIX-092 (v10.77.0): Corrección de bugs críticos del HybridLLMRouter — parser último bloque checklist + backstop post-respuesta en ambas rutas** [`scripts/china_eval/common/hybrid_router.py` + `app/services/hybrid_llm_router.py` — parser de último `<estado_perfilamiento>` (secuencia `[0,2,3,4,5,6,7,8]`), enforcement final de tool prematuro en ambas rutas, red determinista con pregunta canónica; `tests/test_hybrid_router_parser.py` (9 pines). Certificación: 931/931 PASSED; Score 1.000.]
+- [x] **BOT-BUILD-LLMROUTER-HYBRID-091 (v10.77.0): Arquitectura híbrida DeepSeek/Gemini con ruteo contextual y backstop determinista** [`app/services/hybrid_llm_router.py` + `app/services/deepseek_client_service.py` + extensión `app/services/llm_client_service.py`; flag Firestore `llm_runtime/global.hybrid_routing_enabled` default false; bindings `OPENROUTER_API_KEY` en workflows; replay P3-EXT certificado (trace ce-272a446742f54cf0); 6/6 criterios GO; ahorro ≥60% en MATRIZ. Certificación: 931/931 PASSED; Score 1.000.]
 - [x] **BOT-BUILD-TOOLING-087 (v10.76.8): MCPs Context7+CodeGraph a nivel proyecto Opencode; auditoría de MCPs globales con H1–H3 registrados C5; config global intacta (diff vacío vs bak-BOT-087); rollback <2 min; F3 certificado + F4.5 externa APROBADA. Denominador REAL: 922 (917 tests/ + 5 scripts/); 922/922 PASSED; Score 1.000. Nota: +4 = T37–T40 de ed999e1 (BOT-BUILD-QWEN-LIVE-FIX-089, entrada documental pendiente).**
 - [x] **BOT-BUILD-FLIP-QWEN-086 (v10.76.7): Flip productivo a Qwen primario en beta; verificación en vivo PASO 1 + tool-calling; fix LANGFUSE_HOST malformado; patch PREFIJO_FICHA_TECNICA; rollback drill exitoso** [Commits 086-A a 086-F: `llm_runtime/global.qwen_enabled=true`; instrumentación de ruta Qwen en `app/services/llm_client_service.py`; corrección de `LANGFUSE_HOST` en `deploy.yml`/`deploy-beta.yml`; regla `PREFIJO_FICHA_TECNICA` en `app/core/personality.json`, `app/core/prompts.py` y Firestore `configuracion/juan_pablo_personality`; verificación en vivo vía `/webhook/task-processor` con `X-Task-Token`: PASO 1 canónico (precio $, imagen Markdown, prefijo `Ficha Tecnica:`), `calculate_credit_score` bajo Qwen, guard numérico `[TOOL-SUPPRESS]` activo, rollback drill false→Geminal/true→Qwen ≤30s. **Certificación: 918 recolectados = 913 tests/ + 5 scripts/; 918/918 PASSED; 0 failed; 0 skipped; Score 1.000.** Pendiente: ventana F4.5 de monitoreo y decisión de tráfico a prod.]
 - [x] **BOT-BUILD-TOOLCALL-HARDEN-085 (v10.76.6): Guard numérico + re-prompt de transporte para Rama A Qwen; caso 7-type CERRADO; paridad-de-política ROJO por inestabilidad run-to-run de Rama A turbo (caso 8); F3 sigue bloqueado** [Commit A: `app/services/llm_client_service.py` — validador `_is_plausible_cop_amount` (relativos rechazados, multiplicadores léxicos, umbral 100k COP, fail-open), helpers `_find_invalid_numeric_toolcall` y `_maybe_reprompt_after_suppression_sync`/`_async` en 3 call-sites Rama A Qwen, cero impacto Rama B/Gemini; tests T32-T36. Commit B: G0-TOOLCALL con `G0_POLICY_PARITY=1` (paridad-de-política): caso 7-type cerrado (supresión de fc con montos relativos → null), caso 8 diverge (baseline invoca calculate_credit_score, Rama A retorna null), casos 1-6/9/10 PASS; reporte `g0_toolcall_report_policy_parity.json`. **Certificación: 918 recolectados = 913 tests/ + 5 scripts/; 918/918 PASSED; 0 failed; 0 skipped; Score 1.000.** C4 intacto: `ai_brain.py`, `prompts.py`, `personality.json`, `admin.py`, `config_loader.py`, workflows sin toques.]
@@ -104,6 +108,10 @@
 | PRICE-LOCK-T3-074 | Rescue T3 PRICE-LOCK + etiqueta forense (v10.73.0) | Completed | 2026-08-14 |
 | C29-075 | Normalización SSOT 💰 + ancla SOAT idempotente (v10.74.0) | Completed | 2026-08-15 |
 | FUNNEL-SKIP-014 | Cierre incidente salto de fase post-reset (v10.57.0) | Completed | 2026-08-09 |
+| LLMROUTER-HYBRID-091 | Arquitectura híbrida DeepSeek/Gemini con backstop determinista (v10.77.0) | Completed | 2026-08-24 |
+| LLMROUTER-FIX-092 | Fix parser checklist + backstop ambas rutas (v10.77.0) | Completed | 2026-08-24 |
+| SYNC-HYBRID-DOCS-093 | Sincronización documental arquitectura híbrida (v10.77.0) | Completed | 2026-08-24 |
+| HYBRID-SYNTH-094 | Suite sintética E2E del HybridLLMRouter pre-flip (v10.77.0) | Completed | 2026-08-24 |
 | 5 | Resolución de la Concurrencia y Aislamiento de Código Legado | Pending | - |
 | 6 | Blindaje Conductual del Agente e Integridad del Embudo | Pending | - |
 | 7 | Sincronización GSD, Certificación de Coherencia y Despliegue | Pending | - |
@@ -141,5 +149,12 @@
 |-------|------|--------|------|
 | 1 | Similitud Multimodal e Integración | Completed | 2026-07-11 |
 
+## Próximos Pasos
+•  Flip del flag `llm_runtime/global.hybrid_routing_enabled` a `true` en beta (F5) + monitoreo de costo y backstops durante 48h.
+•  Observabilidad: dashboard de métricas de ruteo (`HYBRID ROUTE`) y backstops (`HYBRID BACKSTOP`) en Langfuse.
+•  Fix cosmético C5-128: formatter de logging en `hybrid_router.py`.
+•  Nota operativa C5-129: invalidar caché de facades (`reset_shared_llm_clients`) o redeploy beta tras flip del flag.
+•  Decisión de tráfico a producción tras ventana F4.5 del híbrido.
+
 ---
-*Last updated: 2026-08-15*
+*Last updated: 2026-08-24 (BOT-BUILD-HYBRID-SYNTH-094 completado; denominador 947)*

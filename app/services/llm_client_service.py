@@ -60,10 +60,16 @@ _QWEN_FLAG_TTL_S = 30.0
 _QWEN_CONTEXT_TOKEN_BUDGET = 33_000
 _QWEN_MAX_TOKENS = 2048
 
-# Cache del flag runtime
+# Cache del flag runtime Qwen
 _flag_cache_value: Optional[bool] = None
 _flag_cache_time: float = 0.0
 _flag_lock = threading.Lock()
+
+# Cache del flag runtime Hybrid Router
+_HYBRID_FLAG_TTL_S = 30.0
+_hybrid_flag_cache_value: Optional[bool] = None
+_hybrid_flag_cache_time: float = 0.0
+_hybrid_flag_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +170,42 @@ def _invalidate_qwen_flag_cache() -> None:
     with _flag_lock:
         _flag_cache_value = None
         _flag_cache_time = 0.0
+
+
+def _read_hybrid_flag_from_firestore() -> Optional[bool]:
+    """Lee hybrid_routing_enabled de Firestore. Retorna None si no puede leer."""
+    try:
+        db = _get_flag_db_client()
+        doc = db.collection("llm_runtime").document("global").get()
+        if doc.exists:
+            return bool(doc.to_dict().get("hybrid_routing_enabled", False))
+        return False
+    except Exception:
+        logger.exception("❌ [LLM CLIENT] Error reading hybrid_routing_enabled from Firestore")
+        return None
+
+
+def is_hybrid_routing_enabled() -> bool:
+    """Cache-aware, thread-safe flag reader para el router híbrido."""
+    global _hybrid_flag_cache_value, _hybrid_flag_cache_time
+    with _hybrid_flag_lock:
+        now = time.monotonic()
+        if _hybrid_flag_cache_value is not None and (now - _hybrid_flag_cache_time) < _HYBRID_FLAG_TTL_S:
+            return _hybrid_flag_cache_value
+
+    val = _read_hybrid_flag_from_firestore()
+    if val is None:
+        val = _env_bool("HYBRID_ROUTING_ENABLED", False)
+
+    with _hybrid_flag_lock:
+        _hybrid_flag_cache_value = val
+        _hybrid_flag_cache_time = time.monotonic()
+    return val
+
+
+async def is_hybrid_routing_enabled_async() -> bool:
+    """Versión async-safe del flag reader híbrido."""
+    return await asyncio.to_thread(is_hybrid_routing_enabled)
 
 
 # ---------------------------------------------------------------------------
@@ -1617,7 +1659,17 @@ def get_shared_llm_client(
             location=location,
             credentials=credentials,
         )
-        client = DualProviderClient(gemini_sync=gemini_sync, role=role)
+        client: DualProviderClient = DualProviderClient(gemini_sync=gemini_sync, role=role)
+        if is_hybrid_routing_enabled():
+            from app.services.hybrid_llm_router import HybridLLMRouter
+
+            try:
+                client = HybridLLMRouter(dual_client=client, role=role)
+            except ValueError as exc:
+                logger.warning(
+                    "🔄 [HYBRID BOOTSTRAP] Fallback a Gemini: %s",
+                    exc,
+                )
         _SHARED_LLM_CLIENTS[key] = client
         return client
 
@@ -1662,7 +1714,17 @@ async def get_shared_llm_client_async(
             location,
             credentials,
         )
-        client = DualProviderClient(gemini_sync=gemini_sync, gemini_async=gemini_async, role=role)
+        client: DualProviderClient = DualProviderClient(gemini_sync=gemini_sync, gemini_async=gemini_async, role=role)
+        if await is_hybrid_routing_enabled_async():
+            from app.services.hybrid_llm_router import HybridLLMRouter
+
+            try:
+                client = HybridLLMRouter(dual_client=client, role=role)
+            except ValueError as exc:
+                logger.warning(
+                    "🔄 [HYBRID BOOTSTRAP ASYNC] Fallback a Gemini: %s",
+                    exc,
+                )
         _SHARED_LLM_CLIENTS[key] = client
         return client
 
@@ -1674,4 +1736,13 @@ def reset_shared_llm_clients() -> None:
     _CLIENT_ASYNC_LOCKS.clear()
     _FLAG_DB_CLIENT = None
     _invalidate_qwen_flag_cache()
+    _invalidate_hybrid_flag_cache()
     logger.debug("[LLM CLIENT] Shared LLM clients reset (test-only)")
+
+
+def _invalidate_hybrid_flag_cache() -> None:
+    """Hook interno para tests/forzar relectura inmediata del flag híbrido."""
+    global _hybrid_flag_cache_value, _hybrid_flag_cache_time
+    with _hybrid_flag_lock:
+        _hybrid_flag_cache_value = None
+        _hybrid_flag_cache_time = 0.0

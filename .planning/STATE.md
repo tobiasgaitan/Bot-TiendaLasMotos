@@ -1,8 +1,35 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.76.8 | Hito: BOT-BUILD-TOOLING-087 — MCPs Context7+CodeGraph a nivel proyecto Opencode; auditoría de MCPs globales con H1–H3 registrados C5; config global intacta (diff vacío vs bak-BOT-087); rollback <2 min; F3 certificado + F4.5 externa APROBADA | Coherence Score: 1.000 (922 recolectados físico = 917 tests/ + 5 scripts/; 922/922 PASSED; 0 failed; 0 skipped)
+Versión: v10.77.0 | Hito: BOT-BUILD-LLMROUTER-HYBRID-091 + BOT-BUILD-LLMROUTER-FIX-092 + BOT-SYNC-HYBRID-DOCS-093 + BOT-BUILD-HYBRID-SYNTH-094 — Arquitectura híbrida DeepSeek/Gemini certificada; suite sintética E2E sin red (16 escenarios E/F/G/R/L/C) construida como puerta pre-flip; evidencia P3-EXT fresca (trace ce-272a446742f54cf0); 6/6 criterios GO; suite agent-cli 947/947 PASSED; backstop determinista doble activo; flag `llm_runtime/global.hybrid_routing_enabled` default false | Coherence Score: 1.000 (947 recolectados físico = 942 tests/ + 5 scripts/; 947/947 PASSED; 0 failed; 0 skipped)
 
 ### Current Position
+**Phase:** BOT-SYNC-HYBRID-DOCS-093 (v10.77.0) — sincronización documental previa al flip del flag `hybrid_routing_enabled`.
+- **Arquitectura certificada:** ruteo híbrido DeepSeek V4 Flash 0731 / Gemini con frontera basada en evidencia P3-EXT.
+  - Turnos 1-6 de MATRIZ + P1 + FAQ → DeepSeek (OpenRouter, $0.22/$0.66 off-peak).
+  - Turno 7+ (captured_count ≥7) + CIERRE DE FASE + toda invocación de `calculate_credit_score` → Gemini.
+  - Backstop doble: tool-call prematuro interceptado y re-enrutado a Gemini; desviación de orden re-enrutada contra `<siguiente_pendiente>` correcto.
+  - Red determinista final: si Gemini también falla, strip de tool_calls + síntesis de pregunta canónica (`_PROFILING_QUESTION_MAP` réplica).
+- **Feature flag:** Firestore `llm_runtime/global.hybrid_routing_enabled` (bool, default false). Flip a true instantáneo sin redeploy; rollback a false idéntico.
+- **Evidencia:** replay P3-EXT con router activo; secuencia parser `[0,2,3,4,5,6,7,8]`; cero `tool_prematuro` en reporte final; suite sintética E2E `tests/test_hybrid_router_e2e_synth.py` + `tests/test_hybrid_router_flag_factory.py` (16 escenarios) PASS sin red ni credenciales; 947/947 PASSED.
+- **Costo:** reducción ≥60% en sesión MATRIZ completa vs Gemini-exclusivo.
+- **Pendiente:** flip del flag a true en F5 + monitoreo de costo y observabilidad de backstops.
+
+**Status:** SYNC DOCUMENTAL EN CURSO — F5 PENDIENTE (v10.77.0):
+  - **Objetivo:** reflejar la arquitectura híbrida en STATE.md, ROADMAP.md y DOCUMENTO_MAESTRO.md antes del flip.
+  - **Implementación:**
+    - `app/services/hybrid_llm_router.py` — `HybridLLMRouter` con ruteo contextual + backstop doble.
+    - `app/services/deepseek_client_service.py` — cliente DeepSeek OpenRouter.
+    - `app/services/llm_client_service.py` — flag `hybrid_routing_enabled` + fábrica extendida.
+    - `scripts/china_eval/common/hybrid_router.py` — router de evaluación.
+    - `tests/test_hybrid_router_parser.py` — 9 pines de regresión.
+    - `tests/test_hybrid_router_e2e_synth.py` + `tests/test_hybrid_router_flag_factory.py` — 16 escenarios sintéticos E2E del HybridLLMRouter (happy path, fault-injection, replay, flag/fail-closed, logging ZSF, pin C4).
+    - `tests/fixtures/hybrid_replay_p3ext_20260824.json` — traza live destilada.
+    - `.github/workflows/deploy.yml` / `deploy-beta.yml` — binding `OPENROUTER_API_KEY`.
+  - **Verificación:** 947/947 PASSED; replay P3-EXT verde; backstop 100% interceptado en fault-injection; 0 sockets reales (socket guard autouse).
+  - **Cambios:** ver lista de archivos; C4 intacto: `ai_brain.py`, `prompts.py`, `personality.json`, `juan_pablo_personality.docx`.
+  - **Pendiente:** flip flag + F5 monitoring.
+
+### Posición anterior (BOT-BUILD-TOOLING-087)
 **Phase:** BOT-BUILD-TOOLING-087 (v10.76.8) — MCPs Context7+CodeGraph a nivel proyecto Opencode bajo orden literal TOOLING-087.
 - **Scope:** `.opencode/opencode.json.example` + `.gitignore` (solo plantilla + índice gitignoreado); cero toques en `app/`, `scripts/`, `tests/`, `workflows/`.
 - **MCPs globales auditados:** H1–H3 registrados C5 — Context7 docs, CodeGraph 38 símbolos, Graphify 5162 nodos, Serena símbolos; global `~/.config/opencode/opencode.json` intacta (diff vacío vs bak-BOT-087).
@@ -150,13 +177,15 @@ Versión: v10.76.8 | Hito: BOT-BUILD-TOOLING-087 — MCPs Context7+CodeGraph a n
 - **C5-036 (F3):** interacción T1 con max_turns=3 — dos desobediencias (re-search + crédito) pueden consumir el budget antes del texto final → _build_pcc_fallback. Trade-off acotado; evaluar bump a 4 como tarea propia.
 - **C5-042 / C5-043:** registrados (BOT-BUILD-TOOLLOOP-025).
 - **C5-049:** paridad judge vs router — el juez no acota a post-reset (docstring soft-claimed); evaluar espejar frontier o añadir pins dedicados.
+- **C5-128** (LOW): formatter de logging del `hybrid_router.py` emite `KeyError: trace_id` en registros de info/warning; registros ZSF estructurados funcionan, solo el pretty-print se rompe. Cosmético, no funcional. Diferido.
+- **C5-129** (LOW): el facade se cachea en `_SHARED_LLM_CLIENTS` por key; el flip del flag solo afecta a nuevas construcciones de facade. En producción el efecto operacional es post-TTL de 30s o post-redeploy de instancias Cloud Run. Nota operativa F5: tras flip ejecutar `reset_shared_llm_clients` o redeployar beta; documentado en suite `tests/test_hybrid_router_flag_factory.py::TestFlagAndFailClosed::test_hot_rollback_true_to_false`.
 - ~~**C5-041:** CERRADO — minScale=1 físico en Cloud Run confirmado en revisión 00447; header de consola stale (cosmético).~~
 
-**Previous:** BOT-BUILD-PRICE-LOCK-T3-074 (v10.73.0) — Rescue T3 PRICE-LOCK + etiqueta forense anchor_merged_but_truncated (cierre C5-074/C5-064).
-**Next:** Operación `POST /api/admin/refresh-config` en Beta para invalidar caché de instancias calientes → E2E WhatsApp → observabilidad (C5-066, C5-071) → C5-045 → colaterales C5-067..C5-073, C5-075, C5-076, C5-077, C5-078. C-29, C-30 y C-31 ejecutadas y agotadas.
+**Previous:** BOT-BUILD-LLMROUTER-FIX-092 (v10.77.0) — parser último bloque + backstop post-respuesta en ambas rutas (cierre bugs críticos del HybridLLMRouter).
+**Next:** Flip `llm_runtime/global.hybrid_routing_enabled=true` en F5 → monitoreo de costo y backstops en beta → observabilidad (C5-128 formatter, C5-129 cache de facade) → decisión de tráfico a prod.
 
 ### Tooling local (MCP, sin bump documental — BOT-BUILD-GRAPHIFY-MCP-024)
 - `graphify-backend` MCP registrado en ~/.config/opencode/opencode.json (bloque local vía /opt/homebrew/bin/uv + graphifyy 0.9.38 + graph.json; timeout 30000; enabled true). Invariante serena intacto (SHA-256 canónico 24545b4f…bbffc). Completado: reinicio + panel MCP verificado (graphify-backend Connected + serena Connected) + graph_stats coherente con GRAPH_REPORT.md — 2026-08-11.
 
 ---
-*Last updated: 2026-08-16*
+*Last updated: 2026-08-24 (BOT-BUILD-HYBRID-SYNTH-094 completado)*
