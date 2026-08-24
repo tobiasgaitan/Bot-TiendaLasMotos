@@ -22,11 +22,14 @@ from app.services.deepseek_client_service import DeepSeekOpenRouterClient
 
 # Reutilizamos helpers probados de llm_client_service.py (misma capa de servicio).
 from app.services.llm_client_service import (
+    DualProviderChat,
     DualProviderClient,
     _ResponseShim,
     _build_openai_messages,
     _config_to_openai_params,
+    _normalize_parts,
     _parse_openai_response,
+    _response_shim_to_parts,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,14 +79,16 @@ class ProfilingState:
 
 
 def _extract_text_from_contents(contents: Any) -> str:
-    """Extrae texto plano de contents (soporta types.Content/dict/list)."""
+    """Extrae texto plano de contents (soporta str, types.Part, types.Content/dict/list)."""
     parts: list[str] = []
     if not isinstance(contents, list):
         contents = [contents]
     for c in contents:
         if c is None:
             continue
-        if hasattr(c, "parts"):
+        if isinstance(c, str):
+            parts.append(c)
+        elif hasattr(c, "parts"):
             for part in c.parts:
                 if hasattr(part, "text") and part.text:
                     parts.append(str(part.text))
@@ -93,6 +98,10 @@ def _extract_text_from_contents(contents: Any) -> str:
             for part in c.get("parts", []):
                 if isinstance(part, dict) and part.get("text"):
                     parts.append(str(part["text"]))
+        elif hasattr(c, "text"):
+            text = getattr(c, "text")
+            if text:
+                parts.append(str(text))
     return "\n".join(parts)
 
 
@@ -609,9 +618,84 @@ class _HybridAioModels:
             )
 
 
+class HybridAioChat(DualProviderChat):
+    """Chat async híbrido: rutea cada send_message a DeepSeek/Gemini."""
+
+    def __init__(self, router: "HybridLLMRouter", model: Optional[str] = None) -> None:
+        super().__init__(facade=router._dual, model=model)
+        self._router = router
+
+    async def send_message(self, contents: Any, config: Any = None) -> Any:
+        current_parts = _normalize_parts(contents)
+        self._history.append({"role": "user", "parts": current_parts})
+
+        decision = route_by_context(contents, config)
+        logger.info(
+            "🔀 [HYBRID ROUTE ASYNC] provider=%s reason=%s captured_count=%s siguiente=%s fase=%s",
+            decision.provider,
+            decision.reason,
+            decision.captured_count,
+            decision.siguiente_pendiente,
+            decision.fase,
+        )
+
+        try:
+            if decision.provider == "gemini":
+                conversation = self._to_gemini_contents(contents)
+                raw_response = await self._router._dual.aio.models.generate_content(
+                    model=self._model, contents=conversation, config=config
+                )
+            else:
+                messages, _ = _build_openai_messages(
+                    contents=contents, config=config, chat_history=self
+                )
+                params = _config_to_openai_params(config)
+                tools = params.pop("tools", None)
+                tool_choice = params.pop("tool_choice", "auto")
+                temperature = params.pop("temperature", 0.0)
+
+                raw = await self._router._deepseek.achat_completion(
+                    messages=messages,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    temperature=temperature,
+                )
+                tools_cfg = getattr(config, "tools", None) if config else None
+                raw_response = _parse_openai_response(raw, emulated_toolcall=False, tools=tools_cfg)
+
+            shim = _response_to_shim(raw_response)
+            shim = await _apply_backstop_async(
+                self._router, shim, decision, self._model, contents, config, depth=0
+            )
+        except Exception:
+            logger.exception("❌ [HYBRID ROUTER ASYNC] Call failed; failover a Gemini")
+            conversation = self._to_gemini_contents(contents)
+            raw_response = await self._router._dual.aio.models.generate_content(
+                model=self._model, contents=conversation, config=config
+            )
+            shim = _response_to_shim(raw_response)
+
+        self._history.append(
+            {"role": "model", "parts": _response_shim_to_parts(shim), "tool_calls": shim._tool_calls}
+        )
+        return shim
+
+    async def send_message_async(self, contents: Any, config: Any = None) -> Any:
+        return await self.send_message(contents, config)
+
+
+class _HybridAioChats:
+    def __init__(self, router: "HybridLLMRouter") -> None:
+        self._router = router
+
+    def create(self, model: Optional[str] = None, **kwargs: Any) -> HybridAioChat:
+        return HybridAioChat(self._router, model=model)
+
+
 class _HybridAioNamespace:
     def __init__(self, router: "HybridLLMRouter") -> None:
         self.models = _HybridAioModels(router)
+        self.chats = _HybridAioChats(router)
 
 
 class HybridLLMRouter:

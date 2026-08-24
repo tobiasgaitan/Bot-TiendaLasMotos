@@ -1,6 +1,6 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.77.0 | Hito: BOT-BUILD-LLMROUTER-HYBRID-091 + BOT-BUILD-LLMROUTER-FIX-092 + BOT-SYNC-HYBRID-DOCS-093 + BOT-BUILD-HYBRID-SYNTH-094 — Arquitectura híbrida DeepSeek/Gemini certificada; suite sintética E2E sin red (16 escenarios E/F/G/R/L/C) construida como puerta pre-flip; evidencia P3-EXT fresca (trace ce-272a446742f54cf0); 6/6 criterios GO; suite agent-cli 947/947 PASSED; backstop determinista doble activo; flag `llm_runtime/global.hybrid_routing_enabled` default false | Coherence Score: 1.000 (947 recolectados físico = 942 tests/ + 5 scripts/; 947/947 PASSED; 0 failed; 0 skipped)
+Versión: v10.77.0 | Hito: BOT-BUILD-LLMROUTER-HYBRID-091 + BOT-BUILD-LLMROUTER-FIX-092 + BOT-SYNC-HYBRID-DOCS-093 + BOT-BUILD-HYBRID-SYNTH-094 + BOT-BUILD-HYBRID-CHATS-FIX-096 — Arquitectura híbrida DeepSeek/Gemini certificada; suite sintética E2E sin red (16 escenarios E/F/G/R/L/C) + superficie async de chat `aio.chats.create` (6 tests) construida como puerta pre-flip; evidencia P3-EXT fresca (trace ce-272a446742f54cf0); 6/6 criterios GO; suite agent-cli 953/953 PASSED; backstop determinista doble activo; flag `llm_runtime/global.hybrid_routing_enabled` default false | Coherence Score: 1.000 (953 recolectados físico = 948 tests/ + 5 scripts/; 953/953 PASSED; 0 failed; 0 skipped)
 
 ### Current Position
 **Phase:** BOT-SYNC-HYBRID-DOCS-093 (v10.77.0) — sincronización documental previa al flip del flag `hybrid_routing_enabled`.
@@ -10,7 +10,7 @@ Versión: v10.77.0 | Hito: BOT-BUILD-LLMROUTER-HYBRID-091 + BOT-BUILD-LLMROUTER-
   - Backstop doble: tool-call prematuro interceptado y re-enrutado a Gemini; desviación de orden re-enrutada contra `<siguiente_pendiente>` correcto.
   - Red determinista final: si Gemini también falla, strip de tool_calls + síntesis de pregunta canónica (`_PROFILING_QUESTION_MAP` réplica).
 - **Feature flag:** Firestore `llm_runtime/global.hybrid_routing_enabled` (bool, default false). Flip a true instantáneo sin redeploy; rollback a false idéntico.
-- **Evidencia:** replay P3-EXT con router activo; secuencia parser `[0,2,3,4,5,6,7,8]`; cero `tool_prematuro` en reporte final; suite sintética E2E `tests/test_hybrid_router_e2e_synth.py` + `tests/test_hybrid_router_flag_factory.py` (16 escenarios) PASS sin red ni credenciales; 947/947 PASSED.
+- **Evidencia:** replay P3-EXT con router activo; secuencia parser `[0,2,3,4,5,6,7,8]`; cero `tool_prematuro` en reporte final; suite sintética E2E `tests/test_hybrid_router_e2e_synth.py` + `tests/test_hybrid_router_flag_factory.py` (16 escenarios) + tests de superficie async `tests/test_hybrid_router_chats.py` (6 escenarios) PASS sin red ni credenciales; 953/953 PASSED.
 - **Costo:** reducción ≥60% en sesión MATRIZ completa vs Gemini-exclusivo.
 - **Pendiente:** flip del flag a true en F5 + monitoreo de costo y observabilidad de backstops.
 
@@ -25,7 +25,7 @@ Versión: v10.77.0 | Hito: BOT-BUILD-LLMROUTER-HYBRID-091 + BOT-BUILD-LLMROUTER-
     - `tests/test_hybrid_router_e2e_synth.py` + `tests/test_hybrid_router_flag_factory.py` — 16 escenarios sintéticos E2E del HybridLLMRouter (happy path, fault-injection, replay, flag/fail-closed, logging ZSF, pin C4).
     - `tests/fixtures/hybrid_replay_p3ext_20260824.json` — traza live destilada.
     - `.github/workflows/deploy.yml` / `deploy-beta.yml` — binding `OPENROUTER_API_KEY`.
-  - **Verificación:** 947/947 PASSED; replay P3-EXT verde; backstop 100% interceptado en fault-injection; 0 sockets reales (socket guard autouse).
+  - **Verificación:** 953/953 PASSED; replay P3-EXT verde; backstop 100% interceptado en fault-injection; ruteo MATRIZ por `aio.chats.create.send_message` verificado; 0 sockets reales (socket guard autouse).
   - **Cambios:** ver lista de archivos; C4 intacto: `ai_brain.py`, `prompts.py`, `personality.json`, `juan_pablo_personality.docx`.
   - **Pendiente:** flip flag + F5 monitoring.
 
@@ -179,6 +179,7 @@ Versión: v10.77.0 | Hito: BOT-BUILD-LLMROUTER-HYBRID-091 + BOT-BUILD-LLMROUTER-
 - **C5-049:** paridad judge vs router — el juez no acota a post-reset (docstring soft-claimed); evaluar espejar frontier o añadir pins dedicados.
 - **C5-128** (LOW): formatter de logging del `hybrid_router.py` emite `KeyError: trace_id` en registros de info/warning; registros ZSF estructurados funcionan, solo el pretty-print se rompe. Cosmético, no funcional. Diferido.
 - **C5-129** (LOW): el facade se cachea en `_SHARED_LLM_CLIENTS` por key; el flip del flag solo afecta a nuevas construcciones de facade. En producción el efecto operacional es post-TTL de 30s o post-redeploy de instancias Cloud Run. Nota operativa F5: tras flip ejecutar `reset_shared_llm_clients` o redeployar beta; documentado en suite `tests/test_hybrid_router_flag_factory.py::TestFlagAndFailClosed::test_hot_rollback_true_to_false`.
+- **C5-130** (LOW/MEDIUM): `_HybridAioNamespace` no exponía `aio.chats.create`, que es la superficie productiva usada por `ai_brain.py:2204`. Solucionado en BOT-BUILD-HYBRID-CHATS-FIX-096: `HybridAioChat` subclase de `DualProviderChat` con `send_message` (y alias `send_message_async`), ruteo híbrido, backstop doble y micro-fix del extractor para soportar `str` y `types.Part` sueltos. Tests en `tests/test_hybrid_router_chats.py`.
 - ~~**C5-041:** CERRADO — minScale=1 físico en Cloud Run confirmado en revisión 00447; header de consola stale (cosmético).~~
 
 **Previous:** BOT-BUILD-LLMROUTER-FIX-092 (v10.77.0) — parser último bloque + backstop post-respuesta en ambas rutas (cierre bugs críticos del HybridLLMRouter).

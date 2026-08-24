@@ -1,6 +1,7 @@
 # Roadmap - Bot-TiendaLasMotos
  
 ## Tasks Completadas (v10.47.5+)
+- [x] **BOT-BUILD-HYBRID-CHATS-FIX-096 (v10.77.0): Extensión async `aio.chats.create` del HybridLLMRouter para `ai_brain.py:2204`** [`app/services/hybrid_llm_router.py` — `HybridAioChat` subclase de `DualProviderChat` con `send_message` + alias `send_message_async`, ruteo híbrido por chat, backstop doble; micro-fix de `_extract_text_from_contents` para soportar `str` y `types.Part` sueltos; `tests/test_hybrid_router_chats.py` — 6 tests (superficie, extractor, ruteo MATRIZ 8 turnos, backstop, historial, logs ZSF); C5-130 cerrado; denominador REAL 953 (948 tests/ + 5 scripts/); 953/953 PASSED; Score 1.000.]
 - [x] **BOT-BUILD-HYBRID-SYNTH-094 (v10.77.0): Suite sintética E2E del HybridLLMRouter sin red ni credenciales como puerta pre-flip** [`tests/test_hybrid_router_e2e_synth.py` + `tests/test_hybrid_router_flag_factory.py` — 16 escenarios (E1/E2 happy path sync/async, F1-F4 fault-injection, R1 replay P3-EXT, L1/L2 logging ZSF, G1-G3 flag/fail-closed, C4 pin); `tests/fixtures/hybrid_replay_p3ext_20260824.json` traza live destilada; socket guard autouse (COND-1); denominador REAL 947 (942 tests/ + 5 scripts/); 947/947 PASSED; Score 1.000.]
 - [x] **BOT-SYNC-HYBRID-DOCS-093 (v10.77.0): Sincronización documental de la arquitectura híbrida DeepSeek/Gemini antes del flip del flag** [STATE.md, ROADMAP.md, docs/DOCUMENTO_MAESTRO.md actualizados con reglas de ruteo R1-R7, backstops deterministas, flag de activación y evidencia P3-EXT; `china_eval_report.json` como fuente de verdad; 931/931 PASSED; Score 1.000.]
 - [x] **BOT-BUILD-LLMROUTER-FIX-092 (v10.77.0): Corrección de bugs críticos del HybridLLMRouter — parser último bloque checklist + backstop post-respuesta en ambas rutas** [`scripts/china_eval/common/hybrid_router.py` + `app/services/hybrid_llm_router.py` — parser de último `<estado_perfilamiento>` (secuencia `[0,2,3,4,5,6,7,8]`), enforcement final de tool prematuro en ambas rutas, red determinista con pregunta canónica; `tests/test_hybrid_router_parser.py` (9 pines). Certificación: 931/931 PASSED; Score 1.000.]
@@ -112,6 +113,7 @@
 | LLMROUTER-FIX-092 | Fix parser checklist + backstop ambas rutas (v10.77.0) | Completed | 2026-08-24 |
 | SYNC-HYBRID-DOCS-093 | Sincronización documental arquitectura híbrida (v10.77.0) | Completed | 2026-08-24 |
 | HYBRID-SYNTH-094 | Suite sintética E2E del HybridLLMRouter pre-flip (v10.77.0) | Completed | 2026-08-24 |
+| HYBRID-CHATS-FIX-096 | Extensión aio.chats.create del HybridLLMRouter (v10.77.0) | Completed | 2026-08-24 |
 | 5 | Resolución de la Concurrencia y Aislamiento de Código Legado | Pending | - |
 | 6 | Blindaje Conductual del Agente e Integridad del Embudo | Pending | - |
 | 7 | Sincronización GSD, Certificación de Coherencia y Despliegue | Pending | - |
@@ -157,4 +159,4 @@
 •  Decisión de tráfico a producción tras ventana F4.5 del híbrido.
 
 ---
-*Last updated: 2026-08-24 (BOT-BUILD-HYBRID-SYNTH-094 completado; denominador 947)*
+*Last updated: 2026-08-24 (BOT-BUILD-HYBRID-SYNTH-094 + BOT-BUILD-HYBRID-CHATS-FIX-096 completados; denominador 953)*
