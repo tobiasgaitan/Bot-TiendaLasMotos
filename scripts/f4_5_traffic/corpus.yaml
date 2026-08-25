@@ -146,6 +146,8 @@ scenarios:
       - type: text
         text: "Hola, quiero la TVS Apache 160 a crédito."
       - type: text
+        text: "Dale, ¿qué sigue para el crédito?"
+      - type: text
         text: "Sí, acepto el tratamiento de datos."
       - type: text
         text: "Me llamo Juan Pérez y vivo en Bogotá."
@@ -163,6 +165,8 @@ scenarios:
         text: "Vivo en casa propia."
       - type: text
         text: "Sí, tengo plan celular a mi nombre."
+      - type: text
+        text: "Listo, ¿qué sigue ahora?"
 
   - id: matriz_empleado_medio
     type: matriz_full
@@ -170,6 +174,8 @@ scenarios:
     turns:
       - type: text
         text: "Hola, quiero la TVS Sport 100 a crédito."
+      - type: text
+        text: "Dale, ¿qué sigue para el crédito?"
       - type: text
         text: "Sí autorizo el tratamiento de mis datos."
       - type: text
@@ -188,6 +194,8 @@ scenarios:
         text: "Vivo en arriendo."
       - type: text
         text: "No tengo plan celular a mi nombre."
+      - type: text
+        text: "Listo, ¿qué sigue ahora?"
 
   - id: matriz_independiente_gas
     type: matriz_full
@@ -195,6 +203,8 @@ scenarios:
     turns:
       - type: text
         text: "Hola, quiero una moto doble propósito a crédito."
+      - type: text
+        text: "Dale, ¿qué sigue para el crédito?"
       - type: text
         text: "Sí, acepto."
       - type: text
@@ -213,13 +223,17 @@ scenarios:
         text: "Vivo en casa propia."
       - type: text
         text: "Sí tengo plan celular a mi nombre."
+      - type: text
+        text: "Listo, ¿qué sigue ahora?"
 
   - id: matriz_independiente_reportado
     type: matriz_full
     expected_tool: calculate_credit_score
     turns:
       - type: text
-        text: "Hola, busco moto 125 para trabajo a crédito."
+        text: "Hola, quiero la TVS Sport 100 a crédito."
+      - type: text
+        text: "Dale, ¿qué sigue para el crédito?"
       - type: text
         text: "Sí, autorizo."
       - type: text
@@ -238,6 +252,8 @@ scenarios:
         text: "Vivo en arriendo."
       - type: text
         text: "No tengo plan celular."
+      - type: text
+        text: "Listo, ¿qué sigue ahora?"
 
   - id: matriz_estudiante
     type: matriz_full
@@ -245,6 +261,8 @@ scenarios:
     turns:
       - type: text
         text: "Hola, quiero una moto barata a crédito."
+      - type: text
+        text: "Dale, ¿qué sigue para el crédito?"
       - type: text
         text: "Sí, acepto el tratamiento."
       - type: text
@@ -263,6 +281,8 @@ scenarios:
         text: "Vivo en casa de mis padres."
       - type: text
         text: "No tengo plan celular a mi nombre."
+      - type: text
+        text: "Listo, ¿qué sigue ahora?"
 
   - id: matriz_empleado_premium
     type: matriz_full
@@ -270,6 +290,8 @@ scenarios:
     turns:
       - type: text
         text: "Hola, quiero la TVS Apache 160 a crédito."
+      - type: text
+        text: "Dale, ¿qué sigue para el crédito?"
       - type: text
         text: "Sí, acepto."
       - type: text
@@ -288,6 +310,8 @@ scenarios:
         text: "Vivo en casa propia."
       - type: text
         text: "Sí tengo plan celular."
+      - type: text
+        text: "Listo, ¿qué sigue ahora?"
 
   - id: matriz_pensionado
     type: matriz_full
@@ -295,6 +319,8 @@ scenarios:
     turns:
       - type: text
         text: "Hola, quiero una moto automática a crédito."
+      - type: text
+        text: "Dale, ¿qué sigue para el crédito?"
       - type: text
         text: "Sí autorizo."
       - type: text
@@ -313,6 +339,8 @@ scenarios:
         text: "Vivo en casa propia."
       - type: text
         text: "No tengo plan celular."
+      - type: text
+        text: "Listo, ¿qué sigue ahora?"
 
   - id: matriz_paz_salvo
     type: matriz_full
@@ -320,6 +348,8 @@ scenarios:
     turns:
       - type: text
         text: "Hola, quiero la TVS Apache 160 a crédito."
+      - type: text
+        text: "Dale, ¿qué sigue para el crédito?"
       - type: text
         text: "Sí, acepto el tratamiento de datos."
       - type: text
@@ -338,6 +368,8 @@ scenarios:
         text: "Vivo en arriendo."
       - type: text
         text: "Sí tengo plan celular a mi nombre."
+      - type: text
+        text: "Listo, ¿qué sigue ahora?"
 
   # ============================================================
   # Extracción single-turn (12)
