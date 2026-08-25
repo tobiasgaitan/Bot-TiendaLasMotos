@@ -1,6 +1,9 @@
 # Roadmap - Bot-TiendaLasMotos
  
 ## Tasks Completadas (v10.47.5+)
+- [x] **BOT-BUILD-SYNC-HYBRID-CIERRE-102 (v10.78.0): Cierre documental del hito híbrido 091-101 — denominador real 978, ventana 48h reiniciada** [Sincronización de `docs/DOCUMENTO_MAESTRO.md`, `.planning/ROADMAP.md` y `.planning/STATE.md` a v10.78.0; cierre C5-143; registro C5-147 como varianza de modelo en simulación ciega PASO 2; T0 `matriz-fix-20260825-1054` (~2026-08-25T15:56Z) con checkpoints +8h/+24h/+48h; denominador REAL 978 (973 tests/ + 5 scripts/); 978/978 PASSED; Score 1.000.]
+- [x] **BOT-BUILD-HYBRID-PROBE-BUG-101 (v10.78.0): Fix de sonda `run_matriz_hybrid.py` y diagnóstico de deploy** [`scripts/f4_5_traffic/run_matriz_hybrid.py` — parseo de histograma con `_extract_route_events` en `verify_paso2_session`, aserción de éxito PASO 2 por egreso con cuota/simulación (no por `score_resultado`), render defensivo `.get()` en `render_markdown`; `tests/test_run_matriz_hybrid_probe.py` — 7 pines; diagnóstico: workflow `32857601957` success, revisión `00499-mqd` Ready 100% tráfico, falso negativo por timeout 240s vs deploy real 5m40s; denominador REAL 978; 978/978 PASSED; Score 1.000.]
+- [x] **BOT-BUILD-HYBRID-BACKSTOP-PASO2-100 (v10.78.0): Backstop determinista acotado a contexto MATRIZ para no interferir con PASO 2** [`app/services/hybrid_llm_router.py` — `_should_backstop` delega a `_is_matrix_context` (evidencia de perfilamiento/cierre/captured_count≥1); escenario `paso2_cuota` en `scripts/f4_5_traffic/corpus.yaml`; `tests/test_hybrid_router_backstop_matrix_context.py` — 18 tests; denominador REAL 971 (966 tests/ + 5 scripts/); 971/971 PASSED; Score 1.000.]
 - [x] **BOT-BUILD-HYBRID-CHATS-FIX-096 (v10.77.0): Extensión async `aio.chats.create` del HybridLLMRouter para `ai_brain.py:2204`** [`app/services/hybrid_llm_router.py` — `HybridAioChat` subclase de `DualProviderChat` con `send_message` + alias `send_message_async`, ruteo híbrido por chat, backstop doble; micro-fix de `_extract_text_from_contents` para soportar `str` y `types.Part` sueltos; `tests/test_hybrid_router_chats.py` — 6 tests (superficie, extractor, ruteo MATRIZ 8 turnos, backstop, historial, logs ZSF); C5-130 cerrado; denominador REAL 953 (948 tests/ + 5 scripts/); 953/953 PASSED; Score 1.000.]
 - [x] **BOT-BUILD-HYBRID-SYNTH-094 (v10.77.0): Suite sintética E2E del HybridLLMRouter sin red ni credenciales como puerta pre-flip** [`tests/test_hybrid_router_e2e_synth.py` + `tests/test_hybrid_router_flag_factory.py` — 16 escenarios (E1/E2 happy path sync/async, F1-F4 fault-injection, R1 replay P3-EXT, L1/L2 logging ZSF, G1-G3 flag/fail-closed, C4 pin); `tests/fixtures/hybrid_replay_p3ext_20260824.json` traza live destilada; socket guard autouse (COND-1); denominador REAL 947 (942 tests/ + 5 scripts/); 947/947 PASSED; Score 1.000.]
 - [x] **BOT-SYNC-HYBRID-DOCS-093 (v10.77.0): Sincronización documental de la arquitectura híbrida DeepSeek/Gemini antes del flip del flag** [STATE.md, ROADMAP.md, docs/DOCUMENTO_MAESTRO.md actualizados con reglas de ruteo R1-R7, backstops deterministas, flag de activación y evidencia P3-EXT; `china_eval_report.json` como fuente de verdad; 931/931 PASSED; Score 1.000.]
@@ -114,6 +117,9 @@
 | SYNC-HYBRID-DOCS-093 | Sincronización documental arquitectura híbrida (v10.77.0) | Completed | 2026-08-24 |
 | HYBRID-SYNTH-094 | Suite sintética E2E del HybridLLMRouter pre-flip (v10.77.0) | Completed | 2026-08-24 |
 | HYBRID-CHATS-FIX-096 | Extensión aio.chats.create del HybridLLMRouter (v10.77.0) | Completed | 2026-08-24 |
+| HYBRID-BACKSTOP-PASO2-100 | Backstop acotado a contexto MATRIZ (v10.78.0) | Completed | 2026-08-25 |
+| HYBRID-PROBE-BUG-101 | Fix sonda run_matriz_hybrid.py + diagnóstico deploy (v10.78.0) | Completed | 2026-08-25 |
+| SYNC-HYBRID-CIERRE-102 | Cierre documental hito híbrido 091-101 (v10.78.0) | Completed | 2026-08-25 |
 | 5 | Resolución de la Concurrencia y Aislamiento de Código Legado | Pending | - |
 | 6 | Blindaje Conductual del Agente e Integridad del Embudo | Pending | - |
 | 7 | Sincronización GSD, Certificación de Coherencia y Despliegue | Pending | - |
@@ -152,11 +158,12 @@
 | 1 | Similitud Multimodal e Integración | Completed | 2026-07-11 |
 
 ## Próximos Pasos
-•  Flip del flag `llm_runtime/global.hybrid_routing_enabled` a `true` en beta (F5) + monitoreo de costo y backstops durante 48h.
+•  Monitoreo F4.5 ventana 48h iniciada en T0 `matriz-fix-20260825-1054` (~2026-08-25T15:56Z); checkpoints +8h/+24h/+48h.
 •  Observabilidad: dashboard de métricas de ruteo (`HYBRID ROUTE`) y backstops (`HYBRID BACKSTOP`) en Langfuse.
 •  Fix cosmético C5-128: formatter de logging en `hybrid_router.py`.
 •  Nota operativa C5-129: invalidar caché de facades (`reset_shared_llm_clients`) o redeploy beta tras flip del flag.
+•  C5-147: varianza de modelo en simulación ciega de PASO 2 (`paso2_cuota` ROJO por cuota ausente) bajo seguimiento; no bloquea F5.
 •  Decisión de tráfico a producción tras ventana F4.5 del híbrido.
 
 ---
-*Last updated: 2026-08-24 (BOT-BUILD-HYBRID-SYNTH-094 + BOT-BUILD-HYBRID-CHATS-FIX-096 completados; denominador 953)*
+*Last updated: 2026-08-25 (BOT-BUILD-HYBRID-BACKSTOP-PASO2-100 + BOT-BUILD-HYBRID-PROBE-BUG-101 + BOT-BUILD-SYNC-HYBRID-CIERRE-102 completados; denominador 978)*

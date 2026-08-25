@@ -1,33 +1,34 @@
 # Estado del Proyecto - Bot-TiendaLasMotos
 
-Versión: v10.77.0 | Hito: BOT-BUILD-LLMROUTER-HYBRID-091 + BOT-BUILD-LLMROUTER-FIX-092 + BOT-SYNC-HYBRID-DOCS-093 + BOT-BUILD-HYBRID-SYNTH-094 + BOT-BUILD-HYBRID-CHATS-FIX-096 — Arquitectura híbrida DeepSeek/Gemini certificada; suite sintética E2E sin red (16 escenarios E/F/G/R/L/C) + superficie async de chat `aio.chats.create` (6 tests) construida como puerta pre-flip; evidencia P3-EXT fresca (trace ce-272a446742f54cf0); 6/6 criterios GO; suite agent-cli 953/953 PASSED; backstop determinista doble activo; flag `llm_runtime/global.hybrid_routing_enabled` default false | Coherence Score: 1.000 (953 recolectados físico = 948 tests/ + 5 scripts/; 953/953 PASSED; 0 failed; 0 skipped)
+Versión: v10.78.0 | Hito: BOT-BUILD-LLMROUTER-HYBRID-091 + BOT-BUILD-LLMROUTER-FIX-092 + BOT-SYNC-HYBRID-DOCS-093 + BOT-BUILD-HYBRID-SYNTH-094 + BOT-BUILD-HYBRID-CHATS-FIX-096 + BOT-BUILD-HYBRID-BACKSTOP-PASO2-100 + BOT-BUILD-HYBRID-PROBE-BUG-101 + BOT-BUILD-SYNC-HYBRID-CIERRE-102 — Arquitectura híbrida DeepSeek/Gemini certificada; backstop determinista doble acotado a contexto MATRIZ; sonda MATRIZ VERDE en vivo `matriz-fix-20260825-1054` scores 685/255 con frontera R2 viva; suite sintética E2E sin red (16 escenarios E/F/G/R/L/C) + superficie async de chat `aio.chats.create` (6 tests); C5-143 cerrado; C5-147 registrado como varianza de modelo PASO 2; suite agent-cli 978/978 PASSED; flag `llm_runtime/global.hybrid_routing_enabled` default false | Coherence Score: 1.000 (978 recolectados físico = 973 tests/ + 5 scripts/; 978/978 PASSED; 0 failed; 0 skipped)
 
 ### Current Position
-**Phase:** BOT-SYNC-HYBRID-DOCS-093 (v10.77.0) — sincronización documental previa al flip del flag `hybrid_routing_enabled`.
+**Phase:** BOT-BUILD-SYNC-HYBRID-CIERRE-102 (v10.78.0) — sincronización documental del hito híbrido 091-101 y reinicio de la ventana F4.5 de monitoreo.
 - **Arquitectura certificada:** ruteo híbrido DeepSeek V4 Flash 0731 / Gemini con frontera basada en evidencia P3-EXT.
   - Turnos 1-6 de MATRIZ + P1 + FAQ → DeepSeek (OpenRouter, $0.22/$0.66 off-peak).
   - Turno 7+ (captured_count ≥7) + CIERRE DE FASE + toda invocación de `calculate_credit_score` → Gemini.
-  - Backstop doble: tool-call prematuro interceptado y re-enrutado a Gemini; desviación de orden re-enrutada contra `<siguiente_pendiente>` correcto.
+  - **Backstop doble acotado a MATRIZ:** `_should_backstop` verifica `_is_matrix_context` (evidencia de perfilamiento/cierre/captured_count≥1) antes de interceptar tool-calls; esto evita que el backstop altere la simulación ciega de PASO 2 (`paso2_cuota`).
   - Red determinista final: si Gemini también falla, strip de tool_calls + síntesis de pregunta canónica (`_PROFILING_QUESTION_MAP` réplica).
 - **Feature flag:** Firestore `llm_runtime/global.hybrid_routing_enabled` (bool, default false). Flip a true instantáneo sin redeploy; rollback a false idéntico.
-- **Evidencia:** replay P3-EXT con router activo; secuencia parser `[0,2,3,4,5,6,7,8]`; cero `tool_prematuro` en reporte final; suite sintética E2E `tests/test_hybrid_router_e2e_synth.py` + `tests/test_hybrid_router_flag_factory.py` (16 escenarios) + tests de superficie async `tests/test_hybrid_router_chats.py` (6 escenarios) PASS sin red ni credenciales; 953/953 PASSED.
+- **Evidencia:**
+  - Replay P3-EXT con router activo; secuencia parser `[0,2,3,4,5,6,7,8]`; cero `tool_prematuro` en reporte final.
+  - Sonda MATRIZ en vivo `matriz-fix-20260825-1054`: VERDE, scores 685/255, frontera R2 viva, 0 backstops/QWEN/DUAL/core_failovers, 5-6 aux_failovers (failover a Gemini en llamadas auxiliares) registrados como warning sin degradar veredicto.
+  - Suite sintética E2E `tests/test_hybrid_router_e2e_synth.py` + `tests/test_hybrid_router_flag_factory.py` (16 escenarios) + tests de superficie async `tests/test_hybrid_router_chats.py` (6 escenarios) PASS sin red ni credenciales.
+  - `tests/test_hybrid_router_backstop_matrix_context.py` — 18 pines; `tests/test_run_matriz_hybrid_probe.py` — 7 pines.
+  - Eval local 978/978 PASSED; denominador real 978 = 953 + 18 + 7.
 - **Costo:** reducción ≥60% en sesión MATRIZ completa vs Gemini-exclusivo.
-- **Pendiente:** flip del flag a true en F5 + monitoreo de costo y observabilidad de backstops.
+- **Ventana F4.5 reiniciada:** T0 `matriz-fix-20260825-1054` (~2026-08-25T15:56Z); checkpoints +8h/+24h/+48h.
 
-**Status:** SYNC DOCUMENTAL EN CURSO — F5 PENDIENTE (v10.77.0):
-  - **Objetivo:** reflejar la arquitectura híbrida en STATE.md, ROADMAP.md y DOCUMENTO_MAESTRO.md antes del flip.
-  - **Implementación:**
-    - `app/services/hybrid_llm_router.py` — `HybridLLMRouter` con ruteo contextual + backstop doble.
-    - `app/services/deepseek_client_service.py` — cliente DeepSeek OpenRouter.
-    - `app/services/llm_client_service.py` — flag `hybrid_routing_enabled` + fábrica extendida.
-    - `scripts/china_eval/common/hybrid_router.py` — router de evaluación.
-    - `tests/test_hybrid_router_parser.py` — 9 pines de regresión.
-    - `tests/test_hybrid_router_e2e_synth.py` + `tests/test_hybrid_router_flag_factory.py` — 16 escenarios sintéticos E2E del HybridLLMRouter (happy path, fault-injection, replay, flag/fail-closed, logging ZSF, pin C4).
-    - `tests/fixtures/hybrid_replay_p3ext_20260824.json` — traza live destilada.
-    - `.github/workflows/deploy.yml` / `deploy-beta.yml` — binding `OPENROUTER_API_KEY`.
-  - **Verificación:** 953/953 PASSED; replay P3-EXT verde; backstop 100% interceptado en fault-injection; ruteo MATRIZ por `aio.chats.create.send_message` verificado; 0 sockets reales (socket guard autouse).
-  - **Cambios:** ver lista de archivos; C4 intacto: `ai_brain.py`, `prompts.py`, `personality.json`, `juan_pablo_personality.docx`.
-  - **Pendiente:** flip flag + F5 monitoring.
+**Status:** SYNC DOCUMENTAL COMPLETADO — F4.5 EN CURSO (v10.78.0):
+  - **Objetivo:** reflejar el hito híbrido completo (091-101) y el resultado de la verificación live en STATE.md, ROADMAP.md y DOCUMENTO_MAESTRO.md; cerrar C5-143 y registrar C5-147.
+  - **Implementación documental:**
+    - `docs/DOCUMENTO_MAESTRO.md` — header v10.78.0 + hito consolidado 102.
+    - `.planning/ROADMAP.md` — tasks 100/101/102 completadas + tabla de progreso actualizada.
+    - `.planning/STATE.md` — estado current/next + ventana 48h + colaterales.
+    - `.planning/F4.5_MONITORING.md` — notas C7/C8 (fuente de verdad ya actualizada en 100/101).
+  - **Verificación:** 978/978 PASSED; sonda MATRIZ VERDE en vivo; backstop 100% interceptado en fault-injection; ruteo MATRIZ por `aio.chats.create.send_message` verificado; 0 sockets reales (socket guard autouse).
+  - **Cambios:** solo documentación; C4 intacto: `ai_brain.py`, `prompts.py`, `personality.json`, `juan_pablo_personality.docx`.
+  - **Pendiente:** monitoreo F4.5 durante 48h; decisión de tráfico a producción.
 
 ### Posición anterior (BOT-BUILD-TOOLING-087)
 **Phase:** BOT-BUILD-TOOLING-087 (v10.76.8) — MCPs Context7+CodeGraph a nivel proyecto Opencode bajo orden literal TOOLING-087.
@@ -180,14 +181,16 @@ Versión: v10.77.0 | Hito: BOT-BUILD-LLMROUTER-HYBRID-091 + BOT-BUILD-LLMROUTER-
 - **C5-128** (LOW): formatter de logging del `hybrid_router.py` emite `KeyError: trace_id` en registros de info/warning; registros ZSF estructurados funcionan, solo el pretty-print se rompe. Cosmético, no funcional. Diferido.
 - **C5-129** (LOW): el facade se cachea en `_SHARED_LLM_CLIENTS` por key; el flip del flag solo afecta a nuevas construcciones de facade. En producción el efecto operacional es post-TTL de 30s o post-redeploy de instancias Cloud Run. Nota operativa F5: tras flip ejecutar `reset_shared_llm_clients` o redeployar beta; documentado en suite `tests/test_hybrid_router_flag_factory.py::TestFlagAndFailClosed::test_hot_rollback_true_to_false`.
 - **C5-130** (LOW/MEDIUM): `_HybridAioNamespace` no exponía `aio.chats.create`, que es la superficie productiva usada por `ai_brain.py:2204`. Solucionado en BOT-BUILD-HYBRID-CHATS-FIX-096: `HybridAioChat` subclase de `DualProviderChat` con `send_message` (y alias `send_message_async`), ruteo híbrido, backstop doble y micro-fix del extractor para soportar `str` y `types.Part` sueltos. Tests en `tests/test_hybrid_router_chats.py`.
+- **C5-143** (CLOSED, v10.78.0): backstop determinista del HybridLLMRouter acotado a contexto MATRIZ para no interferir con PASO 2. Implementación en `app/services/hybrid_llm_router.py` (`_is_matrix_context`), 18 pines en `tests/test_hybrid_router_backstop_matrix_context.py`, escenario `paso2_cuota` en corpus. Eval 971/971; fix desplegado en beta (revisión `00499-mqd`).
+- **C5-147** (REGISTRADO, v10.78.0): varianza de modelo en simulación ciega de PASO 2 — live run `paso2-fix-20260825-1038` reportó ROJO por "egreso no contiene cuota/simulación de crédito" (el modelo no invocó `calculate_credit_score`). Clasificado como varianza de modelo, no como fallo del fix 100; el backstop MATRIZ permanece inerte en PASO 2. Seguimiento en ventana F4.5.
 - ~~**C5-041:** CERRADO — minScale=1 físico en Cloud Run confirmado en revisión 00447; header de consola stale (cosmético).~~
 
-**Previous:** BOT-BUILD-LLMROUTER-FIX-092 (v10.77.0) — parser último bloque + backstop post-respuesta en ambas rutas (cierre bugs críticos del HybridLLMRouter).
-**Current:** BOT-BUILD-HYBRID-BACKSTOP-PASO2-100 — backstop `tool_prematuro` acotado al contexto MATRIZ en `hybrid_llm_router.py`; 18 pines unitarios + sonda `paso2_cuota`; eval local 971/971 Score 1.000.
-**Next:** Verificación live por Tobias (sonda `paso2_cuota` + re-run MATRIZ en beta) → con VERDE, cierre C5-143, sync de ROADMAP/DOCUMENTO_MAESTRO y reinicio del reloj de ventana 48h (COND-2/COND-3).
+**Previous:** BOT-BUILD-HYBRID-PROBE-BUG-101 (v10.78.0) — fix de sonda `run_matriz_hybrid.py` (parseo histograma con `_extract_route_events`, aserción PASO 2 por egreso con cuota/simulación, render defensivo `.get()`); 7 pines unitarios; diagnóstico de deploy: workflow `32857601957` success, revisión `00499-mqd` Ready 100% tráfico; eval local 978/978 Score 1.000.
+**Current:** BOT-BUILD-SYNC-HYBRID-CIERRE-102 (v10.78.0) — sincronización documental del hito híbrido 091-101 en `docs/DOCUMENTO_MAESTRO.md`, `.planning/ROADMAP.md` y `.planning/STATE.md`; cierre C5-143; registro C5-147; T0 `matriz-fix-20260825-1054`; eval 978/978 Score 1.000.
+**Next:** Monitoreo F4.5 durante la ventana 48h iniciada en T0 (checkpoints +8h/+24h/+48h); observabilidad de ruteo/backstops en Langfuse; decisión de tráfico a producción al cierre de la ventana.
 
 ### Tooling local (MCP, sin bump documental — BOT-BUILD-GRAPHIFY-MCP-024)
 - `graphify-backend` MCP registrado en ~/.config/opencode/opencode.json (bloque local vía /opt/homebrew/bin/uv + graphifyy 0.9.38 + graph.json; timeout 30000; enabled true). Invariante serena intacto (SHA-256 canónico 24545b4f…bbffc). Completado: reinicio + panel MCP verificado (graphify-backend Connected + serena Connected) + graph_stats coherente con GRAPH_REPORT.md — 2026-08-11.
 
 ---
-*Last updated: 2026-08-25 (BOT-BUILD-HYBRID-BACKSTOP-PASO2-100 implementado; pendiente verificación live)*
+*Last updated: 2026-08-25 (BOT-BUILD-SYNC-HYBRID-CIERRE-102 completado; hito híbrido 091-101 documentado; ventana 48h reiniciada en T0 matriz-fix-20260825-1054)*
