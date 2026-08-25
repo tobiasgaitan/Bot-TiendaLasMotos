@@ -287,6 +287,15 @@ def _has_premature_credit_tool(tool_calls: List[Dict[str, Any]], siguiente: Opti
     return any(tc.get("name") == "calculate_credit_score" for tc in tool_calls)
 
 
+def _is_matrix_context(decision: RoutingDecision) -> bool:
+    """True solo si la llamada pertenece al núcleo MATRIZ (profiling/frontera/cierre)."""
+    if decision.fase == "PHASE_3_CREDIT_PROFILING":
+        return True
+    if decision.captured_count > 0:
+        return True
+    return bool(decision.siguiente_pendiente and decision.siguiente_pendiente != "COMPLETO")
+
+
 def _should_backstop(
     decision: RoutingDecision,
     shim: _ResponseShim,
@@ -295,7 +304,8 @@ def _should_backstop(
     text = shim.text
     tool_calls = shim._tool_calls if hasattr(shim, "_tool_calls") else []
 
-    if _has_premature_credit_tool(tool_calls, decision.siguiente_pendiente):
+    # CERO_TOOL_PREMATURO solo dentro del contexto MATRIZ; PASO 1/PASO 2 quedan fuera de alcance.
+    if _is_matrix_context(decision) and _has_premature_credit_tool(tool_calls, decision.siguiente_pendiente):
         return True, "backstop_tool_prematuro"
 
     if decision.siguiente_pendiente and decision.siguiente_pendiente != "COMPLETO":

@@ -137,6 +137,16 @@ scenarios:
         text: "Me interesa la TVS Sport 100 a crédito, ¿cuál sería la cuota?"
 
   # ============================================================
+  # PASO 2 — Simulación ciega en primer contacto (crédito explícito)
+  # ============================================================
+  - id: paso2_cuota
+    type: paso2_cuota
+    expected_tool: calculate_credit_score
+    turns:
+      - type: text
+        text: "Hola, quiero la TVS Apache 160 a crédito."
+
+  # ============================================================
   # MATRIZ completa multi-turno (8)
   # ============================================================
   - id: matriz_empleado_alto

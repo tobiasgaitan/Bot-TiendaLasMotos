@@ -59,6 +59,14 @@ HYBRID_ROUTE_RE = re.compile(
     r"fase=(\S+)"
 )
 
+HYBRID_BACKSTOP_RE = re.compile(
+    r"\[HYBRID BACKSTOP ASYNC\] "
+    r"reason=(\S+) "
+    r"captured_count=(\S+) "
+    r"siguiente=(.*?) "
+    r"depth=(\S+)"
+)
+
 WHITELIST_REASONS = {
     "default_conservador",
     "simulacion_ciega_paso2",
@@ -630,6 +638,85 @@ def verify_session_routes(
     }
 
 
+
+def verify_paso2_session(
+    session_idx: int,
+    all_route_entries: List[Dict[str, Any]],
+    start: datetime,
+    end: datetime,
+    phone: str,
+    project: str,
+    service_name: str,
+) -> Dict[str, Any]:
+    '''Verifica que PASO 2 (simulación ciega / excepción de crédito) entregue la cuota JSON sin backstop.'''
+    errors: List[str] = []
+    warnings: List[str] = []
+
+    route_events = [
+        e
+        for e in all_route_entries
+        if start <= _parse_ts(e.get('timestamp', '1970-01-01T00:00:00Z')) < end
+    ]
+    route_events.sort(key=lambda e: _parse_ts(e.get('timestamp', '1970-01-01T00:00:00Z')))
+
+    backstop_entries = query_cloud_logging(
+        service_name, project, start, end, '[HYBRID BACKSTOP ASYNC]', limit=100
+    )
+    premature_none = 0
+    for entry in backstop_entries:
+        text = (entry.get('textPayload') or '') + (entry.get('jsonPayload', {}).get('message') or '')
+        m = HYBRID_BACKSTOP_RE.search(text)
+        if not m:
+            continue
+        reason, captured, siguiente, _depth = m.groups()
+        if reason == 'backstop_tool_prematuro' and captured in ('0', '-1') and (not siguiente or siguiente == 'None'):
+            premature_none += 1
+    if premature_none:
+        errors.append(f'backstop_tool_prematuro stripó {premature_none} llamada(s) PASO 2 (captured=0/None)')
+
+    phone_entries = query_cloud_logging(service_name, project, start, end, phone, limit=200)
+    canonical_hits = sum(
+        1 for e in phone_entries
+        if '¿Me confirmas el dato que falta?' in (e.get('textPayload') or '')
+    )
+    if canonical_hits:
+        errors.append(f'egreso contiene la pregunta canónica del backstop ({canonical_hits} veces); la cuota JSON no llegó')
+
+    score_resultado: Optional[Any] = None
+    doc = _read_prospect_doc(phone, project)
+    if doc:
+        score_resultado = doc.get('score_resultado')
+    if score_resultado is None:
+        errors.append('score_resultado no está presente en el doc prospecto (calculate_credit_score no ejecutó)')
+    else:
+        print(f'✅ Sesión {session_idx}: score_resultado={score_resultado}')
+
+    if not route_events:
+        errors.append('no se encontraron eventos HYBRID ROUTE en la ventana')
+
+    verdict = 'ROJO' if errors else 'VERDE'
+
+    return {
+        'session_idx': session_idx,
+        'route_events': len(route_events),
+        'histogram': route_events,
+        'profiling_count': 0,
+        'frontera_count': 0,
+        'cierre_count': 0,
+        'captured_progression': [],
+        'core_failovers': 0,
+        'aux_failovers': 0,
+        'none_type_errors': 0,
+        'backstop': len(backstop_entries),
+        'qwen': 0,
+        'dual': 0,
+        'route_fallback': 0,
+        'score_resultado': score_resultado,
+        'errors': errors,
+        'warnings': warnings,
+        'verdict': verdict,
+    }
+
 async def run_session(
     session_idx: int,
     scenario: Dict[str, Any],
@@ -901,9 +988,15 @@ def main() -> int:
         for idx, raw in enumerate(raw_sessions):
             s_start = _parse_ts(raw["started_at"])
             s_end = _parse_ts(raw_sessions[idx + 1]["started_at"]) if idx + 1 < len(raw_sessions) else session_end
-            s_report = verify_session_routes(
-                idx + 1, all_route_entries, s_start, s_end, raw["phone"], args.project
-            )
+            scenario = selected[idx]
+            if scenario.get("type") == "paso2_cuota":
+                s_report = verify_paso2_session(
+                    idx + 1, all_route_entries, s_start, s_end, raw["phone"], args.project, args.service
+                )
+            else:
+                s_report = verify_session_routes(
+                    idx + 1, all_route_entries, s_start, s_end, raw["phone"], args.project
+                )
             s_report["scenario_id"] = raw["scenario_id"]
             s_report["phone"] = raw["phone"]
             sessions_report.append(s_report)

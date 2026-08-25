@@ -183,10 +183,11 @@ Versión: v10.77.0 | Hito: BOT-BUILD-LLMROUTER-HYBRID-091 + BOT-BUILD-LLMROUTER-
 - ~~**C5-041:** CERRADO — minScale=1 físico en Cloud Run confirmado en revisión 00447; header de consola stale (cosmético).~~
 
 **Previous:** BOT-BUILD-LLMROUTER-FIX-092 (v10.77.0) — parser último bloque + backstop post-respuesta en ambas rutas (cierre bugs críticos del HybridLLMRouter).
-**Next:** Flip `llm_runtime/global.hybrid_routing_enabled=true` en F5 → monitoreo de costo y backstops en beta → observabilidad (C5-128 formatter, C5-129 cache de facade) → decisión de tráfico a prod.
+**Current:** BOT-BUILD-HYBRID-BACKSTOP-PASO2-100 — backstop `tool_prematuro` acotado al contexto MATRIZ en `hybrid_llm_router.py`; 18 pines unitarios + sonda `paso2_cuota`; eval local 971/971 Score 1.000.
+**Next:** Verificación live por Tobias (sonda `paso2_cuota` + re-run MATRIZ en beta) → con VERDE, cierre C5-143, sync de ROADMAP/DOCUMENTO_MAESTRO y reinicio del reloj de ventana 48h (COND-2/COND-3).
 
 ### Tooling local (MCP, sin bump documental — BOT-BUILD-GRAPHIFY-MCP-024)
 - `graphify-backend` MCP registrado en ~/.config/opencode/opencode.json (bloque local vía /opt/homebrew/bin/uv + graphifyy 0.9.38 + graph.json; timeout 30000; enabled true). Invariante serena intacto (SHA-256 canónico 24545b4f…bbffc). Completado: reinicio + panel MCP verificado (graphify-backend Connected + serena Connected) + graph_stats coherente con GRAPH_REPORT.md — 2026-08-11.
 
 ---
-*Last updated: 2026-08-24 (BOT-BUILD-HYBRID-SYNTH-094 completado)*
+*Last updated: 2026-08-25 (BOT-BUILD-HYBRID-BACKSTOP-PASO2-100 implementado; pendiente verificación live)*
