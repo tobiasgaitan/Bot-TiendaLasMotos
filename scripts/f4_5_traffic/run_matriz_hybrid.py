@@ -45,10 +45,15 @@ DEFAULT_TIMEOUT_S = 180.0
 RETRY_BACKOFFS = [1.5, 3.0, 4.5]
 QUIESCE_MINUTES = 10
 
-# Índices de turno dentro de los escenarios matriz_full (10 → 12 turnos)
-HABEAS_ACCEPT_TURN_IDX = 2
-IDENTITY_TURN_IDX = 3
+# Índices de turno dentro de los escenarios matriz_full.
+# Corpus endurecido (BOT-BUILD-F45-PROBE-ROBUST-105): turno 2 solicita el link
+# de privacidad; turno 3 es la aceptación; turno 4 es identidad.
+HABEAS_ACCEPT_TURN_IDX = 3
+IDENTITY_TURN_IDX = 4
 FAILFAST_PHASE3_TIMEOUT = 30.0
+
+PRIVACY_LINK = "https://tiendalasmotos.com/politica-de-privacidad"
+PRIVACY_LINK_SNIPPET = "tiendalasmotos.com/politica-de-privacidad"
 
 HYBRID_ROUTE_RE = re.compile(
     r"\[HYBRID ROUTE(?: ASYNC)?\] "
@@ -288,6 +293,36 @@ def _read_prospect_doc(phone: str, project: str = "tiendalasmotos") -> Optional[
     return dict(doc.to_dict() or {}) if doc.exists else None
 
 
+def _read_chat_history(
+    phone: str,
+    project: str = "tiendalasmotos",
+    limit: int = 20,
+) -> List[Dict[str, Any]]:
+    """Lectura read-only del historial prospectos/{phone}/historial para evidencia física del link."""
+    if firestore is None:
+        return []
+    db = firestore.Client(project=project)
+    docs = list(
+        db.collection("prospectos")
+        .document(f"+{phone}")
+        .collection("historial")
+        .order_by("timestamp", direction=firestore.Query.DESCENDING)
+        .limit(limit)
+        .stream()
+    )
+    return [dict(d.to_dict() or {}) for d in reversed(docs)]
+
+
+def script_presented_in_history(history: List[Dict[str, Any]]) -> bool:
+    """True si un mensaje del bot (role='model') contiene el link de privacidad."""
+    for msg in history:
+        role = str(msg.get("role", "")).lower()
+        content = str(msg.get("content", "")).lower()
+        if role == "model" and PRIVACY_LINK_SNIPPET in content:
+            return True
+    return False
+
+
 def _delete_doc_recursively(doc_ref) -> int:
     """Borra un documento de Firestore y todas sus subcolecciones anidadas."""
     deleted = 1
@@ -322,16 +357,57 @@ def preclean_synthetic_docs(phones: List[str], project: str = "tiendalasmotos") 
 
 
 def assert_habeas_accepted_sent(phone: str, project: str, scenario_id: str) -> None:
-    """Fail-fast: el script legal con link debe haber sido emitido tras la aceptación."""
-    doc = _read_prospect_doc(phone, project)
-    if not doc:
-        raise SystemExit(f"❌ fail-fast ({scenario_id}): doc +{phone} no existe tras aceptación")
-    if not doc.get("habeas_data_accepted_sent"):
-        raise SystemExit(
-            f"❌ fail-fast ({scenario_id}): script legal no emitido (E1) — "
-            f"habeas_data_accepted_sent={doc.get('habeas_data_accepted_sent')}"
-        )
-    print(f"✅ fail-fast ({scenario_id}): habeas_data_accepted_sent=True")
+    """Fail-fast: el script legal con link debe haber sido emitido tras la aceptación.
+
+    OBL-3 (Retry defensivo): si el bot efectivamente presentó el link físico en el
+    historial pero el latch `habeas_data_accepted_sent` aún no se cerró, esperamos
+    hasta 10 s antes de declarar E1. Este retry es un workaround defensivo por
+    latencia de persistencia, NO una causa raíz, y solo aplica cuando hay evidencia
+    física del script. Si el bot no presentó el link, fallamos inmediatamente.
+    """
+    deadline = time.monotonic() + 10.0
+    last_value: Any = None
+    while time.monotonic() < deadline:
+        doc = _read_prospect_doc(phone, project)
+        if not doc:
+            raise SystemExit(f"❌ fail-fast ({scenario_id}): doc +{phone} no existe tras aceptación")
+        last_value = doc.get("habeas_data_accepted_sent")
+        if last_value:
+            print(f"✅ fail-fast ({scenario_id}): habeas_data_accepted_sent=True")
+            return
+        # Workaround defensivo (OBL-3): solo reintentar si hay evidencia física del link.
+        history = _read_chat_history(phone, project)
+        if not script_presented_in_history(history):
+            break
+        print(f"  ⏳ Retry defensivo ({scenario_id}): script presentado, latch pendiente...")
+        time.sleep(2.0)
+    raise SystemExit(
+        f"❌ fail-fast ({scenario_id}): script legal no emitido (E1) — "
+        f"habeas_data_accepted_sent={last_value}"
+    )
+
+
+def assert_script_presented(
+    phone: str,
+    project: str,
+    scenario_id: str,
+    timeout: float = 30.0,
+) -> None:
+    """Fail-fast (OBL-1 Ley 1581): el bot debe haber presentado el link de privacidad
+    antes de que la sonda envíe el turno de aceptación. Sin link → abort
+    ROJO_NO_SCRIPT_PRESENTED.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        history = _read_chat_history(phone, project)
+        if script_presented_in_history(history):
+            print(f"✅ fail-fast ({scenario_id}): link de privacidad presentado por el bot")
+            return
+        time.sleep(2.0)
+    raise SystemExit(
+        f"❌ ROJO_NO_SCRIPT_PRESENTED ({scenario_id}): el bot no presentó el link "
+        f"de privacidad ({PRIVACY_LINK}) antes del turno de aceptación."
+    )
 
 
 def assert_phase3_seen(
@@ -492,6 +568,19 @@ def verify_session_routes(
         and "NoneType" in (e.get("textPayload") or "")
     )
 
+    # [BOT-BUILD-E2-FIX-107] F-D: errores de summary con mensaje vacío o
+    # TimeoutError (type=... en el log tras F-A). Antes de F-A el mensaje
+    # terminaba en ':'; después contiene 'type=TimeoutError'.
+    summary_timeout_errors = sum(
+        1
+        for e in window_entries
+        if "Error generating summary" in (e.get("textPayload") or "")
+        and (
+            "type=" in (e.get("textPayload") or "")
+            or (e.get("textPayload") or "").rstrip().endswith(":")
+        )
+    )
+
     # Clasificar failovers por timestamp (±2s) contra el evento route de la misma llamada
     core_failovers = 0
     aux_failovers = 0
@@ -564,6 +653,8 @@ def verify_session_routes(
         if captured_progression[-1] < 5:
             errors.append(f"captured_count no progresa lo suficiente: {captured_progression[-1]} (esperado >=5)")
 
+    warnings: List[str] = []
+
     if not cierre_events:
         errors.append("falta cierre_fase_completo (gemini)")
     else:
@@ -606,11 +697,12 @@ def verify_session_routes(
     if unclassified_failovers:
         errors.append(f"failovers no clasificados: {unclassified_failovers}")
 
-    warnings: List[str] = []
     if aux_failovers:
         warnings.append(f"failover a Gemini en llamadas auxiliares: {aux_failovers}")
     if none_type_errors:
         warnings.append(f"errores NoneType.strip en extraccion/summary: {none_type_errors}")
+    if summary_timeout_errors:
+        warnings.append(f"errores de summary con mensaje vacio/TimeoutError: {summary_timeout_errors}")
     if not frontera_events and captured_progression and captured_progression[-1] >= 7:
         warnings.append("frontera_turno_7_matriz omitida por salto de captured_count (6->8); cierre sigue siendo Gemini")
 
@@ -627,6 +719,7 @@ def verify_session_routes(
         "core_failovers": core_failovers,
         "aux_failovers": aux_failovers,
         "none_type_errors": none_type_errors,
+        "summary_timeout_errors": summary_timeout_errors,
         "backstop": backstop,
         "qwen": qwen,
         "dual": dual,
@@ -648,73 +741,83 @@ def verify_paso2_session(
     project: str,
     service_name: str,
 ) -> Dict[str, Any]:
-    '''Verifica que PASO 2 (simulación ciega / excepción de crédito) entregue la cuota JSON sin backstop.'''
+    """Verifica que PASO 2 (simulación ciega / excepción de crédito) entregue la cuota JSON sin backstop."""
     errors: List[str] = []
     warnings: List[str] = []
 
-    route_events = [
+    # Bug A: parsear entradas crudas de Cloud Logging antes de ponerlas en el histograma.
+    raw_window = [
         e
         for e in all_route_entries
-        if start <= _parse_ts(e.get('timestamp', '1970-01-01T00:00:00Z')) < end
+        if start <= _parse_ts(e.get("timestamp", "1970-01-01T00:00:00Z")) < end
     ]
-    route_events.sort(key=lambda e: _parse_ts(e.get('timestamp', '1970-01-01T00:00:00Z')))
+    raw_window.sort(key=lambda e: _parse_ts(e.get("timestamp", "1970-01-01T00:00:00Z")))
+    route_events = _extract_route_events(raw_window)
 
     backstop_entries = query_cloud_logging(
-        service_name, project, start, end, '[HYBRID BACKSTOP ASYNC]', limit=100
+        service_name, project, start, end, "[HYBRID BACKSTOP ASYNC]", limit=100
     )
     premature_none = 0
     for entry in backstop_entries:
-        text = (entry.get('textPayload') or '') + (entry.get('jsonPayload', {}).get('message') or '')
+        text = (entry.get("textPayload") or "") + (entry.get("jsonPayload", {}).get("message") or "")
         m = HYBRID_BACKSTOP_RE.search(text)
         if not m:
             continue
         reason, captured, siguiente, _depth = m.groups()
-        if reason == 'backstop_tool_prematuro' and captured in ('0', '-1') and (not siguiente or siguiente == 'None'):
+        if reason == "backstop_tool_prematuro" and captured in ("0", "-1") and (not siguiente or siguiente == "None"):
             premature_none += 1
     if premature_none:
-        errors.append(f'backstop_tool_prematuro stripó {premature_none} llamada(s) PASO 2 (captured=0/None)')
+        errors.append(f"backstop_tool_prematuro stripó {premature_none} llamada(s) PASO 2 (captured=0/None)")
 
+    # Bug B: la simulación ciega de PASO 2 no persiste score_resultado; verificamos el egreso real.
     phone_entries = query_cloud_logging(service_name, project, start, end, phone, limit=200)
-    canonical_hits = sum(
-        1 for e in phone_entries
-        if '¿Me confirmas el dato que falta?' in (e.get('textPayload') or '')
-    )
+    texts = [(e.get("textPayload") or "") for e in phone_entries]
+    canonical_hits = sum(1 for t in texts if "¿Me confirmas el dato que falta?" in t)
     if canonical_hits:
-        errors.append(f'egreso contiene la pregunta canónica del backstop ({canonical_hits} veces); la cuota JSON no llegó')
+        errors.append(f"egreso contiene la pregunta canónica del backstop ({canonical_hits} veces); la cuota JSON no llegó")
+
+    cuota_present = False
+    for t in texts:
+        low = t.lower()
+        if "$" in low and any(k in low for k in ("cuota", "meses", "enganche", "inicial", "financi")):
+            cuota_present = True
+            break
+    if not cuota_present:
+        errors.append("egreso no contiene cuota/simulación de crédito (modelo no invocó calculate_credit_score o devolvió solo ficha)")
 
     score_resultado: Optional[Any] = None
     doc = _read_prospect_doc(phone, project)
     if doc:
-        score_resultado = doc.get('score_resultado')
+        score_resultado = doc.get("score_resultado")
     if score_resultado is None:
-        errors.append('score_resultado no está presente en el doc prospecto (calculate_credit_score no ejecutó)')
+        warnings.append("score_resultado no está presente (esperado en simulación ciega de PASO 2)")
     else:
-        print(f'✅ Sesión {session_idx}: score_resultado={score_resultado}')
+        print(f"✅ Sesión {session_idx}: score_resultado={score_resultado}")
 
     if not route_events:
-        errors.append('no se encontraron eventos HYBRID ROUTE en la ventana')
+        errors.append("no se encontraron eventos HYBRID ROUTE en la ventana")
 
-    verdict = 'ROJO' if errors else 'VERDE'
+    verdict = "ROJO" if errors else "VERDE"
 
     return {
-        'session_idx': session_idx,
-        'route_events': len(route_events),
-        'histogram': route_events,
-        'profiling_count': 0,
-        'frontera_count': 0,
-        'cierre_count': 0,
-        'captured_progression': [],
-        'core_failovers': 0,
-        'aux_failovers': 0,
-        'none_type_errors': 0,
-        'backstop': len(backstop_entries),
-        'qwen': 0,
-        'dual': 0,
-        'route_fallback': 0,
-        'score_resultado': score_resultado,
-        'errors': errors,
-        'warnings': warnings,
-        'verdict': verdict,
+        "session_idx": session_idx,
+        "route_events": len(route_events),
+        "histogram": route_events,
+        "profiling_count": 0,
+        "frontera_count": 0,
+        "cierre_count": 0,
+        "captured_progression": [],
+        "core_failovers": 0,
+        "aux_failovers": 0,
+        "none_type_errors": 0,
+        "backstop": len(backstop_entries),
+        "qwen": 0,
+        "dual": 0,
+        "route_fallback": 0,
+        "score_resultado": score_resultado,
+        "errors": errors,
+        "warnings": warnings,
+        "verdict": verdict,
     }
 
 async def run_session(
@@ -748,36 +851,33 @@ async def run_session(
             msg_id = f"hybm_{run_id}_s{session_idx}_t{turn_idx}"
             payload = build_payload(phone_number_id, phone, msg_id, turn, {})
 
-            # Probe-side workaround (C4 intocable): asegurar que el link de Habeas
-            # esté presente en el historial para que el latch determinista
-            # `habeas_data_accepted_sent` pueda cerrar sin depender de que el LLM
-            # emita el script literalmente en cada sesión sintética.
-            turn_text = turn.get("text", "")
-            if (
-                not dry_run
-                and turn_idx == HABEAS_ACCEPT_TURN_IDX
-                and scenario.get("type") == "matriz_full"
-            ):
-                turn_text = f"{turn_text} https://tiendalasmotos.com/politica-de-privacidad"
-            turn_for_payload = {**turn, "text": turn_text}
-
             if dry_run:
-                print(f"  [DRY-RUN] turno {turn_idx}: {turn_for_payload.get('text', turn_for_payload.get('type'))[:60]}...")
+                print(f"  [DRY-RUN] turno {turn_idx}: {turn.get('text', turn.get('type'))[:60]}...")
                 result["turns"].append({
                     "turn_idx": turn_idx,
                     "msg_id": msg_id,
                     "dry_run": True,
-                    "payload_preview": str(build_payload(phone_number_id, phone, msg_id, turn_for_payload, {}))[:200],
+                    "payload_preview": str(build_payload(phone_number_id, phone, msg_id, turn, {}))[:200],
                 })
                 continue
+
+            # OBL-1 (Ley 1581): antes de enviar el turno de aceptación, exigir
+            # evidencia física de que el bot presentó el link de privacidad.
+            if (
+                turn_idx == HABEAS_ACCEPT_TURN_IDX
+                and scenario.get("type") == "matriz_full"
+            ):
+                assert_script_presented(phone, project, scenario_id)
 
             # Marca de tiempo para fail-fast PHASE_3 (ventana propia de este turno)
             turn_query_start = datetime.now(timezone.utc)
 
-            payload = build_payload(phone_number_id, phone, msg_id, turn_for_payload, {})
+            payload = build_payload(phone_number_id, phone, msg_id, turn, {})
             turn_result = await send_turn(client, url, token, payload)
             turn_result["msg_id"] = msg_id
             turn_result["turn_idx"] = turn_idx
+            # OBL-2: response_body se vuelca en el log de resultados para cierre de
+            # la brecha entre ruteo (HYBRID ROUTE) y contenido real de la respuesta.
             result["turns"].append(turn_result)
 
             if turn_result["error"]:
@@ -810,15 +910,16 @@ def render_markdown(report: Dict[str, Any]) -> str:
         "",
         "## Resumen por sesión",
         "",
-        "| Sesión | Escenario | Profiling | Frontera | Cierre | CoreFail | AuxFail | NoneType | Errores | Veredicto |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| Sesión | Escenario | Profiling | Frontera | Cierre | CoreFail | AuxFail | NoneType | SummaryTimeout | Errores | Veredicto |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for s in report["sessions"]:
         lines.append(
             f"| {s['session_idx']} | {s['scenario_id']} | {s.get('profiling_count', 0)} | "
             f"{s.get('frontera_count', 0)} | {s.get('cierre_count', 0)} | "
             f"{s.get('core_failovers', 0)} | {s.get('aux_failovers', 0)} | "
-            f"{s.get('none_type_errors', 0)} | {len(s['errors'])} | {s['verdict']} |"
+            f"{s.get('none_type_errors', 0)} | {s.get('summary_timeout_errors', 0)} | "
+            f"{len(s['errors'])} | {s['verdict']} |"
         )
     lines.append("")
     for s in report["sessions"]:
@@ -828,7 +929,7 @@ def render_markdown(report: Dict[str, Any]) -> str:
         lines.append(f"- score_resultado: `{s.get('score_resultado')}`")
         lines.append(f"- HYBRID BACKSTOP: {s.get('backstop', 0)} | QWEN ROUTE: {s.get('qwen', 0)} | DUAL FAILOVER: {s.get('dual', 0)} | route_fallback: {s.get('route_fallback', 0)}")
         lines.append(f"- core_failovers: {s.get('core_failovers', 0)} | aux_failovers: {s.get('aux_failovers', 0)}")
-        lines.append(f"- Errores NoneType.strip: {s.get('none_type_errors', 0)}")
+        lines.append(f"- Errores NoneType.strip: {s.get('none_type_errors', 0)} | summary timeout: {s.get('summary_timeout_errors', 0)}")
         if s["errors"]:
             lines.append("- **Errores:**")
             for err in s["errors"]:
@@ -842,10 +943,23 @@ def render_markdown(report: Dict[str, Any]) -> str:
             lines.append(f"- **Histograma ({len(hist)} eventos):**")
             lines.append("  | provider | reason | captured | siguiente | fase | timestamp |")
             lines.append("  |---|---|---|---|---|---|")
+            render_warnings: List[str] = []
             for ev in hist:
+                provider = ev.get("provider", "unknown")
+                reason = ev.get("reason", "unknown")
+                captured = ev.get("captured_count", "?")
+                siguiente = ev.get("siguiente", "")
+                fase = ev.get("fase", "?")
+                ts = ev.get("timestamp", "?")
+                if provider == "unknown" or reason == "unknown":
+                    render_warnings.append(f"evento de histograma incompleto: {ev}")
                 lines.append(
-                    f"  | {ev['provider']} | {ev['reason']} | {ev['captured_count']} | {ev.get('siguiente', '')} | {ev['fase']} | {ev['timestamp']} |"
+                    f"  | {provider} | {reason} | {captured} | {siguiente} | {fase} | {ts} |"
                 )
+            if render_warnings:
+                lines.append("- **Advertencias de histograma:**")
+                for w in render_warnings:
+                    lines.append(f"  - {w}")
         lines.append("")
     if report.get("global_errors"):
         lines.append("## Errores globales")

@@ -3380,14 +3380,21 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
           forzar al modelo de Gemini a generar un JSON garantizado y determinista, en lugar
           de Prompt Engineering + Regex (que era frágil e inseguro ante alucinaciones).
         - Impacto: Asegura que campos críticos del negocio como el perfil de crédito
-          (ocupación, datacredito) no se pierdan o malformen, permitiendo que `memory_service`
+          (ocupación, datacrédito) no se pierdan o malformen, permitiendo que `memory_service`
           los guarde correctamente en Firestore.
         """
         if not self.client:
             logger.error("❌ Gemini Client not initialized. Cannot generate summary.")
             return {"summary": "", "extracted": {}}
 
-        
+        # [BOT-BUILD-E2-FIX-107] Fallback base: si el LLM falla (timeout), al menos
+        # portamos el summary truncado y la señal extraction_failed para ZSF.
+        result: Dict[str, Any] = {
+            "summary": conversation_text[:200] + "..." if len(conversation_text) > 200 else conversation_text,
+            "extracted": {},
+            "extraction_failed": False,
+        }
+
         try:
             prompt = f"""
             Eres el "Extractor PII Juan Pablo". Tu única tarea es extraer información del historial de chat
@@ -3446,7 +3453,7 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             # ATOMIC JSON EXTRACTION (Protocolo JSON Voorhees)
             # We process the raw output through clean_json_voorhees to ensure
             # it's healthy for Firestore persistence.
-            result, is_valid = clean_json_voorhees(
+            parsed, is_valid = clean_json_voorhees(
                 raw_response, 
                 session_id=session_id, 
                 last_intent="summary_extraction"
@@ -3455,48 +3462,56 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             if not is_valid:
                 logger.error(f"❌ JSON Voorhees flagged invalid response. Raw: {raw_response[:200]}")
             
-            if "summary" not in result: result["summary"] = "Error en procesamiento de resumen"
-            if "extracted" not in result: result["extracted"] = {}
+            if "summary" not in parsed: parsed["summary"] = "Error en procesamiento de resumen"
+            if "extracted" not in parsed: parsed["extracted"] = {}
 
-            # PERSISTENCIA SÍNCRONA: Validar presencia física de la URL en el historial
+            result = parsed
+
+            # PERSISTENCIA SÍNCRONA (ruta de éxito): validar presencia física
+            # de la URL en el historial. En la ruta de fallo (timeout) este
+            # campo NO se inyecta, para preservar el contrato ZSF de F-C:
+            # extracted={} cuando el LLM falla.
             has_link = "tiendalasmotos.com/politica-de-privacidad" in conversation_text.lower()
             if has_link:
                 result["extracted"]["habeas_data_accepted_sent"] = True
             else:
                 result["extracted"]["habeas_data_accepted_sent"] = False
 
-            # ------------------------------------------------------------------
             # [BOT-BUILD-FIX-HABEAS-DATA-EXTRACTION-004] GUARD DETERMINISTA BACKEND (C2)
-            # Backstop de código sobre el extractor LLM: si el turno actual es una
-            # aceptación de Habeas Data (script legal presentado + último mensaje
-            # del usuario afirmativo), se FUERZA habeas_data_accepted=True.
-            # Rompe el bucle de re-pregunta cuando el LLM no mapea el consentimiento.
-            # ------------------------------------------------------------------
             if self._is_habeas_consent_turn(conversation_text, last_bot_question):
                 if result["extracted"].get("habeas_data_accepted") is not True:
                     logger.info("✅ [HABEAS GUARD] Consentimiento detectado por guard determinista → habeas_data_accepted=True (override extractor LLM)")
                 result["extracted"]["habeas_data_accepted"] = True
-
-            logger.info(f"📝 Generated summary (Voorhees Cleaned) with {len(result.get('extracted', {}))} fields | Valid: {is_valid}")
             
-            # --- ROI TELEMETRY ---
+        except Exception as e:
+            # [BOT-BUILD-E2-FIX-107] F-A: log forense ZSF con type/repr porque
+            # TimeoutError (y otras excepciones vacías) tienen str()=="".
+            logger.exception(
+                f"❌ Error generating summary for session {session_id}: "
+                f"type={type(e).__name__} repr={repr(e)}"
+            )
+            result["extraction_failed"] = True
+
+        # [BOT-BUILD-E2-FIX-107] GUARDS DETERMINISTAS DE MATRIZ (F-B)
+        # Corren fuera del try para sobrevivir al timeout del LLM; no inyectan
+        # campos sintéticos, solo fuerzan campos canónicos cuando la pregunta y
+        # la respuesta del usuario son inequívocas.
+        self._apply_matrix_field_guards(result, conversation_text, last_bot_question)
+
+        logger.info(f"📝 Generated summary (Voorhees Cleaned) with {len(result.get('extracted', {}))} fields | extraction_failed={result.get('extraction_failed', False)}")
+
+        # --- ROI TELEMETRY (solo cuando el LLM no falló) ---
+        if not result.get("extraction_failed"):
             usage = getattr(response, 'usage_metadata', None)
             tokens = getattr(usage, 'total_token_count', 0)
             cost = self._calculate_session_cost(usage)
             logger.info(f"📊 [TELEMETRY] Summary Session: {tokens} tokens, Cost: ${cost} USD")
-            
             result["telemetry"] = {
                 "tokens": tokens,
-                "cost": cost
+                "cost": cost,
             }
-            return result
-            
-        except Exception as e:
-            logger.exception(f"❌ Error generating summary for session {session_id}: {str(e)}")
-            return {
-                "summary": conversation_text[:200] + "..." if len(conversation_text) > 200 else conversation_text,
-                "extracted": {}
-            }
+
+        return result
 
     # ---------------------------------------------------------------------------
     # [BOT-BUILD-FIX-HABEAS-DATA-EXTRACTION-004] GUARD DETERMINISTA DE CONSENTIMIENTO
@@ -3551,6 +3566,81 @@ Utiliza la <instruccion_de_cierre> para orientar tu respuesta final de forma nat
             r"de acuerdo|est[aá] bien|[👍✅👌🆗✔☑💯])",
             text,
         ))
+
+    def _apply_matrix_field_guards(
+        self,
+        result: Dict[str, Any],
+        conversation_text: str,
+        last_bot_question: str,
+    ) -> None:
+        """
+        [BOT-BUILD-E2-FIX-107] F-B: Guards deterministas para campos de la
+        MATRIZ DE PERFILAMIENTO cuando el extractor LLM falla (timeout) pero la
+        respuesta del usuario a la pregunta canónica es inequívoca.
+
+        Acotado por diseño (COND-2):
+          - Match exacto de la última pregunta del bot contra el mapa canónico
+            _PROFILING_QUESTION_MAP.
+          - Último mensaje del usuario sin signos de interrogación, sin negaciones
+            y <= 60 caracteres.
+          - Solo fuerza el campo si el extractor NO lo devolvió ya.
+          - Un "Sí" dirigido a una pregunta diferente NO dispara el guard.
+        """
+        bot_question = (last_bot_question or "").strip()
+        if not bot_question:
+            return
+
+        user_segments = re.findall(
+            r"(?:^|\n)\s*(?:user|usuario)\s*:\s*(.*?)(?=(?:\n\s*(?:bot|juan pablo)\s*:)|$)",
+            conversation_text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        last_user = user_segments[-1].strip() if user_segments else ""
+        if not last_user or len(last_user) > 60:
+            return
+        if "?" in last_user or "¿" in last_user:
+            return
+
+        text = last_user.lower()
+        if re.search(r"\b(no|nel|nunca|jam[aá]s|tampoco|todav[ií]a|negativo)\b|[👎❌]", text):
+            return
+
+        extracted = result.setdefault("extracted", {})
+
+        def _field_empty(field: str) -> bool:
+            return not _is_filled(extracted.get(field))
+
+        def _is_affirmative(answer: str) -> bool:
+            # Acepta "Sí", "Sí,", "Sí, ...", "Si tengo..."
+            return bool(re.match(r"^s[ií]+[,.]?(\s.*)?$", answer))
+
+        # 1. Plan celular (campo crítico que quedó atascado en E2)
+        if bot_question == self._PROFILING_QUESTION_MAP["Plan celular"]:
+            if _field_empty("plan_celular") and _is_affirmative(text):
+                extracted["plan_celular"] = "Sí"
+                logger.info("🛡️ [MATRIX GUARD] plan_celular='Sí' forzado por respuesta afirmativa a pregunta canónica")
+            return
+
+        # 2. Gas natural (Brilla)
+        if bot_question == self._PROFILING_QUESTION_MAP["Gas natural (Brilla)"]:
+            if _field_empty("tiene_gas_natural") and _is_affirmative(text):
+                extracted["tiene_gas_natural"] = "Sí"
+                logger.info("🛡️ [MATRIX GUARD] tiene_gas_natural='Sí' forzado por respuesta afirmativa")
+            return
+
+        # 3. Vivienda (por keyword; la respuesta no es sí/no)
+        if bot_question == self._PROFILING_QUESTION_MAP["Vivienda"]:
+            if _field_empty("vivienda"):
+                if "propia" in text:
+                    extracted["vivienda"] = "Propia"
+                    logger.info("🛡️ [MATRIX GUARD] vivienda='Propia' forzada por keyword")
+                elif "arriendo" in text:
+                    extracted["vivienda"] = "Arriendo"
+                    logger.info("🛡️ [MATRIX GUARD] vivienda='Arriendo' forzada por keyword")
+                elif "familiar" in text or "padres" in text:
+                    extracted["vivienda"] = "Familiar"
+                    logger.info("🛡️ [MATRIX GUARD] vivienda='Familiar' forzada por keyword")
+            return
 
     @staticmethod
     def _canonical_top_price(item: Dict[str, Any]) -> str:

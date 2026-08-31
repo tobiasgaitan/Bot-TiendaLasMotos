@@ -48,7 +48,7 @@ def _block_sockets():
 # orden literal futura que modifique C4.
 # ---------------------------------------------------------------------------
 _C4_PINNED_HASHES: dict[str, str] = {
-    "app/services/ai_brain.py": "7fdbba9430a071ec91c92c0ed7049a04917b2fd4c26c7d26fdf700c0eb8b0105",
+    "app/services/ai_brain.py": "e93a87b82949c7af3d2077a6a447dae30936f280aa2bc91d59d2f81ce0f3c9e3",
     "app/core/prompts.py": "4df9d72898dbe9c11e4425674233cd84d789bc0e113cf7fb87920f415416505e",
     "app/core/personality.json": "c10df9d243498528437a101f0705244388d9e416268017787db94c317df539e3",
 }

@@ -616,8 +616,15 @@ class MemoryService:
         extracted_data: Optional[Dict[str, Any]] = None,
         catalog_moto_hint: Optional[str] = None,
         catalog=None,
+        extraction_failed: bool = False,
     ) -> None:
-        """Merge AI-extracted data into prospect and update summary."""
+        """Merge AI-extracted data into prospect and update summary.
+
+        Args:
+            extraction_failed: señal aditiva (F-C) que indica que generate_summary
+            falló (timeout u otro error) y devolvió extracted vacío. Se usa para
+            logueo ZSF; no altera el contrato de espejos/dashboard.
+        """
         try:
             clean_phone = PhoneNormalizer.normalize(phone_number)
             doc_ref = await self.get_ref(clean_phone)
@@ -705,6 +712,14 @@ class MemoryService:
             update_payload["fecha"] = firestore.SERVER_TIMESTAMP
 
             await self._firestore_io(doc_ref.set(update_payload, merge=True), phone=clean_phone, label="update_prospect_summary.set")
+
+            # [BOT-BUILD-E2-FIX-107] F-C: señal ZSF cuando la extracción falló y
+            # se persistió un payload vacío. No altera espejos/dashboard.
+            if extraction_failed and not extracted:
+                logger.warning(
+                    f"⚠️ [ZSF] update_prospect_summary persistió extracción vacía por fallo previo "
+                    f"para {clean_phone}; campos de matriz pueden no haberse capturado"
+                )
         except (asyncio.TimeoutError, gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded):
             raise
         except Exception as e:
@@ -757,14 +772,26 @@ class MemoryService:
                 summary_text = summary_data.get("summary", "")
                 extracted_data = summary_data.get("extracted", {})
 
+            # [BOT-BUILD-E2-FIX-107] F-C: propagar señal de fallo de extracción.
+            extraction_failed = bool(summary_data.get("extraction_failed", False))
+
             await self.update_prospect_summary(
-                phone_number, 
-                summary_text, 
+                phone_number,
+                summary_text,
                 extracted_data,
                 catalog_moto_hint=catalog_moto_hint,
+                extraction_failed=extraction_failed,
             )
-            
-            logger.info(f"✅ Successfully updated prospect summary for {phone_number}")
+
+            # [BOT-BUILD-E2-FIX-107] F-C: prohibir log de éxito limpio cuando la
+            # extracción falló y no hay campos nuevos.
+            if extraction_failed and not extracted_data:
+                logger.warning(
+                    f"⚠️ [ZSF] generate_and_update_summary finalizó con extracción vacía por fallo previo "
+                    f"para {phone_number}; 'Successfully updated' NO aplica"
+                )
+            else:
+                logger.info(f"✅ Successfully updated prospect summary for {phone_number}")
             
         except Exception as e:
             logger.exception(f"❌ [LINEAR BLOCKING] Failed to generate/update summary for {phone_number}: {e}")

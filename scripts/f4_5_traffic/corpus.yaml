@@ -158,6 +158,8 @@ scenarios:
       - type: text
         text: "Dale, ¿qué sigue para el crédito?"
       - type: text
+        text: "¿Me compartes el link de la política de datos?"
+      - type: text
         text: "Sí, acepto el tratamiento de datos."
       - type: text
         text: "Me llamo Juan Pérez y vivo en Bogotá."
@@ -186,6 +188,8 @@ scenarios:
         text: "Hola, quiero la TVS Sport 100 a crédito."
       - type: text
         text: "Dale, ¿qué sigue para el crédito?"
+      - type: text
+        text: "¿Me compartes el link de la política de datos?"
       - type: text
         text: "Sí autorizo el tratamiento de mis datos."
       - type: text
@@ -216,6 +220,8 @@ scenarios:
       - type: text
         text: "Dale, ¿qué sigue para el crédito?"
       - type: text
+        text: "¿Me compartes el link de la política de datos?"
+      - type: text
         text: "Sí, acepto."
       - type: text
         text: "Soy Pedro Vargas, independiente en Bucaramanga."
@@ -244,6 +250,8 @@ scenarios:
         text: "Hola, quiero la TVS Sport 100 a crédito."
       - type: text
         text: "Dale, ¿qué sigue para el crédito?"
+      - type: text
+        text: "¿Me compartes el link de la política de datos?"
       - type: text
         text: "Sí, autorizo."
       - type: text
@@ -274,6 +282,8 @@ scenarios:
       - type: text
         text: "Dale, ¿qué sigue para el crédito?"
       - type: text
+        text: "¿Me compartes el link de la política de datos?"
+      - type: text
         text: "Sí, acepto el tratamiento."
       - type: text
         text: "Soy Daniela Castaño de Tunja."
@@ -302,6 +312,8 @@ scenarios:
         text: "Hola, quiero la TVS Apache 160 a crédito."
       - type: text
         text: "Dale, ¿qué sigue para el crédito?"
+      - type: text
+        text: "¿Me compartes el link de la política de datos?"
       - type: text
         text: "Sí, acepto."
       - type: text
@@ -332,6 +344,8 @@ scenarios:
       - type: text
         text: "Dale, ¿qué sigue para el crédito?"
       - type: text
+        text: "¿Me compartes el link de la política de datos?"
+      - type: text
         text: "Sí autorizo."
       - type: text
         text: "Soy Fernando Beltrán de Neiva."
@@ -360,6 +374,8 @@ scenarios:
         text: "Hola, quiero la TVS Apache 160 a crédito."
       - type: text
         text: "Dale, ¿qué sigue para el crédito?"
+      - type: text
+        text: "¿Me compartes el link de la política de datos?"
       - type: text
         text: "Sí, acepto el tratamiento de datos."
       - type: text

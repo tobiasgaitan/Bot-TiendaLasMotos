@@ -191,4 +191,5 @@ async def test_generate_and_update_summary_anti_null_masking(caplog, memory_serv
         "test summary",
         {},
         catalog_moto_hint=None,
+        extraction_failed=False,
     )
